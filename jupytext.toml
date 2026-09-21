@@ -1,0 +1,4 @@
+# Every notebook is paired with a percent-format .py file of the same name.
+# The .py is the readable, diff-able source of truth; the .ipynb carries the
+# executed outputs. `jupytext --sync *.ipynb` keeps them together.
+formats = "ipynb,py:percent"
