@@ -14,7 +14,7 @@ numbered chain of notebooks run in order.
 | File | Role |
 |---|---|
 | `TulePond_filepaths.py` | WHERE: every path and shared constant. Edit `data_dir` (one line) to point at the data. |
-| `insar_utils.py` | HOW: short shared helpers (MintPy readers, LOS projections, along-fault axis, statistics, creepmeter reader, the number registry). Each has a test. |
+| `insar_utils.py` | HOW: short shared helpers (MintPy readers, LOS projections, along-fault axis, statistics, creepmeter readers at daily and raw 10-min sampling, the figure style helpers `mpl_paper_style` / `text_backed`, the number registry). Each has a test. |
 | `NN_*.ipynb` + `NN_*.py` | WHAT, in what order. Notebooks are jupytext-paired: the `.py` (percent format) is the readable source, the `.ipynb` carries the executed outputs. |
 | `tests/` | pytest: projection conventions, paths, the registry, and `test_anchors.py` that pins every number quoted in the paper. |
 | `outputs/` | products, `*_stats.txt` sidecars and the number registry (git-ignored; regenerated). |

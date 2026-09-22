@@ -305,6 +305,33 @@ def lat_to_km_map(profiles_csv):
 # Statistics
 # ------------------------------
 
+def mpl_paper_style(base=8):
+    """Matplotlib settings for the paper figures: Arial (Helvetica fallback),
+    `base` pt text, and TrueType (Type 42) embedding so PDF text stays editable.
+    Science asks for Helvetica/Arial. Arial comes first because matplotlib only
+    registers the REGULAR face of macOS's Helvetica.ttc, so bold panel letters
+    would silently render regular; Arial.ttf ships bold and italic faces."""
+    import matplotlib
+    matplotlib.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": base,
+        "pdf.fonttype": 42, "ps.fonttype": 42,
+        # mathtext ($\\sigma$, $\\pm$) in the same face, not DejaVu
+        "mathtext.fontset": "custom", "mathtext.rm": "Arial", "mathtext.it": "Arial:italic",
+        "mathtext.bf": "Arial:bold", "mathtext.default": "regular",
+    })
+    return dict(matplotlib.rcParams)
+
+
+def text_backed(fig, transparency=30, **kw):
+    """A pygmt map label on a translucent white box with CRISP text: GMT applies the
+    transparency to the glyphs as well as the box, so the label is drawn twice,
+    first with the box and the transparency, then again with neither."""
+    fig.text(fill="white", transparency=transparency, **kw)
+    fig.text(**kw)
+
+
 def robust_sigma(x):
     """Robust standard deviation via the median absolute deviation
     (1.4826 * MAD). Insensitive to the outlier tail a plain std is inflated by."""
@@ -379,6 +406,22 @@ def read_creepmeter_10min(filepath, date_start=None, date_end=None):
 # ------------------------------
 # Catalogues (seismicity and repeating earthquakes), used by 05 and 10
 # ------------------------------
+
+def read_creepmeter_10min_raw(filepath, date_start=None, date_end=None):
+    """The same USGS `.10min` file at its native 10-minute sampling (no daily
+    averaging): columns ['decimal_year', 'slip_mm'], as published. Used where a
+    creep-event STEP has to be measured (steps take hours; daily means smear
+    them across two days)."""
+    df = pd.read_csv(filepath, sep=r"\s+", usecols=[0, 1, 2], header=None,
+                     names=["year", "doy", "slip_mm"])
+    df["decimal_year"] = df["year"] + (df["doy"] / df["year"].apply(
+        lambda y: 366 if (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0) else 365))
+    if date_start is not None:
+        df = df[df["decimal_year"] >= date_start]
+    if date_end is not None:
+        df = df[df["decimal_year"] <= date_end]
+    return df[["decimal_year", "slip_mm"]].reset_index(drop=True)
+
 
 def _decimal_year_from_ymdhms(yr, mo, dy, hr, mn, sc):
     """Vectorised decimal year from year/month/day/hour/minute/second columns."""

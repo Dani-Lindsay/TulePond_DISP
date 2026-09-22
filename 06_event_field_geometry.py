@@ -83,7 +83,8 @@ import warnings
 
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, insar_dic_list, creepmeters, box_lonlat,
-                                coh_timeseries, az_smooth_n, dist_min, dist_max, paths_out, repo_dir, data_dir)
+                                coh_timeseries, az_smooth_n, dist_min, dist_max, paths_out, repo_dir, data_dir,
+                                fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km)
 
 import numpy as np
 import pandas as pd
@@ -92,6 +93,7 @@ import h5py
 import xarray as xr
 from scipy.spatial import cKDTree
 import matplotlib.pyplot as plt
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 import pygmt
 from mintpy.utils import time_func                                    # the design matrix timeseries2velocity uses
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert              # THE decomposition, MintPy's own
@@ -141,8 +143,9 @@ xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault step band, t
 sym_xmax_m, sym_bin_m, sym_eval_km = 3000.0, 100.0, 1.0
 
 # Fig 2 map window (unrotated, north up): centred on the trace at map_centre_km from Point Pinole,
-# +/- map_half_km east-west, +/- (map_half_km + map_extra_km) north-south, as the draft (10.4 x 12 km)
-map_centre_km, map_half_km, map_extra_km = 59.5, 5.2, 0.8
+# +/- map_half_km east-west, +/- (map_half_km + map_extra_km) north-south, as the draft (10.4 x 12 km).
+# The values live in TulePond_filepaths so Fig 1 (notebook 04) draws the same box.
+map_centre_km, map_half_km, map_extra_km = fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km
 aa_labelled = ["HGIL", "HRKT"]  # the arrays named in the paper (notebook 08); the other arrays of the section are not drawn
 aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"), "HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of each label about its symbol
 
@@ -474,7 +477,7 @@ for ax in axes[:, 0]: ax.set_ylabel("LOS step (mm, zero at the trace)")
 fig.suptitle(f"Event LOS profiles in the stacked band ({band.lat_lo:.3f} to {band.lat_hi:.3f} N): pure strike-slip puts orange on blue", fontsize=9)
 fig.tight_layout()
 f_sym = os.path.join(fig_dir, "figS_event_symmetry.png")
-fig.savefig(f_sym, dpi=200); print("Saved figure to:", f_sym); plt.show()
+fig.savefig(f_sym, dpi=300); print("Saved figure to:", f_sym); plt.show()
 
 # %% [markdown]
 # ## RUN: the mean event per track, written for the slip model
@@ -725,7 +728,7 @@ orange, grey = "#E69F00", "gray30"
 names = list(profiles)
 
 fig = pygmt.Figure()
-pygmt.config(FONT="9p,Helvetica", FONT_ANNOT_PRIMARY="8p,Helvetica", FONT_LABEL="9p,Helvetica", MAP_FRAME_TYPE="plain",
+pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain",
              MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p", FORMAT_GEO_MAP="ddd.xx")
 
 
@@ -764,28 +767,28 @@ def map_panel(grid, cpt, lim, label, cb_label):
     fig.plot(x=aa.long_deg.values[used], y=aa.lat_deg.values[used], style="s0.18c", fill="black", pen="0.4p,white")
     for _, r_ in aa[used].iterrows():                                              # HGIL left of its symbol, HRKT right and nudged up off the Y-Y' line
         just, off = aa_label_pos[r_.site_code]
-        fig.text(x=r_.long_deg, y=r_.lat_deg, text=r_.site_code, justify=just, offset=off, font="7p,Helvetica", fill="white", transparency=30)
+        utils.text_backed(fig, x=r_.long_deg, y=r_.lat_deg, text=r_.site_code, justify=just, offset=off, font="7p,Helvetica")
     fig.plot(x=[cfw[2]], y=[cfw[1]], style="i0.22c", fill="#F5B400", pen="0.5p,black")
-    fig.text(x=cfw[2], y=cfw[1], text="CFW1", justify="RM", offset="-0.15c/0c", font="7p,Helvetica", fill="white", transparency=30)
+    utils.text_backed(fig, x=cfw[2], y=cfw[1], text="CFW1", justify="RM", offset="-0.15c/0c", font="7p,Helvetica")
     fig.text(position="TL", text=label, justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
     fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w2k+o0.3c/0.55c")      # frame on top, scale bar
-    with pygmt.config(FONT_ANNOT_PRIMARY="16p", FONT_LABEL="16p"):
+    with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):
         fig.colorbar(cmap=cpt, position=f"x{Wm + 0.25}c/0.3c+w{Hm - 0.6}c/0.3c+jBL", frame=f"xa{max(1, round(lim / 2)):g}+l{cb_label}")
 
 
 # top row: A the inter-event profiles, B the inter-event map (the map is Hpair tall, so its bottom is the pair's bottom)
-profile_pair("Fault parallel (mm/yr)", 10.0, "@%Helvetica-Bold%A@%% Inter-event rate", "v", "d")
+profile_pair("Fault parallel (mm/yr)", 10.0, "@%Helvetica-Bold%A@%% @:7p:Inter-event rate@::", "v", "d")
 fig.shift_origin(xshift=f"{Wp + gap_x}c")
-map_panel(g_rate, cpt_rate, lim_rate, "@%Helvetica-Bold%B@%% Inter-event rate (FP)", "mm/yr")
+map_panel(g_rate, cpt_rate, lim_rate, "@%Helvetica-Bold%B@%% @:7p:Inter-event rate (FP)@::", "mm/yr")
 # bottom row: C the mean-event profiles, D the mean-event map
 fig.shift_origin(xshift=f"-{Wp + gap_x}c", yshift=f"-{gap_row + Hp}c")
-profile_pair("Fault parallel (mm)", 10.0, f"@%Helvetica-Bold%C@%% Mean event ({mean_event['ascending']['n']} events)", "ve", "de")
+profile_pair("Fault parallel (mm)", 10.0, f"@%Helvetica-Bold%C@%% @:7p:Mean event ({mean_event['ascending']['n']} events)@::", "ve", "de")
 fig.shift_origin(xshift=f"{Wp + gap_x}c")
-map_panel(g_evt, cpt_evt, lim_evt, "@%Helvetica-Bold%D@%% Mean event (FP)", "mm")
+map_panel(g_evt, cpt_evt, lim_evt, "@%Helvetica-Bold%D@%% @:7p:Mean event (FP)@::", "mm")
 
 f_fig2 = os.path.join(fig_dir, f"fig2_observations_coh{coh_timeseries}_{mean_event['ascending']['n']}ev")
-fig.savefig(f_fig2 + ".png", dpi=300, crop=True, anti_alias=True, show=False)
-fig.savefig(f_fig2 + ".pdf", crop=True, anti_alias=True, show=False)
+fig.savefig(f_fig2 + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
+fig.savefig(f_fig2 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved Fig 2 (observations) to:", f_fig2 + ".png")
 fig.show()
 
@@ -816,7 +819,7 @@ for r_, orbit in enumerate(event_maps):
             fig.colorbar(im, ax=axes[:, c_] if c_ else axes[:, :n_ev + 1], shrink=0.5, orientation="horizontal", pad=0.06, label="LOS mm" if c_ == 0 else "mm")
 fig.suptitle(f"Per-pixel step maps, coherence {coh_timeseries}, box median removed, descending burst offsets removed", fontsize=9)
 f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_timeseries}.png")
-fig.savefig(f_grid, dpi=200, bbox_inches="tight"); print("Saved figure to:", f_grid); plt.show()
+fig.savefig(f_grid, dpi=300, bbox_inches="tight"); print("Saved figure to:", f_grid); plt.show()
 
 # %% [markdown]
 # ## REGISTER

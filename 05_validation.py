@@ -58,10 +58,10 @@ import numpy as np
 import pandas as pd
 import h5py
 import pyproj
+import xarray as xr
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.font_manager import FontProperties
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+import pygmt
 
 # %% [markdown]
 # ## Constants
@@ -89,6 +89,13 @@ ref_patch_km = 5.0    # map display reference: CTM1-COZ1 patch, +/- this across 
 # step each aperture recovers (ladder panel d); windows from the creepmeter record
 coz1_events = [(2018.997, 2019.121), (2022.093, 2022.219)]
 collar_yr = 0.75      # inter-event collar each side of a window for the local trend
+
+# CFW1 vs the Tule Pond InSAR events (the instrument sits at the south end of the section). This notebook
+# only MEASURES the creepmeter slip across each InSAR detection window, from the raw record and aware of
+# its gaps; whether CFW1 recorded a creep event is a question for the published catalogue (TBC), not for a
+# detector written here.
+cfw_edge_hours = 12   # slip across a window = median of the samples in the last 12 h before it closes minus
+                      # the median in the first 12 h after it opens (nearest available samples if those are in a gap)
 
 # the ladder: bins scored on a FIXED stack (4 rows within 0.4 km, no widening)
 # so every bin averages the same number of rows. The sweep was run at coherence
@@ -330,17 +337,18 @@ print("\n".join(L))
 # %% [markdown]
 # ## Figure: the five creepmeters against the InSAR
 #
-# Column 1: the fault-parallel velocity map on a page rotated to the mean
-# strike (the trace stays curved), creepmeters as blue ticks, the event-driven
-# sections bracketed (from notebook 05 if it has run, else the section bounds).
-# Columns 2 to 4, one row per creepmeter north to south: the cross-fault
-# velocity profile with its step; cumulative creep, creepmeter (blue) against
-# InSAR (grey, +/-1 std of the stacked rows); the same detrended, with the COZ1
-# creep-event windows in gold.
+# Column 1: the fault-parallel velocity map, drawn with GMT's oblique Mercator
+# so the fault runs up the page at the mean strike (the trace stays curved,
+# north at the top), creepmeters as blue ticks, the Tule Pond section bracketed
+# (the measured extent from notebook 04). Columns 2 to 4, one row per
+# creepmeter north to south: the cross-fault velocity profile with its step;
+# cumulative creep, creepmeter (blue) against InSAR (grey, +/-1 std of the
+# stacked rows); the same detrended, with the creep-event onset windows in gold
+# (COZ1: its own creepmeter events; CFW1: the Tule Pond InSAR events).
 
 # %%
-plt.rcParams.update({"font.size": 8})
-cm_blue, insar_grey = "#0b3d91", "0.55"
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text (the ladder figure below)
+cm_blue, insar_grey, gold = "#0b3d91", "gray55", "#F5B400"
 fp_clim, prof_ylim = 5.0, 7.0
 
 with h5py.File(map_file, "r") as h:
@@ -372,112 +380,246 @@ ci = np.round((E - x0) / dx).astype(int); ri = np.round((N - y0) / dy).astype(in
 ok = (ci >= 0) & (ci < fp_map.shape[1]) & (ri >= 0) & (ri < fp_map.shape[0])
 ob_z = np.full(U.shape, np.nan); ob_z[ok] = fp_map[ri[ok], ci[ok]]
 ob_ext = [float(vg[0]), float(vg[-1]), float(ug[-1]), float(ug[0])]
-# display reference: the CTM1-COZ1 fault-straddling patch, so the fault sits at zero
+# display reference, as Fig 1 (notebook 04): the mid-point of the two blocks' medians in the CTM1-COZ1
+# patch, so the fault sits at zero and the colour scale swings equally blue (west) and red (east).
+# (A plain patch mean is biased toward whichever block has more valid pixels.)
 u_cm = {code: to_uv(lo, la)[1] for code, la, lo, name in creepmeters}
 lo_u, hi_u = sorted([u_cm["CTM1"], u_cm["COZ1"]])
-ref_mean = np.nanmean(ob_z[np.ix_((ug >= lo_u) & (ug <= hi_u), np.abs(vg) <= ref_patch_km)])
+in_u = (ug >= lo_u) & (ug <= hi_u)
+z_west = np.nanmedian(ob_z[np.ix_(in_u, (vg < 0) & (vg >= -ref_patch_km))])
+z_east = np.nanmedian(ob_z[np.ix_(in_u, (vg > 0) & (vg <= ref_patch_km))])
+ref_mean = 0.5 * (z_west + z_east)
+print(f"map display reference: west block {z_west:+.2f}, east block {z_east:+.2f} mm/yr; mid-point {ref_mean:+.2f} removed")
 
-# section brackets: the MEASURED extents from notebook 04 (section_lengths.csv):
-# Tule Pond = the length of fault hosting the events, Oakland = its 75% band
+# section bracket: the MEASURED Tule Pond extent from notebook 04 (section_lengths.csv), the length of
+# fault hosting the events. Oakland is no longer highlighted in the paper, so it gets no bracket.
 sl = pd.read_csv(lengths_file).set_index("name")
-seg_ext = {"Tule Pond": (sl.loc["tulepond_creep_length", "lat_lo"], sl.loc["tulepond_creep_length", "lat_hi"]),
-           "Oakland": (sl.loc["oakland_band75", "lat_lo"], sl.loc["oakland_band75", "lat_hi"])}
+seg_ext = {"Tule Pond": (sl.loc["tulepond_creep_length", "lat_lo"], sl.loc["tulepond_creep_length", "lat_hi"])}
 print("section brackets (lat):", {k: (round(v[0], 4), round(v[1], 4)) for k, v in seg_ext.items()})
-events_coz = pd.read_csv(events_file).query("segment == 'COZ1'") if os.path.exists(events_file) else pd.DataFrame()
+ev_all = pd.read_csv(events_file) if os.path.exists(events_file) else pd.DataFrame()
+events_coz = ev_all.query("segment == 'COZ1'") if len(ev_all) else ev_all
+# CFW1 sits at the south end of the Tule Pond section: its rows get the Tule Pond onset windows, to see
+# whether the instrument catches any InSAR event. The creepmeter STEP at each event (10-min record)
+# is measured below, printed and written to the stats file.
+events_tp = ev_all.query("segment == 'TULEPOND'") if len(ev_all) else ev_all
+row_events = {"COZ1": events_coz, "CFW1": events_tp}
 
-fig = plt.figure(figsize=(12.0, 8.2))
-gs = fig.add_gridspec(5, 4, width_ratios=[0.72, 1.30, 1.30, 1.30], hspace=0.28, wspace=0.14,
-                      left=0.04, right=0.995, top=0.94, bottom=0.07)
-axm = fig.add_subplot(gs[:, 0])
-im = axm.imshow(np.ma.masked_invalid(ob_z - ref_mean), cmap="RdBu_r", vmin=-fp_clim, vmax=fp_clim,
-                extent=ob_ext, interpolation="none", aspect="auto", origin="upper")
+cfw_raw = utils.read_creepmeter_10min_raw(utils.creepmeter_file(common_paths["creepmeter_dir"], "CFW1"), date_start=t0, date_end=t1)
+tr, sr = cfw_raw.decimal_year.values, cfw_raw.slip_mm.values
+DAY = 1 / 365.25
+cfw_rate = df.loc["CFW1", "cm_rate"]           # the instrument's own long-term rate over the InSAR window, mm/yr
+
+
+def cfw_level(t_edge, side):
+    """Median slip in the cfw_edge_hours after (side=+1) or before (side=-1) t_edge; if that span has no
+    samples, the median of the nearest cfw_edge_hours of data on that side within 5 d. Returns (level, time)."""
+    span = cfw_edge_hours / 24 * DAY
+    m = (tr >= t_edge) & (tr < t_edge + span) if side > 0 else (tr > t_edge - span) & (tr <= t_edge)
+    if m.sum() < 6:
+        near = (tr >= t_edge) & (tr < t_edge + 5 * DAY) if side > 0 else (tr > t_edge - 5 * DAY) & (tr <= t_edge)
+        assert near.sum() >= 6, f"no CFW1 data within 5 d of {t_edge:.4f}"
+        tt = tr[near]; first = tt[0] if side > 0 else tt[-1]
+        m = (tr >= first) & (tr < first + span) if side > 0 else (tr > first - span) & (tr <= first)
+    return float(np.median(sr[m])), float(np.median(tr[m]))
+
+
+rows_ = []
+for _, e in events_tp.iterrows():
+    lo, hi = e.onset_lo, e.onset_hi
+    lev0, tl0 = cfw_level(lo, +1); lev1, tl1 = cfw_level(hi, -1)      # (not v0/v1: the map frame above owns those names)
+    inwin = (tr >= lo) & (tr <= hi)
+    cover = min(100.0, 100 * len(np.unique(np.floor(tr[inwin] * 365.25 * 24))) / ((hi - lo) * 365.25 * 24))   # hours with data
+    rows_.append(dict(onset_yr=e.onset_yr, win_days=(hi - lo) * 365.25, cover_pct=cover,
+                      slip_win_mm=lev1 - lev0, span_win_d=(tl1 - tl0) * 365.25, expect_win_mm=cfw_rate * (tl1 - tl0),
+                      insar_mm=e.amplitude_mm))
+cfw_win = pd.DataFrame(rows_)
+
+cfw_lines = [f"CFW1 CREEPMETER SLIP ACROSS EACH TULE POND InSAR DETECTION WINDOW (raw record; window edges = medians of "
+             f"{cfw_edge_hours} h of data, nearest data if the edge is in a gap; expected = CFW1 rate {cfw_rate:.1f} mm/yr x span)",
+             f"{'onset':>8} {'win (d)':>7} {'data (%)':>8} {'slip in window (mm)':>19} {'span (d)':>8} {'expected (mm)':>13} {'InSAR step (mm)':>15}"]
+for _, r_ in cfw_win.iterrows():
+    cfw_lines.append(f"{r_.onset_yr:8.2f} {r_.win_days:7.0f} {r_.cover_pct:8.0f} {r_.slip_win_mm:19.2f} {r_.span_win_d:8.1f} {r_.expect_win_mm:13.2f} {r_.insar_mm:15.1f}")
+print("\n".join(cfw_lines))
+L += [""] + cfw_lines                                   # into the stats file with the rest
+
+# %% [markdown]
+# The figure follows the Science supplement rules: 18.3 cm wide (single page width),
+# Helvetica 7 to 9 pt, bold panel letters with the description in normal weight, the
+# colour bar labelled. The map is drawn at true scale, so its width follows its height.
+
+# %%
+# --- the map in lon/lat for GMT (as notebook 04's Fig 1): the strike-frame rectangle is the region of an
+# oblique Mercator whose x axis runs across the fault, so the fault runs up the page with north at the top
+from_utm = pyproj.Transformer.from_crs(int(attrs["EPSG"]), 4326, always_xy=True)
+
+
+def uv_to_lonlat(u, v):
+    """Inverse of to_uv: strike-frame km (u along, v across) -> lon/lat, for the corners, the ticks and the bracket."""
+    u, v = np.asarray(u, float) * 1e3 + u_pin, np.asarray(v, float) * 1e3 + v0
+    return from_utm.transform(v * pe + u * ae, v * pn + u * an)
+
+
+def gmt_map_size(region, projection):
+    """Width and height (cm) GMT gives a region/projection pair (mapproject -W), so panels can be aligned to it."""
+    with pygmt.clib.Session() as lib:
+        f_ = os.path.join(cpt_dir, "dims.txt")
+        lib.call_module("mapproject", f"-R{region} -J{projection} -W ->{f_}")
+    return tuple(float(x) for x in open(f_).read().split())
+
+
+def runs(mask):
+    """(start, stop) index pairs of the contiguous True runs of a boolean mask, so a gappy series plots with gaps."""
+    idx = np.flatnonzero(np.diff(np.r_[False, np.asarray(mask, bool), False]))
+    return list(zip(idx[::2], idx[1::2]))
+
+
+u_n, u_s = float(ug[0]), float(ug[-1])                                          # the same extent as ob_z
+lon_ll, lat_ll = uv_to_lonlat(u_s, -map_half_km)                                # lower-left = south end, west side
+lon_ur, lat_ur = uv_to_lonlat(u_n, map_half_km)                                 # upper-right = north end, east side
+lon_c, lat_c = uv_to_lonlat(0.5 * (u_s + u_n), 0.0)
+corners = np.array([uv_to_lonlat(u_, v_) for u_, v_ in ((u_s, -map_half_km), (u_s, map_half_km), (u_n, map_half_km), (u_n, -map_half_km))])
+lat_g = np.arange(corners[:, 1].min() - 0.01, corners[:, 1].max() + 0.01, 0.00028)
+lon_g = np.arange(corners[:, 0].min() - 0.01, corners[:, 0].max() + 0.01, 0.00035)
+LON, LAT = np.meshgrid(lon_g, lat_g)
+Eg, Ng = utm.transform(LON, LAT)
+cig = np.round((Eg - x0) / dx).astype(int); rig = np.round((Ng - y0) / dy).astype(int)
+okg = (cig >= 0) & (cig < fp_map.shape[1]) & (rig >= 0) & (rig < fp_map.shape[0])
+zg = np.full(LON.shape, np.nan); zg[okg] = fp_map[rig[okg], cig[okg]] - ref_mean
+grid_ll = xr.DataArray(zg, coords={"lat": lat_g, "lon": lon_g}, dims=("lat", "lon"))
 tv, tu = to_uv(prof["ft_lon"].values, prof["ft_lat"].values)
-axm.plot(tv, tu, "-", color="0.15", lw=0.8, zorder=4)
+
+# --- the figure: sizes in cm, one font, 18.3 cm wide (Science full page width)
+W_fig = 18.3
+Hr, gap_row = 2.1, 0.35                 # one row per creepmeter; the interior rows carry no x annotation
+Hm = 5 * Hr + 4 * gap_row               # the map spans the five rows (~12 cm); its width follows at true scale (~3.2 cm)
+gap_map, gap_col, cb_w = 0.9, 0.6, 2.5
+cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
+cpt_vel = utils.write_cpt(os.path.join(cpt_dir, "fp_rdbu.cpt"), "RdBu_r", -fp_clim, fp_clim)
+letters = ("BCDEF", "GHIJK", "LMNOP")
+
+fig = pygmt.Figure()
+pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain",
+             MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p")
+
+# A) the map: oblique Mercator, fault up the page, everything plotted in lon/lat
+region_map = f"{lon_ll}/{lat_ll}/{lon_ur}/{lat_ur}+r"
+Wm = 3.0
+w_, h_ = gmt_map_size(region_map, f"Oa{lon_c}/{lat_c}/{strike - 90}/{Wm}c")
+Wm = Wm * Hm / h_                                                 # width that makes the map exactly Hm tall (true scale)
+proj_map = f"Oa{lon_c}/{lat_c}/{strike - 90}/{Wm:.3f}c"
+Wp = Wc = Wd = (W_fig - Wm - gap_map - 2 * gap_col) / 3.0          # the three columns share the rest of the width
+print(f"map panel {Wm:.2f} x {Hm:.2f} cm at true scale; data panels {Wp:.2f} x {Hr:.2f} cm; figure {W_fig} cm wide")
+print(f"  map region {region_map}; trial 4.5 cm wide -> GMT {w_:.2f} x {h_:.2f} cm")
+assert 2.0 < Wm < 5.0, f"map width {Wm:.2f} cm is off (expect ~3 cm at true scale): region/projection changed?"
+fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
+fig.grdimage(grid=grid_ll, cmap=cpt_vel, nan_transparent=True)
+fig.plot(x=prof["ft_lon"].values, y=prof["ft_lat"].values, pen="0.8p,gray15")
 for code, la, lo, name in creepmeters:
     cv, cu = to_uv(lo, la)
-    axm.plot([cv - 1.0, cv + 1.0], [cu, cu], "-", color=cm_blue, lw=2.4, zorder=5)
-    axm.text(cv + 1.8, cu, code, fontsize=7.5, va="center", ha="left", zorder=6,
-             bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=0.5))
-for name, (la_lo, la_hi) in seg_ext.items():
-    uu = []
-    for la in (la_lo, la_hi):
-        j = int(np.argmin(np.abs(prof["ft_lat"].values - la)))
-        uu.append(to_uv(prof["ft_lon"].values[j], prof["ft_lat"].values[j]))
-    bx = max(min(u[0] for u in uu) - 3.0, ob_ext[0] + 1.4)
-    axm.plot([bx, bx], [uu[0][1], uu[1][1]], "-", color="k", lw=1.4, zorder=6)
-    for _v, _u in uu:
-        axm.plot([bx, bx + 0.8], [_u, _u], "-", color="k", lw=1.4, zorder=6)
-    axm.text(bx - 0.9, 0.5 * (uu[0][1] + uu[1][1]), name, fontsize=7.5, fontweight="bold", va="center", ha="center", rotation=90)
-axm.set_xlim(ob_ext[0], ob_ext[1]); axm.set_ylim(ob_ext[2], ob_ext[3]); axm.set_xticks([]); axm.set_yticks([])
-sbar = AnchoredSizeBar(axm.transData, 5, "5 km", loc="lower left", frameon=True, pad=0.3, borderpad=0.4, sep=3,
-                       size_vertical=0, fontproperties=FontProperties(size=6.5))
-sbar.patch.set(facecolor="white", alpha=0.6, edgecolor="none"); axm.add_artist(sbar)
-axm.text(0.05, 0.995, "N", transform=axm.transAxes, fontsize=8, va="top", ha="center", color="0.2")
-axm.text(0.04, 0.97, "a)", transform=axm.transAxes, va="top", fontsize=8.5,
-         bbox=dict(facecolor="white", edgecolor="none", alpha=0.7))
-cb = fig.colorbar(im, cax=axm.inset_axes([0.08, -0.028, 0.84, 0.018]), orientation="horizontal")
-cb.set_label("Fault-parallel velocity (mm/yr)", fontsize=7); cb.ax.tick_params(labelsize=6, length=2)
+    kx, ky = uv_to_lonlat([cu, cu], [cv - 1.0, cv + 1.0])                       # a 2 km tick across the fault
+    fig.plot(x=kx, y=ky, pen=f"2p,{cm_blue}")
+    utils.text_backed(fig, x=lo, y=la, text=code, justify="RM", offset="-0.35c/0c", font="6.5p,Helvetica,black", clearance="0.03c")
+for name, (la_lo, la_hi) in seg_ext.items():                      # east of the trace, ticks toward it, label boxed
+    jj = [int(np.argmin(np.abs(prof["ft_lat"].values - la))) for la in (la_lo, la_hi)]
+    b_lo, b_hi = sorted(float(tu[j]) for j in jj)
+    in_b = (tu >= b_lo) & (tu <= b_hi)
+    bv = float(np.max(tv[in_b])) + 2.0 if in_b.any() else float(max(tv[j] for j in jj)) + 2.0
+    bx, by = uv_to_lonlat([b_lo, b_hi], [bv, bv]); fig.plot(x=bx, y=by, pen="1.4p,black")
+    for u_ in (b_lo, b_hi):
+        bx, by = uv_to_lonlat([u_, u_], [bv - 1.6, bv]); fig.plot(x=bx, y=by, pen="1.4p,black")
+    u_mid = 0.5 * (b_lo + b_hi)                                   # two rows (GMT has no newline outside paragraph mode)
+    lx, ly = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [bv, bv])
+    utils.text_backed(fig, x=lx, y=ly, text=name.split(), justify="LM", offset="0.12c/0c", font="7p,Helvetica,black", clearance="0.03c")
+fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
+fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
+fig.text(position="TL", text="@%Helvetica-Bold%A@%%", offset="0.1c/-0.1c", font="9p,Helvetica", fill="white", clearance="0.04c")
+fig.text(position="TC", text="FP velocity (mm/yr)", justify="BC", offset="0c/0.15c", font="8p,Helvetica-Bold", no_clip=True)
+fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w5k+o0.3c/0.4c")       # frame on top, scale bar
+with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):     # GMT scales colour-bar text down with the bar thickness (-> ~6.5p)
+    # bar as wide as the map, so the bar and its label are both centred under the map (as Fig 1 reads)
+    fig.colorbar(cmap=cpt_vel, position=f"x0c/-0.4c+w{Wm:.2f}c/0.3c+h+jTL", frame="xa2f1+lFault-parallel velocity (mm/yr)")
 
-letters = ("bcdef", "ghijk", "lmnop")
-first = {}
+# B-P) five rows, north to south: profile, cumulative, detrended
+fig.shift_origin(xshift=f"{Wm + gap_map}c", yshift=f"{Hm - Hr}c")
+titles = ("Cross-fault profile (mm/yr)", "Cumulative creep (mm)", "Detrended creep (mm)")
 for i, (code, la, lo, name) in enumerate(creepmeters):
     r = df.loc[code]
     ct, ccum = cm_data[code]
+    last = i == len(creepmeters) - 1
+    ev_rows = row_events.get(code, pd.DataFrame())
     # col 2: cross-fault velocity profile with the step
-    ax2 = fig.add_subplot(gs[i, 1])
     s = xf[(xf["code"] == code) & (xf["dist_m"].abs() <= max_dist_m)]
     d = s["dist_m"].values.astype(float); v = s["fp_vel"].values.astype(float); v = v - v.mean()
-    ax2.scatter(d, v, s=4, color="0.7", alpha=0.55, lw=0)
     G = np.column_stack([np.ones_like(d), d, (d > 0).astype(float)])
     a_, b_, step_mm = np.linalg.lstsq(G, v, rcond=None)[0]
     xw, xe = np.array([-max_dist_m, 0.0]), np.array([0.0, max_dist_m])
-    ax2.plot(xw, a_ + b_ * xw, color=cm_blue, lw=1.6); ax2.plot(xe, a_ + b_ * xe + step_mm, color=cm_blue, lw=1.6)
-    ax2.annotate(f"velocity step {step_mm:.1f} mm/yr", xy=(0.97, 0.05), xycoords="axes fraction", ha="right", va="bottom",
-                 fontsize=7, bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=0.5))
-    ax2.axvline(0, color="darkred", lw=1.0, ls="--")
-    ax2.set_xlim(-max_dist_m, max_dist_m); ax2.set_ylim(-prof_ylim, prof_ylim); ax2.set_xticks([-1000, -500, 0, 500, 1000])
-    ax2.text(0.025, 0.95, f"{letters[0][i]}) {name} ({code})", transform=ax2.transAxes, va="top", fontsize=8.5,
-             bbox=dict(facecolor="white", edgecolor="none", alpha=0.7))
+    region_p = [-max_dist_m, max_dist_m, -prof_ylim, prof_ylim]
+    frame_p = ["WSrt" if last else "Wsrt", "xa1000f500+lCross-fault distance (m)" if last else "xa1000f500", "ya5f1"]
+    fig.basemap(region=region_p, projection=f"X{Wp}c/{Hr}c", frame=frame_p)
+    fig.plot(x=d, y=v, style="c0.05c", fill="gray70@45")
+    fig.plot(x=[0, 0], y=[-prof_ylim, prof_ylim], pen="0.8p,black")
+    fig.plot(x=xw, y=a_ + b_ * xw, pen=f"1.2p,{cm_blue}"); fig.plot(x=xe, y=a_ + b_ * xe + step_mm, pen=f"1.2p,{cm_blue}")
+    utils.text_backed(fig, position="BR", text=f"velocity step {step_mm:.1f} mm/yr", offset="-0.1c/0.1c", font="6.5p,Helvetica", clearance="0.03c")
+    fig.text(position="TL", text=f"@%Helvetica-Bold%{letters[0][i]}@%% @:7p:{name} ({code})@::", offset="0.1c/-0.1c", font="9p,Helvetica", fill="white", clearance="0.04c")
+    if i == 0:
+        fig.text(position="TC", text=titles[0], justify="BC", offset="0c/0.15c", font="8p,Helvetica-Bold", no_clip=True)
+    fig.basemap(region=region_p, projection=f"X{Wp}c/{Hr}c", frame=frame_p)      # frame on top: a clean edge
     # col 3: cumulative creep
-    ax3 = fig.add_subplot(gs[i, 2])
-    ax3.plot(ct, ccum, color=cm_blue, lw=1.3, zorder=3, label=f"creepmeter {r.cm_rate:.1f} mm/yr")
+    fig.shift_origin(xshift=f"{Wp + gap_col}c")
     t, mean, std, _n = stack_insar(fp_ts, la)
     mok = np.isfinite(mean)
     cm_at_t = np.interp(t[mok], ct, ccum)
     mean_disp = mean + float(np.mean(cm_at_t - mean[mok]))     # display alignment only; the rate is untouched
-    ax3.fill_between(t, mean_disp - std, mean_disp + std, color=insar_grey, alpha=0.30, lw=0)
-    ax3.plot(t, mean_disp, color=insar_grey, lw=1.1, zorder=2, label=f"InSAR {r.cr_rate:.1f} mm/yr")
-    ax3.set_xlim(t0, t1); ax3.set_ylim(bottom=-2); ax3.set_xticks([2018, 2020, 2022, 2024])
-    ax3.legend(fontsize=7, loc="lower right", frameon=False, handlelength=1.3)
-    ax3.text(0.025, 0.95, f"{letters[1][i]}) {code}", transform=ax3.transAxes, va="top", fontsize=8.5,
-             bbox=dict(facecolor="white", edgecolor="none", alpha=0.7))
-    # col 4: detrended
-    ax4 = fig.add_subplot(gs[i, 3])
-    if code == "COZ1" and len(events_coz):
-        for _, ev in events_coz.iterrows():
-            ax4.axvspan(ev["onset_lo"], ev["onset_hi"], color="#F5B400", alpha=0.45, lw=0, zorder=0)
-    ax4.plot(ct, utils.detrend(ct, ccum), color=cm_blue, lw=1.1, zorder=3)
-    ax4.scatter(t, utils.detrend(t, mean), s=5, color=insar_grey, lw=0, zorder=2)
-    ax4.axhline(0, color="0.7", lw=0.6)
-    ax4.set_xlim(t0, t1); ax4.set_xticks([2018, 2020, 2022, 2024]); ax4.set_ylim(-fp_clim * 1.5, fp_clim * 1.5)
-    ax4.text(0.025, 0.95, f"{letters[2][i]}) {code}", transform=ax4.transAxes, va="top", fontsize=8.5,
-             bbox=dict(facecolor="white", edgecolor="none", alpha=0.7))
-    for ax in (ax2, ax3, ax4):
-        if i < len(creepmeters) - 1:
-            ax.tick_params(labelbottom=False)
-    if i == len(creepmeters) - 1:
-        ax2.set_xlabel("Cross-fault distance (m)"); ax3.set_xlabel("Year"); ax4.set_xlabel("Year")
+    ymax = 1.05 * max(float(np.nanmax(ccum)), float(np.nanmax(mean_disp + std)))
+    region_c = [t0, t1, -2.0, ymax]
+    ya_c = 20 if ymax > 45 else 10
+    frame_c = ["WSrt" if last else "Wsrt", "xa2f1+lYear" if last else "xa2f1", f"ya{ya_c}f{ya_c / 2:g}"]
+    fig.basemap(region=region_c, projection=f"X{Wc}c/{Hr}c", frame=frame_c)
+    for _, ev in ev_rows.iterrows():
+        e0, e1 = ev["onset_lo"], ev["onset_hi"]                  # the InSAR detection interval; the tail is used in the statistics only
+        fig.plot(x=[e0, e1, e1, e0], y=[region_c[2], region_c[2], region_c[3], region_c[3]], fill=gold + "@55", close=True)
+    for a0, a1 in runs(mok):                                   # the InSAR stack has gaps: one envelope piece per run
+        if a1 - a0 >= 2:
+            fig.plot(x=np.r_[t[a0:a1], t[a0:a1][::-1]], y=np.r_[(mean_disp + std)[a0:a1], (mean_disp - std)[a0:a1][::-1]],
+                     fill="gray@70", close=True)
+    # legend order creepmeter then InSAR, creepmeter drawn on top: its legend entry comes from an off-region (clipped) stub
+    fig.plot(x=[t0 - 10, t0 - 9], y=[0, 0], pen=f"1.0p,{cm_blue}", label=f"Creepmeter {r.cm_rate:.1f} mm/yr")
+    for k_, (a0, a1) in enumerate(runs(mok)):
+        fig.plot(x=t[a0:a1], y=mean_disp[a0:a1], pen=f"1.1p,{insar_grey}", label=f"InSAR {r.cr_rate:.1f} mm/yr" if k_ == 0 else None)
+    fig.plot(x=ct, y=ccum, pen=f"1.0p,{cm_blue}")
+    # legend inside the data: 6.5p text, but no excess white space (fixed narrow width, short symbol column,
+    # tight line spacing, box clearance 0.05 cm)
+    with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
+        fig.legend(position="JBR+jBR+o0.1c/0.1c+w2.6c+l1.0", box=False, S="0.25c")   # box just wide enough for the text, 0.1 cm off the corner     # translucent box: readable where the lines pass behind
+    fig.text(position="TL", text=f"@%Helvetica-Bold%{letters[1][i]}@%% @:7p:{code}@::", offset="0.1c/-0.1c", font="9p,Helvetica", fill="white", clearance="0.04c")
     if i == 0:
-        first = {"prof": ax2, "cum": ax3, "det": ax4}
-fig.canvas.draw()
-for ax, txt in [(axm, "FP velocity (mm/yr)"), (first["prof"], "Cross-fault profile (mm/yr)"),
-                (first["cum"], "Cumulative creep (mm)"), (first["det"], "Detrended creep (mm)")]:
-    p = ax.get_position()
-    fig.text(0.5 * (p.x0 + p.x1), 0.945, txt, ha="center", va="bottom", fontsize=9.5, fontweight="bold")
+        fig.text(position="TC", text=titles[1], justify="BC", offset="0c/0.15c", font="8p,Helvetica-Bold", no_clip=True)
+    fig.basemap(region=region_c, projection=f"X{Wc}c/{Hr}c", frame=frame_c)
+    # col 4: detrended
+    fig.shift_origin(xshift=f"{Wc + gap_col}c")
+    region_d = [t0, t1, -fp_clim * 1.5, fp_clim * 1.5]
+    frame_d = ["WSrt" if last else "Wsrt", "xa2f1+lYear" if last else "xa2f1", "ya5f1"]
+    fig.basemap(region=region_d, projection=f"X{Wd}c/{Hr}c", frame=frame_d)
+    for _, ev in ev_rows.iterrows():
+        e0, e1 = ev["onset_lo"], ev["onset_hi"]                  # the InSAR detection interval; the tail is used in the statistics only
+        fig.plot(x=[e0, e1, e1, e0], y=[region_d[2], region_d[2], region_d[3], region_d[3]], fill=gold + "@55", close=True)
+    fig.plot(x=[t0, t1], y=[0, 0], pen="0.6p,gray70")
+    dmean = utils.detrend(t, mean); dok = np.isfinite(dmean)
+    fig.plot(x=t[dok], y=dmean[dok], style="c0.04c", fill=insar_grey)
+    fig.plot(x=ct, y=utils.detrend(ct, ccum), pen=f"0.8p,{cm_blue}")
+    fig.text(position="TL", text=f"@%Helvetica-Bold%{letters[2][i]}@%% @:7p:{code}@::", offset="0.1c/-0.1c", font="9p,Helvetica", fill="white", clearance="0.04c")
+    if i == 0:
+        fig.text(position="TC", text=titles[2], justify="BC", offset="0c/0.15c", font="8p,Helvetica-Bold", no_clip=True)
+    fig.basemap(region=region_d, projection=f"X{Wd}c/{Hr}c", frame=frame_d)
+    if not last:                                               # back to column 2, one row down
+        fig.shift_origin(xshift=f"-{Wp + Wc + 2 * gap_col}c", yshift=f"-{Hr + gap_row}c")
+
 fig_val = os.path.join(fig_dir, f"figS_validation_cohmap{coh_velocity:g}_{params}_profile{max_dist_m:.0f}m_stack{stack_max}x{stack_km * 1000:.0f}m.png")
-fig.savefig(fig_val, dpi=200, bbox_inches="tight"); fig.savefig(fig_val.replace(".png", ".pdf"), bbox_inches="tight")
+fig.savefig(fig_val, dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)
+fig.savefig(fig_val.replace(".png", ".pdf"), transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved figure to:", fig_val)
-plt.show()
+
+fig.show()
 
 # %% [markdown]
 # ## The aperture ladder, from the frozen sweep
@@ -573,6 +715,16 @@ axes = axes.ravel()
 ordered = ladder.assign(_z=[(r.inner, r.outer) == selected for r in ladder.itertuples()]).sort_values("_z")
 
 
+def panel_label(ax, letter, text, x=0.025, y=0.95, size=8.5):
+    """Science style: bold capital, then the description in normal weight, one translucent box behind both."""
+    # one wide box behind both pieces: drawn first on an invisible copy of the full string, then the two texts on top
+    ax.text(x, y, f"{letter} {text}", transform=ax.transAxes, va="top", ha="left", fontsize=size, alpha=0,
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.7), zorder=5)
+    t = ax.text(x, y, letter, transform=ax.transAxes, va="top", ha="left", fontsize=size, fontweight="bold", zorder=6)
+    ax.annotate(text, xy=(1, 1), xycoords=t, xytext=(3, 0), textcoords="offset points", va="top", ha="left",
+                fontsize=size, zorder=6)
+
+
 def draw(ax, col, scale=1.0):
     for _, r in ordered.iterrows():
         if not np.isfinite(r[col]):
@@ -590,11 +742,13 @@ for ax in axes:
         ax.axvline(k, color="0.55", lw=0.7, ls="--", zorder=1)
     ax.set_xlim(-15, 720)
 axes[0].text(3, 1.95, "phase-linking\nhalf-width\n(55 to 65 m by era)", fontsize=5.6, color="0.40", va="top")
-for ax, col, ylab, ylim, title, scale in ((axes[0], "rate_rms", "InSAR minus creepmeter rate RMS (mm/yr)", (0.3, 2.5), "a) Long-term rate agreement", 1),
-                                          (axes[1], "valid", "Valid data along fault strike (%)", (40, 80), "b) Spatial completeness", 1),
-                                          (axes[2], "coz1_det_r", "COZ1 detrended correlation r", (0, 0.8), "c) Creep event shape", 1),
-                                          (axes[3], "coz1_step_frac", "COZ1 slip step recovered (%)", (0, 90), "d) Creep event amplitude", 100)):
-    draw(ax, col, scale); ax.set_ylabel(ylab, fontsize=7); ax.set_ylim(*ylim); ax.set_title(title, loc="left", fontsize=8)
+for ax, col, ylab, ylim, title, scale in ((axes[0], "rate_rms", "InSAR minus creepmeter rate RMS (mm/yr)", (0.3, 2.5), "A Long-term rate agreement", 1),
+                                          (axes[1], "valid", "Valid data along fault strike (%)", (40, 80), "B Spatial completeness", 1),
+                                          (axes[2], "coz1_det_r", "COZ1 detrended correlation r", (0, 0.8), "C Creep event shape", 1),
+                                          (axes[3], "coz1_step_frac", "COZ1 slip step recovered (%)", (0, 90), "D Creep event amplitude", 100)):
+    draw(ax, col, scale); ax.set_ylabel(ylab, fontsize=7); ax.set_ylim(*ylim)
+    letter_, text_ = title.split(" ", 1)
+    panel_label(ax, letter_, text_, x=0.0, y=1.09, size=8)
 for ax in axes[2:]:
     ax.set_xlabel("Distance from fault trace (m)")
 axes[0].legend(handles=[Line2D([], [], color="0.55", lw=1.1, marker="o", ms=4.5, label=f"tested ({len(ladder)} bins)"),
@@ -628,6 +782,11 @@ REG.register("05_rate_rms_excl_coz1_mm_yr", agr["cross_excl_coz1"]["rms"], "mm/y
 REG.register("05_step_rms_mm_yr", agr["step"]["rms"], "mm/yr", 2, where="M4", cell="agreement", sidecar=sidecar)
 REG.register("05_step_bias_mm_yr", agr["step"]["bias"], "mm/yr", 2, where="M4", cell="agreement", sidecar=sidecar)
 REG.register("05_noise_floor_det_rmse_mm", floor_rmse, "mm", 2, where="P2, M4", cell="noise-floor", sidecar=sidecar)
+for _, r_ in cfw_win.iterrows():
+    tag = f"{r_.onset_yr:.2f}".replace(".", "p")
+    REG.register(f"05_cfw1_win_{tag}_mm", r_.slip_win_mm, "mm", 2, where="P3, Fig S validation", cell="cfw1-windows", sidecar=sidecar)
+    REG.register(f"05_cfw1_win_{tag}_expected_mm", r_.expect_win_mm, "mm", 2, where="P3", cell="cfw1-windows", sidecar=sidecar)
+    REG.register(f"05_cfw1_win_{tag}_data_pct", r_.cover_pct, "%", 0, where="P3", cell="cfw1-windows", sidecar=sidecar)
 REG.register("05_det_rmse_min_mm", df.det_rmse.min(), "mm", 2, where="M4", cell="noise-floor", sidecar=sidecar)
 REG.register("05_det_rmse_max_mm", df.det_rmse.max(), "mm", 2, where="M4", cell="noise-floor", sidecar=sidecar)
 REG.register("05_noise_floor_steady_std_mm", floor_run10, "mm", 2, where="M4 (alternative definition)", cell="noise-floor", sidecar=sidecar)

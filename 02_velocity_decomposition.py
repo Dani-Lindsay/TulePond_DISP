@@ -412,8 +412,8 @@ for i, (grid, series, title, label) in enumerate((
     fig.colorbar(cmap=True, position=f"JBC+o0c/0.9c+w{W * 0.4}c/0.25c+h", frame=f"xa2f1+l{label}")
 
 stem = os.path.join(fig_dir, f"fig02_velocity_maps_rotated_strike{strike:.1f}_clim5-3mm")
-fig.savefig(stem + ".png", dpi=300, transparent=False, crop=True, anti_alias=True, show=False)
-fig.savefig(stem + ".pdf", transparent=False, crop=True, anti_alias=True, show=False)
+fig.savefig(stem + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
+fig.savefig(stem + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved figure to:", stem + ".png")
 fig.show()
 

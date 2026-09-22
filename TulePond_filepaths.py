@@ -31,7 +31,7 @@ repo_dir = os.path.dirname(os.path.abspath(__file__))
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-09-21"
+fig_date   = "2026-09-22"
 fig_dir    = os.path.join(repo_dir, f"Figures_{fig_date}")
 out_dir    = os.path.join(repo_dir, "outputs")
 inputs_dir = os.path.join(data_dir, "Inputs")
@@ -144,6 +144,12 @@ segments = {
 # Box for the per-pixel event maps (notebook 06) and the slip model (07):
 # W, S, E, N in degrees, around the Tule Pond section.
 box_lonlat = (-122.10, 37.46, -121.84, 37.65)
+
+# Fig 2 map window (notebook 06), also drawn as the "Tule Pond" outline on the Fig 1
+# map (notebook 04): centred on the trace at fig2_map_centre_km from Point Pinole,
+# +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km)
+# north-south, as the draft (10.4 x 12 km).
+fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km = 59.5, 5.2, 0.8
 
 # The five USGS creepmeters, north -> south: (code, lat, lon, name).
 # Instrument locations from Langbein et al. (2024); single source of truth.

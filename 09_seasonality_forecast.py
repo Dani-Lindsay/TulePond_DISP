@@ -244,7 +244,7 @@ def onset_bar(ax, x, lo, hi, color, lw):
         ax.plot([x - 0.28, x + 0.28], [y_, y_], "-", color=color, lw=lw * 0.8, zorder=5)
 
 
-plt.rcParams.update({"font.size": 8})
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, ax = plt.subplots(figsize=(7.2, 3.4), constrained_layout=True)
 tab_p = tab[(tab.wy >= int(np.floor(x0)) + 1) & (tab.wy <= int(np.ceil(x1)))]
 val = tab_p.prcp_mm.fillna(0).rolling(density_days, min_periods=1).sum()

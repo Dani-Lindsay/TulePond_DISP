@@ -265,3 +265,51 @@ def test_render_value():
     assert utils.render_value(10.836, 2) == "10.84"
     assert utils.render_value(25.0, 0) == "25"
     assert utils.render_value("2026-12-15", 0) == "2026-12-15"
+
+
+def test_mpl_paper_style_sets_helvetica_and_type42():
+    import insar_utils as utils
+    rc = utils.mpl_paper_style(base=8)
+    assert rc["font.sans-serif"][0] == "Arial" and rc["font.family"] == ["sans-serif"]
+    assert rc["pdf.fonttype"] == 42 and rc["font.size"] == 8
+    import matplotlib.font_manager as fm
+    assert "Arial" in fm.findfont(fm.FontProperties(family=["Arial"]))
+    assert "Bold" in fm.findfont(fm.FontProperties(family=["Arial"], weight="bold"), fallback_to_default=False)
+
+
+def test_text_backed_draws_twice_box_then_crisp():
+    import insar_utils as utils
+
+    class FakeFig:
+        def __init__(self):
+            self.calls = []
+
+        def text(self, **kw):
+            self.calls.append(kw)
+
+    fig = FakeFig()
+    utils.text_backed(fig, x=1.0, y=2.0, text="CFW1", font="7p,Helvetica")
+    assert len(fig.calls) == 2
+    assert fig.calls[0]["fill"] == "white" and fig.calls[0]["transparency"] == 30
+    assert "fill" not in fig.calls[1] and "transparency" not in fig.calls[1]
+    assert fig.calls[1]["text"] == "CFW1" and fig.calls[1]["x"] == 1.0
+
+
+def test_read_creepmeter_10min_raw_matches_daily_reader():
+    import os
+    import numpy as np
+    import insar_utils as utils
+    from TulePond_filepaths import common_paths
+    f = utils.creepmeter_file(common_paths["creepmeter_dir"], "CFW1")
+    if not os.path.exists(f):
+        pytest.skip("creepmeter data not available")
+    raw = utils.read_creepmeter_10min_raw(f, date_start=2018.0, date_end=2018.1)
+    daily = utils.read_creepmeter_10min(f, date_start=2018.0, date_end=2018.1)
+    assert list(raw.columns) == ["decimal_year", "slip_mm"]
+    assert len(raw) > 100 * len(daily)                       # 10-min samples vs daily means
+    assert raw.decimal_year.is_monotonic_increasing
+    # the daily reader is the daily mean of the raw samples (before its zeroing to the first day)
+    d0 = raw[raw.decimal_year < raw.decimal_year.iloc[0] + 1 / 365.25].slip_mm.mean()
+    d1 = daily.slip_mm.iloc[1] + d0
+    day1 = raw[(raw.decimal_year >= daily.decimal_year.iloc[1]) & (raw.decimal_year < daily.decimal_year.iloc[1] + 1 / 365.25)]
+    assert np.isclose(day1.slip_mm.mean(), d1, atol=0.05)

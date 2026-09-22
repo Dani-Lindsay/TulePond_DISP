@@ -320,7 +320,7 @@ for k in (3.0, 3.5, 4.0):
 # threshold: the detection limit, read straight off the figure.
 
 # %%
-plt.rcParams.update({"font.size": 8})
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, axes = plt.subplots(2, 2, figsize=(7.2, 4.6), sharex=True)
 for j, (title, key, col, centre, half_span, cmcode) in enumerate(SEGS):
     q = qc[key]
@@ -796,20 +796,20 @@ np.savez(os.path.join(out_dir, "fig1_panels.npz"), t=t, grid=grid, gres=gres, vm
 
 # --- the figure: sizes in cm, double-column width, one font ---
 teal, orange, cm_blue, gold = "#009E73", "#E69F00", "#0b3d91", "#F5B400"
-Wh, Hh = 7.6, 5.4                  # hovmoller
-Ws = Hh                            # stack: the same height as the hovmoller
+Wh, Hh = 6.6, 5.4                  # hovmoller (6.6 cm keeps the page at the 18.3 cm Science full width)
+Ws = 3.2                           # stack: shorter than the hovmoller, so B carries the figure
 gap_be = 0.6                       # between B and E (B has no x annotation, E has its label inside)
 Wm, Hm = 3.4, Hh + gap_be + Ws     # map: as tall as B + gap + E, so the tops and bottoms line up
 Wp, Wr, Hp = 2.6, 2.6, Hh          # profiles and rates panels: the same width
-gap_map, gap_p, gap_r = 1.8, 0.9, 0.9
-cb_w = 3.0                         # every colour bar the same size
+gap_map, gap_p, gap_r = 1.6, 0.9, 0.9
+cb_w = 2.5                         # every colour bar the same size and font (14p trick -> 7 pt)
 cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
 cpt_vel = utils.write_cpt(os.path.join(cpt_dir, "vel_vik.cpt"), "RdBu_r", -vel_lim, vel_lim)
 cpt_hov = utils.write_cpt(os.path.join(cpt_dir, "hov_reds.cpt"), "Reds", vmin, vmax)
 cpt_dep = utils.write_cpt(os.path.join(cpt_dir, "depth_plasma_r.cpt"), "plasma_r", 0, 12)
 
 fig = pygmt.Figure()
-pygmt.config(FONT="9p,Helvetica", FONT_ANNOT_PRIMARY="9p,Helvetica", FONT_LABEL="9p,Helvetica", FONT_TITLE="9p,Helvetica-Bold",
+pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", FONT_TITLE="9p,Helvetica-Bold",
              MAP_FRAME_TYPE="plain", MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p")
 
 # A) the map: GMT oblique Mercator, fault up the page, north at the top; everything in lon/lat
@@ -823,16 +823,22 @@ fig.grdimage(grid=grid_ll, cmap=cpt_vel, nan_transparent=True)
 fig.plot(x=prof["ft_lon"].values, y=prof["ft_lat"].values, pen="0.6p,black")
 for code, la, lo, name in creepmeters:
     fig.plot(x=[lo], y=[la], style="i0.22c", fill=gold, pen="0.5p,black")                                    # the creepmeter symbol of D
-    fig.text(x=lo, y=la, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black", fill="white", transparency=30)   # labels on the west (blue) side
-# the bracket spans the stacked band (the peak-slip zone), the same span as the dashed lines in B
-bx, by = uv_to_lonlat([b_lo, b_hi], [-2.2, -2.2]); fig.plot(x=bx, y=by, pen="1.2p,black")
-for u_ in (b_lo, b_hi):
-    bx, by = uv_to_lonlat([u_, u_], [-2.2, -1.4]); fig.plot(x=bx, y=by, pen="1.2p,black")
-fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="8p,Helvetica,gray20", fill="white", clearance="0.05c")
-fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="8p,Helvetica,gray20", fill="white", clearance="0.05c")
-fig.text(position="TL", text="@%Helvetica-Bold%A@%% Hayward Fault", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
+    utils.text_backed(fig, x=lo, y=la, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")   # labels on the west (blue) side
+# the bracket spans the Tule Pond creep LENGTH (len_lo-len_hi, the 6 km of fault hosting the events, the number
+# the paper quotes; section_lengths.csv), not the narrower stacked band, which stays as the dashed lines in B.
+# East side of the fault so it stays clear of the creepmeter labels; "Tule Pond" beside it, creepmeter style one size up
+bx, by = uv_to_lonlat([len_lo, len_hi], [2.0, 2.0]); fig.plot(x=bx, y=by, pen="1.5p,black")
+for u_ in (len_lo, len_hi):
+    bx, by = uv_to_lonlat([u_, u_], [0.4, 2.0]); fig.plot(x=bx, y=by, pen="1.5p,black")   # ticks reach almost to the trace
+# two rows in one call (GMT has no newline outside paragraph mode), boxed like the creepmeters, one size up
+u_mid = 0.5 * (len_lo + len_hi)
+lx, ly = uv_to_lonlat([u_mid - 1.2, u_mid + 1.2], [4.6, 4.6])
+utils.text_backed(fig, x=lx, y=ly, text=["Tule", "Pond"], justify="CM", font="8p,Helvetica,black")
+fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
+fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
+fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w5k+o0.3c/0.4c")       # frame on top, scale bar
-with pygmt.config(FONT_ANNOT_PRIMARY="16p", FONT_LABEL="16p"):     # GMT scales colour-bar text down with the bar thickness
+with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):     # GMT scales colour-bar text down with the bar thickness (-> ~6.5p)
     fig.colorbar(cmap=cpt_vel, position=f"x{0.5 * (Wm - cb_w)}c/-0.4c+w{cb_w}c/0.3c+h+jTL", frame="xa2f1+lFault-parallel velocity (mm/yr)")
 
 # b) hovmoller, top of the middle column
@@ -844,7 +850,7 @@ fig.plot(x=qh.YYYY.values, y=qh.km.values, style="c", size=0.09 + 0.05 * np.clip
 fig.plot(x=ch.YYYY.values, y=ch.km.values, style="s0.16c", fill="limegreen", pen="0.4p,black")
 for y_ in (b_lo, b_hi):
     fig.plot(x=[t0, t1], y=[y_, y_], pen="0.7p,gray25,3_2")
-fig.text(x=t0, y=w_lo, text="@%Helvetica-Bold%B@%% Tule Pond, slip above the inter-event rate", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
+fig.text(x=t0, y=w_lo, text="@%Helvetica-Bold%B@%% @:7p:Tule Pond, slip above the inter-event rate@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 fig.basemap(region=region_hov, projection=f"X{Wh}c/-{Hh}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])   # frame on top: a clean edge
 
 # c) the stack, bottom of the middle column, bottom aligned with the map
@@ -859,8 +865,8 @@ for on in onsets_tp:
 fig.plot(x=t[ok_s], y=resb["mean"][ok_s], pen="0.9p,black", label=f"InSAR stack (n = {resb['n']})")
 fig.plot(x=t, y=np.where(in_ev, np.nan, full), pen="1.2p," + teal, label=f"Model: inter-event {resb['secular']:.1f} mm/yr")
 fig.plot(x=t, y=np.where(grow, full, np.nan), pen="1.2p," + orange, label=f"5 events (sum {np.sum(resb['steps']):.0f} mm)")
-fig.text(position="TL", text="@%Helvetica-Bold%E@%% InSAR stack", font="9p,Helvetica", offset="0.1c/-0.1c")
-with pygmt.config(FONT_ANNOT_PRIMARY="7p"):
+fig.text(position="TL", text="@%Helvetica-Bold%E@%% @:7p:InSAR stack@::", font="9p,Helvetica", offset="0.1c/-0.1c")
+with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
     fig.legend(position="JBR+jBR+o0.15c/0.15c", box="+gwhite@30")
 
 # d) cumulative slip per event, right of the hovmoller
@@ -873,7 +879,7 @@ blues = plt.get_cmap("Blues")
 for i, on in enumerate(onsets_tp):
     c_ = "/".join(str(int(255 * v)) for v in blues(0.35 + 0.55 * i / 4)[:3])
     fig.plot(x=cum_prof[i], y=kw, pen=f"0.9p,{c_}", label=f"{on:.2f}")
-fig.text(x=-2, y=w_lo, text="@%Helvetica-Bold%C@%% Slip per event", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
+fig.text(x=-2, y=w_lo, text="@%Helvetica-Bold%C@%% @:7p:Slip per event@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
     fig.legend(position="JBR+jBR+o0.1c/0.1c", box=False)
 
@@ -896,21 +902,22 @@ for code, (k_, r_) in cm_rates.items():
     if w_lo <= k_ <= w_hi:
         fig.plot(x=[r_], y=[k_], style="i0.25c", fill=gold, pen="0.5p,black", label=f"Creepmeter {t0:.1f} to {t1:.1f}" if code == "CFW1" else None)
         fig.text(x=r_, y=k_, text=code, justify="RM", offset="-0.2c/0c", font="7p", no_clip=True)
-fig.text(x=-1, y=w_lo, text="@%Helvetica-Bold%D@%% Creep rates", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
+fig.text(x=-1, y=w_lo, text="@%Helvetica-Bold%D@%% @:7p:Creep rates@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 # legend entries for the symbols drawn in B: plotted off-region (clipped), so only the legend records them
-fig.plot(x=[-50], y=[w_lo], style="c0.17c", fill="orangered", pen="0.3p,white", label="Seismicity (size = magnitude)")
+fig.plot(x=[-50], y=[w_lo], style="c0.17c", pen="0.6p,black", label="Seismicity (size = magnitude)")
 fig.plot(x=[-50], y=[w_lo], style="s0.16c", fill="limegreen", pen="0.4p,black", label="Repeating earthquakes")
 # the legend of e) in the free space under d) and e)
-with pygmt.config(FONT_ANNOT_PRIMARY="7.5p"):
-    fig.legend(position=f"JBL+jTL+o-{Wp + gap_r}c/1.0c+w{Wp + gap_r + Wr}c", box=False)
-# the two colour bars of B, in the white space under the legend, the same size as the map's
-with pygmt.config(FONT_ANNOT_PRIMARY="16p", FONT_LABEL="16p"):
-    fig.colorbar(cmap=cpt_hov, position=f"x-{Wp + gap_r}c/-3.9c+w{cb_w}c/0.3c+h+jTL", frame="xa10f5+lCumulative displacement (mm)")
-    fig.colorbar(cmap=cpt_dep, position=f"x-{Wp + gap_r}c/-5.5c+w{cb_w}c/0.3c+h+jTL", frame="xa4f2+lEarthquake depth (km)")
+with pygmt.config(FONT_ANNOT_PRIMARY="7p"):                          # clear of the C/D axis labels above it
+    fig.legend(position=f"JBL+jTL+o-{Wp + gap_r}c/1.2c+w{Wp + gap_r + Wr}c", box=False)
+# the two colour bars of B, side by side, on the same line as the map's bar (0.4 cm below the map bottom)
+cb_y = gap_be + Ws + 0.4
+with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):          # -> ~6.5 pt at this bar thickness, as A's
+    fig.colorbar(cmap=cpt_hov, position=f"x-{Wp + gap_r}c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa20f10+lCumulative displacement (mm)")
+    fig.colorbar(cmap=cpt_dep, position=f"x0c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa4f2+lEarthquake depth (km)")
 
 f_fig1 = os.path.join(fig_dir, f"fig1_tulepond_{params}_band{int(band_main * 100)}")
-fig.savefig(f_fig1 + ".png", dpi=300, transparent=False, crop=True, anti_alias=True, show=False)
-fig.savefig(f_fig1 + ".pdf", transparent=False, crop=True, anti_alias=True, show=False)
+fig.savefig(f_fig1 + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
+fig.savefig(f_fig1 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved Fig 1 to:", f_fig1 + ".png")
 fig.show()
 

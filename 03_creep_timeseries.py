@@ -347,7 +347,7 @@ print("   (they differ only by the few pixels the rate mask removed)")
 # difference between sides and never enters a within-side deviation.
 
 # %%
-plt.rcParams.update({"font.size": 8})
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 lim, nbins = 6.0, 181
 bins = np.linspace(-lim, lim, nbins)
 fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.6))

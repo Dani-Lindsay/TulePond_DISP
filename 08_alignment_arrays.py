@@ -159,7 +159,7 @@ pd.DataFrame(step_rows).to_csv(os.path.join(out_dir, "aa_insar_steps.csv"), inde
 print("\n".join(L))
 
 # %%
-plt.rcParams.update({"font.size": 8})
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, axes = plt.subplots(2, len(sites), figsize=(13.0, 5.0))
 for j, (code, aa) in enumerate(aa_all.items()):
     ts, yi, n = stacks[code]
