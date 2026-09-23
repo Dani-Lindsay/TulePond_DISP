@@ -801,7 +801,7 @@ Ws = 3.2                           # stack: shorter than the hovmoller, so B car
 gap_be = 0.6                       # between B and E (B has no x annotation, E has its label inside)
 Wm, Hm = 3.4, Hh + gap_be + Ws     # map: as tall as B + gap + E, so the tops and bottoms line up
 Wp, Wr, Hp = 2.6, 2.6, Hh          # profiles and rates panels: the same width
-gap_map, gap_p, gap_r = 1.6, 0.9, 0.9
+gap_map, gap_p, gap_r = 1.6, 0.35, 0.35   # B, C and D share one y axis, so the gaps are just the tick length
 cb_w = 2.5                         # every colour bar the same size and font (14p trick -> 7 pt)
 cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
 cpt_vel = utils.write_cpt(os.path.join(cpt_dir, "vel_vik.cpt"), "RdBu_r", -vel_lim, vel_lim)
@@ -869,7 +869,7 @@ fig.text(position="TL", text="@%Helvetica-Bold%E@%% @:7p:InSAR stack@::", font="
 with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
     fig.legend(position="JBR+jBR+o0.15c/0.15c", box="+gwhite@30")
 
-# d) cumulative slip per event, right of the hovmoller
+# C) cumulative slip per event, right of the hovmoller
 fig.shift_origin(xshift=f"{Wh + gap_p}c", yshift=f"{Ws + gap_be}c")
 xmax_p = float(np.nanmax(cum_prof)) * 1.1
 fig.basemap(region=[-2, xmax_p, w_lo, w_hi], projection=f"X{Wp}c/-{Hp}c", frame=["wStr", "xa20f10+lEvent slip (mm)", "ya2.5"])
@@ -906,13 +906,14 @@ fig.text(x=-1, y=w_lo, text="@%Helvetica-Bold%D@%% @:7p:Creep rates@::", justify
 # legend entries for the symbols drawn in B: plotted off-region (clipped), so only the legend records them
 fig.plot(x=[-50], y=[w_lo], style="c0.17c", pen="0.6p,black", label="Seismicity (size = magnitude)")
 fig.plot(x=[-50], y=[w_lo], style="s0.16c", fill="limegreen", pen="0.4p,black", label="Repeating earthquakes")
-# the legend of e) in the free space under d) and e)
-with pygmt.config(FONT_ANNOT_PRIMARY="7p"):                          # clear of the C/D axis labels above it
-    fig.legend(position=f"JBL+jTL+o-{Wp + gap_r}c/1.2c+w{Wp + gap_r + Wr}c", box=False)
+# the legend of D in the free space under C and D
+left_of_C = Wp + gap_r                                                 # from D's origin back to C's left edge
+with pygmt.config(FONT_ANNOT_PRIMARY="7p"):                          # clear of the axis labels above it
+    fig.legend(position=f"JBL+jTL+o-{left_of_C}c/1.2c+w{left_of_C + Wr}c", box=False)
 # the two colour bars of B, side by side, on the same line as the map's bar (0.4 cm below the map bottom)
 cb_y = gap_be + Ws + 0.4
 with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):          # -> ~6.5 pt at this bar thickness, as A's
-    fig.colorbar(cmap=cpt_hov, position=f"x-{Wp + gap_r}c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa20f10+lCumulative displacement (mm)")
+    fig.colorbar(cmap=cpt_hov, position=f"x-{left_of_C}c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa20f10+lCumulative displacement (mm)")
     fig.colorbar(cmap=cpt_dep, position=f"x0c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa4f2+lEarthquake depth (km)")
 
 f_fig1 = os.path.join(fig_dir, f"fig1_tulepond_{params}_band{int(band_main * 100)}")

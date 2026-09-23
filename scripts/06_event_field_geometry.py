@@ -2,7 +2,7 @@
 # jupyter:
 #   jupytext:
 #     cell_metadata_filter: -all
-#     formats: ipynb,py:percent
+#     formats: ipynb,scripts//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -41,10 +41,13 @@
 #    fault-parallel and vertical with MintPy's `asc_desc2horz_vert`, exactly as
 #    notebook 02 did for the whole fault, here with the local strike of the box.
 # 5. **Profiles** X-X' (the Tule Pond peak) and Y-Y' (CFW1) across the
-#    fault-parallel maps: the pixels, a one-pixel running median, and the
-#    model-free near-fault step (east band minus west band, the aperture of
-#    notebook 04). No fit here: the model is notebook 07.
-# 6. Fig 2 (observations): the two profiles and the two maps.
+#    fault-parallel maps (the numbers the text quotes) and across each track's
+#    LOS maps (what Fig 2 shows): the pixels, a one-pixel running median, and
+#    the model-free near-fault step (east band minus west band, the aperture
+#    of notebook 04). No fit here: the model is notebook 07.
+# 6. Fig 2 (observations): the LOS maps and profiles of both tracks, the
+#    inter-event rate above the mean event, with the model row left to
+#    notebook 07; the fault-parallel maps and profiles go to the supplement.
 #
 # Ported from `Hayward_DISP-S1/modelling/m01_step_maps.py` (steps 1 to 4),
 # `hayward_creep/analysis/event_map_profiles.py` (decomposition, profiles) and
@@ -57,10 +60,11 @@
 # **Outputs** (`outputs/06_event_field_geometry/`): `tulepond_steps_<track>.h5`
 # (every per-event LOS step map, raw and burst-fixed, mean, scatter, rate,
 # geometry), `csi_mean_event_<track>.npz` (07's input), `fp_maps.npz`
-# (fault-parallel and vertical rate and mean event), `profile_<XX|YY>_<field>.csv`,
+# (fault-parallel and vertical rate and mean event), `profile_<XX|YY>_<field>[_<track>].csv`,
 # `symmetry_table.csv`, `06_event_field_stats.txt`, registry rows `06_*`.
 #
-# **Figures**: Fig 2 observations (pygmt), the step-map grid (supplement), the
+# **Figures**: Fig 2 observations (pygmt; LOS per track), the fault-parallel
+# maps and profiles (supplement), the step-map grid (supplement), the
 # symmetry check (supplement).
 #
 # **What to check.** Near-fault LOS steps of opposite sign on the two tracks
@@ -130,12 +134,15 @@ burst_far_m = 400.0
 exclude_events = []
 
 # profiles across the fault-parallel maps, perpendicular to the local strike
-profile_pts = {"X": (-121.97698, 37.56116),      # X-X': the Tule Pond peak (trace point 1.3 km x 3 north of CFW1)
+profile_pts = {"X": (-121.97816, 37.56270),      # X-X': the trace point 58.5 km from Point Pinole (Dani, 2026-09-23, from a 200 m sweep of the event profiles: clean in both tracks, inside the 90% band)
                "Y": (-121.95233, 37.53214)}      # Y-Y': CFW1
-cross_m = 2500.0                # +/- profile length
+cross_m = 2000.0                # +/- profile length (2 km: beyond that the east block is noisy)
 swath_m = 150.0                 # +/- along-strike half-width
-median_bin_m = 30.0             # running median bin (one pixel wide, so the near field is followed)
-event_far_m = 2500.0            # the event profile is zeroed on |x| >= this (far field)
+median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
+far_m = (1500.0, 2000.0)        # same-block far field the near-fault amplitude of each block is measured against
+median_col, grey, ann_col = "#A50F15", "gray55", "black"       # per-side running median (dark red); pixels; block annotation
+rng_blk = np.random.default_rng(20260923)
+event_far_m = 1500.0            # the event profile is zeroed on |x| >= this (far field, both blocks)
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault step band, the aperture of notebook 04 (m)
 
 # symmetry check: cross-fault LOS profiles of every event, in the along-strike
@@ -611,62 +618,160 @@ else:
 # %% [markdown]
 # ## RUN: the cross-fault profiles X-X' and Y-Y'
 #
-# Perpendicular to the local strike through each point, +/- `cross_m`, all
-# pixels within +/- `swath_m` along strike, plus a running 100 m median. The
-# inter-event profile is zeroed at the fault (mid-point of the two block
-# medians within 1 km); the event profile on its far field.
+# Perpendicular to the LOCAL strike at each point (the smoothed strike of the
+# mapped trace there, not the box mean), +/- `cross_m`, all pixels within
+# +/- `swath_m` along strike, plus a per-side running median.
+# The inter-event profile is zeroed at the fault (mid-point of the two block
+# medians within 1 km); the event profile on its far field. The same machinery
+# runs on the fault-parallel maps (the numbers the text quotes) and on each
+# track's LOS maps (what Fig 2 shows).
 
 # %%
-def profile(m_, lonlat):
-    """Cross-fault profile of map m_ through lonlat: d (m, + east), v, and the line's end points (UTM)."""
+def local_strike(lonlat):
+    """Smoothed local strike of the mapped trace (compass bearing) at the trace point nearest lonlat."""
     cx, cy = (float(t_) for t_ in to_utm.transform(*lonlat))
-    pe, pn = nrm                                                # cross-fault unit vector (+ east)
+    j = int(tree.query([cx, cy])[1])
+    return float(prof.az_smooth.iloc[j] + 90.0)
+
+
+def profile(m_, lonlat, strike_deg=None):
+    """Cross-fault profile of map m_ through lonlat, perpendicular to the LOCAL strike
+    there (or to strike_deg): d (m, + east), v, the line's end points (UTM), the strike used."""
+    cx, cy = (float(t_) for t_ in to_utm.transform(*lonlat))
+    if strike_deg is None:
+        strike_deg = local_strike(lonlat)
+    pe, pn = np.sin(np.deg2rad(strike_deg - 90.0)), np.cos(np.deg2rad(strike_deg - 90.0))   # cross-fault unit vector (+ east)
     se, sn = -pn, pe                                            # along-strike
     dc = (Xg - cx) * pe + (Yg - cy) * pn; da = (Xg - cx) * se + (Yg - cy) * sn
     sel = (np.abs(da) <= swath_m) & (np.abs(dc) <= cross_m) & np.isfinite(m_)
     d, v = dc[sel], m_[sel]
     o = np.argsort(d)
     ends = (cx - cross_m * pe, cy - cross_m * pn, cx + cross_m * pe, cy + cross_m * pn)
-    return d[o], v[o], ends
+    return d[o], v[o], ends, strike_deg
 
 
 def running_median(d, v, bin_m=median_bin_m):
-    edges = np.arange(-cross_m, cross_m + bin_m, bin_m)
-    idx = np.digitize(d, edges)
-    xc, med = [], []
-    for i in range(1, len(edges)):
-        m_ = idx == i
-        if m_.sum() >= 3:
-            xc.append(0.5 * (edges[i - 1] + edges[i])); med.append(np.median(v[m_]))
-    return np.array(xc), np.array(med)
+    """Binned median on each side of the fault separately: the bin edges start at
+    the trace and run outward, so no bin (and no drawn segment) straddles the
+    fault. Returns a list of (x, median) arrays, one per side (west, east)."""
+    out = []
+    for sgn in (-1, 1):
+        edges = np.sort(sgn * np.arange(0.0, cross_m + bin_m, bin_m))
+        idx = np.digitize(d, edges)
+        xc, med = [], []
+        for i in range(1, len(edges)):
+            m_ = (idx == i) & (sgn * d > 0)
+            if m_.sum() >= 3:
+                xc.append(0.5 * (edges[i - 1] + edges[i])); med.append(np.median(v[m_]))
+        out.append((np.array(xc), np.array(med)))
+    return out
 
 
-profiles = {}
-for name, lonlat in profile_pts.items():
-    d, v, ends = profile(fp_rate, lonlat)
+def block_amplitudes(d, v, n_boot=2000):
+    """Per-block near-fault amplitude of a profile: median of the near band
+    (`xfault_step_m`, 30 to 150 m) minus the median of the SAME block's far field
+    (`far_m`), with a bootstrap standard error over the pixels. Reads the peak
+    value of each block off the profile without any model."""
+    out = {}
+    for blk, sgn in (("W", -1), ("E", 1)):
+        near = (sgn * d >= xfault_step_m[0]) & (sgn * d < xfault_step_m[1])
+        far = (sgn * d >= far_m[0]) & (sgn * d < far_m[1])
+        assert near.sum() >= 10 and far.sum() >= 50, (blk, near.sum(), far.sum())
+        vn, vf = v[near], v[far]
+        boot = np.array([np.median(rng_blk.choice(vn, vn.size)) - np.median(rng_blk.choice(vf, vf.size)) for _ in range(n_boot)])
+        out[blk] = dict(amp=float(np.median(vn) - np.median(vf)), se=float(boot.std()), far=float(np.median(vf)),
+                        n_near=int(near.sum()), n_far=int(far.sum()))
+    return out
+
+
+def zeroed_profiles(m_rate, m_evt, lonlat):
+    """The rate and event profiles through lonlat, zeroed (rate: mid-point of the
+    block medians within 1 km; event: its far field), and their near-fault steps
+    (east minus west medians, the 30 to 150 m aperture of notebook 04)."""
+    d, v, ends, st = profile(m_rate, lonlat)
     near = np.abs(d) <= 1000
-    v = v - 0.5 * (np.median(v[near & (d < 0)]) + np.median(v[near & (d > 0)]))     # zero at the fault
-    de, ve, _ = profile(fp_evt, lonlat)
+    v = v - 0.5 * (np.median(v[near & (d < 0)]) + np.median(v[near & (d > 0)]))
+    de, ve, _, _ = profile(m_evt, lonlat, st)
     far = np.abs(de) >= event_far_m
     ve = ve - (np.median(ve[far]) if far.sum() >= 20 else np.median(ve))
     lo_, hi_ = xfault_step_m
     r_step = float(np.median(v[(d > lo_) & (d < hi_)]) - np.median(v[(d < -lo_) & (d > -hi_)]))
     e_step = float(np.median(ve[(de > lo_) & (de < hi_)]) - np.median(ve[(de < -lo_) & (de > -hi_)]))
-    profiles[name] = dict(d=d, v=v, de=de, ve=ve, ends=ends, lonlat=lonlat, rate_step=r_step, event_step=e_step)
-    pd.DataFrame(dict(d_m=d, fp_rate_mm_yr=v)).to_csv(os.path.join(out_dir, f"profile_{name}{name}_rate.csv"), index=False)
-    pd.DataFrame(dict(d_m=de, fp_event_mm=ve)).to_csv(os.path.join(out_dir, f"profile_{name}{name}_event.csv"), index=False)
-    print(f"{name}-{name}': {d.size} rate pixels, {de.size} event pixels; near-fault steps ({lo_:.0f}-{hi_:.0f} m): rate {r_step:+.2f} mm/yr, event {e_step:+.2f} mm")
+    return dict(d=d, v=v, de=de, ve=ve, ends=ends, lonlat=lonlat, strike=st, rate_step=r_step, event_step=e_step)
+
+
+# fault-parallel: the numbers the text quotes
+profiles = {}
+for name, lonlat in profile_pts.items():
+    p = zeroed_profiles(fp_rate, fp_evt, lonlat)
+    profiles[name] = p
+    pd.DataFrame(dict(d_m=p["d"], fp_rate_mm_yr=p["v"])).to_csv(os.path.join(out_dir, f"profile_{name}{name}_rate.csv"), index=False)
+    pd.DataFrame(dict(d_m=p["de"], fp_event_mm=p["ve"])).to_csv(os.path.join(out_dir, f"profile_{name}{name}_event.csv"), index=False)
+    print(f"{name}-{name}' FP (local strike {p['strike']:.1f} deg): {p['d'].size} rate pixels, {p['de'].size} event pixels; near-fault steps ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m): "
+          f"rate {p['rate_step']:+.2f} mm/yr, event {p['event_step']:+.2f} mm")
 print("legacy (coherence 0.9, 2026-08-30, 1-D fits): X-X' event 9.12 mm, Y-Y' 2.68 mm")
 
+# line of sight, per track: what Fig 2 shows (LOS positive toward the satellite, so
+# right-lateral slip steps NEGATIVE on ascending and POSITIVE on descending)
+tracks = ["ascending", "descending"]
+los_profiles = {o: {n_: zeroed_profiles(event_maps[o]["rate"], mean_event[o]["mean"], ll) for n_, ll in profile_pts.items()} for o in tracks}
+for o in tracks:
+    for n_, p in los_profiles[o].items():
+        pd.DataFrame(dict(d_m=p["d"], los_rate_mm_yr=p["v"])).to_csv(os.path.join(out_dir, f"profile_{n_}{n_}_rate_{o}.csv"), index=False)
+        pd.DataFrame(dict(d_m=p["de"], los_event_mm=p["ve"])).to_csv(os.path.join(out_dir, f"profile_{n_}{n_}_event_{o}.csv"), index=False)
+        p["blocks"] = block_amplitudes(p["de"], p["ve"])
+        blk = p["blocks"]
+        print(f"[{o[:3]}] {n_}-{n_}' LOS: rate step {p['rate_step']:+.2f} mm/yr, event step {p['event_step']:+.2f} mm; "
+              f"event per block W {blk['W']['amp']:+.2f} +/- {blk['W']['se']:.2f}, E {blk['E']['amp']:+.2f} +/- {blk['E']['se']:.2f} mm")
+xx_ratio = los_profiles["ascending"]["X"]["event_step"] / los_profiles["descending"]["X"]["event_step"]
+print(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric, pure strike-slip: {geom_ratio:+.2f})")
+assert los_profiles["ascending"]["X"]["event_step"] < 0 < los_profiles["descending"]["X"]["event_step"], "the X-X' LOS event steps have the wrong signs"
+
 # %% [markdown]
-# ## Fig 2, observations: profiles and maps (pygmt)
+# ## CHECK 6: what the ascending deficit needs
 #
-# Left: X-X' and Y-Y' through the inter-event rate (top pair) and the mean
-# event (bottom pair): grey pixels, orange one-pixel running median; no model
-# (the slip model is 07's and shares this figure). Right: the
-# two fault-parallel maps, north up, with the profile lines, the creepmeter
-# and the alignment arrays of the section. Labels A to D; notebook 07 adds the
-# model panels. The bottom of each profile pair sits on the bottom of its map.
+# Pure strike-slip puts the ascending near-fault step at `geom_ratio` times the
+# descending one; the mean event's ratio is smaller in magnitude (the ascending
+# step is short). Two LOS observations cannot separate three components, so
+# we solve the two end members exactly: strike-slip plus VERTICAL (east side up
+# positive) and strike-slip plus FAULT-NORMAL (east block moving away from the
+# fault, i.e. opening, positive). Either a few mm of east-side-up or of
+# east-side contraction closes the gap; the two-block forward model in the
+# supplement (TwoBlock_LOS_test) shows the same thing panel by panel. This is
+# the reason notebook 07 inverts the descending track alone.
+
+# %%
+u_hat = np.array([0.0, 0.0, 1.0])
+n_hat = utils.horizontal_unit_vector(strike - 90.0)          # fault-normal, toward the east (NE) block
+d_obs = np.array([m_asc, m_desc])                              # mean near-fault LOS steps (CHECK 2), mm
+asym = {}
+for comp, c_hat in (("up", u_hat), ("normal", n_hat)):
+    G2 = np.array([[L[o] @ s_hat, L[o] @ c_hat] for o in tracks])
+    fp_c, x_c = np.linalg.solve(G2, d_obs)
+    asym[comp] = (float(fp_c), float(x_c))
+fp_only = float(np.linalg.lstsq(np.array([[L[o] @ s_hat] for o in tracks]), d_obs, rcond=None)[0][0])
+print(f"mean near-fault LOS steps: asc {m_asc:+.2f}, desc {m_desc:+.2f} mm (ratio {m_asc / m_desc:+.2f}, geometric {geom_ratio:+.2f})")
+print(f"strike-slip only (least squares on both tracks): {fp_only:.2f} mm")
+print(f"strike-slip + vertical:     FP {asym['up'][0]:.2f} mm, east side up {asym['up'][1]:+.2f} mm")
+print(f"strike-slip + fault-normal: FP {asym['normal'][0]:.2f} mm, east block opening {asym['normal'][1]:+.2f} mm (negative = contraction)")
+print(f"LOS sensitivities: up asc {L['ascending'] @ u_hat:+.3f} desc {L['descending'] @ u_hat:+.3f}; "
+      f"normal asc {L['ascending'] @ n_hat:+.3f} desc {L['descending'] @ n_hat:+.3f}")
+
+# %% [markdown]
+# ## Fig 2: the observations on each track, and the model row (notebook 07)
+#
+# Layout (Dani's sketch, 2026-09-23). Row 1, the inter-event rate: the
+# ascending and descending LOS maps sharing one colour bar, then the X-X' and
+# Y-Y' profiles of each track (pixels in grey, a per-side running median in
+# blue). Row 2, the mean event: the same, with each block's near-fault amplitude
+# over its own far field (text at the panel bottom). Row 3 is the
+# model, descending only, which notebook 07 will draw (the quadtree samples,
+# the model, the residual, and slip with depth); until then it is three
+# labelled empty frames of the sizes 07 will fill, so the page can be judged.
+# The maps are LOS, positive toward the satellite, so the same right-lateral
+# step is blue-over-red on ascending and red-over-blue on descending. The
+# fault-parallel maps and profiles this figure used to show are now a
+# supplementary figure (next section).
 
 # %%
 # --- the map window: a lon/lat box about the trace point map_centre_km from Point Pinole
@@ -706,28 +811,200 @@ def gmt_map_size(region, projection):
 
 
 cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
-g_rate, lim_rate = to_grid(fp_rate, True)
-g_evt, lim_evt = to_grid(fp_evt, False)
-cpt_rate = utils.write_cpt(os.path.join(cpt_dir, "rate.cpt"), "RdBu_r", -lim_rate, lim_rate)
-cpt_evt = utils.write_cpt(os.path.join(cpt_dir, "event.cpt"), "RdBu_r", -lim_evt, lim_evt)
 lines_ll = {n_: to_ll.transform(np.array([p["ends"][0], p["ends"][2]]), np.array([p["ends"][1], p["ends"][3]])) for n_, p in profiles.items()}
 cfw = [c for c in creepmeters if c[0] == "CFW1"][0]
 aa = utils.load_aa_summary(aa_file)
 aa = aa[(aa.long_deg > lon_w) & (aa.long_deg < lon_e) & (aa.lat_deg > lat_s) & (aa.lat_deg < lat_n)]
 print("alignment arrays in the window:", ", ".join(aa.site_code))
 
-# --- sizes (cm): the observation half of a double-column figure
-Wp, Hp = 4.4, 2.0            # one profile panel
-gap_x, gap_pair, gap_row = 1.2, 0.25, 1.4
-Hpair = 2 * Hp + gap_pair    # a stacked pair; the map is made exactly this tall
+# --- sizes (cm): a double-column figure (18 cm)
+Wp, Hp = 3.7, 1.9                                   # one profile panel
+gap_pair, gap_col, gap_row = 0.25, 0.65, 1.25       # within a stacked pair; between the two profile columns (room for the +/-2000 labels); between rows
+Hpair = 2 * Hp + gap_pair                           # a stacked pair; the maps are made exactly this tall
 w_, h_ = gmt_map_size(region_map, "M4c")
 Wm, Hm = 4.0 * Hpair / h_, Hpair
 proj_map = f"M{Wm:.3f}c"
-print(f"map panels {Wm:.2f} x {Hm:.2f} cm")
-orange, grey = "#E69F00", "gray30"
+gap_map, cb_w, gap_cb = 0.25, 0.3, 0.3              # between the two maps; colour-bar width; map-to-bar gap
+x_prof = 2 * Wm + gap_map + gap_cb + cb_w + 1.35    # left edge of the profile columns (room for the bar label and the y annotation)
+W_model = 2 * Wp + gap_col                          # the slip-model panel spans both profile columns
+print(f"map panels {Wm:.2f} x {Hm:.2f} cm; figure ~{x_prof + W_model + 0.7:.1f} x {3 * Hpair + 2 * gap_row + 0.9:.1f} cm")
+names = list(profile_pts)
+lim_prof = {"rate": 6.0, "event": 6.0}              # LOS profile axes (mm/yr, mm); the FP figure uses 10
+n_mean = mean_event["ascending"]["n"]
+pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain",
+             MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p", FORMAT_GEO_MAP="ddd.xx")
+fig = None                      # the helpers below draw into the module-level figure that draw_fig2 creates
+
+
+def map_base(grid, cpt, label, stations=True):
+    """One map, north up, in lon/lat: the field, the trace, the profile lines, and (stations=True) CFW1 and the alignment arrays. No colour bar."""
+    fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
+    fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True)
+    fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.7p,black")
+    for n_, (llon, llat) in lines_ll.items():
+        fig.plot(x=llon, y=llat, pen="1.0p,black")
+        fig.text(x=llon[0], y=llat[0], text=n_, justify="RM", offset="-0.08c/0c", font="8p,Helvetica-Bold")
+        fig.text(x=llon[1], y=llat[1], text=n_ + "'", justify="LM", offset="0.08c/0c", font="8p,Helvetica-Bold")
+    if stations:
+        used = aa.site_code.isin(aa_labelled)                                    # only the arrays the paper uses are drawn
+        fig.plot(x=aa.long_deg.values[used], y=aa.lat_deg.values[used], style="s0.18c", fill="black", pen="0.4p,white")
+        for _, r_ in aa[used].iterrows():                                          # HGIL left of its symbol, HRKT right and nudged up off the Y-Y' line
+            just, off = aa_label_pos[r_.site_code]
+            utils.text_backed(fig, x=r_.long_deg, y=r_.lat_deg, text=r_.site_code, justify=just, offset=off, font="7p,Helvetica")
+        fig.plot(x=[cfw[2]], y=[cfw[1]], style="i0.22c", fill="#F5B400", pen="0.5p,black")
+        utils.text_backed(fig, x=cfw[2], y=cfw[1], text="CFW1", justify="RM", offset="-0.15c/0c", font="7p,Helvetica")
+    fig.text(position="TL", text=label, justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)     # Science: bold capital panel letters
+    fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w2k+o0.3c/0.55c")      # frame on top, scale bar
+
+
+def colour_bar(cpt, lim, cb_label, x_cm):
+    with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):
+        fig.colorbar(cmap=cpt, position=f"x{x_cm}c/0.3c+w{Hm - 0.6}c/{cb_w}c+jBL", frame=f"xa{max(1, round(lim / 2)):g}+l{cb_label}")
+
+
+def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, stations_on=(), cols=None):
+    """The two LOS maps of one row (ascending, descending) from the current origin
+    (bottom-left of the ascending map), one shared colour bar right of the
+    descending map, the row label left of the ascending map. Leaves the origin
+    where it started."""
+    cols = cols or tracks
+    grids = {o: to_grid(field[o], balance)[0] for o in cols}
+    lim = max(max(float(np.nanpercentile(np.abs(g.values[np.isfinite(g.values)]), 98)) for g in grids.values()), 0.3)
+    cpt = utils.write_cpt(os.path.join(cpt_dir, f"los_{tag}.cpt"), "RdBu_r", -lim, lim)
+    for k, o in enumerate(cols):
+        if k:
+            fig.shift_origin(xshift=f"{Wm + gap_map}c")
+        map_base(grids[o], cpt, labels[k], stations=labels[k] in stations_on)     # stations and their labels on panel A only
+        if headings:
+            fig.text(position="TC", text=o.capitalize(), justify="BC", offset="0c/0.5c", font="9p,Helvetica-Bold", no_clip=True)
+    colour_bar(cpt, lim, cb_label, Wm + gap_cb)
+    fig.shift_origin(xshift=f"-{Wm + gap_map}c")
+    fig.text(position="ML", text=row_label, angle=90, justify="BC", offset="-0.3c/0c", font="9p,Helvetica-Bold", no_clip=True)
+    return lim
+
+
+def los_profile_pairs(vkey, dkey, lim, labels, ylab, headings=False, xlabel=False, annotate=False, prof_set=None, cols=None):
+    """For each track a stacked pair (X above Y) of LOS profiles, drawn from the
+    current origin (bottom-left of the ascending TOP panel). The ascending column
+    carries the y annotation, the descending column the y label. Leaves the origin
+    at the ascending LOWER panel."""
+    for k, o in enumerate(cols or tracks):
+        if k:
+            fig.shift_origin(xshift=f"{Wp + gap_col}c", yshift=f"{Hp + gap_pair}c")     # next column, back at the top panel
+        for j, n_ in enumerate(names):
+            p = (prof_set or los_profiles)[o][n_]
+            d, v = p[dkey], p[vkey]
+            if j > 0:
+                fig.shift_origin(yshift=f"-{Hp + gap_pair}c")
+            xfr = "xa1000f500+lCross-fault distance (m)" if (j == 1 and xlabel) else "xa1000f500"
+            side = ("W" if k == 0 else "w") + ("S" if j == 1 else "s") + "rt"
+            fig.basemap(region=[-cross_m, cross_m, -lim, lim], projection=f"X{Wp}c/{Hp}c", frame=[side, xfr, f"ya{lim / 2:g}"])
+            fig.plot(x=d, y=v, style="c0.03c", fill=grey, transparency=30)          # the pixels
+            for xm, vm in running_median(d, v):                                      # the per-side running median
+                fig.plot(x=xm, y=vm, pen="1.0p," + median_col)
+            if annotate:                                                             # the event: each block's near-fault amplitude over its far field
+                for blk, sgn in (("W", -1), ("E", 1)):
+                    b_ = p["blocks"][blk]
+                    fig.text(x=sgn * 1000, y=-lim, text=f"{blk} {b_['amp']:+.2f} \u00b1 {b_['se']:.2f}", justify="BC", offset="0c/0.08c", font="6.5p,Helvetica," + ann_col)   # bottom: the corners hold X, X'
+            fig.plot(x=[0, 0], y=[-lim, lim], pen="0.5p,gray50")
+            fig.text(position="TL", text=n_, font="8p,Helvetica", offset="0.1c/-0.08c")
+            fig.text(position="TR", text=n_ + "'", font="8p,Helvetica", offset="-0.1c/-0.08c")
+            if j == 0:
+                fig.text(x=-cross_m, y=lim, text=labels[k], justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
+                if headings:
+                    fig.text(position="TC", text=o.capitalize(), justify="BC", offset="0c/0.5c", font="9p,Helvetica-Bold", no_clip=True)
+    fig.text(position="MR", text=ylab, angle=90, justify="TC", offset=f"0.2c/{0.5 * (Hp + gap_pair)}c", font="9p,Helvetica", no_clip=True)
+    fig.shift_origin(xshift=f"-{Wp + gap_col}c")                                     # back to the ascending column (lower panel)
+
+
+def model_row_placeholder():
+    """Row 3 until notebook 07 exists: labelled empty frames of the sizes 07 will draw into."""
+    frames = [("I", "Model (quadtree samples)", Wm, Hm, 0.0),
+              ("J", "Residual", Wm, Hm, Wm + gap_map),
+              ("K", "Slip with depth, Mw", W_model, Hm, x_prof)]
+    for lab, txt, w_, h_, x_ in frames:
+        fig.shift_origin(xshift=f"{x_}c")
+        fig.basemap(region=[0, 1, 0, 1], projection=f"X{w_}c/{h_}c", frame=["lrtb"])
+        fig.text(position="TL", text=lab, justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
+        fig.text(position="MC", text=txt.replace("\n", " "), font="8p,Helvetica,gray40")
+        fig.text(position="BC", text="notebook 07", font="7p,Helvetica,gray40", offset="0c/0.15c")
+        fig.shift_origin(xshift=f"-{x_}c")
+    fig.text(position="ML", text="Model (descending)", angle=90, justify="BC", offset="-0.3c/0c", font="9p,Helvetica-Bold", no_clip=True)
+
+
+rate_field = {o: event_maps[o]["rate"] for o in tracks}
+evt_field = {o: mean_event[o]["mean"] for o in tracks}
+common_ok = np.all([np.isfinite(f[o]) for f in (rate_field, evt_field) for o in tracks], axis=0)    # A, B, E, F show the same pixels
+rate_field = {o: np.where(common_ok, m_, np.nan) for o, m_ in rate_field.items()}
+evt_field = {o: np.where(common_ok, m_, np.nan) for o, m_ in evt_field.items()}
+print(f"common pixel mask for the four maps: {common_ok.sum()} pixels ({common_ok.mean():.0%} of the box)")
+
+
+def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, cols=None, ylabs=("LOS rate (mm/yr)", "LOS (mm)"), lims=None):
+    """The whole figure: row 1 the inter-event rate, row 2 the event maps and
+    profiles given, row 3 the model placeholders. Saved as <stem>.png/.pdf.
+    The two columns are the tracks unless `cols` names other fields (the test below)."""
+    global fig
+    fig = pygmt.Figure()
+    rate_in, lims = (rate_maps_in if rate_maps_in is not None else rate_field), (lims or lim_prof)
+    # row 1: the inter-event rate. A, B the maps; C, D the profiles
+    los_maps(rate_in, True, "rate", ["A", "B"], "mm/yr", "Inter-event rate", headings=True, stations_on=("A",), cols=cols)
+    fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
+    los_profile_pairs("v", "d", lims["rate"], ["C", "D"], ylabs[0], headings=True, cols=cols, prof_set=evt_profiles)   # the profile set holds rate and event
+    # row 2: the event. E, F the maps; G, H the profiles
+    fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
+    los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, cols=cols)
+    fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
+    los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=True, prof_set=evt_profiles, cols=cols)
+    # row 3: the model, notebook 07
+    fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
+    model_row_placeholder()
+    fig.savefig(stem + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
+    fig.savefig(stem + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
+    print("Saved to:", stem + ".png")
+    fig.show()
+
+
+f_fig2 = os.path.join(fig_dir, f"fig2_observations_los_coh{coh_timeseries}_{n_mean}ev")
+draw_fig2(evt_field, los_profiles, f"Mean event ({n_mean} events)", f_fig2)     # the mean, not the median (Dani, 2026-09-23): it is the field 07 inverts
+
+# %% [markdown]
+# ## Test: the same figure with the fault-parallel and vertical fields
+#
+# Not a paper figure (Dani, 2026-09-23: "just a test"). The two columns are the
+# decomposed fault-parallel (positive right-lateral: the east block moving
+# south-east) and vertical (positive up) fields from `asc_desc2horz_vert`,
+# in place of the two tracks; same masks, profiles and block amplitudes.
+
+# %%
+fpup_rate = {"fault-parallel": fp_rate, "vertical": up_rate}
+fpup_evt = {"fault-parallel": fp_evt, "vertical": up_evt}
+ok_fpup = common_ok & np.all([np.isfinite(f[c]) for f in (fpup_rate, fpup_evt) for c in fpup_rate], axis=0)
+fpup_rate = {c: np.where(ok_fpup, m_, np.nan) for c, m_ in fpup_rate.items()}
+fpup_evt = {c: np.where(ok_fpup, m_, np.nan) for c, m_ in fpup_evt.items()}
+fpup_profiles = {c: {n_: zeroed_profiles(fpup_rate[c], fpup_evt[c], ll) for n_, ll in profile_pts.items()} for c in fpup_rate}
+for c in fpup_profiles:
+    for n_, p in fpup_profiles[c].items():
+        p["blocks"] = block_amplitudes(p["de"], p["ve"])
+        print(f"[{c}] {n_}-{n_}': rate step {p['rate_step']:+.2f} mm/yr, event step {p['event_step']:+.2f} mm; "
+              f"per block W {p['blocks']['W']['amp']:+.2f}, E {p['blocks']['E']['amp']:+.2f} mm")
+draw_fig2(fpup_evt, fpup_profiles, f"Mean event ({n_mean} events)", os.path.join(fig_dir, f"test_fig2_fp_up_coh{coh_timeseries}_{n_mean}ev"),
+          rate_maps_in=fpup_rate, cols=list(fpup_rate), ylabs=("Rate (mm/yr)", "Displacement (mm)"), lims={"rate": 10.0, "event": 10.0})
+
+# %% [markdown]
+# ## Supplement: the fault-parallel maps and profiles
+#
+# The decomposed field (MintPy `asc_desc2horz_vert`, both tracks) that Fig 2
+# showed until 2026-09-23: X-X' and Y-Y' through the inter-event rate (top pair)
+# and the mean event (bottom pair), grey pixels, blue per-side running
+# median, and the two fault-parallel maps. The numbers quoted in the text
+# (the near-fault steps) come from these profiles.
+
+# %%
+Wp_s, gap_x = 4.4, 1.2                # the supplement keeps its own panel width
 names = list(profiles)
 
-fig = pygmt.Figure()
+fig = pygmt.Figure()                  # the helpers draw into the module-level figure
 pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain",
              MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p", FORMAT_GEO_MAP="ddd.xx")
 
@@ -741,10 +1018,10 @@ def profile_pair(ylab, lim, label, vkey, dkey):
         if j > 0:
             fig.shift_origin(yshift=f"-{Hp + gap_pair}c")
         xfr = "xa1000f500+lCross-fault distance (m)" if j == 1 else "xa1000f500"
-        fig.basemap(region=[-cross_m, cross_m, -lim, lim], projection=f"X{Wp}c/{Hp}c", frame=["WSrt" if j == 1 else "Wsrt", xfr, f"ya{lim / 2:g}"])
+        fig.basemap(region=[-cross_m, cross_m, -lim, lim], projection=f"X{Wp_s}c/{Hp}c", frame=["WSrt" if j == 1 else "Wsrt", xfr, f"ya{lim / 2:g}"])
         fig.plot(x=d, y=v, style="c0.03c", fill=grey, transparency=30)      # the data
-        xm, vm = running_median(d, v)
-        fig.plot(x=xm, y=vm, pen="1.0p," + orange)                           # the running median, one pixel wide
+        for xm, vm in running_median(d, v):                                  # the per-side running median
+            fig.plot(x=xm, y=vm, pen="1.0p," + median_col)
         fig.plot(x=[0, 0], y=[-lim, lim], pen="0.5p,gray50")
         fig.text(position="TL", text=n_, font="9p,Helvetica-Bold", offset="0.1c/-0.08c")
         fig.text(position="TR", text=n_ + "'", font="9p,Helvetica-Bold", offset="-0.1c/-0.08c")
@@ -755,41 +1032,29 @@ def profile_pair(ylab, lim, label, vkey, dkey):
 
 
 def map_panel(grid, cpt, lim, label, cb_label):
-    """One map, north up, in lon/lat: the field, the trace, the profile lines, CFW1 and the alignment arrays."""
-    fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
-    fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True)
-    fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.7p,black")
-    for n_, (llon, llat) in lines_ll.items():
-        fig.plot(x=llon, y=llat, pen="1.0p,black")
-        fig.text(x=llon[0], y=llat[0], text=n_, justify="RM", offset="-0.08c/0c", font="8p,Helvetica-Bold")
-        fig.text(x=llon[1], y=llat[1], text=n_ + "'", justify="LM", offset="0.08c/0c", font="8p,Helvetica-Bold")
-    used = aa.site_code.isin(aa_labelled)                                        # only the arrays the paper uses are drawn
-    fig.plot(x=aa.long_deg.values[used], y=aa.lat_deg.values[used], style="s0.18c", fill="black", pen="0.4p,white")
-    for _, r_ in aa[used].iterrows():                                              # HGIL left of its symbol, HRKT right and nudged up off the Y-Y' line
-        just, off = aa_label_pos[r_.site_code]
-        utils.text_backed(fig, x=r_.long_deg, y=r_.lat_deg, text=r_.site_code, justify=just, offset=off, font="7p,Helvetica")
-    fig.plot(x=[cfw[2]], y=[cfw[1]], style="i0.22c", fill="#F5B400", pen="0.5p,black")
-    utils.text_backed(fig, x=cfw[2], y=cfw[1], text="CFW1", justify="RM", offset="-0.15c/0c", font="7p,Helvetica")
-    fig.text(position="TL", text=label, justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
-    fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w2k+o0.3c/0.55c")      # frame on top, scale bar
-    with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):
-        fig.colorbar(cmap=cpt, position=f"x{Wm + 0.25}c/0.3c+w{Hm - 0.6}c/0.3c+jBL", frame=f"xa{max(1, round(lim / 2)):g}+l{cb_label}")
+    """A map with its own colour bar."""
+    map_base(grid, cpt, label)
+    colour_bar(cpt, lim, cb_label, Wm + 0.25)
 
 
+g_rate, lim_rate = to_grid(fp_rate, True)
+g_evt, lim_evt = to_grid(fp_evt, False)
+cpt_rate = utils.write_cpt(os.path.join(cpt_dir, "rate.cpt"), "RdBu_r", -lim_rate, lim_rate)
+cpt_evt = utils.write_cpt(os.path.join(cpt_dir, "event.cpt"), "RdBu_r", -lim_evt, lim_evt)
 # top row: A the inter-event profiles, B the inter-event map (the map is Hpair tall, so its bottom is the pair's bottom)
 profile_pair("Fault parallel (mm/yr)", 10.0, "@%Helvetica-Bold%A@%% @:7p:Inter-event rate@::", "v", "d")
-fig.shift_origin(xshift=f"{Wp + gap_x}c")
+fig.shift_origin(xshift=f"{Wp_s + gap_x}c")
 map_panel(g_rate, cpt_rate, lim_rate, "@%Helvetica-Bold%B@%% @:7p:Inter-event rate (FP)@::", "mm/yr")
 # bottom row: C the mean-event profiles, D the mean-event map
-fig.shift_origin(xshift=f"-{Wp + gap_x}c", yshift=f"-{gap_row + Hp}c")
-profile_pair("Fault parallel (mm)", 10.0, f"@%Helvetica-Bold%C@%% @:7p:Mean event ({mean_event['ascending']['n']} events)@::", "ve", "de")
-fig.shift_origin(xshift=f"{Wp + gap_x}c")
+fig.shift_origin(xshift=f"-{Wp_s + gap_x}c", yshift=f"-{gap_row + Hp}c")
+profile_pair("Fault parallel (mm)", 10.0, f"@%Helvetica-Bold%C@%% @:7p:Mean event ({n_mean} events)@::", "ve", "de")
+fig.shift_origin(xshift=f"{Wp_s + gap_x}c")
 map_panel(g_evt, cpt_evt, lim_evt, "@%Helvetica-Bold%D@%% @:7p:Mean event (FP)@::", "mm")
 
-f_fig2 = os.path.join(fig_dir, f"fig2_observations_coh{coh_timeseries}_{mean_event['ascending']['n']}ev")
-fig.savefig(f_fig2 + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
-fig.savefig(f_fig2 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
-print("Saved Fig 2 (observations) to:", f_fig2 + ".png")
+f_figs = os.path.join(fig_dir, f"figS_fp_maps_coh{coh_timeseries}_{n_mean}ev")
+fig.savefig(f_figs + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)
+fig.savefig(f_figs + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
+print("Saved the fault-parallel maps and profiles (supplement) to:", f_figs + ".png")
 fig.show()
 
 # %% [markdown]
@@ -840,7 +1105,18 @@ for _, r_ in burst_df.iterrows():
 L_.append(f"FP inter-event step (stacked band) {block_step(fp_rate):+.2f} mm/yr, Up {block_step(up_rate):+.2f}; FP mean event {block_step(fp_evt):+.2f} mm, Up {block_step(up_evt):+.2f}")
 L_.append(f"profiles, near-fault steps east - west ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m), +/-{cross_m / 1e3:g} km, swath +/-{swath_m:.0f} m:")
 for n_ in names:
-    L_.append(f"   {n_}-{n_}' ({profiles[n_]['lonlat'][1]:.4f} N): inter-event {profiles[n_]['rate_step']:+.2f} mm/yr, event {profiles[n_]['event_step']:+.2f} mm (n {profiles[n_]['d'].size})")
+    L_.append(f"   {n_}-{n_}' ({profiles[n_]['lonlat'][1]:.4f} N, local strike {profiles[n_]['strike']:.1f} deg): inter-event {profiles[n_]['rate_step']:+.2f} mm/yr, event {profiles[n_]['event_step']:+.2f} mm (n {profiles[n_]['d'].size})")
+L_.append("LOS profiles per track (Fig 2), near-fault steps east - west, LOS positive toward the satellite:")
+for o in tracks:
+    for n_ in names:
+        b_ = los_profiles[o][n_]["blocks"]
+        L_.append(f"   {o[:3]} {n_}-{n_}': inter-event {los_profiles[o][n_]['rate_step']:+.2f} mm/yr, event {los_profiles[o][n_]['event_step']:+.2f} mm; "
+                  f"event per block (near {xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m over far {far_m[0]:.0f}-{far_m[1]:.0f} m) "
+                  f"W {b_['W']['amp']:+.2f} +/- {b_['W']['se']:.2f}, E {b_['E']['amp']:+.2f} +/- {b_['E']['se']:.2f} mm")
+L_.append(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric {geom_ratio:+.2f})")
+L_.append(f"ascending deficit (mean steps asc {m_asc:+.2f}, desc {m_desc:+.2f} mm): strike-slip only {fp_only:.2f} mm; "
+          f"with vertical FP {asym['up'][0]:.2f} mm + east side up {asym['up'][1]:+.2f} mm; "
+          f"with fault-normal FP {asym['normal'][0]:.2f} mm + east block opening {asym['normal'][1]:+.2f} mm")
 print("\n".join(L_))
 sidecar = REG.sidecar("06_event_field", L_)
 
@@ -863,8 +1139,22 @@ REG.register("06_up_rate_step_mm_yr", block_step(up_rate), "mm/yr", 2, where="S"
 REG.register("06_fp_event_step_mm", block_step(fp_evt), "mm", 2, where="P6", cell="decompose", sidecar=sidecar)
 REG.register("06_up_event_step_mm", block_step(up_evt), "mm", 2, where="S", cell="decompose", sidecar=sidecar)
 for n_ in names:
+    REG.register(f"06_{n_}{n_}_strike_local_deg", profiles[n_]["strike"], "deg", 1, where="Fig2", cell="profiles", sidecar=sidecar)
     REG.register(f"06_{n_}{n_}_rate_step_mm_yr", profiles[n_]["rate_step"], "mm/yr", 2, where="P6", cell="profiles", sidecar=sidecar)
     REG.register(f"06_{n_}{n_}_event_step_mm", profiles[n_]["event_step"], "mm", 2, where="P6", cell="profiles", sidecar=sidecar)
+for o in tracks:
+    for n_ in names:
+        REG.register(f"06_{n_}{n_}_rate_step_{o[:3]}_mm_yr", los_profiles[o][n_]["rate_step"], "mm/yr", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+        REG.register(f"06_{n_}{n_}_event_step_{o[:3]}_mm", los_profiles[o][n_]["event_step"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+        for blk in ("W", "E"):
+            REG.register(f"06_{n_}{n_}_event_{blk}_{o[:3]}_mm", los_profiles[o][n_]["blocks"][blk]["amp"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+            REG.register(f"06_{n_}{n_}_event_{blk}_{o[:3]}_se_mm", los_profiles[o][n_]["blocks"][blk]["se"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+REG.register("06_XX_event_ratio_asc_desc", xx_ratio, "", 2, where="S2", cell="los-profiles", sidecar=sidecar)
+REG.register("06_asym_fp_only_mm", fp_only, "mm", 2, where="S2", cell="asymmetry", sidecar=sidecar)
+REG.register("06_asym_fp_with_up_mm", asym["up"][0], "mm", 2, where="S2", cell="asymmetry", sidecar=sidecar)
+REG.register("06_asym_east_up_mm", asym["up"][1], "mm", 2, where="S2", cell="asymmetry", sidecar=sidecar)
+REG.register("06_asym_fp_with_normal_mm", asym["normal"][0], "mm", 2, where="S2", cell="asymmetry", sidecar=sidecar)
+REG.register("06_asym_east_opening_mm", asym["normal"][1], "mm", 2, where="S2", cell="asymmetry", sidecar=sidecar)
 for orbit in mean_event:
     REG.register(f"06_n_px_csi_{orbit[:3]}", int(np.isfinite(mean_event[orbit]["mean"]).sum()), "count", 0, where="M4", cell="mean-event", sidecar=sidecar)
 REG.render()

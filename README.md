@@ -15,7 +15,7 @@ numbered chain of notebooks run in order.
 |---|---|
 | `TulePond_filepaths.py` | WHERE: every path and shared constant. Edit `data_dir` (one line) to point at the data. |
 | `insar_utils.py` | HOW: short shared helpers (MintPy readers, LOS projections, along-fault axis, statistics, creepmeter readers at daily and raw 10-min sampling, the figure style helpers `mpl_paper_style` / `text_backed`, the number registry). Each has a test. |
-| `NN_*.ipynb` + `NN_*.py` | WHAT, in what order. Notebooks are jupytext-paired: the `.py` (percent format) is the readable source, the `.ipynb` carries the executed outputs. |
+| `NN_*.ipynb` + `scripts/NN_*.py` | WHAT, in what order. Notebooks are jupytext-paired (`jupytext.toml`: `ipynb,scripts//py:percent`): the `.py` (percent format, in `scripts/`) is the readable source, the `.ipynb` carries the executed outputs. |
 | `tests/` | pytest: projection conventions, paths, the registry, and `test_anchors.py` that pins every number quoted in the paper. |
 | `outputs/` | products, `*_stats.txt` sidecars and the number registry (git-ignored; regenerated). |
 | `Figures_<date>/` | figures, one dated directory per round of figure work (git-ignored). |
@@ -36,13 +36,13 @@ Re-running a notebook that changes a registered value raises
 
 | Notebook | Does | Figures | Sidecars / registry keys |
 |---|---|---|---|
-| `01_prep_inputs` | Documents the OPERA DISP-S1 preparation chain (download, rebase, tropo, MintPy conversion, GNSS tie) and fingerprints its products. Not re-run here. | S1, S2 | `01_*` |
+| `01_prep_inputs` | Documents the OPERA DISP-S1 preparation chain (download, rebase, tropo, MintPy conversion, GNSS tie) and fingerprints its products. Not re-run here. Rebuilds the 100 m crossings of the mapped fault trace (`hayward_fault_profiles.csv`) from the KML and checks them against the `Inputs/` copy. | S1, S2 | `01_*` |
 | `02_velocity_decomposition` | Ascending + descending velocity mosaics -> fault-parallel and vertical maps (MintPy `asc_desc2horz_vert.py`), creepmeter transects | Fig 1a, Fig 2 map | `02_*` |
 | `03_creep_timeseries` | Cross-fault LOS time series at every 100 m crossing, near-fault rate mask, common date grid, fault-parallel / vertical decomposition, along-fault rate profile | S3, S4 | `03_*` |
 | `04_event_detection` | Event detector on the Tule Pond stack (COZ1 as control), joint model, per-crossing event slip, section lengths, band stack, slip budget with the alignment arrays, recurrence intervals, Bo Xie's relocated seismicity | Fig 1, S detection, S budget | `04_*` |
 | `05_validation` | Agreement with the five USGS creepmeters (section brackets from 04); the aperture ladder from the frozen sweep and the coherence comparison | S validation, S ladder | `05_*` |
-| `06_event_field_geometry` | Per-pixel step maps for each event on both tracks, burst fix, mean event, fault-parallel / vertical maps, cross-fault profiles X-X' and Y-Y', symmetric / antisymmetric check | Fig 2 left, S | `06_*` |
-| `07_slip_model` | (next round) CSI slip inversion of the mean event | Fig 2 right | `07_*` |
+| `06_event_field_geometry` | Per-pixel step maps for each event on both tracks, burst fix, mean event, fault-parallel / vertical maps, cross-fault profiles X-X' and Y-Y' on each track, symmetric / antisymmetric check, the ascending-deficit end members | Fig 2 rows 1-2 (LOS per track), S | `06_*` |
+| `07_slip_model` | (next round) CSI slip inversion of the mean event, descending track only | Fig 2 row 3 | `07_*` |
 | `08_alignment_arrays` | The six Tule Pond arrays against the InSAR, the 45-year HRKT event detector, repeat intervals, threshold sweep | Fig 3 top, S arrays, S sweep | `08_*` |
 | `09_seasonality_forecast` | Rain-gauge composite, onsets on the water year, renewal forecast (issue date pinned), rainfall conditioning, prediction statement | Fig 3 bottom, Fig 4, S conditioning | `09_*` |
 | `10_paper_figures` | Collects the current paper figures under their manuscript names in `Figures_<date>/paper/` | Figs 1-4, S | |

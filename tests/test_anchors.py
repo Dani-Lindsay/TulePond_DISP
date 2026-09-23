@@ -45,7 +45,7 @@ ANCHORS = {
     # 06 event field geometry (coherence 0.7, all five events in the mean, 30-150 m steps)
     "06_n_events_mean": (5, 0), "06_asc_desc_geom_ratio": (-0.60, 2),
     "06_fp_rate_step_mm_yr": (1.21, 2), "06_fp_event_step_mm": (7.97, 2),
-    "06_XX_rate_step_mm_yr": (1.49, 2), "06_XX_event_step_mm": (8.41, 2),
+    "06_XX_rate_step_mm_yr": (0.96, 2), "06_XX_event_step_mm": (8.63, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
     "06_YY_rate_step_mm_yr": (6.16, 2), "06_YY_event_step_mm": (0.75, 2),
     # 08 alignment arrays
     "08_hrkt_n_surveys": (177, 0), "08_hrkt_n_events": (14, 0), "08_hrkt_amp_median_mm": (7.4, 1),

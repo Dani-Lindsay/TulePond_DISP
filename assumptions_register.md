@@ -13,7 +13,7 @@ scripts on 2026-09-16; they carry over to TulePond_DISP unless changed.
 | 4 | Min pixels per side | 5 | run08 MIN_POINTS | a 60 m bin at 30 m pixels | NONE (state it) |
 | 5 | Temporal-coherence mask | 0.9 (series), 0.7 (maps) | run08 COH_THRESH | same pixels valid at every epoch | S (coh sweep) |
 | 6 | Near-fault rate mask | 3 robust sigma from own-side median | run08 RATE_NSIGMA | removes landslide edges without an absolute cap | C (Fig S3) |
-| 7 | Strike smoothing | 21 points (2 km rolling median) | run08/run09 | removes digitising glitches, keeps curvature | NONE |
+| 7 | Strike smoothing | 21 crossings (2.1 km rolling median of `profile_az`) | `TulePond_filepaths.az_smooth_n`, used in 02 and 03 | removes the 100 m digitising kinks (26 crossings > 10 deg off), keeps the real bends. At Tule Pond, raw vs smoothed: band rates differ by ~0.2 mm/yr, event steps by ~0.1 mm, section ends unchanged (re-extraction 2026-09-23; figure `qc03_profile_azimuth_*`) | S |
 | 8 | Interpolation gap limit | 45 d | run09 MAX_INTERP_GAP_DAYS | bridges 6/12/24 d sampling and the 2018 gaps | NONE (show gap map, Fig S4) |
 | 9 | Along-fault crossing rejection | 3 robust sigma from 21-crossing running median | run09 TREND_NSIGMA | landslide-dominated crossings | NONE |
 | 10 | Rate profile smoothing | 0.5 km Gaussian | run09 RATE_SMOOTH_KM | | NONE |
@@ -48,3 +48,4 @@ scripts on 2026-09-16; they carry over to TulePond_DISP unless changed.
 | 39 | Loma Prieta exclusion | intervals spanning 1989.80 dropped (variant B') | run21 | Lienkaemper 1997 | C |
 | 40 | Rain gauge | composite Fremont/Newark/Hayward, COOP obs-time shift | run20 | no hills gauge exists | C (memory pitfall) |
 | 41 | Storm rule | >= 40 mm/3 d within 21 d | run22 | tuned on 5 events; hypothesis | C (stated) |
+| 42 | Fault trace | 698 hand-placed points (KML 2026-07-24, one strand, from Qfaults + the InSAR velocity steps), resampled every 100 m by arc length in UTM, cross-fault azimuth = tangent bearing - 90 | notebook 01 | the trace follows the velocity step, not the Qfaults line; the 100 m file is regenerated from the KML and asserted identical to the `Inputs/` copy | T (01) |
