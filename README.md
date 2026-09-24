@@ -19,7 +19,7 @@ numbered chain of notebooks run in order.
 | `tests/` | pytest: projection conventions, paths, the registry, and `test_anchors.py` that pins every number quoted in the paper. |
 | `outputs/` | products, `*_stats.txt` sidecars and the number registry (git-ignored; regenerated). |
 | `Figures_<date>/` | figures, one dated directory per round of figure work (git-ignored). |
-| `environment.yml` | the conda environment the notebooks ran in (`opera_disp_feb13`). |
+| `environment.yml` | the packages the notebooks need, pinned to the versions the paper numbers were made with; `environment_full_2026-09-25.yml` is the exact export of the working env (`opera_disp_feb13`). |
 | `assumptions_register.md` | every analysis choice a reviewer could ask about, where it is set, and what justifies it. |
 
 ## The number registry
