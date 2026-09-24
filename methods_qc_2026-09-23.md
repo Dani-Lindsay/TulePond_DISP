@@ -242,7 +242,7 @@ Fremont (USC00043244), Newark (USC00046144) and Hayward Air Terminal
 Newark record shifted one day earlier. The series runs from 1978-10-01 to
 the pinned issue date 2026-08-25; water years are named by the year they
 end (45 complete years, median 362 mm, 10-90 % 219-567 mm). Onset
-seasonality uses the season-resolved onsets: the five InSAR windows (5-12 d)
+seasonality uses the season-resolved onsets: the five InSAR windows (6-12 d)
 and the nine HRKT windows of 130 d or less. The renewal forecast fits
 exponential, lognormal, Weibull, BPT and Gaussian intervals to four
 catalogues (A InSAR, 4 intervals; B dense-era array 1983-2006, 8; B' without

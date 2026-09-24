@@ -305,21 +305,49 @@ def lat_to_km_map(profiles_csv):
 # Statistics
 # ------------------------------
 
-def mpl_paper_style(base=8):
-    """Matplotlib settings for the paper figures: Arial (Helvetica fallback),
-    `base` pt text, and TrueType (Type 42) embedding so PDF text stays editable.
-    Science asks for Helvetica/Arial. Arial comes first because matplotlib only
-    registers the REGULAR face of macOS's Helvetica.ttc, so bold panel letters
-    would silently render regular; Arial.ttf ships bold and italic faces."""
+def register_helvetica_faces():
+    """Make Helvetica's bold and oblique faces available to matplotlib.
+
+    matplotlib registers only the FIRST face of a .ttc collection, so macOS's
+    Helvetica.ttc gives it Helvetica Regular alone and a bold panel letter
+    would silently render regular. The other faces are extracted once (with
+    fontTools, which matplotlib ships) into the matplotlib config directory
+    and registered. Returns True when Helvetica Bold is available."""
     import matplotlib
+    from matplotlib import font_manager as fm
+    ttc = "/System/Library/Fonts/Helvetica.ttc"
+    cache = os.path.join(matplotlib.get_configdir(), "tulepond_fonts")
+    try:
+        if not os.path.exists(ttc):
+            return False
+        os.makedirs(cache, exist_ok=True)
+        if not any(name.endswith(".ttf") for name in os.listdir(cache)):
+            from fontTools.ttLib import TTCollection
+            for face in TTCollection(ttc).fonts:
+                face.save(os.path.join(cache, face["name"].getDebugName(6) + ".ttf"))     # PostScript name, e.g. Helvetica-Bold
+        for name in os.listdir(cache):
+            if name.endswith(".ttf"):
+                fm.fontManager.addfont(os.path.join(cache, name))
+        return "Helvetica-Bold" in fm.findfont(fm.FontProperties(family="Helvetica", weight="bold"), fallback_to_default=False)
+    except Exception as err:
+        print("Helvetica faces not registered, falling back to Arial:", err)
+        return False
+
+
+def mpl_paper_style(base=8):
+    """Matplotlib settings for the paper figures: Helvetica (the font of the
+    pygmt figures; Arial if its bold face cannot be registered), `base` pt
+    text, and TrueType (Type 42) embedding so PDF text stays editable."""
+    import matplotlib
+    family = "Helvetica" if register_helvetica_faces() else "Arial"
     matplotlib.rcParams.update({
         "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.sans-serif": [family, "Arial", "Helvetica", "DejaVu Sans"],
         "font.size": base,
         "pdf.fonttype": 42, "ps.fonttype": 42,
-        # mathtext ($\\sigma$, $\\pm$) in the same face, not DejaVu
-        "mathtext.fontset": "custom", "mathtext.rm": "Arial", "mathtext.it": "Arial:italic",
-        "mathtext.bf": "Arial:bold", "mathtext.default": "regular",
+        # mathtext ($\\sigma$, $\\pm$, the bold panel letters) in the same face, not DejaVu
+        "mathtext.fontset": "custom", "mathtext.rm": family, "mathtext.it": f"{family}:italic",
+        "mathtext.bf": f"{family}:bold", "mathtext.default": "regular",
     })
     return dict(matplotlib.rcParams)
 

@@ -1,5 +1,5 @@
 # %% [markdown]
-# # 10 The paper figures, collected
+# # 11 The paper figures, collected
 #
 # ```
 # Created on Mon Sep 21 2026

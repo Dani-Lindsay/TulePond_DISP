@@ -1,5 +1,5 @@
 # %% [markdown]
-# # 01 The prepared inputs: what this repo starts from
+# # [1] 01 The prepared inputs: what this repo starts from
 #
 # ```
 # Created on Mon Sep 21 2026
@@ -37,6 +37,7 @@
 # catalogue, and the frozen aperture sweep.
 
 # %%
+# [2]
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -54,7 +55,7 @@ os.makedirs(paths_out[notebook], exist_ok=True)
 REG = utils.Registry(notebook, common_paths, repo_dir)
 
 # %% [markdown]
-# ## Fault trace -> 100 m crossings
+# ## [3] Fault trace -> 100 m crossings
 #
 # The trace is `hayward_fault_trace_2026-07-24.kml`: 699 hand-placed crossing
 # points along one continuous strand, re-mapped in Google Earth from the USGS
@@ -80,6 +81,7 @@ REG = utils.Registry(notebook, common_paths, repo_dir)
 # here; notebooks 02 and 03 smooth it with a 2.1 km rolling median.
 
 # %%
+# [4]
 spacing_km = 0.1        # along-fault sample spacing
 utm_epsg = 32610        # UTM 10N, the grid the frames live on
 
@@ -133,6 +135,7 @@ assert same, "the regenerated crossings differ from Inputs/hayward_fault_profile
 trace_note = f"   fault trace: {len(trace)} KML points -> {len(profiles)} crossings at {spacing_km} km; regenerated copy identical"
 
 # %%
+# [5]
 L = ["01 PREPARED INPUTS (fingerprints)", trace_note]
 for dic in insar_dic_list:
     L.append(f"{dic['ORBIT_DIRECTION']} frame {dic['Frame']} (track {dic['PATH']})")

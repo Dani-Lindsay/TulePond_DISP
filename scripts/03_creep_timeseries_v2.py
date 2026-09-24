@@ -1,5 +1,5 @@
 # %% [markdown]
-# # 03 Cross-fault creep time series
+# # [1] 03 Cross-fault creep time series
 #
 # ```
 # Created on Wed Sep 23 2026
@@ -62,6 +62,7 @@
 # compare every product with the previous run of this notebook.
 
 # %%
+# [2]
 import os
 import json
 
@@ -79,13 +80,14 @@ from scipy.ndimage import gaussian_filter1d      # along-fault smoothing
 import matplotlib.pyplot as plt
 
 # %% [markdown]
-# ## Paths and parameters
+# ## [3] Paths and parameters
 #
 # The aperture, mask and smoothing choices come from `TulePond_filepaths.py`
 # so every notebook uses the same values (reasons in the assumptions
 # register). The few below are used only here.
 
 # %%
+# [4]
 notebook = "03_creep_timeseries_v2"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
@@ -118,7 +120,7 @@ REG.inputs(*[d[k] for d in insar_dic_list for k in ("ts_file", "vel_file", "geo_
            common_paths["fault_profiles"])
 
 # %% [markdown]
-# ## Fault trace
+# ## [5] Fault trace
 #
 # `hayward_fault_profiles.csv` is the mapped trace resampled every 100 m
 # (built in notebook 01 from the KML): `ft_lon, ft_lat, profile_az`, south to
@@ -131,6 +133,7 @@ REG.inputs(*[d[k] for d in insar_dic_list for k in ("ts_file", "vel_file", "geo_
 # ~0.1 mm and does not move the section ends (checked 2026-09-23).
 
 # %%
+# [6]
 x_fault = pd.read_csv(common_paths["fault_profiles"])
 x_fault["az_smooth"] = x_fault["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()
 km_of = utils.lat_to_km_map(common_paths["fault_profiles"])      # lat -> km from Point Pinole
@@ -160,7 +163,7 @@ fig.savefig(os.path.join(fig_dir, f"qc03_profile_azimuth_smooth{az_smooth_n}.png
 plt.show()
 
 # %% [markdown]
-# ## Functions
+# ## [7] Functions
 #
 # Only what is used for both tracks. `get_fault_pairs` is unchanged from the
 # 2025 scripts. `get_window_points` replaces the `pygmt.project` call of those
@@ -171,6 +174,7 @@ plt.show()
 # routes pick the same pixels (checked 2026-09-23).
 
 # %%
+# [8]
 def read_insar_data(dic):
     """Geometry, coherence mask, velocity (mm/yr), dates and the grid of one
     track. The displacement cube is NOT loaded: `ts` is the open h5py dataset
@@ -247,7 +251,7 @@ def read_creep_ts(path):
     return df
 
 # %% [markdown]
-# ## Extract the cross-fault time series, one track at a time
+# ## [9] Extract the cross-fault time series, one track at a time
 #
 # Two loops over the crossings per track.
 #
@@ -269,6 +273,7 @@ def read_creep_ts(path):
 # parameter, to force a re-run.
 
 # %%
+# [10]
 params_now = dict(coh=coh_timeseries, dist_min=dist_min, dist_max=dist_max, x_width=x_width,
                   min_points=min_points, rate_nsigma=rate_nsigma)
 mask_stats = {}
@@ -360,7 +365,7 @@ for dic in insar_dic_list:
                              n_px=rate_dev.size, max_dev=float(np.abs(rate_dev).max()), n_dropped=n_dropped)
 
 # %% [markdown]
-# ## CHECK: the same as the previous version, and one crossing by hand
+# ## [11] CHECK: the same as the previous version, and one crossing by hand
 #
 # The per-track files must equal the ones the previous version of this
 # notebook wrote (same data, same rules). Then the crossing nearest CFW1 is
@@ -368,6 +373,7 @@ for dic in insar_dic_list:
 # without the loop.
 
 # %%
+# [12]
 for dic in insar_dic_list:
     track = dic["ORBIT_DIRECTION"]
     for name in (f"creep_ts_LOS_{track}.csv", f"creep_geom_{track}.csv", f"rate_deviation_{track}.csv"):
@@ -382,6 +388,7 @@ for dic in insar_dic_list:
         assert diff < 1e-9, f"{name} differs from the previous version"
 
 # %%
+# [13]
 dic = insar_dic_list[0]                                                    # ascending
 cfw1_lat = [c[1] for c in creepmeters if c[0] == "CFW1"][0]
 row = x_fault.loc[(x_fault.ft_lat - cfw1_lat).abs().idxmin()]
@@ -400,7 +407,7 @@ print("   (they differ only by the few pixels the rate mask removed)")
 print(points.head())
 
 # %% [markdown]
-# ## Figure S3: the rate mask
+# ## [14] Figure S3: the rate mask
 #
 # The pooled deviation population per track on a log count axis, with the
 # cut. The tail beyond the cut is what is rejected: landslides, quarries and
@@ -408,6 +415,7 @@ print(points.head())
 # a difference between sides and never enters a within-side deviation.
 
 # %%
+# [15]
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 lim, nbins = 6.0, 181
 bins = np.linspace(-lim, lim, nbins)
@@ -437,7 +445,7 @@ print("Saved figure to:", figS3)
 plt.show()
 
 # %% [markdown]
-# ## Common date grid
+# ## [16] Common date grid
 #
 # The decomposition needs both tracks at the same epochs. Each crossing is
 # interpolated against its REAL acquisition dates onto the union of both
@@ -448,6 +456,7 @@ plt.show()
 # are dropped here.
 
 # %%
+# [17]
 def interp_to_dates(target_dates, dates, values):
     """One crossing's series onto target_dates against its real dates. NaN
     inside gaps longer than max_interp_gap_days and outside the observed range."""
@@ -497,7 +506,7 @@ print(f"both tracks real at {both_real.sum()} epochs; interpolated: asc {(~real[
       f"({100 * (~real['asc']).mean():.0f}%), desc {(~real['desc']).sum()} ({100 * (~real['desc']).mean():.0f}%)")
 
 # %% [markdown]
-# ## Decompose each crossing into fault-parallel and vertical
+# ## [18] Decompose each crossing into fault-parallel and vertical
 #
 # Per crossing, with the mean incidence and azimuth of the pixels used (one
 # pair per track) and the local strike (smoothed cross-fault azimuth + 90),
@@ -506,6 +515,7 @@ print(f"both tracks real at {both_real.sum()} epochs; interpolated: asc {(~real[
 # is positive along the strike bearing, so right-lateral creep is positive.
 
 # %%
+# [19]
 geom = {}
 for dic, key in zip(insar_dic_list, ("asc", "desc")):
     geometry = pd.read_csv(os.path.join(out_dir, f"creep_geom_{dic['ORBIT_DIRECTION']}.csv"), index_col=0)
@@ -532,7 +542,7 @@ print(utils.design_matrix_up_fp([geom["asc"][0], geom["desc"][0]], [geom["asc"][
                                 float(np.median(strike))).round(3), "  (columns U, FP)")
 
 # %% [markdown]
-# ## Along-fault creep rate and the crossing-level landslide flag
+# ## [20] Along-fault creep rate and the crossing-level landslide flag
 #
 # A linear rate per crossing (`np.polyfit`, as in the 2025 scripts). The pixel
 # rate mask removes landslide EDGES, but a landslide that dominates one side IS
@@ -542,6 +552,7 @@ print(utils.design_matrix_up_fp([geom["asc"][0], geom["desc"][0]], [geom["asc"][
 # profile is smoothed with a 0.5 km Gaussian that preserves the gaps.
 
 # %%
+# [21]
 def rate_per_crossing(ts):
     """Linear rate (mm/yr) of every row of a lat x decimal-year table; NaN if fewer than 6 dates."""
     dates = ts.columns.values.astype(float)
@@ -586,6 +597,7 @@ print(f"FP creep rate: {valid.size} valid crossings, median {np.median(valid):.2
 print(f"Up rate: median {np.nanmedian(up_rate):+.2f} mm/yr, 5-95% {np.nanpercentile(up_rate, 5):+.2f} to {np.nanpercentile(up_rate, 95):+.2f}")
 
 # %%
+# [22]
 # save every product of the common grid
 los_interp["asc"].to_csv(os.path.join(out_dir, "asc_los_interp.csv"))
 los_interp["desc"].to_csv(os.path.join(out_dir, "desc_los_interp.csv"))
@@ -604,12 +616,13 @@ with open(os.path.join(out_dir, "decompose_params.json"), "w") as fh:
 print("Saved fp_ts.csv, up_ts.csv, the interpolated LOS matrices and the rate profiles to:", out_dir)
 
 # %% [markdown]
-# ## CHECK: the common-grid products against the previous version
+# ## [23] CHECK: the common-grid products against the previous version
 #
 # `fp_ts.csv` feeds 04, 05 and 08, so it and every other product of this
 # section must equal the previous version's to numerical precision.
 
 # %%
+# [24]
 for name in ("asc_los_interp.csv", "desc_los_interp.csv", "fp_ts.csv", "up_ts.csv", "creep_rate_fp.csv", "creep_rate_up.csv"):
     old_path = os.path.join(parity_dir, name)
     if not os.path.exists(old_path):
@@ -622,7 +635,7 @@ for name in ("asc_los_interp.csv", "desc_los_interp.csv", "fp_ts.csv", "up_ts.cs
     assert diff < 1e-9, f"{name} differs from the previous version"
 
 # %% [markdown]
-# ## CHECK: the creep rate at the creepmeters
+# ## [25] CHECK: the creep rate at the creepmeters
 #
 # The FP rate of the crossing nearest each creepmeter against the instrument's
 # rate over the same window (the full comparison is notebook 05). They should
@@ -630,6 +643,7 @@ for name in ("asc_los_interp.csv", "desc_los_interp.csv", "fp_ts.csv", "up_ts.cs
 # (the InSAR misses part of its two large creep events).
 
 # %%
+# [26]
 creepmeter_rate = {}
 for code, la, lo, name in creepmeters:
     cm = utils.read_creepmeter_10min(utils.creepmeter_file(common_paths["creepmeter_dir"], code), date_start=t0, date_end=t1)
@@ -640,12 +654,13 @@ for code, la, lo, name in creepmeters:
     print(f"  {code} ({name}, {km_of([la])[0]:.1f} km): InSAR {fp_rate[j]:5.2f}   creepmeter {creepmeter_rate[code]:5.2f}")
 
 # %% [markdown]
-# ## QC figure: the along-fault creep-rate profile
+# ## [27] QC figure: the along-fault creep-rate profile
 #
 # Raw per-crossing rates (grey), flagged crossings (red), the smoothed profile
 # (black) and the creepmeter rates (blue). North (Point Pinole) on the left.
 
 # %%
+# [28]
 km = km_of(lats)
 fig, ax = plt.subplots(figsize=(7.2, 2.4))
 ax.plot(km, fp_rate_raw, ".", color="0.6", ms=3, label="per-crossing rate")
@@ -664,7 +679,7 @@ fig.savefig(os.path.join(fig_dir, f"qc03_creep_rate_profile_{params}.png"), dpi=
 plt.show()
 
 # %% [markdown]
-# ## Figure S4: real versus interpolated epochs
+# ## [29] Figure S4: real versus interpolated epochs
 #
 # Which track is measured and which is filled in at each epoch of the common
 # grid. Before both orbits reached 6-day sampling they shared few dates, so
@@ -673,6 +688,7 @@ plt.show()
 # acquisition lists, not assumed.
 
 # %%
+# [30]
 def month_year(dec_year):
     return utils.decimal_year_to_date(dec_year).strftime("%b %Y")
 
@@ -727,9 +743,10 @@ print("Saved figure to:", figS4)
 plt.show()
 
 # %% [markdown]
-# ## REGISTER
+# ## [31] REGISTER
 
 # %%
+# [32]
 lines = ["03 CROSS-FAULT CREEP TIME SERIES",
          f"aperture {dist_min * 1000:.0f}-{dist_max * 1000:.0f} m, along-strike +/-{x_width * 1000:.0f} m, "
          f"min {min_points} px/side, coherence {coh_timeseries}", ""]

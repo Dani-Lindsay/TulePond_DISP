@@ -270,11 +270,13 @@ def test_render_value():
 def test_mpl_paper_style_sets_helvetica_and_type42():
     import insar_utils as utils
     rc = utils.mpl_paper_style(base=8)
-    assert rc["font.sans-serif"][0] == "Arial" and rc["font.family"] == ["sans-serif"]
+    family = rc["font.sans-serif"][0]
+    assert family in ("Helvetica", "Arial") and rc["font.family"] == ["sans-serif"]      # Helvetica when its bold face registers, else Arial
     assert rc["pdf.fonttype"] == 42 and rc["font.size"] == 8
+    assert rc["mathtext.bf"] == f"{family}:bold"                                          # the bold panel letters use the same face
     import matplotlib.font_manager as fm
-    assert "Arial" in fm.findfont(fm.FontProperties(family=["Arial"]))
-    assert "Bold" in fm.findfont(fm.FontProperties(family=["Arial"], weight="bold"), fallback_to_default=False)
+    assert family in fm.findfont(fm.FontProperties(family=[family]))
+    assert "Bold" in fm.findfont(fm.FontProperties(family=[family], weight="bold"), fallback_to_default=False)
 
 
 def test_text_backed_draws_twice_box_then_crisp():

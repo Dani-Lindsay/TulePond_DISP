@@ -44,8 +44,9 @@ Re-running a notebook that changes a registered value raises
 | `06_event_field_geometry` | Per-pixel step maps for each event on both tracks, burst fix, mean event, fault-parallel / vertical maps, cross-fault profiles X-X' and Y-Y' on each track, symmetric / antisymmetric check, the ascending-deficit end members | Fig 2 rows 1-2 (LOS per track), S | `06_*` |
 | `07_slip_model` | (next round) CSI slip inversion of the mean event, descending track only | Fig 2 row 3 | `07_*` |
 | `08_alignment_arrays` | The six Tule Pond arrays against the InSAR, the 45-year HRKT event detector, repeat intervals, threshold sweep | Fig 3 top, S arrays, S sweep | `08_*` |
-| `09_seasonality_forecast` | Rain-gauge composite, onsets on the water year, renewal forecast (issue date pinned), rainfall conditioning, prediction statement | Fig 3 bottom, Fig 4, S conditioning | `09_*` |
-| `10_paper_figures` | Collects the current paper figures under their manuscript names in `Figures_<date>/paper/` | Figs 1-4, S | |
+| `09_rain_seasonality` | Daily rain composite at Tule Pond from the three nearest GHCN gauges (COOP shift checked on the 11 Dec 2014 storm), water-year totals, onsets on the water year | Fig 3 bottom | `09_*` |
+| `10_forecast` | The next-event forecast: renewal models on four catalogues (issue date pinned), the closed-form InSAR clock, rainfall conditioning (rules A, B, C), the prediction statement | Fig 4, S conditioning | `10_*` |
+| `11_paper_figures` | Collects the current paper figures under their manuscript names in `Figures_<date>/paper/` | Figs 1-4, S | |
 
 ## Running
 
