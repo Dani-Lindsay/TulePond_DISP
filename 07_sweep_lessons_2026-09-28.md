@@ -158,6 +158,16 @@ model runs.
 - ~~L-curve for sigma~~ done (G).
 - Re-test dip, mesh, lambda and sampling on the final configuration (they
   were decided on the LOS setup).
+- **Depth vs noise, on the fault-parallel field.** The 2026-09-27 argument
+  (u = (s/pi) arctan(D/x); D = 0.85 vs 3 km differ by 0.4-0.7 mm in desc LOS,
+  0.9-1.4 mm fault-parallel, at 0.5-4 km [scan amplitudes]) compared this
+  with "correlated noise ~0.6 mm over ~2 km", which does NOT match the noise
+  fits recorded on 2026-09-28 (asc short 0.56 mm / 0.57 km, desc short ~0,
+  long 1.4-1.6 mm / 14-19 km; fault-parallel long term at the 50 km bound).
+  Do not quote it. Run the fixed-depth scan on the fault-parallel field
+  (delta chi^2 with the full covariance is the rigorous version) and add a
+  registered notebook check tabulating the arctan signal difference against
+  the fitted noise at the same separations.
 - **Correlation lengths lambda, each at its own L-curve corner.** In CSI
   (`Fault.buildCmXY`, Radiguet et al. 2010) Cm = sigma^2 (lam0^2 / (lamx
   lamz)) exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND
