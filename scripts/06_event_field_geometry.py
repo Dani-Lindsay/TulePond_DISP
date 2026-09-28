@@ -141,7 +141,6 @@ swath_m = 150.0                 # +/- along-strike half-width
 median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
 coh_maps = 0.9                  # temporal-coherence mask for the per-pixel maps and the decomposed field the slip model inverts
                                 # (Dani 2026-09-28: the 0.7 maps are too noisy); the crossings and the LOS checks stay at coh_timeseries
-near_bin_m, near_zone_m = 30.0, 300.0   # one-pixel bins within 300 m of the trace, so the line reaches ~15-30 m from the fault (Dani 2026-09-28)
 far_m = (1500.0, 2000.0)        # same-block far field the near-fault amplitude of each block is measured against
 median_col, grey, ann_col = "#A50F15", "gray55", "black"       # per-side running median (dark red); pixels; block annotation
 rng_blk = np.random.default_rng(20260923)
@@ -756,10 +755,8 @@ def running_median(d, v, bin_m=median_bin_m):
     the trace and run outward, so no bin (and no drawn segment) straddles the
     fault. Returns a list of (x, median) arrays, one per side (west, east)."""
     out = []
-    # distances from the trace: one-pixel bins near the fault, then bin_m
-    dist_edges = np.r_[np.arange(0.0, near_zone_m, near_bin_m), np.arange(near_zone_m, cross_m + bin_m, bin_m)]
     for sgn in (-1, 1):
-        edges = np.sort(sgn * dist_edges)
+        edges = np.sort(sgn * np.arange(0.0, cross_m + bin_m, bin_m))
         idx = np.digitize(d, edges)
         xc, med = [], []
         for i in range(1, len(edges)):
