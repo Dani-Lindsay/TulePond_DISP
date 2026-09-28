@@ -23,12 +23,12 @@
 # `07_slip_model` (the homogeneous baseline): the fault-parallel mean event
 # (06, coherence 0.9), levelled, the `smooth12` vertical mesh, quadtree to one
 # 30 m pixel, the crossing surface slip on every surface triangle, slip tied
-# uniform over the top 0.2 km, sigma fixed at 12, lambda (0.3, 0.05) km. Each
+# uniform over the top 0.2 km, sigma at 07_slip_model's L-curve pick, lambda (0.3, 0.05) km. Each
 # family changes ONE thing from that baseline. The machinery cells [2] to [6]
 # are copied verbatim from `07_slip_model`, so the two notebooks run the same
 # code; CHECK [21] pins this notebook's baseline to `07_slip_model`'s.
 #
-# 1. **Top tie** at sigma 12: none, 0.1, 0.2 (baseline), 0.5 km.
+# 1. **Top tie** at the model sigma: none, 0.1, 0.2 (baseline), 0.5 km.
 # 2. **Fixed-depth scan** on the fault-parallel field: uniform slip from the
 #    surface to D, delta chi2 (no smoothing, no sigma). Variants: the model mesh,
 #    a 5 km mesh, the unlevelled field. Then the model difference between the
@@ -119,7 +119,11 @@ smooth_iters   = 8
 lam_xz         = (0.3, 0.05)
 tie_depth_km   = 0.2
 shear_modulus  = 3.0e10
-sigma_fixed    = 12            # Dani 2026-09-28: fixed at 12 for every test
+# sigma: the L-curve pick of 07_slip_model on the same data (the rule is fixed, the value is not)
+sigma_file     = os.path.join(baseline_dir, "sigma_lcurve.csv")
+assert os.path.exists(sigma_file), f"missing {sigma_file}: run 07_slip_model first"
+sigma_model    = float(pd.read_csv(sigma_file).selected.iloc[0])
+print(f"sigma from 07_slip_model's L-curve: {sigma_model:g}")
 
 # ---- the families (each changes one thing from the baseline)
 tie_depths     = [0.0, 0.1, 0.2, 0.5]    # 0 = no tie
@@ -620,7 +624,7 @@ def slip_table(flt):
 
 
 suite_rows = []
-def run_case(family, label, mesh_name="smooth12", dip=dip_deg, sigma=sigma_fixed, lam=lam_xz,
+def run_case(family, label, mesh_name="smooth12", dip=dip_deg, sigma=sigma_model, lam=lam_xz,
              tie=tie_depth_km, use_surface=True, floor=surf_floor_mm, min_km=min_block_km,
              start_km=start_block_km, levelled=True, ramp_spec="1", record=True):
     flt = wrap_fault(*unrolled[mesh_name], dip, f"{family} {label}")
@@ -675,7 +679,7 @@ def lcurve(label, mesh_name="smooth12", lam=lam_xz, sigmas=sigma_grid_lc):
     return table, corner, pick, table[table.sigma == pick].iloc[0].to_dict()
 
 # %% [markdown]
-# ## [8] Family 1: the top tie at sigma 12
+# ## [8] Family 1: the top tie at the model sigma
 #
 # Slip uniform from the surface to the tie depth in every 0.1 km column (the
 # baseline is 0.2 km, chosen on 2026-09-28 at sigma 24 on the 0.7 field). The
@@ -784,7 +788,7 @@ print(depth_vs_noise.round(3).to_string(index=False))
 # 10 mm of uniform slip from the surface to D over the scan window, forward
 # through the model mesh to the samples (noise drawn from the full data
 # covariance) and to the surface constraint (noise from its errors), then
-# inverted exactly as the baseline (sigma 12, tie 0.2 km, surface constraint).
+# inverted exactly as the baseline (model sigma, tie 0.2 km, surface constraint).
 
 # %%
 ## [11]
@@ -805,7 +809,7 @@ for depth_bottom in recovery_depths:
     rec_fault.buildGFs(rec_surface, slipdir="s", verbose=False)
     rec_surface.vel[:] = (np.dot(rec_fault.G[rec_surface.name]["strikeslip"], slip_input)
                           + np.sqrt(np.diag(rec_surface.Cd)) * recovery_rng.standard_normal(rec_surface.vel.size))
-    invert(rec_fault, [rec_ds], sigma_fixed, surface=rec_surface, tie_depth_km=tie_depth_km)
+    invert(rec_fault, [rec_ds], sigma_model, surface=rec_surface, tie_depth_km=tie_depth_km)
     area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in rec_fault.patch])
     input_potency = float(np.sum(area_km2 * 1e6 * slip_input * 1e-3))
     row = model_numbers(rec_fault, rec_ds, rec_surface)
@@ -844,7 +848,7 @@ save_suite()
 # ## [13] Family 6: dip
 #
 # The mesh hinged east about the fixed surface trace, 60 to 105 degrees
-# (105 = 75 W), sigma 12. The quadtree follows each geometry.
+# (105 = 75 W), at the model sigma. The quadtree follows each geometry.
 
 # %%
 ## [13]
@@ -857,9 +861,9 @@ save_suite()
 #
 # In CSI (`Fault.buildCmXY`) Cm = sigma^2 (lam0^2 / (lamx lamz))
 # exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND enters the
-# amplitude, so sigma 12 is the corner only for (0.3, 0.05) km. Each pair
+# amplitude, so the model sigma is the corner only for (0.3, 0.05) km. Each pair
 # gets its own L-curve; the suite row is the model at its own pick (and the
-# baseline pair's curve is the check that the corner is still near 12).
+# baseline pair's curve, on a coarser grid, is a check on 07_slip_model's corner).
 
 # %%
 ## [14]
@@ -962,7 +966,7 @@ for tie, table in tie_tables.items():
     ax.plot(by_depth.values, by_depth.index, "o-", ms=2, label=f"tie {tie * 1000:.0f} m")
 ax.set_ylim(1.5, 0); ax.set_xlabel("Slip (mm)"); ax.set_ylabel("Depth (km)")
 ax.legend(fontsize=5)
-ax.set_title(r"$\bf{B}$  Top tie, sigma 12", loc="left", fontsize=7)
+ax.set_title(r"$\bf{B}$  Top tie, sigma " + f"{sigma_model:g}", loc="left", fontsize=7)
 
 ax = fig.add_subplot(grid[1, 1])
 for tag, color in (("smooth12", "#000000"), ("plateau100", "#0072B2"), ("plateau100_z5", "#56B4E9"),
@@ -1018,7 +1022,7 @@ print("wrote", fig_file)
 by_family = {family: group for family, group in suite.groupby("family")}
 tie_rows = by_family["tie"].set_index("tie_km")
 sidecar = REG.sidecar("07_tests_final", [
-    f"baseline: fault-parallel, smooth12, dip {dip_deg}, sigma {sigma_fixed}, lambda {lam_xz}, tie {tie_depth_km} km: "
+    f"baseline: fault-parallel, smooth12, dip {dip_deg}, sigma {sigma_model}, lambda {lam_xz}, tie {tie_depth_km} km: "
     f"Mw {baseline_row['Mw']:.3f}, rms {baseline_row['rms_mm']:.3f} mm, surface {baseline_row['surface_pct']:.0f}%",
     "tie depth: " + "; ".join(f"{t * 1000:.0f} m Mw {r.Mw:.3f} peak {r.peak_slip_mm:.1f} mm at {r.peak_depth_m:.0f} m "
                               f"surface {r.surface_pct:.0f}%" for t, r in tie_rows.iterrows()),

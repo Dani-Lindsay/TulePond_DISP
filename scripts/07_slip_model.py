@@ -107,8 +107,6 @@ shear_modulus  = 3.0e10        # uniform rigidity of the reference Mw
 mu_floor_gpa   = 0.5           # SFCVM rigidity floor (the model is ~0 at the surface)
 sigma_grid     = [4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 128]   # L-curve (larger = LESS smoothing)
 sigma_check    = 24            # sigma of the draft the CHECK compares against
-sigma_fixed    = 12            # Dani 2026-09-28: sigma fixed at 12 (the L-curve pick on the data
-                               # through 2025, corner 10.1); the L-curve is still run and its pick reported
 sfcvm_file     = os.path.join(tests_dir, "sfcvm_creep_section_profiles.csv")   # drafts/07/sfcvm_extract.py
 assert os.path.exists(sfcvm_file), (f"missing {sfcvm_file}: download USGS_SFCVM_v21-1_detailed.h5 "
                                     "(doi:10.5066/P9TRDCHE) and run drafts/07/sfcvm_extract.py first")
@@ -600,12 +598,11 @@ d_misfit, dd_misfit = spline_misfit(fine_log_sigma, 1), spline_misfit(fine_log_s
 d_rough, dd_rough = spline_rough(fine_log_sigma, 1), spline_rough(fine_log_sigma, 2)
 curvature = np.abs(d_misfit * dd_rough - d_rough * dd_misfit) / (d_misfit ** 2 + d_rough ** 2) ** 1.5
 sigma_corner = float(10 ** fine_log_sigma[np.argmax(curvature)])
-sigma_rule = float(sigma_family.sigma[sigma_family.sigma >= sigma_corner].min())
-sigma_sel = float(sigma_fixed)
-print(f"L-curve corner: sigma {sigma_corner:.1f}; the rule picks grid sigma {sigma_rule:g}; "
-      f"used: sigma {sigma_sel:g} (fixed)")
-if sigma_rule != sigma_sel:
-    print(f"NOTE: on this data the L-curve rule picks {sigma_rule:g}, not the fixed {sigma_sel:g}")
+sigma_sel = float(sigma_family.sigma[sigma_family.sigma >= sigma_corner].min())
+print(f"L-curve corner: sigma {sigma_corner:.1f}; selected grid sigma {sigma_sel:g} "
+      f"(12 on the data through 2025, corner 10.1)")
+sigma_family["corner"], sigma_family["selected"] = sigma_corner, sigma_sel      # read by 07_slip_model_tests
+sigma_family.to_csv(os.path.join(out_dir, "sigma_lcurve.csv"), index=False)
 
 mpl_paper_style(base=7)
 fig, axes = plt.subplots(1, 2, figsize=(5.0, 2.3), constrained_layout=True)
@@ -803,7 +800,7 @@ sidecar = REG.sidecar("07_hom_baseline", [
     f"configuration: fault-parallel (strike {strike_bearing:.2f}), coherence 0.9, levelled, "
     f"smooth12, dip {dip_deg}, quadtree {min_block_km * 1000:.0f} m, surface interp, "
     f"tie {tie_depth_km * 1000:.0f} m, sigma {sigma_sel:g}, homogeneous GFs",
-    f"L-curve corner sigma {sigma_corner:.1f} -> rule picks grid sigma {sigma_rule:g}; used sigma {sigma_sel:g} (fixed)",
+    f"L-curve corner sigma {sigma_corner:.1f} -> selected grid sigma {sigma_sel:g}",
     f"draft CHECK at sigma {sigma_check}: max |slip diff| {slip_diff:.2e} mm",
     f"noise model: {noise_model.round(3).to_dict()}",
     f"bootstrap Mw: {boot_mw.mean():.3f} +/- {mw_boot_sd:.3f} (n={n_boot})",
@@ -819,7 +816,6 @@ REG.register("07_hom_peak_slip_mm", results.peak_slip_mm, "mm", 1, where="M7", c
 REG.register("07_hom_rms_mm", results.rms_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07_hom_rms_near_mm", results.rms_near_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07_hom_sigma", sigma_sel, "mm", 0, where="M7", cell="sigma", sidecar=sidecar)
-REG.register("07_hom_sigma_rule", sigma_rule, "mm", 0, where="M7", cell="sigma", sidecar=sidecar)
 REG.register("07_hom_sigma_corner", sigma_corner, "mm", 1, where="M7", cell="sigma", sidecar=sidecar)
 REG.register("07_hom_tie_depth_m", tie_depth_km * 1000, "m", 0, where="M7", cell="constants", sidecar=sidecar)
 REG.register("07_hom_n_samples", int(results.n_samples), "count", 0, where="M7", cell="baseline", sidecar=sidecar)
