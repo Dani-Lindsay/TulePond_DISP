@@ -31,10 +31,11 @@ import pyproj
 # ------------------------
 # Paths & constants
 # ------------------------
-repo_dir = "/Users/daniellelindsay/Tule_Pond_DISP"
-model_file = os.path.join(repo_dir, "Inputs", "USGS_SFCVM_v21-1", "USGS_SFCVM_v21-1_detailed.h5")
-profiles_file = os.path.join(repo_dir, "Inputs", "hayward_fault_profiles.csv")
-out_file = os.path.join(repo_dir, "outputs", "07_slip_model_tests", "sfcvm_creep_section_profiles.csv")
+from TulePond_filepaths import common_paths, inputs_dir      # was hard-coded to the modelling laptop
+model_file = os.path.join(inputs_dir, "USGS_SFCVM_v21-1", "USGS_SFCVM_v21-1_detailed.h5")
+profiles_file = common_paths["fault_profiles"]
+out_file = os.path.join(common_paths["out_dir"], "07_slip_model_tests", "sfcvm_creep_section_profiles.csv")
+os.makedirs(os.path.dirname(out_file), exist_ok=True)
 
 strike_deg = 143.05                         # local strike of the creep section (notebook 06)
 km_along = np.arange(56.5, 62.31, 0.5)      # creep section, km from Point Pinole

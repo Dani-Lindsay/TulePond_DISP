@@ -1,26 +1,60 @@
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: ipynb,scripts//py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.5
+# ---
+
 # %% [markdown]
-# # 07 Slip model -- sensitivity tests (batch 2)
+# # 07 Slip model -- sensitivity tests on the final configuration
 #
 # ```
-# Created on Thu Sep 25 2026, batch 2 on Sun Sep 28 2026
+# Created on Thu Sep 25 2026; rebuilt on Mon Sep 28 2026 on the final configuration
 # @author: daniellelindsay
+# Run in opera_disp_feb13. Several hours (about 150 inversions).
 # ```
 #
-# Every modelling choice for the mean-event slip inversion, tested. The
-# BASELINE configuration of this batch matches the selected model
-# (2026-09-27 decisions): far-field plane alignment per track, per-dataset
-# CONSTANT ramp, the crossing-stack surface constraint IN the inversion,
-# equal track weights, quadtree to one 30 m pixel. Dedicated rows isolate
-# each of those choices (`insar_only`, `unaligned`, `asc_x2`, floors).
+# **What this notebook does.** Every test is run on the configuration of
+# `07_slip_model` (the homogeneous baseline): the fault-parallel mean event
+# (06, coherence 0.9), levelled, the `smooth12` vertical mesh, quadtree to one
+# 30 m pixel, the crossing surface slip on every surface triangle, slip tied
+# uniform over the top 0.2 km, sigma fixed at 12, lambda (0.3, 0.05) km. Each
+# family changes ONE thing from that baseline. The machinery cells [2] to [6]
+# are copied verbatim from `07_slip_model`, so the two notebooks run the same
+# code; CHECK [21] pins this notebook's baseline to `07_slip_model`'s.
 #
-# Families: smoothing sigma with and without the surface constraint, dip
-# 60-95 (95 = 85 W, closing the boundary), mesh (surface cells 100/50/30 m,
-# plateau vs smooth growth, deep plateau), prior correlation lengths
-# (never swept before), sampling, prior form, free rake (slip table saved).
-# Then the parametric depth scan (aligned fields, densified grid, 5 km
-# mesh and legacy-field variants) and the synthetic recovery WITH the
-# constraint. Ported from `Hayward_DISP-S1/modelling/` (m02, m05, m15),
-# CSI-tutorial style; CHECK cells pin the port against the legacy chain.
+# 1. **Top tie** at sigma 12: none, 0.1, 0.2 (baseline), 0.5 km.
+# 2. **Fixed-depth scan** on the fault-parallel field: uniform slip from the
+#    surface to D, delta chi2 (no smoothing, no sigma). Variants: the model mesh,
+#    a 5 km mesh, the unlevelled field. Then the model difference between the
+#    two ends of the bracket against the noise model.
+# 3. **Synthetic recovery**: 10 mm to D through this pipeline.
+# 4. **Isolation rows**: no surface constraint, unlevelled (with a plane per
+#    dataset instead), surface error floors 0.25 and 1.0 mm.
+# 5. **Sampling**: quadtree floors 40 and 60 m, and a uniform 100 m grid.
+# 6. **Dip**: 60 to 105 degrees east (105 = 75 W).
+# 7. **Correlation lengths lambda**: five pairs, each with its own L-curve,
+#    compared at their own corners (lambda enters the prior's amplitude as well
+#    as its shape, so one sigma does not fit all).
+# 8. **Mesh**: plateau 100 m, 50 m, 30 m and a deep plateau, each with its own
+#    L-curve.
+#
+# Replaces the batch-2 LOS suite of 2026-09-28 (now
+# `drafts/07/slip_model_tests_LOS_batch2.py`; its numbers are in
+# `07_sweep_lessons_2026-09-28.md`). The legacy parity gates of that suite are
+# gone: the paper has no legacy chain to check against.
+#
+# **Inputs**: as `07_slip_model` (06 `fp_maps.npz`, 04 crossings, events and
+# section lengths, the trace). **Outputs** (`outputs/07_slip_model_tests/`):
+# `final_suite.csv`, `final_lcurves.csv`, `final_tie_slip_<tie>.csv`,
+# `final_depth_scan_<variant>.csv`, `final_depth_vs_noise.csv`,
+# `final_recovery.csv`, `final_recovery_profiles.csv`. **Figure**:
+# `fig07_sensitivity_final`. Registry keys `07_test_*`.
 
 # %%
 ## [1]
@@ -29,16 +63,17 @@
 # ------------------------
 import copy
 import os
-import sys
 import warnings
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial import Delaunay, cKDTree
+from scipy.interpolate import CubicSpline
 
 warnings.simplefilter("ignore")
 from TulePond_filepaths import common_paths, repo_dir
+import insar_utils as utils
 from insar_utils import load_trace, mpl_paper_style
 
 # CSI: Classic Slip Inversion (Jolivet et al.; external/csi at 1277bb4)
@@ -49,71 +84,78 @@ from csi import multisourcesolve as multisrc
 
 notebook = "07_slip_model_tests"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
+baseline_dir = os.path.join(common_paths["out_dir"], "07_slip_model")
+field_dir = os.path.join(common_paths["out_dir"], "06_event_field_geometry")
+events_dir = os.path.join(common_paths["out_dir"], "04_event_detection")
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-# local frame centre (csi_io convention: the creep-section centre)
+# ---- the baseline configuration: identical to 07_slip_model
 frame_lon0, frame_lat0 = -121.968, 37.557
-
-# data selection
-field_dir      = os.path.join(common_paths["out_dir"], "06_event_field_geometry")
-tracks         = ("ascending", "descending")
-swath_km       = 4.0      # keep pixels within this distance of the trace
-exclude_km     = 0.03     # drop the pixel straddling the trace
-km_window      = (52.0, 67.0)   # along-strike data window (km from Point Pinole)
-start_block_km = 2.0      # quadtree starting block
-min_block_km   = 0.03     # quadtree minimum block = one 30 m pixel
-cov_mask_km    = 1.0      # covariance from pixels beyond this distance
+swath_km       = 4.0
+exclude_km     = 0.03
+km_window      = (52.0, 67.0)
+start_block_km = 2.0
+min_block_km   = 0.03
+cov_mask_km    = 1.0
 cov_distmax_km = 8.0
-nug_power      = 0.5      # nugget variance / n_pixels**nug_power per block
-near_field_km  = 0.2      # "near field" for the fit metrics
-
-# alignment and surface constraint (selected-model conventions)
-creep_lo_km, creep_hi_km = 56.3, 62.3   # registry 04_creep_length_lo/hi
-align_mask_km  = 1.0      # slip section +/- this masked for the far-field plane
-surf_floor_mm  = 0.5      # crossing-stack error floor (baseline)
+nug_power      = 0.5
+near_field_km  = 0.2
+section_lengths = pd.read_csv(os.path.join(events_dir, "section_lengths.csv")).set_index("name")
+creep_lo_km = float(section_lengths.loc["tulepond_creep_length", "km_lo"])
+creep_hi_km = float(section_lengths.loc["tulepond_creep_length", "km_hi"])
+align_mask_km  = 1.0
+surf_floor_mm  = 0.5
 surf_step_km   = 0.2
 surf_win_km    = 0.4
-
-# mesh and prior
 mesh_lat_lo, mesh_lat_hi = 37.47, 37.65
 mesh_depth_km  = 3.0
+mesh_params    = (0.05, 0.0, 1.2, 1.5)   # smooth12
+dip_deg        = 90
 fine_km        = (56.0, 63.0)
 far_rate       = 0.25
 smooth_iters   = 8
-lam_xz         = (0.3, 0.05)   # prior correlation lengths along strike, down dip (km)
+lam_xz         = (0.3, 0.05)
+tie_depth_km   = 0.2
 shear_modulus  = 3.0e10
+sigma_fixed    = 12            # Dani 2026-09-28: fixed at 12 for every test
 
-# the suite
-dips_deg       = [60, 70, 75, 80, 85, 90, 95]   # 95 deg E = 85 deg W
-sigmas_scan    = [8, 16, 24, 32, 48, 64]
-lam_grid       = [(0.15, 0.05), (0.6, 0.05), (0.3, 0.15), (0.6, 0.15)]
-mesh_variants  = {
-    # name: (h_top, const_to, growth, h_bot)
+# ---- the families (each changes one thing from the baseline)
+tie_depths     = [0.0, 0.1, 0.2, 0.5]    # 0 = no tie
+dips_deg       = [60, 70, 75, 80, 85, 90, 95, 100, 105]   # 105 E = 75 W
+lam_grid       = [(0.3, 0.05), (0.15, 0.05), (0.6, 0.05), (0.3, 0.15), (0.6, 0.15)]
+mesh_variants  = {                        # name: (h_top, const_to, growth, h_bot) km
+    "smooth12": mesh_params,
     "plateau100": (0.10, 0.5, 1.6, 1.5),
     "plateau100_deep": (0.10, 1.5, 1.6, 1.5),
     "fine50": (0.05, 0.5, 1.6, 1.5),
-    "fine30": (0.03, 0.25, 1.6, 1.5),      # one 30 m pixel per cell at the surface
-    "smooth12": (0.05, 0.0, 1.2, 1.5),     # no plateau (selected)
+    "fine30": (0.03, 0.25, 1.6, 1.5),
 }
-mesh_sigma     = {"plateau100": [32], "plateau100_deep": [64], "fine50": [48],
-                  "fine30": [64, 96], "smooth12": [32, 64]}
-surf_floors    = [0.25, 1.0]              # baseline 0.5 has its own family row
+sigma_grid_lc  = [4, 6, 8, 12, 16, 24, 32, 48, 64, 128]   # L-curves of the lambda and mesh families
+surf_floors    = [0.25, 1.0]
 recovery_depths = [0.3, 0.5, 0.8, 1.0, 1.5, 2.0]
-scan_km        = (57.5, 61.5)
+scan_km        = (57.5, 61.5)            # uniform-slip window of the depth scan (as the earlier scans)
 scan_taper     = 0.5
 scan_depths    = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65,
                   0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1, 1.25, 1.35, 1.5,
                   1.65, 1.85, 2.0, 2.25, 2.5, 3.0, 4.0, 5.0]
+noise_bins_km  = [0.03, 0.5, 1.0, 2.0, 3.0, 4.0]   # distance-to-trace bins of the depth-vs-noise table
+
+REG = utils.Registry(notebook, common_paths, repo_dir)
+REG.inputs(os.path.join(field_dir, "fp_maps.npz"),
+           common_paths["fault_trace"], common_paths["fault_profiles"],
+           os.path.join(events_dir, "event_fraction_by_crossing.csv"),
+           os.path.join(events_dir, "creep_events.csv"),
+           os.path.join(events_dir, "section_lengths.csv"))
+print(f"SSE section: km {creep_lo_km:.1f}-{creep_hi_km:.1f} (04 section_lengths.csv)")
 
 # %% [markdown]
-# ## Section 1 -- the fault mesh
+# ## [2] The fault mesh
 #
-# Unrolled (s, z) node rows -> Delaunay -> Laplacian smoothing -> wrapped
-# onto the hand-drawn trace, hinged east about the FIXED surface trace
-# (`tutoFaultMeshing` idiom; ported from csi_io.load_fault_tri, proven
-# zero-difference below).
+# Unrolled (along-strike s, depth z) node rows -> Delaunay -> Laplacian
+# smoothing -> wrapped onto the hand-drawn trace as a vertical
+# `csi.TriangularPatches` (`tutoFaultMeshing` idiom).
 
 # %%
 ## [2]
@@ -141,12 +183,11 @@ def lat_to_km_pp(lats):
                                                   - chunk[:, None]).argmin(axis=1)]
     return out
 trace_km_pp = lat_to_km_pp(ref_fault.lati)
-print(f"trace: {len(trace_lonlat)} vertices, {arc_total:.1f} km of fault")
 
-# %%
-## [3]
+
 def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
-    """Node rows + Delaunay + Laplacian smoothing in the unrolled plane."""
+    """Node rows + Delaunay + Laplacian smoothing in the unrolled plane.
+    [07_slip_model_tests, verbatim]"""
     row_depths = [0.0]
     row_step = h_top
     while row_depths[-1] < z_max:
@@ -196,9 +237,9 @@ def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
 
 
 def wrap_fault(nodes, faces, dip_deg, name):
-    """csi.TriangularPatches hinged east about the FIXED surface trace
-    (dip > 90 hinges west). Each fault owns its faces copy
-    (homogeneizeStrike flips winding rows in place)."""
+    """csi.TriangularPatches hinged east about the FIXED surface trace.
+    Each fault owns its faces copy (homogeneizeStrike flips winding rows
+    in place). [07_slip_model_tests, verbatim]"""
     flt = TriangularPatches(name, lon0=frame_lon0, lat0=frame_lat0, verbose=False)
     flt.trace(trace_lonlat[:, 0], trace_lonlat[:, 1])
     flt.discretize2(every=0.02)
@@ -227,43 +268,25 @@ def wrap_fault(nodes, faces, dip_deg, name):
     flt.mesh_sz = (nodes.copy(), faces_own, arc_total)
     return flt
 
-unrolled = {name: build_unrolled(*params) for name, params in mesh_variants.items()}
-for name, (nodes, faces) in unrolled.items():
-    print(f"mesh {name}: {len(nodes)} nodes, {len(faces)} triangles")
+mesh_nodes, mesh_faces = build_unrolled(*mesh_params)
+fault = wrap_fault(mesh_nodes, mesh_faces, dip_deg, "mean event")
+tri_sz = mesh_nodes[mesh_faces]
+cell_area_km2 = 0.5 * np.abs((tri_sz[:, 1, 0] - tri_sz[:, 0, 0]) * (tri_sz[:, 2, 1] - tri_sz[:, 0, 1])
+                             - (tri_sz[:, 2, 0] - tri_sz[:, 0, 0]) * (tri_sz[:, 1, 1] - tri_sz[:, 0, 1]))
+print(f"mesh smooth12: {len(mesh_nodes)} nodes, {len(mesh_faces)} triangles, "
+      f"{arc_total:.1f} km of fault, dip {dip_deg}")
 
 # %% [markdown]
-# ### CHECK -- zero-difference mesh port gate
-
-# %%
-## [4]
-legacy_dir = os.path.join(repo_dir, "Hayward_DISP-S1")
-for extra in (legacy_dir, os.path.join(legacy_dir, "modelling"),
-              os.path.join(legacy_dir, "analysis")):
-    sys.path.insert(0, extra)
-import csi_io
-
-for dip_check in (90.0, 70.0):
-    legacy_fault = csi_io.load_fault_tri(dip=dip_check)
-    ported_fault = wrap_fault(*unrolled["plateau100"], dip_check, "check")
-    dv = np.max(np.abs(legacy_fault.Vertices - ported_fault.Vertices))
-    same_faces = np.array_equal(legacy_fault.Faces, ported_fault.Faces)
-    print(f"dip {dip_check:g}: max |vertex difference| {dv:.3e} km, "
-          f"faces identical: {same_faces}")
-    assert dv == 0.0 and same_faces, "mesh port differs from csi_io.load_fault_tri"
-print("PASS: mesh port is zero-difference against the original")
-
-# %% [markdown]
-# ## Section 2 -- data, alignment, covariance, downsampling, the constraint
+# ## [3] Data: the fault-parallel mean event
 #
-# Per track: notebook 06's five-event mean, cut to the window; the far
-# field (slip section +/- 1 km masked) levelled by a fitted plane BEFORE
-# anything else (the ascending mean event tilts ~2.5 mm end to end); the
-# far-field semivariogram noise model; the distance-based quadtree to one
-# 30 m pixel. The crossing-stack surface constraint is built per error
-# floor.
+# Notebook 06's decomposition (coherence 0.9, SSE-section strike) as one
+# `csi.insar` dataset whose look vector is the horizontal unit vector along
+# the strike bearing, so right-lateral motion of the east side is positive.
+# Cut to 4 km of the trace and the along-strike window, then the far field
+# (slip section +/- 1 km masked) is levelled by a fitted plane.
 
 # %%
-## [5]
+## [3]
 def dist_to_trace(sar, fault, signed=False):
     """[csi_io, verbatim] + east of the trace when signed."""
     tx, ty = fault.xf, fault.yf
@@ -271,28 +294,10 @@ def dist_to_trace(sar, fault, signed=False):
     return d * np.sign(sar.x - tx[i]) if signed else d
 
 
-def load_track(track, field_file, fault, keep_side=None):
-    """csi.insar cut to the swath and along-strike window. [csi_io port]"""
-    z = np.load(field_file)
-    sar = insar(track, lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    sar.read_from_binary(z["vel_mm"], z["lon"], z["lat"], err=z["err_mm"],
-                         incidence=z["incidence"], azimuth=z["azimuth"],
-                         remove_nan=True, remove_zeros=False)
-    trace_dist = dist_to_trace(sar, fault)
-    sar.vel[trace_dist > swath_km] = np.nan
-    sar.vel[trace_dist < exclude_km] = np.nan
-    if keep_side is not None:
-        signed = dist_to_trace(sar, fault, signed=True)
-        sar.vel[signed > 0 if keep_side == "west" else signed < 0] = np.nan
-    km_pp = lat_to_km_pp(sar.lat)
-    sar.vel[(km_pp < km_window[0]) | (km_pp > km_window[1])] = np.nan
-    sar.checkNaNs()
-    return sar
-
-
 def align_track(sar):
     """Far-field plane alignment: slip section +/- align_mask_km masked,
-    1,x,y fit to the rest, removed from the whole track in place."""
+    1,x,y fit to the rest, removed from the whole track in place.
+    [07_slip_model_tests, verbatim]"""
     km_pp = lat_to_km_pp(sar.lat)
     far = (km_pp < creep_lo_km - align_mask_km) | (km_pp > creep_hi_km + align_mask_km)
     plane = np.c_[np.ones(sar.x.size), sar.x, sar.y]
@@ -300,7 +305,31 @@ def align_track(sar):
     sar.vel[:] = sar.vel - np.dot(plane, plane_coef)
     return plane_coef
 
+fp = np.load(os.path.join(field_dir, "fp_maps.npz"))
+strike_bearing = float(fp["strike"])
+look = np.array([np.sin(np.deg2rad(strike_bearing)), np.cos(np.deg2rad(strike_bearing)), 0.0])
+ok = np.isfinite(fp["fp_event"])
+sar = insar("fault-parallel", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
+sar.read_from_binary(fp["fp_event"][ok], fp["lon"][ok], fp["lat"][ok], err=np.ones(ok.sum()),
+                     los=np.tile(look, (ok.sum(), 1)), remove_nan=True, remove_zeros=False)
+trace_dist = dist_to_trace(sar, fault)
+sar.vel[(trace_dist > swath_km) | (trace_dist < exclude_km)] = np.nan
+km_pp = lat_to_km_pp(sar.lat)
+sar.vel[(km_pp < km_window[0]) | (km_pp > km_window[1])] = np.nan
+sar.checkNaNs()
+plane_coef = align_track(sar)
+print(f"fault-parallel field at strike {strike_bearing:.2f} deg: {sar.vel.size} pixels; "
+      f"levelling plane {plane_coef[0]:+.2f} mm, {plane_coef[1]:+.3f}, {plane_coef[2]:+.3f} mm/km")
 
+# %% [markdown]
+# ## [4] Noise model and quadtree
+#
+# Far-field semivariogram: nugget + short- and long-range exponentials.
+# Distance-based quadtree (`csi.imagedownsampling`) from 2 km blocks to one
+# 30 m pixel at the trace; the full data covariance of the samples.
+
+# %%
+## [4]
 def covariance(sar, fault, npairs=300000, seed=0):
     """[m02, verbatim apart from @ -> np.dot]"""
     from scipy.optimize import curve_fit
@@ -337,8 +366,7 @@ def downsample(sar, fault, start_km, min_km):
 
 
 def build_cd(ds, cov_p, asc_scale=1.0):
-    """Two exponentials + nugget/blocksize; asc_scale**2 on the whole
-    matrix (1 = the equal-weights baseline). [m02 + optional inflation]"""
+    """Two exponentials + nugget/blocksize. [m02; 07_slip_model_tests, verbatim]"""
     nug2, s1, l1, s2, l2 = cov_p
     dx = ds.x[:, None] - ds.x[None, :]; dy = ds.y[:, None] - ds.y[None, :]
     dist = np.sqrt(dx * dx + dy * dy)
@@ -349,37 +377,38 @@ def build_cd(ds, cov_p, asc_scale=1.0):
     ds.Cd = cd * asc_scale ** 2
     return ds
 
-# %%
-## [6]
-geometry_fault = wrap_fault(*unrolled["plateau100"], 90, "geometry")
-full_tracks, full_tracks_raw, cov_models, cov_models_raw, align_coefs = {}, {}, {}, {}, {}
-for track in tracks:
-    field_file = os.path.join(field_dir, f"csi_mean_event_{track}.npz")
-    raw = load_track(track, field_file, geometry_fault)
-    aligned = copy.deepcopy(raw)
-    align_coefs[track] = align_track(aligned)
-    full_tracks_raw[track] = raw
-    full_tracks[track] = aligned
-    cov_models_raw[track] = covariance(raw, geometry_fault)
-    cov_models[track] = covariance(aligned, geometry_fault)
-    c = align_coefs[track]
-    print(f"[{track}] {aligned.vel.size} px; alignment plane {c[0]:+.2f} mm, "
-          f"{c[1]:+.3f}, {c[2]:+.3f} mm/km")
+cov_p = covariance(sar, fault)
+samples = downsample(sar, fault, start_block_km, min_block_km)
+build_cd(samples, cov_p)
+noise_model = pd.Series(dict(nugget_mm=np.sqrt(cov_p[0]), short_mm=np.sqrt(cov_p[1]),
+                             short_km=cov_p[2], long_mm=np.sqrt(cov_p[3]), long_km=cov_p[4]))
+print(noise_model.round(3).to_string())
+print(f"quadtree: {samples.vel.size} samples")
+
+# %% [markdown]
+# ## [5] The surface constraint
+#
+# The five-event mean surface slip at every fault crossing (04), as a
+# running median every 0.2 km (+/- 0.2 km), error 1.4826 MAD / sqrt(n)
+# floored at 0.5 mm. CSI's default link ties each surface point to its
+# single nearest triangle (`Fault.surfaceGFs`), which reaches ~7% of the
+# creep-section surface row; here the profile is interpolated to the centre
+# of every surface triangle, errors scaled by sqrt(triangles per 0.2 km) so
+# the total weight is unchanged.
 
 # %%
-## [6b]
-# the surface constraint (port of csi_io.load_surface_slip on 04's product)
-crossings_all = pd.read_csv(os.path.join(common_paths["out_dir"],
-                                         "04_event_detection",
-                                         "event_fraction_by_crossing.csv"))
-event_cols = ["amp_2017.099", "amp_2019.186", "amp_2021.107",
-              "amp_2023.080", "amp_2024.984"]
+## [5]
+crossings_all = pd.read_csv(os.path.join(events_dir, "event_fraction_by_crossing.csv"))
+creep_events = pd.read_csv(os.path.join(events_dir, "creep_events.csv"))
+tulepond_onsets = creep_events[creep_events.segment == "TULEPOND"].onset_yr.values
+event_cols = [f"amp_{onset:.3f}" for onset in tulepond_onsets]    # 04's column naming
+print(f"mean event of {len(event_cols)} Tule Pond events: {', '.join(event_cols)}")
 crossings_all["mean_event_mm"] = crossings_all[event_cols].mean(axis=1)
 trace_south_north = trace_lonlat[np.argsort(trace_lonlat[:, 1])]
 
 def make_surface(floor_mm):
     """csi.surfaceslip: running median of the 5-event crossing means,
-    error = 1.4826 MAD / sqrt(n) floored at floor_mm."""
+    error = 1.4826 MAD / sqrt(n) floored at floor_mm. [07_slip_model_tests, verbatim]"""
     rows = []
     for k_centre in np.arange(np.ceil(crossings_all.km.min()),
                               crossings_all.km.max(), surf_step_km):
@@ -403,10 +432,8 @@ def make_surface(floor_mm):
 
 def make_surface_interp(fault, floor_mm):
     """The running-median profile interpolated to the centre of EVERY
-    surface triangle of this fault; errors x sqrt(triangles per step) so
-    the total weight equals the original points (departure from CSI's
-    single-nearest-triangle link, Fault.surfaceGFs)."""
-    base = get_surface(floor_mm)
+    surface triangle of this fault. [07_slip_model_tests, verbatim]"""
+    base = make_surface(floor_mm)
     base_km = lat_to_km_pp(base.lat)
     order = np.argsort(base_km)
     surf = np.where([0 in p[:, 2] for p in fault.patch])[0]
@@ -424,46 +451,28 @@ def make_surface_interp(fault, floor_mm):
     ss.buildCd()
     return ss
 
-surface_cache = {}
-def get_surface(floor_mm):
-    if floor_mm not in surface_cache:
-        surface_cache[floor_mm] = make_surface(floor_mm)
-    return surface_cache[floor_mm]
-print(f"surface constraint: {get_surface(surf_floor_mm).vel.size} points, "
-      f"floor {surf_floor_mm:g} mm")
-
-# %%
-## [7]
-downsampled = {}
-def get_downsampled(track, mesh_name, dip, min_km=min_block_km, aligned=True,
-                    start_km=start_block_km, asc_scale=1.0):
-    """Quadtree samples for one geometry/data version, cached in-session;
-    Cd rebuilt on every call so options never stick to the cache."""
-    key = (track, mesh_name, dip, min_km, aligned, start_km)
-    if key not in downsampled:
-        fault = wrap_fault(*unrolled[mesh_name], dip, f"{mesh_name}_d{dip}")
-        source = full_tracks[track] if aligned else full_tracks_raw[track]
-        downsampled[key] = downsample(source, fault, start_km, min_km)
-    ds = downsampled[key]
-    cov_p = cov_models[track] if aligned else cov_models_raw[track]
-    build_cd(ds, cov_p, asc_scale if track == "ascending" else 1.0)
-    return ds
+crossing_profile = make_surface(surf_floor_mm)
+crossing_km = lat_to_km_pp(crossing_profile.lat)
+crossing_median = float(np.median(crossing_profile.vel[(crossing_km >= creep_lo_km)
+                                                       & (crossing_km <= creep_hi_km)]))
+print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-section "
+      f"median {crossing_median:.2f} mm")
 
 # %% [markdown]
-# ## Section 3 -- the inversion machinery
+# ## [6] The inversion
 #
-# Meade GFs (right-lateral positive), per-dataset ramp, buildCmXY prior,
-# NNLS (or GLS when the rake is freed). [m02, verbatim apart from
-# @ -> np.dot and the surface-constraint dataset]
+# Meade triangular dislocations (right-lateral positive) for the samples;
+# for the surface data the Green's function is 1 on the triangle's own
+# slip. Per-dataset constant (`csi.transformation`), exponential prior
+# (`buildCmXY`), the top tie (every cell shallower than 0.2 km equal to the
+# shallowest cell of its 0.1 km along-strike column; after Jolivet et al.
+# 2023, who tie 0-1 km), NNLS (`multisourcesolve`).
+# [07_slip_model_tests, verbatim]
 
 # %%
-## [8]
+## [6]
 def tie_rows(fault, n_params, tie_depth_km, tie_bin_km=0.1, tie_err_mm=0.01):
-    """Equality constraints tying slip uniform from the surface to
-    tie_depth_km (after Jolivet et al. 2023, who tie 0-1 km): cells whose
-    centroid is shallower than tie_depth_km, grouped in along-strike bins of
-    tie_bin_km, each equal to its bin's shallowest cell. Rows of
-    [cell - reference] = 0 with a tiny error (near-hard constraint)."""
+    """Rows of [cell - reference] = 0 with a tiny error (near-hard constraint)."""
     nodes, faces, _ = fault.mesh_sz
     centroid = nodes[faces].mean(1)
     shallow = np.nonzero(centroid[:, 1] < tie_depth_km)[0]
@@ -526,494 +535,520 @@ def invert(fault, insar_datas, sigma, lam=lam_xz, prior="xy", slipdir="s",
     return solver
 
 
-def patch_table(fault):
-    nodes, faces, _ = fault.mesh_sz
-    centres_sz = nodes[faces].mean(1)
-    centres_ll = np.array([pll.mean(0) for pll in fault.patchll])
-    return pd.DataFrame(dict(
-        lon=centres_ll[:, 0], lat=centres_ll[:, 1],
-        s_km=centres_sz[:, 0], z_c=centres_sz[:, 1],
-        z_top=nodes[faces][:, :, 1].min(1), z_bot=nodes[faces][:, :, 1].max(1),
-        km_pp=lat_to_km_pp(centres_ll[:, 1]),
-        slip_mm=fault.slip[:, 0]))
+# %% [markdown]
+# ## [7] The suite machinery: samples per geometry, one case, one L-curve
+#
+# `get_samples` returns a fresh copy of the quadtree samples for a mesh, dip,
+# quadtree floor and field version (levelled or not), with its covariance
+# rebuilt; the quadtree is computed once per geometry. `run_case` builds a
+# fresh fault and inverts once; `model_numbers` gives the numbers every row
+# carries. `lcurve` runs one case per sigma and finds the corner exactly as
+# `07_slip_model` [8] does.
+
+# %%
+## [7]
+def load_fp_field(levelled=True):
+    """Cell [3]'s fault-parallel field, levelled (the baseline) or not."""
+    field = insar("fault-parallel", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
+    field.read_from_binary(fp["fp_event"][ok], fp["lon"][ok], fp["lat"][ok], err=np.ones(ok.sum()),
+                           los=np.tile(look, (ok.sum(), 1)), remove_nan=True, remove_zeros=False)
+    dist = dist_to_trace(field, fault)
+    field.vel[(dist > swath_km) | (dist < exclude_km)] = np.nan
+    field_km = lat_to_km_pp(field.lat)
+    field.vel[(field_km < km_window[0]) | (field_km > km_window[1])] = np.nan
+    field.checkNaNs()
+    if levelled:
+        align_track(field)
+    return field
+
+fields = {True: load_fp_field(levelled=True), False: load_fp_field(levelled=False)}
+assert np.array_equal(fields[True].vel, sar.vel), "load_fp_field does not reproduce cell [3]"
+cov_models = {True: cov_p, False: covariance(fields[False], fault)}
+unrolled = {name: build_unrolled(*params) for name, params in mesh_variants.items()}
+for name, (nodes_, faces_) in unrolled.items():
+    print(f"mesh {name}: {len(faces_)} triangles")
+
+sample_cache = {}
+def get_samples(mesh_name="smooth12", dip=dip_deg, min_km=min_block_km,
+                start_km=start_block_km, levelled=True):
+    key = (mesh_name, dip, min_km, start_km, levelled)
+    if key not in sample_cache:
+        geometry = wrap_fault(*unrolled[mesh_name], dip, "samples")
+        sample_cache[key] = downsample(fields[levelled], geometry, start_km, min_km)
+    ds = copy.deepcopy(sample_cache[key])
+    build_cd(ds, cov_models[levelled])
+    return ds
+
+assert np.array_equal(get_samples().vel, samples.vel), "get_samples does not reproduce cell [4]"
 
 
-def metrics(fault, insar_datas, surface=None):
-    """Per-track misfit, near-field rms, surface-constraint fit, peak,
-    moment, Mw, depth profile (InSAR datasets only for the track stats)."""
-    row = {}
-    chi2_total = 0.0; rss = 0.0; n_total = 0
-    for ds in insar_datas:
-        track_key = ds.name.split()[-1][:3]
-        resid = ds.vel - ds.synth
-        chi2 = float(np.dot(resid, np.linalg.solve(ds.Cd, resid)))
-        row[f"chi2_{track_key}"] = chi2
-        row[f"rms_{track_key}"] = float(np.sqrt(np.mean(resid ** 2)))
-        near = dist_to_trace(ds, fault) <= near_field_km
-        row[f"rms_near_{track_key}"] = (float(np.sqrt(np.mean(resid[near] ** 2)))
-                                        if near.any() else np.nan)
-        row[f"n_{track_key}"] = int(resid.size)
-        chi2_total += chi2; rss += float(np.sum(resid ** 2)); n_total += resid.size
-    row["chi2"] = chi2_total
-    row["rms_mm"] = float(np.sqrt(rss / n_total))
-    row["n_samples"] = n_total
-    row["surf_rms_mm"] = (float(np.sqrt(np.mean((surface.vel - surface.synth) ** 2)))
-                          if surface is not None else np.nan)
-    table = patch_table(fault)
-    moment = 0.0
-    for patch, slip in zip(fault.patch, table.slip_mm.values):
-        area_km2 = 0.5 * np.linalg.norm(np.cross(patch[1] - patch[0], patch[2] - patch[0]))
-        moment += shear_modulus * area_km2 * 1e6 * slip * 1e-3
-    row["M0"] = moment
-    row["Mw"] = (2.0 / 3.0) * (np.log10(max(moment, 1.0)) - 9.1)
-    row["peak_slip_mm"] = float(table.slip_mm.max())
-    row["dipslip_rms_mm"] = (float(np.sqrt(np.mean(fault.slip[:, 1] ** 2)))
-                             if fault.slip.shape[1] > 1 and np.any(fault.slip[:, 1]) else 0.0)
-    peak_s = table.loc[table.slip_mm.idxmax(), "s_km"]
-    near_peak = table[(table.s_km - peak_s).abs() < 0.3]
-    depth_profile = near_peak.groupby(np.round(0.5 * (near_peak.z_top + near_peak.z_bot), 2)).slip_mm.max()
-    row["depth_profile"] = depth_profile.to_dict()
-    return row, table
+def model_numbers(flt, ds, surface):
+    """Misfit, surface fit, peak, potency and Mw of one solved fault."""
+    nodes_, faces_, _ = flt.mesh_sz
+    tri = nodes_[faces_]
+    area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in flt.patch])
+    slip = flt.slip[:, 0]
+    z_top = tri[:, :, 1].min(1)
+    z_c = tri[:, :, 1].mean(1)
+    cell_km = lat_to_km_pp(np.array([pll.mean(0) for pll in flt.patchll])[:, 1])
+    surface_cells = (z_top <= 1e-6) & (cell_km >= creep_lo_km) & (cell_km <= creep_hi_km)
+    resid = ds.vel - ds.synth
+    near = dist_to_trace(ds, flt) <= near_field_km
+    potency = float(np.sum(area_km2 * 1e6 * slip * 1e-3))
+    row = dict(chi2=float(np.dot(resid, np.linalg.solve(ds.Cd, resid))),
+               rms_mm=float(np.sqrt(np.mean(resid ** 2))),
+               rms_near_mm=float(np.sqrt(np.mean(resid[near] ** 2))),
+               chi2_surf=np.nan, surf_rms_mm=np.nan,
+               surface_pct=float(100 * np.median(slip[surface_cells]) / crossing_median),
+               peak_slip_mm=float(slip.max()), peak_depth_m=float(1000 * z_c[np.argmax(slip)]),
+               potency_m3=potency, Mw=(2.0 / 3.0) * (np.log10(shear_modulus * max(potency, 1e-9)) - 9.1),
+               n_samples=int(ds.vel.size), n_cells=len(flt.patch))
+    if surface is not None:
+        surf_resid = surface.vel - surface.synth
+        row["chi2_surf"] = float(np.dot(surf_resid, np.linalg.solve(surface.Cd, surf_resid)))
+        row["surf_rms_mm"] = float(np.sqrt(np.mean(surf_resid ** 2)))
+    return row
+
+
+def slip_table(flt):
+    nodes_, faces_, _ = flt.mesh_sz
+    tri = nodes_[faces_]
+    return pd.DataFrame(dict(s_km=tri[:, :, 0].mean(1), z_c=tri[:, :, 1].mean(1),
+                             z_top=tri[:, :, 1].min(1), z_bot=tri[:, :, 1].max(1),
+                             km_pp=lat_to_km_pp(np.array([pll.mean(0) for pll in flt.patchll])[:, 1]),
+                             slip_mm=flt.slip[:, 0]))
+
+
+suite_rows = []
+def run_case(family, label, mesh_name="smooth12", dip=dip_deg, sigma=sigma_fixed, lam=lam_xz,
+             tie=tie_depth_km, use_surface=True, floor=surf_floor_mm, min_km=min_block_km,
+             start_km=start_block_km, levelled=True, ramp_spec="1", record=True):
+    flt = wrap_fault(*unrolled[mesh_name], dip, f"{family} {label}")
+    ds = get_samples(mesh_name, dip, min_km, start_km, levelled)
+    surface = make_surface_interp(flt, floor) if use_surface else None
+    invert(flt, [ds], sigma, lam=lam, ramp_spec=ramp_spec, surface=surface,
+           tie_depth_km=tie if tie > 0 else None)
+    row = model_numbers(flt, ds, surface)
+    row.update(family=family, label=label, mesh=mesh_name, dip=dip, sigma=sigma, lam_s=lam[0],
+               lam_z=lam[1], tie_km=tie, use_surface=use_surface, floor=floor if use_surface else np.nan,
+               min_block_km=min_km, start_block_km=start_km, levelled=levelled, ramp=ramp_spec)
+    if record:
+        suite_rows.append(row)
+    print(f"[{family}] {label}: rms {row['rms_mm']:.3f} mm, surface {row['surface_pct']:.0f}%, "
+          f"peak {row['peak_slip_mm']:.1f} mm at {row['peak_depth_m']:.0f} m, Mw {row['Mw']:.3f}")
+    return row, flt, ds, surface
+
+
+def save_suite():
+    """Written after every family, so a partial run keeps what it did."""
+    pd.DataFrame(suite_rows).to_csv(os.path.join(out_dir, "final_suite.csv"), index=False)
+
+
+lcurve_rows = []
+def lcurve(label, mesh_name="smooth12", lam=lam_xz, sigmas=sigma_grid_lc):
+    """One case per sigma; the corner and the grid sigma the rule picks
+    (07_slip_model [8], verbatim). Returns the L-curve table, the corner,
+    the pick, and the row at the pick."""
+    rows = []
+    for sigma in sigmas:
+        row, flt, ds, surface = run_case("lcurve", f"{label} sigma{sigma:g}", mesh_name=mesh_name,
+                                         sigma=sigma, lam=lam, record=False)
+        slip_vec = flt.slip[:, 0]
+        row["prior_norm"] = float(np.sqrt(np.dot(slip_vec, np.linalg.solve(flt.Cm / sigma ** 2, slip_vec))))
+        row["chi2_total"] = row["chi2"] + row["chi2_surf"]
+        row["curve"] = label
+        rows.append(row)
+    table = pd.DataFrame(rows)
+    log_sigma = np.log10(table.sigma.values)
+    spline_misfit = CubicSpline(log_sigma, np.log10(np.sqrt(table.chi2_total.values)))
+    spline_rough = CubicSpline(log_sigma, np.log10(table.prior_norm.values))
+    fine_log_sigma = np.linspace(log_sigma[1], log_sigma[-2], 400)
+    d_misfit, dd_misfit = spline_misfit(fine_log_sigma, 1), spline_misfit(fine_log_sigma, 2)
+    d_rough, dd_rough = spline_rough(fine_log_sigma, 1), spline_rough(fine_log_sigma, 2)
+    curvature = np.abs(d_misfit * dd_rough - d_rough * dd_misfit) / (d_misfit ** 2 + d_rough ** 2) ** 1.5
+    corner = float(10 ** fine_log_sigma[np.argmax(curvature)])
+    pick = float(table.sigma[table.sigma >= corner].min())
+    table["corner"], table["pick"] = corner, pick
+    lcurve_rows.extend(table.to_dict("records"))
+    pd.DataFrame(lcurve_rows).to_csv(os.path.join(out_dir, "final_lcurves.csv"), index=False)
+    print(f"L-curve {label}: corner sigma {corner:.1f}, rule picks {pick:g}")
+    return table, corner, pick, table[table.sigma == pick].iloc[0].to_dict()
 
 # %% [markdown]
-# ## Section 4 -- the suite
+# ## [8] Family 1: the top tie at sigma 12
 #
-# Baseline = the selected-model configuration: aligned, constant ramp,
-# surface constraint (floor 0.5 mm), equal weights, 30 m quadtree floor.
-# Every case builds its fault and GFs FRESH (nothing persists between
-# cases except the quadtree samples, which are re-Cd'd and deep-copied).
+# Slip uniform from the surface to the tie depth in every 0.1 km column (the
+# baseline is 0.2 km, chosen on 2026-09-28 at sigma 24 on the 0.7 field). The
+# slip table of each is kept for the depth profiles.
+
+# %%
+## [8]
+tie_tables = {}
+for tie in tie_depths:
+    label = f"tie{tie * 1000:.0f}m"
+    row, flt, _, _ = run_case("tie", label, tie=tie)
+    tie_tables[tie] = slip_table(flt)
+    tie_tables[tie].to_csv(os.path.join(out_dir, f"final_tie_slip_{label}.csv"), index=False)
+save_suite()
+baseline_row = [r for r in suite_rows if r["family"] == "tie" and r["tie_km"] == tie_depth_km][0]
+
+# %% [markdown]
+# ## [9] Family 2: the fixed-depth scan on the fault-parallel field
+#
+# Uniform slip from the surface to D over the scan window (tapered over
+# 0.5 km at each end), its amplitude and a constant solved by whitened least
+# squares with the full data covariance: chi2(D), no prior, no sigma. The
+# bracket is delta chi2 <= 4. Mw per D at 30 GPa from the fitted amplitude.
+# Run on the model mesh (`smooth12`), the earlier scan mesh (`plateau100`),
+# a 5 km deep version of it (so the mesh bottom does not cap the bracket) and
+# the unlevelled field.
 
 # %%
 ## [9]
-suite_rows = []
-def run_case(family, label, mesh_name, dip, sigma, lam=lam_xz,
-             min_km=min_block_km, start_km=start_block_km, aligned=True,
-             use_surface=True, surf_floor=surf_floor_mm, asc_scale=1.0,
-             prior="xy", ramp_spec="1", slipdir="s", keep_side=None):
-    fault = wrap_fault(*unrolled[mesh_name], dip, f"{mesh_name}_d{dip}_{label}")
-    insar_datas = []
-    for track in tracks:
-        if keep_side is not None and track == "ascending":
-            field_file = os.path.join(field_dir, f"csi_mean_event_{track}.npz")
-            full = load_track(track, field_file, fault, keep_side=keep_side)
-            if aligned:
-                align_track(full)
-            ds = downsample(full, fault, start_km, min_km)
-            build_cd(ds, cov_models[track] if aligned else cov_models_raw[track],
-                     asc_scale)
-        else:
-            ds = get_downsampled(track, mesh_name, dip, min_km, aligned,
-                                 start_km, asc_scale)
-        insar_datas.append(copy.deepcopy(ds))         # invert mutates state
-    surface = make_surface_interp(fault, surf_floor) if use_surface else None
-    invert(fault, insar_datas, sigma, lam, prior, slipdir, ramp_spec, surface)
-    row, table = metrics(fault, insar_datas, surface)
-    row.update(family=family, label=label, mesh=mesh_name, dip=dip, sigma=sigma,
-               lam_s=lam[0], lam_z=lam[1], min_block_km=min_km,
-               start_block_km=start_km, aligned=aligned, use_surface=use_surface,
-               surf_floor=surf_floor if use_surface else np.nan,
-               asc_scale=asc_scale, prior=prior, slipdir=slipdir,
-               n_patches=len(fault.patch))
-    suite_rows.append(row)
-    print(f"[{family}] {label}: chi2 {row['chi2']:.0f}, rms {row['rms_mm']:.2f} mm, "
-          f"near des {row['rms_near_des']:.2f} mm, surf {row['surf_rms_mm']:.2f} mm, "
-          f"peak {row['peak_slip_mm']:.1f} mm, Mw {row['Mw']:.2f}")
-    return row, table, fault, insar_datas
+def depth_scan(mesh_name, tag, levelled=True, nodes_faces=None):
+    nodes_, faces_ = nodes_faces if nodes_faces is not None else unrolled[mesh_name]
+    flt = wrap_fault(nodes_, faces_, dip_deg, f"scan {tag}")
+    geometry_key = mesh_name if nodes_faces is None else tag
+    if nodes_faces is not None:
+        unrolled[tag] = nodes_faces
+    ds = get_samples(geometry_key, dip_deg, levelled=levelled)
+    flt.buildGFs(ds, vertical=True, slipdir="s", verbose=False)
+    gmat = -flt.G[ds.name]["strikeslip"]                       # right-lateral positive
+    table = slip_table(flt)
+    area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in flt.patch])
+    in_window = np.clip(np.minimum(table.km_pp - scan_km[0], scan_km[1] - table.km_pp) / scan_taper + 1, 0, 1).values
+    chol = np.linalg.cholesky(ds.Cd + 1e-9 * np.eye(ds.Cd.shape[0]))
+    data_w = np.linalg.solve(chol, ds.vel)
+    rows, predictions = [], {}
+    for depth_bottom in [d for d in scan_depths if d <= table.z_bot.max() + 1e-6]:
+        shape = in_window * (table.z_c.values < depth_bottom)
+        design = np.c_[np.dot(gmat, shape), np.ones(ds.vel.size)]
+        coef, *_ = np.linalg.lstsq(np.linalg.solve(chol, design), data_w, rcond=None)
+        resid_w = data_w - np.dot(np.linalg.solve(chol, design), coef)
+        potency = float(np.sum(area_km2 * 1e6 * shape * coef[0] * 1e-3))
+        rows.append(dict(D_km=depth_bottom, slip_mm=coef[0], constant_mm=coef[1],
+                         chi2=float(np.dot(resid_w, resid_w)), potency_m3=potency,
+                         Mw=(2.0 / 3.0) * (np.log10(shear_modulus * max(potency, 1e-9)) - 9.1)))
+        predictions[depth_bottom] = np.dot(design, coef)
+    scan = pd.DataFrame(rows)
+    scan["dchi2"] = scan.chi2 - scan.chi2.min()
+    scan.to_csv(os.path.join(out_dir, f"final_depth_scan_{tag}.csv"), index=False)
+    best, bracket = scan.loc[scan.chi2.idxmin()], scan[scan.dchi2 <= 4]
+    print(f"depth scan {tag}: best D {best.D_km:g} km ({best.slip_mm:.1f} mm, Mw {best.Mw:.2f}); "
+          f"delta chi2 <= 4: {bracket.D_km.min():g}-{bracket.D_km.max():g} km, "
+          f"Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f}")
+    return scan, predictions, ds, flt
+
+scans = {}
+scans["smooth12"], predictions, scan_samples, scan_fault = depth_scan("smooth12", "smooth12")
+scans["plateau100"], _, _, _ = depth_scan("plateau100", "plateau100")
+scans["plateau100_z5"], _, _, _ = depth_scan("plateau100", "plateau100_z5",
+                                              nodes_faces=build_unrolled(0.10, 0.5, 1.6, 1.5, z_max=5.0))
+scans["unlevelled"], _, _, _ = depth_scan("smooth12", "unlevelled", levelled=False)
+
+# %% [markdown]
+# ### The two ends of the bracket against the noise
+#
+# The fault-parallel displacement the shallowest and the deepest accepted
+# models predict at the samples (model mesh), their difference binned by
+# distance from the trace, against the noise model: the standard deviation
+# of one sample (nugget + both exponentials) and the rms difference between
+# two samples that far apart, sqrt(2 gamma(h)). Numbers only; delta chi2
+# above is the full-covariance version of the same question.
 
 # %%
 ## [10]
-# family 1: smoothing sigma WITH the surface constraint (the record axis);
-# the plateau rule then selects sigma for everything downstream
-for sigma in sigmas_scan:
-    run_case("sigma_surf", f"sigmaS{sigma:g}", "smooth12", 90, sigma)
-surf_family = pd.DataFrame([r for r in suite_rows if r["family"] == "sigma_surf"])
-plateau = surf_family[surf_family.rms_mm <= surf_family.rms_mm.min() + 0.005]
-sigma_sel = float(plateau.sigma.min())
-print(f"selected sigma (constrained plateau onset): {sigma_sel:g}")
+record_scan = scans["smooth12"]
+bracket = record_scan[record_scan.dchi2 <= 4]
+d_shallow, d_deep = float(bracket.D_km.min()), float(bracket.D_km.max())
+model_diff = predictions[d_deep] - predictions[d_shallow]
+sample_dist = dist_to_trace(scan_samples, scan_fault)
+nug2, s1, l1, s2, l2 = cov_p
+gamma = lambda h: nug2 + s1 * (1 - np.exp(-h / l1)) + s2 * (1 - np.exp(-h / l2))
+noise_rows = []
+for lo, hi in zip(noise_bins_km[:-1], noise_bins_km[1:]):
+    in_bin = (sample_dist >= lo) & (sample_dist < hi)
+    h_mid = 0.5 * (lo + hi)
+    noise_rows.append(dict(dist_lo_km=lo, dist_hi_km=hi, n_samples=int(in_bin.sum()),
+                           median_abs_diff_mm=float(np.median(np.abs(model_diff[in_bin]))) if in_bin.any() else np.nan,
+                           noise_sd_mm=float(np.sqrt(nug2 + s1 + s2)),
+                           noise_pair_rms_mm=float(np.sqrt(2 * gamma(h_mid)))))
+depth_vs_noise = pd.DataFrame(noise_rows)
+depth_vs_noise.to_csv(os.path.join(out_dir, "final_depth_vs_noise.csv"), index=False)
+print(f"model difference, D {d_deep:g} km minus D {d_shallow:g} km (fault-parallel):")
+print(depth_vs_noise.round(3).to_string(index=False))
+
+# %% [markdown]
+# ## [11] Family 3: synthetic recovery through this pipeline
+#
+# 10 mm of uniform slip from the surface to D over the scan window, forward
+# through the model mesh to the samples (noise drawn from the full data
+# covariance) and to the surface constraint (noise from its errors), then
+# inverted exactly as the baseline (sigma 12, tie 0.2 km, surface constraint).
 
 # %%
 ## [11]
-# family 2: sigma WITHOUT the constraint -- the Mw-ramp demonstration
-for sigma in (8, 32, 64):
-    run_case("sigma", f"sigma{sigma:g}", "smooth12", 90, sigma, use_surface=False)
+recovery_rng = np.random.default_rng(7)
+recovery_rows, recovery_profiles = [], []
+for depth_bottom in recovery_depths:
+    rec_fault = wrap_fault(*unrolled["smooth12"], dip_deg, f"recovery {depth_bottom:g}")
+    rec_table = slip_table(rec_fault)
+    in_window = np.clip(np.minimum(rec_table.km_pp - scan_km[0], scan_km[1] - rec_table.km_pp)
+                        / scan_taper + 1, 0, 1).values
+    slip_input = 10.0 * in_window * (rec_table.z_c.values < depth_bottom)
+    rec_ds = get_samples()
+    rec_fault.buildGFs(rec_ds, vertical=True, slipdir="s", verbose=False)
+    chol = np.linalg.cholesky(rec_ds.Cd + 1e-9 * np.eye(rec_ds.Cd.shape[0]))
+    rec_ds.vel[:] = (np.dot(-rec_fault.G[rec_ds.name]["strikeslip"], slip_input)
+                     + np.dot(chol, recovery_rng.standard_normal(rec_ds.vel.size)))
+    rec_surface = make_surface_interp(rec_fault, surf_floor_mm)
+    rec_fault.buildGFs(rec_surface, slipdir="s", verbose=False)
+    rec_surface.vel[:] = (np.dot(rec_fault.G[rec_surface.name]["strikeslip"], slip_input)
+                          + np.sqrt(np.diag(rec_surface.Cd)) * recovery_rng.standard_normal(rec_surface.vel.size))
+    invert(rec_fault, [rec_ds], sigma_fixed, surface=rec_surface, tie_depth_km=tie_depth_km)
+    area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in rec_fault.patch])
+    input_potency = float(np.sum(area_km2 * 1e6 * slip_input * 1e-3))
+    row = model_numbers(rec_fault, rec_ds, rec_surface)
+    recovery_rows.append(dict(D_km=depth_bottom, moment_recovery=row["potency_m3"] / input_potency,
+                              mw_input=(2.0 / 3.0) * (np.log10(shear_modulus * input_potency) - 9.1),
+                              mw_recovered=row["Mw"], peak_recovered_mm=row["peak_slip_mm"],
+                              peak_depth_m=row["peak_depth_m"], surface_pct=row["surface_pct"]))
+    out_table = slip_table(rec_fault)
+    out_table["input_mm"], out_table["D_km"] = slip_input, depth_bottom
+    recovery_profiles.append(out_table)
+    print(f"input 10 mm to {depth_bottom:g} km: peak {row['peak_slip_mm']:.1f} mm at {row['peak_depth_m']:.0f} m, "
+          f"moment recovered {row['potency_m3'] / input_potency:.2f}")
+recovery = pd.DataFrame(recovery_rows)
+recovery.to_csv(os.path.join(out_dir, "final_recovery.csv"), index=False)
+pd.concat(recovery_profiles).to_csv(os.path.join(out_dir, "final_recovery_profiles.csv"), index=False)
+
+# %% [markdown]
+# ## [12] Families 4 and 5: isolation rows and sampling
+#
+# Each switches one baseline choice: no surface constraint; the unlevelled
+# field with a plane (1, x, y) solved per dataset in its place; surface error
+# floors 0.25 and 1.0 mm; quadtree floors 40 and 60 m; a uniform 100 m grid.
 
 # %%
 ## [12]
-# family 3: dip, 60 to 95 east (95 = 85 west: does the optimum close?)
-for dip in dips_deg:
-    run_case("dip", f"dip{dip}", "plateau100", dip, sigma_sel)
+run_case("isolation", "insar_only", use_surface=False)
+run_case("isolation", "unlevelled_plane", levelled=False, ramp_spec="1,x,y")
+for floor in surf_floors:
+    run_case("isolation", f"floor{floor:g}", floor=floor)
+run_case("sampling", "minblock40", min_km=0.04)
+run_case("sampling", "minblock60", min_km=0.06)
+run_case("sampling", "uniform100", min_km=0.1, start_km=0.1)
+save_suite()
+
+# %% [markdown]
+# ## [13] Family 6: dip
+#
+# The mesh hinged east about the fixed surface trace, 60 to 105 degrees
+# (105 = 75 W), sigma 12. The quadtree follows each geometry.
 
 # %%
 ## [13]
-# family 4: mesh -- surface cells 100/50/30 m, plateau vs smooth growth,
-# each at (approximately) matched-misfit sigma; smooth12 covered by family 1
-for mesh_name, sig_list in mesh_sigma.items():
-    if mesh_name == "smooth12":
-        continue
-    for sigma in sig_list:
-        run_case("mesh", f"{mesh_name}_s{sigma:g}", mesh_name, 90, sigma)
+for dip in dips_deg:
+    run_case("dip", f"dip{dip}", dip=dip)
+save_suite()
+
+# %% [markdown]
+# ## [14] Family 7: correlation lengths, each at its own L-curve corner
+#
+# In CSI (`Fault.buildCmXY`) Cm = sigma^2 (lam0^2 / (lamx lamz))
+# exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND enters the
+# amplitude, so sigma 12 is the corner only for (0.3, 0.05) km. Each pair
+# gets its own L-curve; the suite row is the model at its own pick (and the
+# baseline pair's curve is the check that the corner is still near 12).
 
 # %%
 ## [14]
-# family 5: prior correlation lengths (never swept before)
-for lam_s, lam_z in lam_grid:
-    run_case("lam", f"lam{lam_s:g}x{lam_z:g}", "smooth12", 90, sigma_sel,
-             lam=(lam_s, lam_z))
+lambda_corners = []
+for lam in lam_grid:
+    label = f"lam{lam[0]:g}x{lam[1]:g}"
+    _, corner, pick, pick_row = lcurve(label, lam=lam)
+    pick_row.update(family="lam", label=label)
+    suite_rows.append(pick_row)
+    lambda_corners.append(dict(lam_s=lam[0], lam_z=lam[1], corner=corner, pick=pick, Mw=pick_row["Mw"]))
+save_suite()
+lambda_corners = pd.DataFrame(lambda_corners)
+print(lambda_corners.round(3).to_string(index=False))
+
+# %% [markdown]
+# ## [15] Family 8: mesh, each at its own L-curve corner
+#
+# Surface cells 100, 50 and 30 m with a plateau, the smooth x1.2 growth of
+# the baseline (its curve is in [14]), and a plateau of 100 m cells to 1.5 km.
+# The prior is per cell, so each mesh gets its own L-curve.
 
 # %%
 ## [15]
-# family 6: sampling -- 40 and 60 m floors, and a uniform 100 m grid
-run_case("sampling", "minblock40", "plateau100", 90, sigma_sel, min_km=0.04)
-run_case("sampling", "minblock60", "plateau100", 90, sigma_sel, min_km=0.06)
-run_case("sampling", "uniform100", "plateau100", 90, sigma_sel,
-         min_km=0.1, start_km=0.1)
+mesh_corners = []
+for mesh_name in mesh_variants:
+    if mesh_name == "smooth12":
+        continue
+    _, corner, pick, pick_row = lcurve(mesh_name, mesh_name=mesh_name)
+    pick_row.update(family="mesh", label=mesh_name)
+    suite_rows.append(pick_row)
+    mesh_corners.append(dict(mesh=mesh_name, corner=corner, pick=pick, Mw=pick_row["Mw"]))
+save_suite()
+mesh_corners = pd.DataFrame(mesh_corners)
+print(mesh_corners.round(3).to_string(index=False))
+
+# %% [markdown]
+# ### CHECK -- repeatable, and the same model as 07_slip_model
+#
+# The baseline case run again must reproduce the tie family's 0.2 km row
+# exactly; and where `07_slip_model` has run on the same inputs, its slip
+# table must equal this notebook's baseline to round-off (same machinery,
+# same data, same sigma).
 
 # %%
 ## [16]
-# family 7: isolation rows -- each selected-model choice switched off alone
-run_case("isolation", "insar_only", "smooth12", 90, sigma_sel, use_surface=False)
-run_case("isolation", "unaligned", "smooth12", 90, sigma_sel, aligned=False,
-         ramp_spec="1,x,y")
-run_case("isolation", "asc_x2", "smooth12", 90, sigma_sel, asc_scale=2.0)
-for floor in surf_floors:
-    run_case("isolation", f"floor{floor:g}", "smooth12", 90, sigma_sel,
-             surf_floor=floor)
+repeat_row, repeat_fault, _, _ = run_case("gate", "baseline_repeat")
+assert abs(repeat_row["chi2"] - baseline_row["chi2"]) < 1e-6 and abs(repeat_row["Mw"] - baseline_row["Mw"]) < 1e-9, \
+    "the baseline configuration did not reproduce exactly"
+print("PASS: the baseline configuration reproduces exactly")
+baseline_file = os.path.join(baseline_dir, "slip_homogeneous_baseline.csv")
+if os.path.exists(baseline_file):
+    baseline_slip = pd.read_csv(baseline_file).slip_mm.values
+    slip_diff = float(np.max(np.abs(baseline_slip - repeat_fault.slip[:, 0])))
+    print(f"max |slip - 07_slip_model baseline| = {slip_diff:.2e} mm")
+    assert slip_diff < 1e-6, "this notebook's baseline differs from 07_slip_model's"
+    print("PASS: same model as 07_slip_model")
+else:
+    print("SKIPPED: 07_slip_model has not written slip_homogeneous_baseline.csv yet")
+save_suite()
+
+# %% [markdown]
+# ## [17] The collated figure
+#
+# A Mw across the families (baseline dashed). B slip with depth at the peak
+# column for each tie depth. C the fixed-depth scans. D the synthetic
+# recovery. E the L-curves of the lambda pairs, corners marked. F dip: rms
+# and Mw.
 
 # %%
 ## [17]
-# family 8: prior form brackets and the free rake (slip table saved)
-run_case("prior", "diag", "plateau100", 90, sigma_sel, prior="diag",
-         use_surface=False)
-run_case("prior", "unregularized", "plateau100", 90, 1000, prior="diag",
-         use_surface=False)
-rake_row, rake_table, rake_fault, _ = run_case(
-    "rake", "rake_free", "plateau100", 90, sigma_sel, use_surface=False,
-    slipdir="sd")
-rake_table["dipslip_mm"] = rake_fault.slip[:, 1]
-rake_table.to_csv(os.path.join(out_dir, "rake_free_slip.csv"), index=False)
-
-# %%
-## [18]
-# determinism gate: an exact repeat of one configuration, then the csv
-gate_row, _, _, _ = run_case("gate", "dip90_repeat", "plateau100", 90, sigma_sel)
-suite = pd.DataFrame(suite_rows)
-first = suite[(suite.family == "dip") & (suite.label == "dip90")].iloc[0]
-assert abs(first.chi2 - gate_row["chi2"]) < 1e-6 and abs(first.Mw - gate_row["Mw"]) < 1e-9, \
-    "identical configuration did not reproduce exactly"
-print("PASS: repeated configuration reproduces exactly")
-suite_csv = os.path.join(out_dir, "suite_results.csv")
-suite.drop(columns=["depth_profile"]).to_csv(suite_csv, index=False)
-np.save(os.path.join(out_dir, "suite_depth_profiles.npy"),
-        np.array([r["depth_profile"] for r in suite_rows], dtype=object),
-        allow_pickle=True)
-print(f"wrote {suite_csv} ({len(suite)} configurations)")
-
-# %% [markdown]
-# ### CHECK -- machinery parity against the legacy m02 chain
-#
-# Legacy fields, unaligned, 1,x,y ramps, no surface data, 40 m floor,
-# sigma 16, lam (0.3, 0.05): must reproduce the m02 CLI numbers.
-
-# %%
-## [19]
-legacy_lcurve = pd.read_csv(os.path.join(common_paths["out_dir"], "modelling",
-                                         "inversion",
-                                         "lcurve_tri100m-500m_sw4_km52-67_lam0.3x0.05.csv"))
-legacy_row = legacy_lcurve[legacy_lcurve.sigma == 16].iloc[0]
-check_fault = wrap_fault(*unrolled["plateau100"], 90, "parity")
-check_datas = []
-for track in tracks:
-    legacy_field = os.path.join(common_paths["out_dir"], "modelling", track,
-                                "csi_mean_event.npz")
-    full = load_track(track, legacy_field, check_fault)
-    cov_p = covariance(full, check_fault)
-    ds = downsample(full, check_fault, start_block_km, 0.04)
-    build_cd(ds, cov_p)
-    check_datas.append(ds)
-invert(check_fault, check_datas, 16, lam=(0.3, 0.05), ramp_spec="1,x,y")
-check_row, _ = metrics(check_fault, check_datas)
-print(f"ported: chi2 {check_row['chi2']:.1f}, Mw {check_row['Mw']:.3f} | "
-      f"legacy: chi2 {legacy_row.chi2:.1f}, Mw {legacy_row.Mw:.3f}")
-assert abs(check_row["chi2"] - legacy_row.chi2) < 1.0
-assert abs(check_row["Mw"] - legacy_row.Mw) < 0.005
-print("PASS: inversion machinery reproduces the legacy m02 numbers")
-
-# %% [markdown]
-# ## Section 5 -- depth: the scans and the constrained recovery
-#
-# chi2(D) for uniform slip 0-D (whitened LSQ with per-track constants) on
-# the ALIGNED fields; variants: unaligned (was the deep answer an
-# alignment artifact?), legacy fields (field-version systematic), and a
-# 5 km mesh (so the upper bracket is not imposed by the mesh bottom).
-# Then the synthetic recovery WITH the surface constraint.
-
-# %%
-## [20]
-def run_depth_scan(fault, scan_datas, tag):
-    scan_G = []
-    for ds in scan_datas:
-        fault.buildGFs(ds, vertical=True, slipdir="s", verbose=False)
-        fault.G[ds.name]["strikeslip"] *= -1.0
-        scan_G.append(fault.G[ds.name]["strikeslip"])
-    table = patch_table(fault)
-    in_window = np.clip(np.minimum(table.km_pp - scan_km[0],
-                                   scan_km[1] - table.km_pp) / scan_taper + 1, 0, 1)
-    chols, data_w = [], []
-    for ds in scan_datas:
-        chol = np.linalg.cholesky(ds.Cd + 1e-9 * np.eye(ds.Cd.shape[0]))
-        chols.append(chol)
-        data_w.append(np.linalg.solve(chol, ds.vel))
-    depth_rows = []
-    grid = [d for d in scan_depths if d <= table.z_bot.max() + 1e-6]
-    for depth_bottom in grid:
-        slip_shape = in_window.values * (table.z_c.values < depth_bottom)
-        blocks_A, blocks_b = [], []
-        for k, (gmat, chol) in enumerate(zip(scan_G, chols)):
-            col = np.dot(gmat, slip_shape)
-            design = np.zeros((col.size, 1 + len(scan_G)))
-            design[:, 0] = col
-            design[:, 1 + k] = 1.0                    # per-track constant
-            blocks_A.append(np.linalg.solve(chol, design))
-            blocks_b.append(data_w[k])
-        design = np.vstack(blocks_A); b = np.concatenate(blocks_b)
-        coef, *_ = np.linalg.lstsq(design, b, rcond=None)
-        resid = b - np.dot(design, coef)
-        depth_rows.append(dict(D_km=depth_bottom, slip_mm=coef[0],
-                               chi2=float(np.dot(resid, resid))))
-    scan = pd.DataFrame(depth_rows)
-    scan["dchi2"] = scan.chi2 - scan.chi2.min()
-    scan.to_csv(os.path.join(out_dir, f"depth_scan{tag}.csv"), index=False)
-    best = scan.loc[scan.chi2.idxmin()]
-    ok = scan[scan.dchi2 <= 4]
-    print(f"depth scan {tag or '(record)'}: best D {best.D_km:g} km, "
-          f"slip {best.slip_mm:.1f} mm; bracket {ok.D_km.min():g}-{ok.D_km.max():g} km")
-    return scan
-
-scan_fault = wrap_fault(*unrolled["plateau100"], 90, "depth_scan")
-scan_datas = [copy.deepcopy(get_downsampled(track, "plateau100", 90))
-              for track in tracks]
-depth_scan = run_depth_scan(scan_fault, scan_datas, "")
-
-scan_raw = [copy.deepcopy(get_downsampled(track, "plateau100", 90, aligned=False))
-            for track in tracks]
-run_depth_scan(wrap_fault(*unrolled["plateau100"], 90, "scan_raw"),
-               scan_raw, "_unaligned")
-
-scan_legacy_fault = wrap_fault(*unrolled["plateau100"], 90, "scan_legacy")
-legacy_scan = []
-for track in tracks:
-    legacy_field = os.path.join(common_paths["out_dir"], "modelling", track,
-                                "csi_mean_event.npz")
-    full = load_track(track, legacy_field, scan_legacy_fault)
-    align_track(full)
-    cov_p = covariance(full, scan_legacy_fault)
-    ds = downsample(full, scan_legacy_fault, start_block_km, min_block_km)
-    build_cd(ds, cov_p)
-    legacy_scan.append(ds)
-run_depth_scan(scan_legacy_fault, legacy_scan, "_legacyfields")
-
-deep_nodes, deep_faces = build_unrolled(0.10, 0.5, 1.6, 1.5, z_max=5.0)
-unrolled["plateau100_z5"] = (deep_nodes, deep_faces)
-scan5_fault = wrap_fault(deep_nodes, deep_faces, 90, "scan_z5")
-scan5_datas = [copy.deepcopy(get_downsampled(track, "plateau100_z5", 90))
-               for track in tracks]
-run_depth_scan(scan5_fault, scan5_datas, "_z5")
-
-# %%
-## [21]
-# synthetic recovery WITH the surface constraint: 10 mm to D, forward
-# through the full pipeline (covariance-drawn noise on the InSAR and the
-# constraint), inverted at the selected configuration
-recovery_rng = np.random.default_rng(7)
-recovery_profiles = {}
-recovery_rows = []
-base_surface = get_surface(surf_floor_mm)
-for depth_bottom in recovery_depths:
-    rec_fault = wrap_fault(*unrolled["smooth12"], 90, f"recovery_{depth_bottom:g}")
-    rec_table = patch_table(rec_fault)
-    in_window = np.clip(np.minimum(rec_table.km_pp - scan_km[0],
-                                   scan_km[1] - rec_table.km_pp) / scan_taper + 1, 0, 1)
-    slip_input = in_window.values * (rec_table.z_c.values < depth_bottom) * 10.0
-    rec_datas = []
-    for track in tracks:
-        ds = copy.deepcopy(get_downsampled(track, "smooth12", 90))
-        rec_fault.buildGFs(ds, vertical=True, slipdir="s", verbose=False)
-        rec_fault.G[ds.name]["strikeslip"] *= -1.0
-        chol = np.linalg.cholesky(ds.Cd + 1e-9 * np.eye(ds.Cd.shape[0]))
-        ds.vel[:] = (np.dot(rec_fault.G[ds.name]["strikeslip"], slip_input)
-                     + np.dot(chol, recovery_rng.standard_normal(ds.vel.size)))
-        rec_datas.append(ds)
-    rec_surface = make_surface_interp(rec_fault, surf_floor_mm)
-    rec_fault.buildGFs(rec_surface, slipdir="s", verbose=False)
-    ss_noise = np.sqrt(np.diag(rec_surface.Cd)) * recovery_rng.standard_normal(
-        rec_surface.vel.size)
-    rec_surface.vel[:] = (np.dot(rec_fault.G[rec_surface.name]["strikeslip"],
-                                 slip_input) + ss_noise)
-    invert(rec_fault, rec_datas, sigma_sel, surface=rec_surface)
-    rec_row, rec_out = metrics(rec_fault, rec_datas, rec_surface)
-    recovery_profiles[depth_bottom] = rec_row["depth_profile"]
-    input_m0 = np.sum([shear_modulus * 0.5 * np.linalg.norm(
-        np.cross(p[1] - p[0], p[2] - p[0])) * 1e6 * s * 1e-3
-        for p, s in zip(rec_fault.patch, slip_input)])
-    recovery_rows.append(dict(D_km=depth_bottom,
-                              moment_recovery=rec_row["M0"] / input_m0,
-                              mw_input=(2.0 / 3.0) * (np.log10(input_m0) - 9.1),
-                              mw_recovered=rec_row["Mw"],
-                              peak_recovered=rec_row["peak_slip_mm"]))
-    print(f"input 10 mm to {depth_bottom:g} km (constrained): peak "
-          f"{rec_row['peak_slip_mm']:.1f} mm, moment recovery "
-          f"{rec_row['M0'] / input_m0:.2f}")
-np.save(os.path.join(out_dir, "recovery_profiles.npy"),
-        np.array([recovery_profiles], dtype=object), allow_pickle=True)
-pd.DataFrame(recovery_rows).to_csv(os.path.join(out_dir, "recovery_summary.csv"),
-                                   index=False)
-
-# %% [markdown]
-# ## Section 6 -- the collated sensitivity figure
-#
-# Assembled from the SAVED products, so this cell redraws without
-# re-running the suite.
-
-# %%
-## [22]
 mpl_paper_style(base=7)
-suite = pd.read_csv(os.path.join(out_dir, "suite_results.csv"))
+suite = pd.read_csv(os.path.join(out_dir, "final_suite.csv"))
 suite = suite[suite.family != "gate"]
-depth_scan = pd.read_csv(os.path.join(out_dir, "depth_scan.csv"))
-depth_scan_un = pd.read_csv(os.path.join(out_dir, "depth_scan_unaligned.csv"))
-depth_scan_z5 = pd.read_csv(os.path.join(out_dir, "depth_scan_z5.csv"))
-recovery_profiles = np.load(os.path.join(out_dir, "recovery_profiles.npy"),
-                            allow_pickle=True)[0]
-
 fig = plt.figure(figsize=(7.25, 6.6), constrained_layout=True)
-gs = fig.add_gridspec(3, 3)
+grid = fig.add_gridspec(3, 3)
+family_colors = {"tie": "#000000", "isolation": "#D55E00", "sampling": "#56B4E9", "dip": "#0072B2",
+                 "lam": "#CC79A7", "mesh": "#E69F00"}
 
-family_names = {"sigma_surf": "smoothing $\\sigma$ (constr.)",
-                "sigma": "$\\sigma$ (InSAR only)", "dip": "dip angle",
-                "mesh": "mesh", "lam": "correlation $\\lambda$",
-                "sampling": "sampling", "isolation": "isolation",
-                "prior": "prior form", "rake": "rake"}
-family_colors = {"sigma_surf": "#009E73", "sigma": "#66c2a5", "dip": "#0072B2",
-                 "mesh": "#E69F00", "lam": "#8da0cb", "sampling": "#56B4E9",
-                 "isolation": "#D55E00", "prior": "#CC79A7", "rake": "#999999"}
-family_order = list(family_names)
+ax = fig.add_subplot(grid[0, :])
+x_pos, ticks, tick_labels = 0, [], []
+for family, color in family_colors.items():
+    group = suite[suite.family == family]
+    xs = np.arange(x_pos, x_pos + len(group))
+    ax.plot(xs, group.Mw, "o", ms=4, color=color)
+    ticks += list(xs); tick_labels += list(group.label)
+    if len(group):
+        ax.text(xs.mean(), 1.02, family, transform=ax.get_xaxis_transform(), ha="center", fontsize=6)
+        ax.axvline(x_pos + len(group) - 0.5, color="0.85", lw=0.6)
+    x_pos += len(group)
+ax.axhline(baseline_row["Mw"], color="0.4", ls="--", lw=0.7)
+ax.set_xticks(ticks); ax.set_xticklabels(tick_labels, rotation=60, ha="right", fontsize=5)
+ax.set_ylabel(r"$M_W$ (30 GPa)")
+ax.set_title(r"$\bf{A}$  Moment across the tests", loc="left", fontsize=7, pad=12)
 
-# A: Mw across the suite, families bracketed and named
-ax = fig.add_subplot(gs[0, :])
-x_pos = 0; ticks = []; tick_labels = []; brackets = []
-for family in family_order:
-    grp = suite[suite.family == family]
-    if grp.empty:
-        continue
-    xs = np.arange(x_pos, x_pos + len(grp))
-    ax.plot(xs, grp.Mw, "o", ms=4, color=family_colors[family])
-    ticks += list(xs); tick_labels += list(grp.label)
-    brackets.append((xs[0], xs[-1], family_names[family]))
-    ax.axvline(x_pos + len(grp) - 0.5, color="0.85", lw=0.6)
-    x_pos += len(grp)
-mw_lo, mw_hi = suite.Mw.min(), suite.Mw.max()
-ax.set_ylim(mw_lo - 0.05, mw_hi + 0.28)
-for k, (x_start, x_end, name) in enumerate(brackets):
-    row_up = (x_end - x_start) < 4 and k % 2
-    bracket_y = mw_hi + (0.17 if row_up else 0.07)
-    ax.plot([x_start - 0.3, x_end + 0.3], [bracket_y, bracket_y], "-",
-            color="0.25", lw=0.8)
-    ax.text(0.5 * (x_start + x_end), bracket_y + 0.015, name, ha="center",
-            va="bottom", fontsize=5.5, color="0.15")
-ax.set_xticks(ticks)
-ax.set_xticklabels(tick_labels, rotation=60, ha="right", fontsize=5)
-ax.set_ylabel(r"$M_W$")
-ax.set_title(r"$\bf{A}$  Geodetic moment across the suite", loc="left", fontsize=7)
-
-# B: misfit vs moment, family colours, outliers clipped
-ax = fig.add_subplot(gs[1, 0])
-for family in family_order:
-    grp = suite[suite.family == family]
-    if grp.empty:
-        continue
-    ax.scatter(grp.rms_mm, grp.Mw, s=10, c=family_colors[family], linewidths=0,
-               label=family_names[family])
-ax.legend(fontsize=4, loc="lower right", handletextpad=0.1)
-core = suite[suite.rms_mm < suite.rms_mm.quantile(0.95)]
-ax.set_xlim(core.rms_mm.min() - 0.02, core.rms_mm.max() + 0.04)
-ax.set_xlabel("rms (mm)"); ax.set_ylabel(r"$M_W$")
-ax.set_title(r"$\bf{B}$  Misfit vs moment", loc="left", fontsize=7)
-
-# C: depth scans -- record, unaligned, 5 km mesh
-ax = fig.add_subplot(gs[1, 1])
-ax.plot(depth_scan_un.D_km, depth_scan_un.dchi2, "o-", ms=2, color="0.6",
-        label="unaligned")
-ax.plot(depth_scan_z5.D_km, depth_scan_z5.dchi2, "o-", ms=2, color="#8da0cb",
-        label="5 km mesh")
-ax.plot(depth_scan.D_km, depth_scan.dchi2, "o-", ms=2.5, color="#009E73",
-        label="aligned (record)")
+ax = fig.add_subplot(grid[1, 0])
+for tie, table in tie_tables.items():
+    peak_s = table.loc[table.slip_mm.idxmax(), "s_km"]
+    column = table[(table.s_km - peak_s).abs() < 0.3]
+    by_depth = column.groupby(np.round(column.z_c, 3)).slip_mm.max()
+    ax.plot(by_depth.values, by_depth.index, "o-", ms=2, label=f"tie {tie * 1000:.0f} m")
+ax.set_ylim(1.5, 0); ax.set_xlabel("Slip (mm)"); ax.set_ylabel("Depth (km)")
 ax.legend(fontsize=5)
-ax.axhline(1, color="0.5", ls="--", lw=0.7); ax.axhline(4, color="0.5", ls=":", lw=0.7)
-ax.set_xscale("log")
-ax.set_ylim(-5, min(depth_scan.dchi2.max() * 1.05, 200))
-ax.set_xlabel("bottom depth D (km)"); ax.set_ylabel(r"$\Delta\chi^2$")
-ax.set_title(r"$\bf{C}$  Parametric depth scan", loc="left", fontsize=7)
+ax.set_title(r"$\bf{B}$  Top tie, sigma 12", loc="left", fontsize=7)
 
-# D: constrained synthetic recovery
-ax = fig.add_subplot(gs[1, 2])
-rec_colors = {0.3: "#0072B2", 0.5: "#009E73", 0.8: "#E69F00", 1.0: "#56B4E9",
-              1.5: "#D55E00", 2.0: "#CC79A7"}
-for depth_bottom, profile in recovery_profiles.items():
-    depths = np.array(sorted(profile))
-    ax.plot([profile[z] for z in depths], depths, "o-", ms=2,
-            color=rec_colors[float(depth_bottom)], label=f"to {depth_bottom:g} km")
-ax.axvline(10, color="0.6", lw=0.6, ls="--")
-ax.set_ylim(3, 0)
-ax.set_xlabel("recovered slip (mm)"); ax.set_ylabel("depth (km)")
+ax = fig.add_subplot(grid[1, 1])
+for tag, color in (("smooth12", "#000000"), ("plateau100", "#0072B2"), ("plateau100_z5", "#56B4E9"),
+                   ("unlevelled", "0.6")):
+    ax.plot(scans[tag].D_km, scans[tag].dchi2, "o-", ms=2, color=color, label=tag)
+ax.axhline(4, color="0.5", ls=":", lw=0.7)
+ax.set_xscale("log"); ax.set_ylim(-2, min(100, scans["smooth12"].dchi2.max() * 1.05))
+ax.set_xlabel("Bottom depth D (km)"); ax.set_ylabel(r"$\Delta\chi^2$")
+ax.legend(fontsize=5)
+ax.set_title(r"$\bf{C}$  Fixed-depth scan", loc="left", fontsize=7)
+
+ax = fig.add_subplot(grid[1, 2])
+profiles_all = pd.concat(recovery_profiles)
+for depth_bottom, group in profiles_all.groupby("D_km"):
+    peak_s = group.loc[group.slip_mm.idxmax(), "s_km"]
+    column = group[(group.s_km - peak_s).abs() < 0.3]
+    by_depth = column.groupby(np.round(column.z_c, 3)).slip_mm.max()
+    ax.plot(by_depth.values, by_depth.index, "o-", ms=2, label=f"to {depth_bottom:g} km")
+ax.axvline(10, color="0.6", ls="--", lw=0.6)
+ax.set_ylim(3, 0); ax.set_xlabel("Recovered slip (mm)"); ax.set_ylabel("Depth (km)")
 ax.legend(fontsize=4.5, ncols=2)
-ax.set_title(r"$\bf{D}$  Constrained recovery (10 mm input)", loc="left", fontsize=7)
+ax.set_title(r"$\bf{D}$  Recovery of 10 mm", loc="left", fontsize=7)
 
-# E: descending near-field misfit per configuration (panel A order/colours)
-ax = fig.add_subplot(gs[2, 0])
-x_pos = 0
-for family in family_order:
-    grp = suite[suite.family == family]
-    if grp.empty:
-        continue
-    xs = np.arange(x_pos, x_pos + len(grp))
-    ax.plot(xs, grp.rms_near_des, "o", ms=3, color=family_colors[family])
-    ax.axvline(x_pos + len(grp) - 0.5, color="0.9", lw=0.5)
-    x_pos += len(grp)
-ax.set_xlabel("configuration (panel A order)")
-ax.set_ylabel("rms (mm)")
-ax.set_title(r"$\bf{E}$  Descending near-field (<200 m) rms", loc="left", fontsize=7)
-
-# F: dip -- every rms subset (the trade-off panel)
-ax = fig.add_subplot(gs[2, 1])
-dip_grp = suite[suite.family == "dip"].sort_values("dip")
-ax.plot(dip_grp.dip, dip_grp.rms_near_asc, "o--", ms=3, color="#0072B2",
-        label="asc near")
-ax.plot(dip_grp.dip, dip_grp.rms_asc, "o-", ms=3, color="#0072B2", label="asc full")
-ax.plot(dip_grp.dip, dip_grp.rms_near_des, "o--", ms=3, color="#D55E00",
-        label="desc near")
-ax.plot(dip_grp.dip, dip_grp.rms_des, "o-", ms=3, color="#D55E00", label="desc full")
-ax.axvline(90, color="0.8", lw=0.6)
-ax.set_xlabel("dip (deg E)"); ax.set_ylabel("rms (mm)")
-ax.legend(fontsize=4.5)
-ax.set_title(r"$\bf{F}$  Dip: every rms subset", loc="left", fontsize=7)
-
-# G: sigma with and without the constraint -- does the constraint pin Mw?
-ax = fig.add_subplot(gs[2, 2])
-with_c = suite[suite.family == "sigma_surf"].sort_values("sigma")
-without = suite[suite.family == "sigma"].sort_values("sigma")
-ax.plot(with_c.sigma, with_c.Mw, "o-", ms=3, color="#009E73", label="constrained")
-ax.plot(without.sigma, without.Mw, "o-", ms=3, color="0.5", label="InSAR only")
-ax.set_xscale("log")
-ax.set_xlabel(r"prior $\sigma$ (mm)"); ax.set_ylabel(r"$M_W$")
+ax = fig.add_subplot(grid[2, 0:2])
+curves = pd.DataFrame(lcurve_rows)
+for label, group in curves[curves.curve.str.startswith("lam")].groupby("curve", sort=False):
+    ax.plot(np.sqrt(group.chi2_total), group.prior_norm, "o-", ms=2, lw=0.8, label=label)
+    pick = group[group.sigma == group.pick.iloc[0]]
+    ax.plot(np.sqrt(pick.chi2_total), pick.prior_norm, "k*", ms=6)
+ax.set_xscale("log"); ax.set_yscale("log")
+ax.set_xlabel(r"Weighted misfit $\sqrt{\chi^2}$"); ax.set_ylabel(r"Roughness $\sqrt{m^T C^{-1} m}$")
 ax.legend(fontsize=5)
-ax.set_title(r"$\bf{G}$  Smoothing: does the constraint pin $M_W$?",
-             loc="left", fontsize=7)
+ax.set_title(r"$\bf{E}$  L-curves of the correlation lengths (star: pick)", loc="left", fontsize=7)
 
-fig_file = os.path.join(fig_dir, "fig07_sensitivity_suite.png")
-fig.savefig(fig_file, dpi=300)
-fig.savefig(fig_file.replace(".png", ".pdf"))
+ax = fig.add_subplot(grid[2, 2])
+dips = suite[suite.family == "dip"].sort_values("dip")
+ax.plot(dips.dip, dips.rms_mm, "o-", ms=3, color="#0072B2", label="rms")
+ax.plot(dips.dip, dips.rms_near_mm, "o--", ms=3, color="#0072B2", label="rms < 200 m")
+ax.set_xlabel("Dip (deg E)"); ax.set_ylabel("rms (mm)")
+ax2 = ax.twinx(); ax2.plot(dips.dip, dips.Mw, "s-", ms=3, color="#D55E00"); ax2.set_ylabel(r"$M_W$", color="#D55E00")
+ax.legend(fontsize=5)
+ax.set_title(r"$\bf{F}$  Dip", loc="left", fontsize=7)
+
+fig_file = os.path.join(fig_dir, "fig07_sensitivity_final.png")
+fig.savefig(fig_file, dpi=300); fig.savefig(fig_file.replace(".png", ".pdf"))
 print("wrote", fig_file)
 
 # %% [markdown]
-# The selected configuration and its registry numbers live in
-# `07_slip_model.ipynb`, which reads `suite_results.csv` for the ranges.
+# ## [18] Registry -- the sensitivity numbers
+
+# %%
+## [18]
+by_family = {family: group for family, group in suite.groupby("family")}
+tie_rows = by_family["tie"].set_index("tie_km")
+sidecar = REG.sidecar("07_tests_final", [
+    f"baseline: fault-parallel, smooth12, dip {dip_deg}, sigma {sigma_fixed}, lambda {lam_xz}, tie {tie_depth_km} km: "
+    f"Mw {baseline_row['Mw']:.3f}, rms {baseline_row['rms_mm']:.3f} mm, surface {baseline_row['surface_pct']:.0f}%",
+    "tie depth: " + "; ".join(f"{t * 1000:.0f} m Mw {r.Mw:.3f} peak {r.peak_slip_mm:.1f} mm at {r.peak_depth_m:.0f} m "
+                              f"surface {r.surface_pct:.0f}%" for t, r in tie_rows.iterrows()),
+    f"depth scan (smooth12): best {record_scan.loc[record_scan.chi2.idxmin(), 'D_km']:g} km, "
+    f"bracket {d_shallow:g}-{d_deep:g} km, Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f}",
+    "depth scan variants: " + "; ".join(
+        f"{tag} {scan[scan.dchi2 <= 4].D_km.min():g}-{scan[scan.dchi2 <= 4].D_km.max():g} km" for tag, scan in scans.items()),
+    "recovery (moment fraction): " + "; ".join(f"{r.D_km:g} km {r.moment_recovery:.2f}" for r in recovery.itertuples()),
+    f"dip Mw {by_family['dip'].Mw.min():.3f}-{by_family['dip'].Mw.max():.3f}",
+    "lambda at own corners: " + "; ".join(f"({r.lam_s:g}, {r.lam_z:g}) corner {r.corner:.1f} pick {r.pick:g} Mw {r.Mw:.3f}"
+                                          for r in lambda_corners.itertuples()),
+    "mesh at own corners: " + "; ".join(f"{r.mesh} corner {r.corner:.1f} pick {r.pick:g} Mw {r.Mw:.3f}"
+                                        for r in mesh_corners.itertuples()),
+])
+REG.register("07_test_n_samples", baseline_row["n_samples"], "count", 0, where="M7", cell="baseline", sidecar=sidecar)
+for tie, r in tie_rows.iterrows():
+    REG.register(f"07_test_tie{tie * 1000:.0f}m_mw", r.Mw, "Mw", 2, where="M7", cell="tie", sidecar=sidecar)
+    REG.register(f"07_test_tie{tie * 1000:.0f}m_surface_pct", r.surface_pct, "%", 0, where="M7", cell="tie", sidecar=sidecar)
+REG.register("07_test_depth_best_km", record_scan.loc[record_scan.chi2.idxmin(), "D_km"], "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07_test_depth_lo_km", d_shallow, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07_test_depth_hi_km", d_deep, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07_test_depth_mw_lo", bracket.Mw.min(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07_test_depth_mw_hi", bracket.Mw.max(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07_test_dip_mw_min", by_family["dip"].Mw.min(), "Mw", 2, where="M7", cell="dip", sidecar=sidecar)
+REG.register("07_test_dip_mw_max", by_family["dip"].Mw.max(), "Mw", 2, where="M7", cell="dip", sidecar=sidecar)
+REG.register("07_test_lam_mw_min", lambda_corners.Mw.min(), "Mw", 2, where="M7", cell="lambda", sidecar=sidecar)
+REG.register("07_test_lam_mw_max", lambda_corners.Mw.max(), "Mw", 2, where="M7", cell="lambda", sidecar=sidecar)
+REG.register("07_test_mesh_mw_min", mesh_corners.Mw.min(), "Mw", 2, where="M7", cell="mesh", sidecar=sidecar)
+REG.register("07_test_mesh_mw_max", mesh_corners.Mw.max(), "Mw", 2, where="M7", cell="mesh", sidecar=sidecar)
+for r in recovery.itertuples():
+    REG.register(f"07_test_recovery_{r.D_km * 1000:.0f}m", r.moment_recovery, "fraction", 2, where="M7", cell="recovery", sidecar=sidecar)
+REG.render()
+print("07_slip_model_tests (final configuration) complete")
