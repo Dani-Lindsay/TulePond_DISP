@@ -32,6 +32,7 @@ import os
 import re
 import sys
 import xml.etree.ElementTree as ET
+import shutil
 import subprocess
 import uuid
 from datetime import datetime
@@ -63,6 +64,28 @@ def run_command(cmd):
 # ------------------------------
 # Date-time
 # ------------------------------
+
+RESERVE_GB = 50.0      # never plan to eat into the last this-many GB of disk
+
+
+def require_disk_space(path, need_gb, what=""):
+    """Abort unless `path` has room for `need_gb` plus a safety reserve.
+
+    A download that fills the disk does not just fail, it takes the machine
+    down with it, so the big-download scripts in `data_prep/` check space up
+    front and refuse to start rather than dying halfway through. `need_gb` is a
+    rough estimate; the check catches "this was never going to fit", not the
+    last megabyte.
+    """
+    total, used, free = (x / 1e9 for x in shutil.disk_usage(path))
+    label = f" for {what}" if what else ""
+    print(f"  disk: {free:.0f} GB free of {total:.0f} GB; "
+          f"need ~{need_gb:.1f} GB{label} (+{RESERVE_GB:.0f} GB reserve)")
+    if free - need_gb >= RESERVE_GB:
+        return True
+    raise SystemExit(f"ABORT: insufficient disk space{label}: {free:.0f} GB free, "
+                     f"need ~{need_gb:.1f} GB plus a {RESERVE_GB:.0f} GB reserve.")
+
 
 def date_to_decimal_year(date_input, format_str=None):
     """Convert a date (str, bytes, or datetime) to a decimal year.

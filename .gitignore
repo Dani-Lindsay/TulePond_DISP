@@ -9,3 +9,5 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 *.log
+# local pre-refresh snapshot zip, not part of the repo
+outputs.zip

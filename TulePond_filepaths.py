@@ -42,6 +42,11 @@ fig_dir    = os.path.join(repo_dir, f"Figures_{fig_date}")
 out_dir    = os.path.join(repo_dir, "outputs")
 inputs_dir = os.path.join(data_dir, "Inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
+# QC products of the data_prep chain (station residuals, the prep-side rain
+# tables). Deliberately NOT under a second `outputs/`: the only `outputs/` in
+# this project is the repo's, written by the notebooks. Nothing in notebooks
+# 01-11 reads these; they are the prep chain's own record.
+prep_dir   = os.path.join(data_dir, "data_prep")
 
 # ------------------------
 # Common paths & constants
@@ -67,7 +72,7 @@ common_paths = {
 
     # Observation window: first and last DISP-S1 acquisition used in the paper.
     "date_start": "2016-07-29",
-    "date_end":   "2025-12-21",
+    "date_end":   "2026-03-27",
 
     # Re-mapped fault trace (single continuous strand, variable local strike;
     # from USGS Quaternary faults + steps visible in the velocity fields) and
@@ -105,6 +110,25 @@ common_paths = {
     "CRE_Wald": os.path.join(inputs_dir, "CRE_cat", "CRE_Waldhauser21", "waldhauser_shaff_repeaters.txt"),
     # Area of interest (W, S, E, N) the catalogues are clipped to
     "aoi_bbox": (-122.494468, 37.269677, -121.711070, 38.10),
+    # Frame 09156 covers only the northern half of the AOI; opera-utils errors
+    # if asked for pixels outside a frame's footprint, so it is clipped to its
+    # own (data_prep/run01, run02, run03).
+    "aoi_bbox_09156": (-122.495, 37.270, -121.711, 37.719),
+    # DOWNLOAD window for 09157 and 11115 (data_prep/run01 only): aoi_bbox
+    # nudged 34 m west and 32 m north. opera-utils subsets by row/column, and
+    # `_get_rowcol_slice` converts the bbox corners with `lonlat_to_rowcol` on
+    # the stack's FIRST product; that conversion moved by one pixel between the
+    # 2026-07 download and the 2026-09 refresh, so the bbox that gave a
+    # 2333 x 3048 window in July now gives 2332 x 3049. Mixing windows makes
+    # disp-s1-reformat fail (run01's grid check catches it). This bbox
+    # reproduces the archive window exactly for BOTH frames, so new granules
+    # land on the existing grid and run02's geometry stays valid. Each nudge
+    # sits mid-way across its one-pixel band, ~15 m from either edge; the
+    # lattice is unchanged (x, y = 15 mod 30), so these are the same ground
+    # pixels. Kept separate from aoi_bbox so the science AOI (catalogue
+    # clipping in notebook 04, the GNSS ROI in run00, the TROPO crop in run03,
+    # which pads 0.3 deg anyway) is untouched by a download-side fix.
+    "aoi_bbox_disp": (-122.494858, 37.269967, -121.711070, 38.10),
     # Bo Xie's GrowClust relocated catalogue for the Hayward area (2000-2025),
     # relocated PLUS unrelocated NCSS events, one row per event
     "growclust_cat": os.path.join(inputs_dir, "Bo_growclust", "hayward_growclust_catalog_relocated_plus_unrelocated.csv"),
@@ -113,6 +137,12 @@ common_paths = {
     # run11b_sweep_ladder.py (July/August 2026). Notebook 05 READS these; it
     # does not re-run the sweep (Dani, 2026-09-21).
     "sweep_dir": os.path.join(data_dir, "outputs", "sweep"),
+
+    # Written by the data_prep chain, read by nobody in notebooks 01-11:
+    # run05's per-station GNSS/InSAR residuals, and run20's prep-side rain
+    # tables (notebook 09 builds its own composite from `ghcn_dir`).
+    "validation_dir": os.path.join(prep_dir, "validation"),
+    "precip_dir":     os.path.join(prep_dir, "precip"),
 }
 
 # ------------------------
@@ -196,6 +226,40 @@ asc09157_dic = _track_paths("09157", "ascending",  "035")
 des11115_dic = _track_paths("11115", "descending", "042")
 insar_dic_list = [asc09157_dic, des11115_dic]
 
+# ------------------------
+# Frame paths for the DATA PREPARATION chain (`data_prep/run00` to `run05`).
+#
+# A separate view of the same data from `insar_dic_list` above, for two
+# reasons: the prep chain works on THREE frames (09156 is merged with 09157
+# into the ascending mosaic, and has no analysis view of its own), and it needs
+# the raw and intermediate paths -- the downloaded granules, the rebased stack,
+# the geometry and troposphere directories -- that the notebooks never read.
+# The notebooks use `insar_dic_list`; only `data_prep/` uses this.
+# ------------------------
+def _prep_paths(frame):
+    fdir = os.path.join(data_dir, frame)
+    mdir = os.path.join(fdir, "mintpy")
+    return {
+        "frame":        frame,
+        "dir":          fdir,
+        "data_dir":     os.path.join(fdir, "data"),          # downloaded + subset granules
+        "stack":        os.path.join(fdir, f"{frame}_stack.nc"),  # rebased stack (run01)
+        "geometry_dir": os.path.join(fdir, "geometry"),       # LOS, incidence, DEM (run02)
+        "static_dir":   os.path.join(fdir, "static_lyrs"),    # CSLC static layers (run02)
+        "tropo_dir":    os.path.join(fdir, "tropo"),          # TROPO crops + corrections (run03)
+        "mintpy_dir":   mdir,
+        "timeseries":       os.path.join(mdir, "timeseries.h5"),
+        "timeseries_tropo": os.path.join(mdir, "timeseries_tropo.h5"),
+        "velocity":         os.path.join(mdir, "velocity.h5"),
+        "velocity_masked":  os.path.join(mdir, "velocity_masked.h5"),
+        "velocity_NA":      os.path.join(mdir, "velocity_NA.h5"),
+        "geometry":         os.path.join(mdir, "geometryGeo.h5"),
+    }
+
+# 09156 ascending track 35 (northern half only), 09157 ascending track 35
+# (the full creeping section), 11115 descending track 42.
+frames = {f: _prep_paths(f) for f in ("09156", "09157", "11115")}
+
 # Same-orbit velocity mosaics (both ascending frames merged) used for the
 # velocity-field decomposition (notebook 02).
 mosaic_dir = os.path.join(data_dir, "mosaic")
@@ -213,6 +277,8 @@ paths_gps = {
     "DataHoldings": os.path.join(gps_dir, "DataHoldings.txt"),
     "Steps":        os.path.join(gps_dir, "steps.txt"),
     "NA_dir":       os.path.join(gps_dir, "NA"),
+    "StaList":      os.path.join(gps_dir, "{frame}_StaList.txt"),   # data_prep/run00
+    "Fig_Dir":      os.path.join(gps_dir, "Figures"),               # data_prep/run00 station plots
     "enu":          os.path.join(gps_dir, "{frame}_enu_NA.csv"),
     "validation":   os.path.join(data_dir, "gps_insar_validation.csv"),
 }
