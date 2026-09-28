@@ -158,6 +158,26 @@ model runs.
 - ~~L-curve for sigma~~ done (G).
 - Re-test dip, mesh, lambda and sampling on the final configuration (they
   were decided on the LOS setup).
+- **Correlation lengths lambda, each at its own L-curve corner.** In CSI
+  (`Fault.buildCmXY`, Radiguet et al. 2010) Cm = sigma^2 (lam0^2 / (lamx
+  lamz)) exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND
+  enters the amplitude, so the sigma corner (10.1) holds only for (0.3,
+  0.05) km, and the old lambda sweep (Mw 3.81-3.87 [suite], sigma fixed, LOS
+  setup) mixed shape with strength. Test: the 4-5 lambda pairs, an L-curve
+  each, compare chi2 and Mw at each corner; if Mw stays within the sigma
+  8-16 range (3.64-3.70) say so in one sentence. With the new data, as part
+  of the final-configuration rerun of the tests.
+  - Why lamz is short (Dani): a long down-dip length ties each cell to the
+    cells below it, so the prior drags the well-constrained shallow slip to
+    depth; that was the model "pushing slip deep". With lamz = 0.05 km
+    (1/e at ~100 m) the prior imposes no depth, and the model returns the
+    SHALLOWEST solution the data allow. That is not a measured depth: the
+    fixed-depth scan fits D = 0.85-3 km equally [scan], and synthetic slip to
+    1-2 km comes back shallow with 26-45% of its moment [recovery]. Hence the
+    distributed-model Mw is a minimum. Paper line: "the down-dip correlation
+    length is kept short so the prior does not impose slip at depth; the
+    depth extent is not resolved (0.85-3 km fit equally), so the distributed
+    model gives the shallowest consistent solution and a minimum moment."
 - Recovery test with the interpolated constraint and fault-parallel input.
 - Potency; event-to-event spread of surface slip and extent (from 04).
 - Rerun of `07_slip_model_tests` on the final configuration; drop panels B
