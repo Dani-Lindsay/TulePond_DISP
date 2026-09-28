@@ -94,13 +94,42 @@ def sh(*args):
 # ---------------------------------------------------------------------------
 # Conversion, masks, small HDF5 helpers
 # ---------------------------------------------------------------------------
+def h5_dates(path):
+    """Acquisition dates in a MintPy timeseries-format file, as YYYYMMDD."""
+    with h5py.File(path, "r") as f:
+        return [d.decode() for d in f["date"][:]]
+
+
+def stack_dates(stack_path):
+    """Acquisition dates in a rebased stack (run01), as YYYYMMDD."""
+    import xarray as xr
+    with xr.open_dataset(stack_path) as d:
+        return [str(t)[:10].replace("-", "") for t in d["time"].values]
+
+
 def ensure_mintpy(paths):
-    """Run disp_nc_to_mintpy if this frame has no timeseries.h5 yet."""
+    """Convert the rebased stack unless mintpy/timeseries.h5 already covers the
+    SAME dates.
+
+    The check is on the DATES, not on the file existing. A data refresh adds
+    epochs to the stack and leaves the previous timeseries.h5 in place, and
+    skipping on existence alone then carried the OLD dates through the masks,
+    TROPO.h5, the velocity fit and the mosaics -- while the script exited
+    cleanly. Found on the March-2026 refresh, which built 344-epoch products
+    from a 359-epoch stack. `_write_hdf5` opens with mode "w", so rebuilding
+    simply overwrites; nothing has to be deleted first.
+    """
     from opera_utils.disp.mintpy import disp_nc_to_mintpy
     ts = paths['timeseries']
+    want = stack_dates(paths['stack'])
     if os.path.exists(ts):
-        print("    timeseries.h5 exists")
-        return ts
+        have = h5_dates(ts)
+        if have == want:
+            print(f"    timeseries.h5 already covers the stack "
+                  f"({len(have)} epochs to {have[-1]})")
+            return ts
+        print(f"    timeseries.h5 has {len(have)} epochs to {have[-1]}, the stack has "
+              f"{len(want)} to {want[-1]}: rebuilding")
     samples = sorted(glob.glob(os.path.join(paths['data_dir'], "*.nc")))
     print(f"    disp_nc_to_mintpy({os.path.basename(paths['stack'])}) -> mintpy/")
     disp_nc_to_mintpy(Path(paths['stack']), sample_disp_nc=Path(samples[0]),
@@ -357,10 +386,16 @@ if __name__ == '__main__':
         print("    diff.py <- TROPO.h5")
         sh("diff.py", msk, os.path.join(mdir, "TROPO.h5"), "-o", vel_in)
 
-        # corrected, UNMASKED time series for the creep analysis stage
-        if not os.path.exists(paths['timeseries_tropo']):
+        # corrected, UNMASKED time series for the creep analysis stage.
+        # Rebuilt whenever its dates differ from timeseries.h5's: on a refresh
+        # the old file is still here and is exactly what notebooks 03 and 06
+        # read, so skipping on existence alone would hand them stale data.
+        tropo_ts = paths['timeseries_tropo']
+        if os.path.exists(tropo_ts) and h5_dates(tropo_ts) == h5_dates(ts):
+            print(f"    timeseries_tropo.h5 already covers {len(h5_dates(ts))} epochs")
+        else:
             print("    diff.py -> timeseries_tropo.h5 (unmasked, for analysis)")
-            sh("diff.py", ts, os.path.join(mdir, "TROPO.h5"), "-o", paths['timeseries_tropo'])
+            sh("diff.py", ts, os.path.join(mdir, "TROPO.h5"), "-o", tropo_ts)
 
         vel = os.path.join(mdir, "velocity_mintpy.h5")
         print(f"    timeseries2velocity.py {os.path.basename(vel_in)}")

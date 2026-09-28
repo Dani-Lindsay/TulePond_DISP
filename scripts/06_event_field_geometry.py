@@ -333,10 +333,24 @@ for dic in insar_dic_list:
     with h5py.File(dic["geo_file"], "r") as h:                  # loaded as notebook 02 does (float32, as MintPy wrote it)
         inc = h["incidenceAngle"][r0:r1, c0:c1].astype(np.float32)
         azi = h["azimuthAngle"][r0:r1, c0:c1].astype(np.float32)
-    if os.path.exists(f_fit):                                   # gated: the fit is the slow step
+    # The fit is the slow step, so it is cached -- but the cache is only reusable
+    # if it was made from the SAME step dates AND the same input record. The step
+    # dates sit in 2017-2024, so a data refresh that appends epochs leaves them
+    # unchanged; keying on them alone reused a stale fit (2026-09-28). A cache
+    # that does not match is recomputed, not an error.
+    cache_ok = False
+    if os.path.exists(f_fit):
         z = np.load(f_fit)
-        assert list(z["step_dates"]) == [s0 for s0, _, _ in steps], "cached fit was made with other step dates; delete it"
-        coef = {k: z[k] for k in z.files if k not in ("step_dates", "names")}
+        same_steps = list(z["step_dates"]) == [s0 for s0, _, _ in steps]
+        same_input = "input_dates" in z.files and list(z["input_dates"]) == dates
+        cache_ok = same_steps and same_input
+        if not cache_ok:
+            why = "step dates differ" if not same_steps else (
+                f"made from {len(z['input_dates']) if 'input_dates' in z.files else 'unknown'} "
+                f"input dates, now {len(dates)}")
+            print(f"[{orbit}] cached fit unusable ({why}); refitting")
+    if cache_ok:
+        coef = {k: z[k] for k in z.files if k not in ("step_dates", "names", "input_dates")}
         print(f"[{orbit}] per-pixel fit loaded from {os.path.basename(f_fit)}")
     else:
         with h5py.File(dic["ts_file"], "r") as h:
@@ -344,7 +358,8 @@ for dic in insar_dic_list:
         cube[cube == 0] = np.nan                                # MintPy no-data
         print(f"[{orbit}] {len(dates)} dates, coherent pixels {keep.mean():.0%} of the box")
         coef, G, names = fit_time_func(cube, dates, keep, [s0 for s0, _, _ in steps])
-        np.savez(f_fit, step_dates=np.array([s0 for s0, _, _ in steps]), names=np.array(names), **coef)
+        np.savez(f_fit, step_dates=np.array([s0 for s0, _, _ in steps]), names=np.array(names),
+                 input_dates=np.array(dates), **coef)
         del cube
     fits[orbit] = dict(coef=coef, keep=keep, inc=inc, azi=azi, steps=steps, dates=dates)
     print(f"  {orbit}: steps at {[s0 for s0, _, _ in steps]} (onset epochs {[o for _, o, _ in steps]})")

@@ -218,8 +218,13 @@ def _track_paths(frame, orbit, path):
         "ts_file":      os.path.join(mdir, "timeseries_tropo.h5"),  # tropo-corrected, unmasked, referenced at ZOA1
         "vel_file":     os.path.join(mdir, "velocity_masked.h5"),   # coh 0.7 masked, ZOA1 datum, no GNSS ramp
         "vel_NA_file":  os.path.join(mdir, "velocity_NA.h5"),       # GNSS-tied, North America frame, zero at ZOA1
-        # coherence masks by threshold: mask_file[0.9] is the creep-series mask, mask_file[0.7] the display / velocity one
-        "mask_file":    {c: os.path.join(mdir, f"maskTempCoh_{int(round(c * 10)):02d}.h5") for c in (0.9, 0.8, 0.7)},
+        # Temporal-coherence masks, keyed by threshold, as data_prep/run04 writes them.
+        # 0.7 is coh_timeseries and coh_velocity: the creep time series, the per-pixel
+        # step fits, the velocity fields and the GNSS tie. 0.9 is coh_maps: notebook
+        # 06's per-pixel event maps, the cross-fault profiles and the decomposed field.
+        # (0.8 was dropped 2026-09-28 -- no notebook ever selected it and run04 stopped
+        # writing it, so the path resolved to a stale July product.)
+        "mask_file":    {c: os.path.join(mdir, f"maskTempCoh_{int(round(c * 10)):02d}.h5") for c in (0.9, 0.7)},
     }
 
 asc09157_dic = _track_paths("09157", "ascending",  "035")

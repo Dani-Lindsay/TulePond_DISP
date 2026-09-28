@@ -244,8 +244,7 @@ def extract_track(dic):
     g.index.name = "lat"
     g.sort_index().to_csv(os.path.join(out_dir, f"creep_geom_{track}.csv"))
     with open(os.path.join(out_dir, f"creep_params_{track}.json"), "w") as fh:
-        json.dump(dict(coh=coh_timeseries, dist_min=dist_min, dist_max=dist_max, x_width=x_width,
-                       min_points=min_points, rate_nsigma=rate_nsigma), fh, indent=1)
+        json.dump({**params_now, **ts_data_key(dic)}, fh, indent=1)
     pd.DataFrame({"rate_deviation_mm_yr": dev_pop}).to_csv(os.path.join(out_dir, f"rate_deviation_{track}.csv"), index=False)
 
     rej_pct = 100.0 * n_rej_px / n_tot_px
@@ -267,11 +266,26 @@ def extract_track(dic):
 # %%
 params_now = dict(coh=coh_timeseries, dist_min=dist_min, dist_max=dist_max, x_width=x_width,
                   min_points=min_points, rate_nsigma=rate_nsigma)
+
+def ts_data_key(dic):
+    """Identity of this track's input time series, for the reuse test below.
+
+    The test has to include the DATA, not only the parameters. A data refresh
+    adds epochs to timeseries_tropo.h5 while every parameter stays the same, so
+    keying on parameters alone silently reused the previous extraction: on
+    2026-09-28 the March-2026 run rebuilt fp_ts.csv from September LOS series
+    and every product downstream inherited the old dates.
+    """
+    with h5py.File(dic["ts_file"], "r") as h:
+        d = h["date"][:]
+    return dict(n_dates=len(d), first_date=d[0].decode(), last_date=d[-1].decode())
+
 mask_stats = {}
 for dic in insar_dic_list:
     track = dic["ORBIT_DIRECTION"]
     pfile = os.path.join(out_dir, f"creep_params_{track}.json")
-    done = os.path.exists(pfile) and json.load(open(pfile)) == params_now \
+    cache_key = {**params_now, **ts_data_key(dic)}
+    done = os.path.exists(pfile) and json.load(open(pfile)) == cache_key \
         and os.path.exists(os.path.join(out_dir, f"creep_ts_LOS_{track}.csv"))
     if done:
         print(f"[{track}] extraction already on disk with these parameters; reusing")
@@ -307,10 +321,18 @@ for dic in insar_dic_list:
     old_path = os.path.join(legacy_dir, f"creep_ts_LOS_{track}.csv")
     if os.path.exists(old_path):
         old = load_los(old_path)
-        assert new.shape == old.shape, f"{track}: {new.shape} crossings x dates, legacy {old.shape}"
-        diff = np.nanmax(np.abs(new.values - old.values))
-        print(f"[{track}] legacy parity: same {new.shape} matrix, max |difference| {diff:.2e} mm")
-        assert diff < 1e-6, f"{track}: the new LOS series differ from the legacy ones"
+        # The legacy products are FROZEN at the July/August 2026 processing
+        # (data to Dec 2025). They are a parity check on the code, so they are
+        # only comparable while the data is the same vintage; after a refresh
+        # the matrices legitimately differ in both dimensions (more dates, and
+        # a few crossings gained or lost by the rate mask). Report, do not fail.
+        if new.shape == old.shape:
+            diff = np.nanmax(np.abs(new.values - old.values))
+            print(f"[{track}] legacy parity: same {new.shape} matrix, max |difference| {diff:.2e} mm")
+            assert diff < 1e-9, f"{track}: differs from the legacy product"
+        else:
+            print(f"[{track}] legacy parity skipped: data has moved on since the frozen products "
+                  f"({new.shape} crossings x dates now, legacy {old.shape})")
     else:
         print(f"[{track}] no legacy file at {old_path}; parity check skipped")
 

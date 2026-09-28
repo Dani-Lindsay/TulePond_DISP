@@ -276,6 +276,20 @@ def read_creep_ts(path):
 # [10]
 params_now = dict(coh=coh_timeseries, dist_min=dist_min, dist_max=dist_max, x_width=x_width,
                   min_points=min_points, rate_nsigma=rate_nsigma)
+
+def ts_data_key(dic):
+    """Identity of this track's input time series, for the reuse test below.
+
+    The test has to include the DATA, not only the parameters. A data refresh
+    adds epochs to timeseries_tropo.h5 while every parameter stays the same, so
+    keying on parameters alone silently reused the previous extraction: on
+    2026-09-28 the March-2026 run rebuilt fp_ts.csv from September LOS series
+    and every product downstream inherited the old dates.
+    """
+    with h5py.File(dic["ts_file"], "r") as h:
+        d = h["date"][:]
+    return dict(n_dates=len(d), first_date=d[0].decode(), last_date=d[-1].decode())
+
 mask_stats = {}
 
 for dic in insar_dic_list:
@@ -286,7 +300,8 @@ for dic in insar_dic_list:
     dev_file = os.path.join(out_dir, f"rate_deviation_{track}.csv")
 
     # ---------- already on disk with these parameters? then only the mask numbers
-    if os.path.exists(params_file) and json.load(open(params_file)) == params_now and os.path.exists(ts_file):
+    cache_key = {**params_now, **ts_data_key(dic)}
+    if os.path.exists(params_file) and json.load(open(params_file)) == cache_key and os.path.exists(ts_file):
         print(f"[{track}] extraction already on disk with these parameters; reusing")
         rate_dev = pd.read_csv(dev_file)["rate_deviation_mm_yr"].to_numpy()
         creep_ts = read_creep_ts(ts_file)
@@ -352,7 +367,7 @@ for dic in insar_dic_list:
     geometry.index.name = "lat"
     geometry.sort_index().to_csv(geom_file)
     with open(params_file, "w") as fh:
-        json.dump(params_now, fh, indent=1)
+        json.dump({**params_now, **ts_data_key(dic)}, fh, indent=1)
     pd.DataFrame({"rate_deviation_mm_yr": rate_dev}).to_csv(dev_file, index=False)
 
     rej_pct = 100.0 * n_rejected / n_total
