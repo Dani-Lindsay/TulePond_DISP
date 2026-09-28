@@ -55,14 +55,13 @@ from matplotlib.lines import Line2D
 
 # %%
 # [4]
-notebook = "09_rain_seasonality_v2"
+notebook = "09_rain_seasonality"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
 # the products of the previous version (09_seasonality_forecast), for the CHECK cell
-parity_dir = paths_out["09_seasonality_forecast"]
 
 # the gauges: id -> (short name, order in the composite, day shift for morning-observer COOP gauges).
 # Only the three nearest Tule Pond (4, 7 and 18 km); Livermore, San Jose and Oakland Museum (22 to 37 km)
@@ -83,7 +82,7 @@ density_days, density_max = 7, 80  # the figure: running 7-day total, mm at full
 x0, x1 = 1979.0, 2026.5           # the time axis of Fig 3: the HRKT record starts 1979.7
 
 # the InSAR stacks at the HGIL and HRKT arrays, saved by notebook 08 for the middle panel of Fig 3
-stacks_file = os.path.join(common_paths["out_dir"], "08_alignment_arrays_v2", "aa_insar_stacks.csv")   # -> paths_out["08_alignment_arrays"] after the swap
+stacks_file = os.path.join(paths_out["08_alignment_arrays"], "aa_insar_stacks.csv")
 loma_prieta = 1989.79
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
@@ -427,33 +426,10 @@ print("Saved Fig 3 to:", f_fig3)
 plt.show()
 
 # %% [markdown]
-# ## [17] CHECK: the same as the previous version
-#
-# The previous version also carried three far gauges as extra columns; the
-# composite and every number are unchanged, so the shared columns must match.
+# ## [17] REGISTER
 
 # %%
 # [18]
-for name in ("tulepond_daily_precip.csv", "wateryear_totals.csv"):
-    old_path = os.path.join(parity_dir, name)
-    if not os.path.exists(old_path):
-        print(f"no previous {name}; check skipped")
-        continue
-    new, old = pd.read_csv(os.path.join(out_dir, name)), pd.read_csv(old_path)
-    old = old[new.columns]
-    assert new.shape == old.shape, f"{name}: layout differs"
-    numeric = new.select_dtypes("number").columns
-    assert new.drop(columns=numeric).fillna("").equals(old.drop(columns=numeric).fillna("")), f"{name}: text columns differ"
-    assert np.array_equal(np.isnan(new[numeric].values.astype(float)), np.isnan(old[numeric].values.astype(float))), f"{name}: NaN pattern differs"
-    diff = np.nanmax(np.abs(new[numeric].values.astype(float) - old[numeric].values.astype(float)))
-    print(f"{name}: same {new.shape} (shared columns), max |difference| {diff:.2e}")
-    assert diff < 1e-9, f"{name} differs from the previous version"
-
-# %% [markdown]
-# ## [19] REGISTER
-
-# %%
-# [20]
 stats_lines += ["", f"season-resolved onsets: array {len(aa_dense)} ({n_dec_to_mar(aa_dense)} Dec-Mar), InSAR {len(insar_events)} ({n_dec_to_mar(insar_events)} Dec-Mar)"]
 sidecar = REG.sidecar("09_rain", stats_lines)
 REG.register("09_rain_series_start", str(days[0].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)

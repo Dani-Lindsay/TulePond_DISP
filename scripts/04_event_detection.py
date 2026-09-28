@@ -1,10 +1,10 @@
 # %% [markdown]
-# # 04 Creep-event detection, size, extent and the slip budget
+# # [1] 04 Creep-event detection, size, extent and the slip budget
 #
 # ```
-# Created on Mon Sep 21 2026
+# Created on Thu Sep 24 2026
 # @author: daniellelindsay
-# Run in opera_disp_feb13. The bootstraps and the per-crossing fits take ~5 min.
+# Run in opera_disp_feb13. The bootstraps and the per-crossing fits take a few minutes.
 # ```
 #
 # **What this notebook does.** This is the only place event dates are defined:
@@ -38,7 +38,7 @@
 # **Outputs** (`outputs/04_event_detection/`): `creep_events.csv`,
 # `creepmeter_events_COZ1.csv`, `event_fraction_by_crossing.csv`,
 # `section_lengths.csv`, `band_stack_<band>.csv`, `slip_budget_by_crossing.csv`,
-# `aa_rates.csv`, `04_events_stats.txt`, registry rows `04_*`.
+# `aa_rates.csv`, `fig1_panels.npz`, `04_events_stats.txt`, registry rows `04_*`.
 #
 # **Figures**: detection QC (supplement), Fig 1 (rotated map, hovmoller,
 # per-event profiles, rate budget, band stack), the slip budget along the fault.
@@ -46,9 +46,11 @@
 # **What to check.** Five Tule Pond events, two years apart, each about 10 mm on
 # the band stack; the two large COZ1 events also seen by its creepmeter; a
 # fraction of ~80% event-driven inside the section and ~10% outside; the budget
-# closing (secular + event-driven ~ the long-term array rate of ~6.5 mm/yr).
+# closing (secular + event-driven ~ the long-term array rate of ~6.5 mm/yr). The
+# CHECK cell compares every product with the previous run of this notebook.
 
 # %%
+# [2]
 import os
 import warnings
 
@@ -56,22 +58,27 @@ import insar_utils as utils
 from TulePond_filepaths import (common_paths, segments, creepmeters, params, coh_timeseries,
                                 dist_min, dist_max, rate_smooth_km, paths_out, repo_dir)
 
-import numpy as np
-import pandas as pd
-import pyproj
-import xarray as xr
+import numpy as np                               # Matrix calculations
+import pandas as pd                              # Tables
+import h5py                                      # the FP velocity map from 02
+import pyproj                                    # lon/lat <-> UTM
+import xarray as xr                              # grids for pygmt
+from scipy.ndimage import gaussian_filter1d      # along-fault smoothing
 import matplotlib.pyplot as plt
 import pygmt
 
 # %% [markdown]
-# ## Constants
+# ## [3] Paths and parameters
 
 # %%
+# [4]
 notebook = "04_event_detection"
-out_dir = paths_out[notebook]
+out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
+
+# the products of the previous version of this notebook, for the CHECK cell
 
 # the detector
 stack_half_km = 2.0     # half-width of the peak-slip stack about the section centre; a whole-section
@@ -86,7 +93,7 @@ nboot, block_years, seed = 2000, 1.0, 0    # block bootstrap for the amplitude C
 min_epoch_frac = 0.5    # a crossing needs >50% finite epochs to be fitted
 smooth_km = 0.4         # along-fault smoothing of the profiles (gap-preserving)
 total_floor_mm = 1.0    # |total slip| below this: fraction undefined
-band_fracs = (0.75, 0.90)   # the peak slip zone: fraction >= this x its local peak (Dani picks one)
+band_fracs = (0.75, 0.90)   # the peak slip zone: fraction >= this x its local peak
 band_main = 0.90            # the band the figures draw and the paper quotes
 flank_km = ((52.0, 56.0), (64.0, 68.0))   # flanks used for the creep-length threshold (Tule Pond)
 seis_max_dist_km = 2.0  # seismicity and repeaters within this of the trace
@@ -100,7 +107,7 @@ map_half_km = 10.9      # map panel cross-fault half-width: 3.4 cm wide for 73 k
 map_u_max = 70.0        # the map stops just south of CFW1 (km from Point Pinole)
 ref_patch_km = 5.0      # map display reference: CTM1-COZ1 patch, +/- this across the fault
 
-# (title, segment key, fraction column, seed centre km, half-span km, creepmeter)
+# the two sections: (title, segment key, fraction column, seed centre km, half-span km, creepmeter)
 SEGS = [("Tule Pond", "TULEPOND", "tulepond", 58.0, 10.0, ""),
         ("Oakland (control)", "COZ1", "coz1", 32.0, 15.0, "COZ1")]
 
@@ -113,42 +120,61 @@ REG.inputs(fp_ts_file, map_file, common_paths["fault_profiles"], common_paths["a
            utils.creepmeter_file(common_paths["creepmeter_dir"], "COZ1"))
 
 # %% [markdown]
-# ## LOAD: the fault-parallel time series and the along-fault axis
+# ## [5] Load: the fault-parallel time series, the along-fault axis, the trace
 
 # %%
-fp = pd.read_csv(fp_ts_file, index_col=0)
-fp.columns = fp.columns.astype(float); fp.index = fp.index.astype(float); fp = fp.sort_index()
-lat = fp.index.values; t = fp.columns.values.astype(float); F = fp.values
-t0, t1 = float(t.min()), float(t.max()); span = t1 - t0
+# [6]
+# the fault-parallel time series from 03: lat x decimal year, mm, rows south -> north
+fp_ts = pd.read_csv(fp_ts_file, index_col=0)
+fp_ts.columns = fp_ts.columns.astype(float)
+fp_ts.index = fp_ts.index.astype(float)
+fp_ts = fp_ts.sort_index()
+lats = fp_ts.index.values
+dates = fp_ts.columns.values.astype(float)
+fp_matrix = fp_ts.values
+t0, t1 = float(dates.min()), float(dates.max())
+span = t1 - t0
+
+# the along-fault axis: km from Point Pinole, increasing south
 to_km = utils.lat_to_km_map(common_paths["fault_profiles"])
-km = to_km(lat)
-o = np.argsort(km); ks = km[o]; lat_s = lat[o]          # the along-fault axis sorted north -> south
-lat_of_km = lambda k: float(np.interp(k, ks, lat_s))
-prof = pd.read_csv(common_paths["fault_profiles"])
-print(f"fp_ts: {len(lat)} crossings ({km.min():.1f} to {km.max():.1f} km from Point Pinole) x {len(t)} epochs, "
+km = to_km(lats)
+north_to_south = np.argsort(km)
+km_sorted, lats_sorted = km[north_to_south], lats[north_to_south]
+
+
+def lat_of_km(km_value):
+    return float(np.interp(km_value, km_sorted, lats_sorted))
+
+
+x_fault = pd.read_csv(common_paths["fault_profiles"])
+print(f"fp_ts: {len(lats)} crossings ({km.min():.1f} to {km.max():.1f} km from Point Pinole) x {len(dates)} epochs, "
       f"{t0:.3f} to {t1:.3f} ({span:.2f} yr); coherence {coh_timeseries}")
 
 
 def daily_creepmeter(code):
+    """Daily creepmeter record over the InSAR window, gross outliers removed, zeroed at the first day."""
     cm = utils.read_creepmeter_10min(utils.creepmeter_file(common_paths["creepmeter_dir"], code), date_start=t0, date_end=t1)
-    sl = cm["slip_mm"].values; med = np.median(sl); mad = np.median(np.abs(sl - med)) or 1.0
-    cm = cm[np.abs(sl - med) < 6 * 1.4826 * mad + 10].reset_index(drop=True)
+    slip = cm["slip_mm"].values
+    median = np.median(slip)
+    mad = np.median(np.abs(slip - median)) or 1.0
+    cm = cm[np.abs(slip - median) < 6 * 1.4826 * mad + 10].reset_index(drop=True)
     return cm["decimal_year"].values, cm["slip_mm"].values - cm["slip_mm"].values[0]
 
 
 def load_stack(seg):
-    """nanmean of the fp_ts rows within +/- stack_half_km of the section centre (rows with >50% valid epochs)."""
-    d = stack_half_km / 111.19
-    sub = fp[(fp.index >= seg["lat"] - d) & (fp.index <= seg["lat"] + d)]
-    sub = sub[sub.notna().sum(axis=1) > 0.5 * fp.shape[1]]
+    """Mean of the fp_ts rows within +/- stack_half_km of the section centre (rows with >50% valid epochs).
+    Returns (dates, stack_mm, n_crossings) at the epochs where the mean is finite."""
+    half_width_deg = stack_half_km / 111.19           # fp_ts is indexed by latitude: 1 km = 1/111.19 deg
+    nearby = fp_ts[(fp_ts.index >= seg["lat"] - half_width_deg) & (fp_ts.index <= seg["lat"] + half_width_deg)]
+    nearby = nearby[nearby.notna().sum(axis=1) > 0.5 * fp_ts.shape[1]]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        m = np.nanmean(sub.values, axis=0)
-    ok = np.isfinite(m)
-    return t[ok], m[ok], len(sub)
+        stack = np.nanmean(nearby.values, axis=0)
+    ok = np.isfinite(stack)
+    return dates[ok], stack[ok], len(nearby)
 
 # %% [markdown]
-# ## The detector and the joint model
+# ## [7] The detector and the joint model
 #
 # A creep event is a STEP in the residual after rate + annual cycle. The
 # residual wanders by +/-2 mm over months (residual atmosphere), comparable to
@@ -156,162 +182,217 @@ def load_stack(seg):
 # and not on the level. It is one-sided: only forward steps (the fault does not
 # slip backwards). Timing comes from the detector, amplitude from the joint
 # fit, because a fit made locally around one event absorbs part of it into its
-# own trend.
+# own trend. Every function here is used on both stacks, on the creepmeter and
+# again along strike.
+#
+# **The joint model** is always the whole thing at once: constant + rate +
+# annual sine and cosine + one Heaviside step per event. `rss` is its residual
+# sum of squares, sum over epochs of (data - model)^2 in mm^2; rss / n epochs
+# is the rms the printouts quote.
+#
+# **Timing, then amplitude.** `grid_search` finds the timing of ONE event: it
+# moves that event's step over the acquisition epochs within +/- 0.10 yr of the
+# detector's flag, refits the joint model with the other events held fixed, and
+# keeps the epoch with the lowest rss; the epochs whose rss is within one
+# variance unit of the best give the onset window. `fit_all_events` runs that
+# search for each event in turn, twice through so every onset settles against
+# the others, then makes one final joint fit with the onsets fixed: the step
+# coefficients of that fit are the amplitudes, and the block bootstrap on the
+# same fit gives their 95% intervals.
+#
+# **Why every event is a step.** At 6 to 12 day sampling and this noise level
+# the onset and the end of an event are not separately resolved. A
+# finite-duration ramp was tested and rejected: the model-selection test that
+# seemed to favour a duration assumes independent residuals, and ours are not
+# (the residual atmosphere wanders over months, exactly the shape a ramp
+# absorbs). The test is kept in `hayward_creep/analysis/event_duration_bic.py`
+# for a reviewer; assumptions register row 16. The same correlated residuals
+# are why the amplitude CIs are a block bootstrap and not OLS standard errors,
+# which would understate them 2 to 3 times.
 
 # %%
-def detrend_rate_annual(tt, y):
-    A = np.c_[np.ones_like(tt), tt - tt.mean(), np.sin(2 * np.pi * tt), np.cos(2 * np.pi * tt)]
-    c, *_ = np.linalg.lstsq(A, y, rcond=None)
-    return y - A @ c, c
+# [8]
+def detrend_rate_annual(dates, values):
+    """Remove constant + rate + annual cycle. Returns (residual, coefficients)."""
+    A = np.c_[np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
+    coef, *_ = np.linalg.lstsq(A, values, rcond=None)
+    return values - np.dot(A, coef), coef                 # np.dot(A, coef) = the model at every epoch
 
 
-def step_statistic(tt, r, n=win_n):
-    """Mean of the next n epochs minus the mean of the previous n, at each gap."""
-    mid = 0.5 * (tt[n:len(tt) - n] + tt[n - 1:len(tt) - n - 1])
-    val = np.array([r[i:i + n].mean() - r[i - n:i].mean() for i in range(n, len(tt) - n)])
-    return mid, val
+def step_statistic(dates, residual, n=win_n):
+    """Mean of the next n epochs minus the mean of the previous n, at each gap.
+    Returns (gap midpoints, statistic)."""
+    stat_dates = 0.5 * (dates[n:len(dates) - n] + dates[n - 1:len(dates) - n - 1])
+    stat_values = np.array([residual[i:i + n].mean() - residual[i - n:i].mean() for i in range(n, len(dates) - n)])
+    return stat_dates, stat_values
 
 
-def detect(tt, r, n=win_n, k=k_sigma):
-    mid, val = step_statistic(tt, r, n)
-    sig = utils.robust_sigma(val)
-    events = []
-    for i in np.where(val > k * sig)[0]:
-        if events and mid[i] - events[-1][0] < merge_yr:
-            if val[i] > events[-1][1]:
-                events[-1] = (mid[i], val[i])
+def detect(dates, residual, n=win_n, k=k_sigma):
+    """Forward steps above k robust sigma of the statistic; flags within merge_yr are one event
+    (the larger kept). Returns ([(onset, statistic), ...], sigma, stat_dates, stat_values)."""
+    stat_dates, stat_values = step_statistic(dates, residual, n)
+    stat_sigma = utils.robust_sigma(stat_values)
+    detections = []
+    for i in np.where(stat_values > k * stat_sigma)[0]:
+        if detections and stat_dates[i] - detections[-1][0] < merge_yr:
+            if stat_values[i] > detections[-1][1]:
+                detections[-1] = (stat_dates[i], stat_values[i])
         else:
-            events.append((mid[i], val[i]))
-    return events, sig, mid, val
+            detections.append((stat_dates[i], stat_values[i]))
+    return detections, stat_sigma, stat_dates, stat_values
 
 
-def design(tt, onsets):
-    """linear + annual harmonic + one step per event."""
-    cols = [np.ones_like(tt), tt - tt.mean(), np.sin(2 * np.pi * tt), np.cos(2 * np.pi * tt)]
-    cols += [(tt > on).astype(float) for on in onsets]
-    return np.column_stack(cols)
+def design(dates, onsets):
+    """Columns: constant, rate, annual sin and cos, then one step per onset."""
+    columns = [np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
+    columns += [(dates > onset).astype(float) for onset in onsets]
+    return np.column_stack(columns)
 
 
-def fit_joint(tt, y, onsets):
-    G = design(tt, onsets)
-    m, *_ = np.linalg.lstsq(G, y, rcond=None)
-    return m, float(np.sum((y - G @ m) ** 2))
+def fit_joint(dates, values, onsets):
+    """Least-squares fit of the joint model (constant + rate + annual + a Heaviside step at each onset).
+    Returns (coefficients, rss), rss = sum over epochs of (data - model)^2 in mm^2."""
+    G = design(dates, onsets)
+    coef, *_ = np.linalg.lstsq(G, values, rcond=None)
+    return coef, float(np.sum((values - np.dot(G, coef)) ** 2))
 
 
-def grid_search(tt, y, onsets, i):
-    """Best onset for event i over the acquisition epochs near the detection,
-    refitting the joint model each time; bounds = epochs within one variance
-    unit of the best RSS."""
-    o0 = onsets[i]
-    cand = tt[(tt > o0 - onset_search_yr) & (tt < o0 + onset_search_yr)]
-    if len(cand) == 0:
-        cand = np.array([o0])
-    trial = list(onsets); rss_at = {}
-    for tc in cand:
-        trial[i] = tc
-        _, rss_at[tc] = fit_joint(tt, y, trial)
+def grid_search(dates, values, onsets, i):
+    """TIMING of event i, the other onsets held fixed: try every acquisition epoch within
+    +/- onset_search_yr of the detector's flag as the step's onset, refit the whole joint model
+    each time, keep the epoch with the lowest rss. Returns (best onset, (lo, hi)) where lo-hi
+    spans the candidate epochs whose rss is within one variance unit (rss / dof) of the best."""
+    onset_0 = onsets[i]
+    candidates = dates[(dates > onset_0 - onset_search_yr) & (dates < onset_0 + onset_search_yr)]
+    if len(candidates) == 0:
+        candidates = np.array([onset_0])
+    trial = list(onsets)
+    rss_at = {}
+    for candidate in candidates:
+        trial[i] = candidate
+        _, rss_at[candidate] = fit_joint(dates, values, trial)
     best = min(rss_at, key=rss_at.get)
-    var = rss_at[best] / max(len(tt) - (4 + len(onsets)), 1)
-    ok = [tc for tc, r in rss_at.items() if r - rss_at[best] <= var]
-    return best, (min(ok), max(ok))
+    variance = rss_at[best] / max(len(dates) - (4 + len(onsets)), 1)
+    within = [candidate for candidate, rss in rss_at.items() if rss - rss_at[best] <= variance]
+    return best, (min(within), max(within))
 
 
-def bootstrap_amplitudes(tt, y, onsets):
-    """Moving-block bootstrap 95% CI on each step (onsets fixed)."""
+def bootstrap_amplitudes(dates, values, onsets):
+    """Moving-block bootstrap 95% CI on each step (onsets fixed). Returns (ci_lo, ci_hi) per event."""
     rng = np.random.default_rng(seed)
-    G = design(tt, onsets); pinv = np.linalg.pinv(G)
-    fitted = G @ (pinv @ y); resid = y - fitted; n = len(tt)
-    bl = int(max(2, min(round(block_years / np.median(np.diff(tt))), n)))
-    nblocks = int(np.ceil(n / bl))
+    G = design(dates, onsets)
+    pinv = np.linalg.pinv(G)
+    fitted = np.dot(G, np.dot(pinv, values))
+    residual = values - fitted
+    n = len(dates)
+    block = int(max(2, min(round(block_years / np.median(np.diff(dates))), n)))
+    n_blocks = int(np.ceil(n / block))
     draws = np.empty((nboot, len(onsets)))
     for k in range(nboot):
-        starts = rng.integers(0, n - bl + 1, size=nblocks)
-        idx = np.concatenate([np.arange(s, s + bl) for s in starts])[:n]
-        draws[k] = (pinv @ (fitted + resid[idx]))[4:]
+        starts = rng.integers(0, n - block + 1, size=n_blocks)
+        idx = np.concatenate([np.arange(s, s + block) for s in starts])[:n]
+        draws[k] = np.dot(pinv, fitted + residual[idx])[4:]
     return np.percentile(draws, 2.5, axis=0), np.percentile(draws, 97.5, axis=0)
 
 
-def fit_all_events(tt, y, onsets, npass=2):
-    """Grid-search each onset in turn holding the others, twice; then the joint fit + CIs."""
-    onsets = list(onsets); bounds = [(on, on) for on in onsets]
+def fit_all_events(dates, values, onsets, npass=2):
+    """Timing then amplitude. Grid-search each onset in turn holding the others, twice through;
+    then ONE joint fit with the onsets fixed gives the amplitudes (the step coefficients), and
+    the block bootstrap on that fit gives their 95% CIs. Returns ([one dict per event], coefficients, rss)."""
+    onsets = list(onsets)
+    bounds = [(onset, onset) for onset in onsets]
     for _ in range(npass):
         for i in range(len(onsets)):
-            onsets[i], bounds[i] = grid_search(tt, y, onsets, i)
-    m, rss = fit_joint(tt, y, onsets)
-    amp_lo, amp_hi = bootstrap_amplitudes(tt, y, onsets)
-    out = []
-    for i, on in enumerate(onsets):
-        prev = tt[tt < bounds[i][0]]          # the event happened in the interval before the epoch
-        lo = float(prev.max()) if len(prev) else float(bounds[i][0])
-        out.append(dict(onset_yr=float(on), onset_lo=lo, onset_hi=float(max(bounds[i][1], on)),
-                        amplitude_mm=float(m[4 + i]), amp_lo=float(amp_lo[i]), amp_hi=float(amp_hi[i])))
-    return out, m, rss
+            onsets[i], bounds[i] = grid_search(dates, values, onsets, i)
+    coef, rss = fit_joint(dates, values, onsets)
+    amp_lo, amp_hi = bootstrap_amplitudes(dates, values, onsets)
+    fits = []
+    for i, onset in enumerate(onsets):
+        before = dates[dates < bounds[i][0]]          # the event happened in the interval before the epoch
+        onset_lo = float(before.max()) if len(before) else float(bounds[i][0])
+        fits.append(dict(onset_yr=float(onset), onset_lo=onset_lo, onset_hi=float(max(bounds[i][1], onset)),
+                         amplitude_mm=float(coef[4 + i]), amp_lo=float(amp_lo[i]), amp_hi=float(amp_hi[i])))
+    return fits, coef, rss
 
 # %% [markdown]
-# ## RUN: detect and fit on the two stacks
+# ## [9] RUN: detect and fit on the two stacks
+#
+# Everything the QC figure and the registry need for each section is kept in
+# `solutions[key]`.
 
 # %%
-rows, solutions, qc = [], {}, {}
+# [10]
+event_rows = []
+solutions = {}
 for title, key, col, centre, half_span, cmcode in SEGS:
     seg = segments[key]
-    tt, y, n = load_stack(seg)
-    r, coef = detrend_rate_annual(tt, y)
-    events, sig, mid, val = detect(tt, r)
-    print(f"=== {title}: stack of {n} crossings, {len(tt)} epochs, statistic sigma {sig:.3f} mm, threshold {k_sigma * sig:.2f} mm")
-    fits, coef_ev, rss = fit_all_events(tt, y, [e[0] for e in events])
-    print(f"    joint model: rate {coef_ev[1]:.2f} mm/yr, annual {np.hypot(coef_ev[2], coef_ev[3]):.2f} mm, rms {np.sqrt(rss / len(tt)):.2f} mm")
-    cm_amps, cm_ev, cm_series = [], [], None
+    stack_dates, stack, n_crossings = load_stack(seg)
+    residual, coef = detrend_rate_annual(stack_dates, stack)
+    detections, stat_sigma, stat_dates, stat_values = detect(stack_dates, residual)
+    print(f"=== {title}: stack of {n_crossings} crossings, {len(stack_dates)} epochs, statistic sigma {stat_sigma:.3f} mm, "
+          f"threshold {k_sigma * stat_sigma:.2f} mm")
+    fits, coef_events, rss = fit_all_events(stack_dates, stack, [onset for onset, stat in detections])
+    print(f"    joint model: rate {coef_events[1]:.2f} mm/yr, annual {np.hypot(coef_events[2], coef_events[3]):.2f} mm, "
+          f"rms {np.sqrt(rss / len(stack_dates)):.2f} mm")
+
+    # the control: the same joint model and the same detector (window matched in TIME) on the creepmeter
+    cm_amps, cm_detections, cm_series = [], [], None
     if cmcode:
-        tc, cc = daily_creepmeter(cmcode)
-        m_cm, _ = fit_joint(tc, cc, [f["onset_yr"] for f in fits])          # same joint model on the creepmeter
-        cm_amps = [float(a) for a in m_cm[4:]]
-        rc, _ = detrend_rate_annual(tc, cc)
-        n_cm = max(2, int(round(win_n * np.median(np.diff(tt)) / np.median(np.diff(tc)))))   # matched in TIME, not samples
-        cm_ev, cm_sig, _, _ = detect(tc, rc, n_cm)
-        cm_series = (tc, cc)
-        z_at_cm = [float(val[int(np.argmin(np.abs(mid - e[0])))] / sig) for e in cm_ev]
-        pd.DataFrame([dict(creepmeter=cmcode, onset_yr=round(e[0], 4), stat_mm=round(e[1], 2), sigma_mm=round(cm_sig, 3),
+        cm_dates, cm_slip = daily_creepmeter(cmcode)
+        coef_cm, _ = fit_joint(cm_dates, cm_slip, [f["onset_yr"] for f in fits])
+        cm_amps = [float(a) for a in coef_cm[4:]]
+        cm_residual, _ = detrend_rate_annual(cm_dates, cm_slip)
+        n_cm = max(2, int(round(win_n * np.median(np.diff(stack_dates)) / np.median(np.diff(cm_dates)))))
+        cm_detections, cm_sigma, _, _ = detect(cm_dates, cm_residual, n_cm)
+        cm_series = (cm_dates, cm_slip)
+        insar_stat_at_cm = [float(stat_values[int(np.argmin(np.abs(stat_dates - onset)))] / stat_sigma) for onset, stat in cm_detections]
+        pd.DataFrame([dict(creepmeter=cmcode, onset_yr=round(onset, 4), stat_mm=round(stat, 2), sigma_mm=round(cm_sigma, 3),
                            insar_stat_sigma=round(z, 2),
-                           insar_detected=bool(any(abs(f["onset_yr"] - e[0]) < merge_yr for f in fits)))
-                      for e, z in zip(cm_ev, z_at_cm)]).to_csv(os.path.join(out_dir, f"creepmeter_events_{cmcode}.csv"), index=False)
-        print(f"    {cmcode} creepmeter detected independently ({n_cm} d window, threshold {k_sigma * cm_sig:.2f} mm): "
-              f"{[round(e[0], 3) for e in cm_ev]}; InSAR statistic at those onsets, in sigma: {[round(z, 2) for z in z_at_cm]}")
-    for i, ((onset, stat), f) in enumerate(zip(events, fits)):
-        win_d = (f["onset_hi"] - f["onset_lo"]) * 365.25
+                           insar_detected=bool(any(abs(f["onset_yr"] - onset) < merge_yr for f in fits)))
+                      for (onset, stat), z in zip(cm_detections, insar_stat_at_cm)]
+                     ).to_csv(os.path.join(out_dir, f"creepmeter_events_{cmcode}.csv"), index=False)
+        print(f"    {cmcode} creepmeter detected independently ({n_cm} d window, threshold {k_sigma * cm_sigma:.2f} mm): "
+              f"{[round(onset, 3) for onset, stat in cm_detections]}; InSAR statistic at those onsets, in sigma: "
+              f"{[round(z, 2) for z in insar_stat_at_cm]}")
+
+    for i, ((onset, stat), f) in enumerate(zip(detections, fits)):
+        window_days = (f["onset_hi"] - f["onset_lo"]) * 365.25
         cm_step = cm_amps[i] if cmcode else np.nan
-        print(f"    {f['onset_yr']:.4f}  window [{f['onset_lo']:.4f}, {f['onset_hi']:.4f}] = {win_d:.0f} d   "
+        print(f"    {f['onset_yr']:.4f}  window [{f['onset_lo']:.4f}, {f['onset_hi']:.4f}] = {window_days:.0f} d   "
               f"amp {f['amplitude_mm']:.2f} [{f['amp_lo']:.2f}, {f['amp_hi']:.2f}] mm" + (f"   creepmeter {cm_step:+.2f} mm" if cmcode else ""))
-        rows.append(dict(segment=key, label=seg["label"], onset_yr=round(f["onset_yr"], 4), onset_lo=round(f["onset_lo"], 4),
-                         onset_hi=round(f["onset_hi"], 4), onset_window_days=round(win_d, 1), amplitude_mm=round(f["amplitude_mm"], 2),
-                         amp_lo=round(f["amp_lo"], 2), amp_hi=round(f["amp_hi"], 2), detect_stat_mm=round(float(stat), 2),
-                         detect_sigma_mm=round(sig, 3), stream=params, k_sigma=k_sigma, creepmeter=cmcode or "",
-                         creepmeter_step_mm=(round(cm_step, 2) if cmcode else np.nan)))
-    solutions[key] = dict(fits=fits, series=(tt, y), n=n, coef=coef_ev, rss=rss)
-    qc[key] = dict(tt=tt, y=y, n=n, fits=fits, events=events, sig=sig, mid=mid, val=val, cm_ev=cm_ev, cm_series=cm_series, cmcode=cmcode)
+        event_rows.append(dict(segment=key, label=seg["label"], onset_yr=round(f["onset_yr"], 4), onset_lo=round(f["onset_lo"], 4),
+                               onset_hi=round(f["onset_hi"], 4), onset_window_days=round(window_days, 1), amplitude_mm=round(f["amplitude_mm"], 2),
+                               amp_lo=round(f["amp_lo"], 2), amp_hi=round(f["amp_hi"], 2), detect_stat_mm=round(float(stat), 2),
+                               detect_sigma_mm=round(stat_sigma, 3), stream=params, k_sigma=k_sigma, creepmeter=cmcode or "",
+                               creepmeter_step_mm=(round(cm_step, 2) if cmcode else np.nan)))
+    solutions[key] = dict(dates=stack_dates, stack=stack, n=n_crossings, fits=fits, coef=coef_events, rss=rss,
+                          detections=detections, stat_sigma=stat_sigma, stat_dates=stat_dates, stat_values=stat_values,
+                          cm_detections=cm_detections, cm_series=cm_series, cmcode=cmcode)
     print("")
 
-ev = pd.DataFrame(rows)
-ev.to_csv(os.path.join(out_dir, "creep_events.csv"), index=False)
-print(f"{len(ev)} events saved to creep_events.csv")
-tp = ev[ev.segment == "TULEPOND"].reset_index(drop=True)
-onsets_tp = tp["onset_yr"].to_numpy(float)
-assert len(tp) == 5, f"expected the five Tule Pond events, got {len(tp)}"
+creep_events = pd.DataFrame(event_rows)
+creep_events.to_csv(os.path.join(out_dir, "creep_events.csv"), index=False)
+print(f"{len(creep_events)} events saved to creep_events.csv")
+tulepond_events = creep_events[creep_events.segment == "TULEPOND"].reset_index(drop=True)
+onsets_tulepond = tulepond_events["onset_yr"].to_numpy(float)
+assert len(tulepond_events) == 5, f"expected the five Tule Pond events, got {len(tulepond_events)}"
 
 # %% [markdown]
-# ## CHECK: the detection does not depend on the exact threshold
+# ## [11] CHECK: the detection does not depend on the exact threshold
 #
 # The paper says the five Tule Pond events are returned for every threshold
 # between 3 and 4 sigma. Re-run the detector at 3.0, 3.5 and 4.0.
 
 # %%
-tt, y, n = load_stack(segments["TULEPOND"])
-r, _ = detrend_rate_annual(tt, y)
+# [12]
+stack_dates, stack, n_crossings = load_stack(segments["TULEPOND"])
+residual, _ = detrend_rate_annual(stack_dates, stack)
 for k in (3.0, 3.5, 4.0):
-    evs, _, _, _ = detect(tt, r, k=k)
-    print(f"  K = {k:.1f} sigma: {len(evs)} events at {[round(e[0], 2) for e in evs]}")
+    detections, _, _, _ = detect(stack_dates, residual, k=k)
+    print(f"  K = {k:.1f} sigma: {len(detections)} events at {[round(onset, 2) for onset, stat in detections]}")
 
 # %% [markdown]
-# ## Figure: detection QC
+# ## [13] Figure: detection QC
 #
 # Top: the stacked series with the joint model and the detections (dashed) and,
 # for Oakland, the creepmeter (offset) with its own independent detections
@@ -320,38 +401,48 @@ for k in (3.0, 3.5, 4.0):
 # threshold: the detection limit, read straight off the figure.
 
 # %%
+# [14]
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, axes = plt.subplots(2, 2, figsize=(7.2, 4.6), sharex=True)
 for j, (title, key, col, centre, half_span, cmcode) in enumerate(SEGS):
-    q = qc[key]
+    sol = solutions[key]
+    # top: the stack, the joint model, the detections
     ax = axes[0, j]
-    ax.plot(q["tt"], q["y"] - q["y"][0], ".", ms=1.6, color="0.35", label=f"InSAR stack (n = {q['n']})")
-    G = design(q["tt"], [f["onset_yr"] for f in q["fits"]]); m, *_ = np.linalg.lstsq(G, q["y"], rcond=None)
-    ax.plot(q["tt"], G @ m - q["y"][0], "-", lw=1.0, color="#D94801", label="InSAR model")
-    if q["cm_series"] is not None:
-        tc, cc = q["cm_series"]; ax.plot(tc, cc - cc[0] + 5.0, "-", lw=1.0, color="#3182BD", label=f"{cmcode} (+5 mm)")
-    for k_, (e, _) in enumerate(q["cm_ev"]):
-        ax.axvline(e, color="#9ECAE1", lw=1.2, label=f"{cmcode} detection" if k_ == 0 else None)
-    for k_, (onset, _) in enumerate(q["events"]):
-        ax.axvline(onset, color="#FDAE6B", lw=1.2, ls="--", label="InSAR detection" if k_ == 0 else None)
-    ax.set_ylabel("FP displacement (mm)"); ax.set_title(f"{'ab'[j]}) {title} stack", loc="left")
+    ax.plot(sol["dates"], sol["stack"] - sol["stack"][0], ".", ms=1.6, color="0.35", label=f"InSAR stack (n = {sol['n']})")
+    G = design(sol["dates"], [f["onset_yr"] for f in sol["fits"]])
+    coef, *_ = np.linalg.lstsq(G, sol["stack"], rcond=None)
+    ax.plot(sol["dates"], np.dot(G, coef) - sol["stack"][0], "-", lw=1.0, color="#D94801", label="InSAR model")
+    if sol["cm_series"] is not None:
+        cm_dates, cm_slip = sol["cm_series"]
+        ax.plot(cm_dates, cm_slip - cm_slip[0] + 5.0, "-", lw=1.0, color="#3182BD", label=f"{cmcode} (+5 mm)")
+    for i, (onset, stat) in enumerate(sol["cm_detections"]):
+        ax.axvline(onset, color="#9ECAE1", lw=1.2, label=f"{cmcode} detection" if i == 0 else None)
+    for i, (onset, stat) in enumerate(sol["detections"]):
+        ax.axvline(onset, color="#FDAE6B", lw=1.2, ls="--", label="InSAR detection" if i == 0 else None)
+    ax.set_ylabel("FP displacement (mm)")
+    ax.set_title(f"{'ab'[j]}) {title} stack", loc="left")
     ax.legend(fontsize=6, loc="upper left", frameon=False)
+    # bottom: the step statistic against the threshold
     ax = axes[1, j]
-    ax.axhline(k_sigma * q["sig"], color="#6A3D9A", lw=0.8, ls="--", label=f"threshold {k_sigma:g} sigma = {k_sigma * q['sig']:.1f} mm")
-    ax.plot(q["mid"], q["val"], "-", lw=0.7, color="0.35")
-    for e, _ in q["cm_ev"]:
-        ax.axvline(e, color="#9ECAE1", lw=1.2)
-    for onset, _ in q["events"]:
+    ax.axhline(k_sigma * sol["stat_sigma"], color="#6A3D9A", lw=0.8, ls="--", label=f"threshold {k_sigma:g} sigma = {k_sigma * sol['stat_sigma']:.1f} mm")
+    ax.plot(sol["stat_dates"], sol["stat_values"], "-", lw=0.7, color="0.35")
+    for onset, stat in sol["cm_detections"]:
+        ax.axvline(onset, color="#9ECAE1", lw=1.2)
+    for onset, stat in sol["detections"]:
         ax.axvline(onset, color="#FDAE6B", lw=1.2, ls="--")
-    ax.set_ylabel("step statistic (mm)"); ax.set_xlabel("Year"); ax.set_title(f"{'cd'[j]}) {title} detection", loc="left")
+    ax.set_ylabel("step statistic (mm)")
+    ax.set_xlabel("Year")
+    ax.set_title(f"{'cd'[j]}) {title} detection", loc="left")
     ax.legend(fontsize=6, loc="lower right", frameon=False)
 fig.tight_layout()
-f_det = os.path.join(fig_dir, f"figS_event_detection_{params}_k{k_sigma:g}_win{win_n}.png")
-fig.savefig(f_det, dpi=300); fig.savefig(f_det.replace(".png", ".pdf")); print("Saved figure to:", f_det)
+f_detect = os.path.join(fig_dir, f"figS_event_detection_{params}_k{k_sigma:g}_win{win_n}.png")
+fig.savefig(f_detect, dpi=300)
+fig.savefig(f_detect.replace(".png", ".pdf"))
+print("Saved figure to:", f_detect)
 plt.show()
 
 # %% [markdown]
-# ## Along strike: the joint model at every crossing
+# ## [15] Along strike: the joint model at every crossing
 #
 # The same design (linear + annual + a step at each onset, held fixed) fitted
 # crossing by crossing. Away from its section an event's amplitude fits to
@@ -360,24 +451,14 @@ plt.show()
 # in the window; it is a regression ratio and is not confined to 0 to 100%.
 
 # %%
-onsets_all = ev["onset_yr"].to_numpy(float); seg_of = ev["segment"].to_numpy()
-G_full = design(t, onsets_all)
-rate = np.full(len(lat), np.nan); amps = np.full((len(onsets_all), len(lat)), np.nan)
-for i in range(len(lat)):
-    yy = F[i]; ok = np.isfinite(yy)
-    if ok.sum() < min_epoch_frac * len(t):
-        continue
-    m, *_ = np.linalg.lstsq(G_full[ok], yy[ok], rcond=None)
-    rate[i] = m[1]; amps[:, i] = m[4:]
-
-
-def gaussian_smooth_km(x, lats, sigma_km):
+# [16]
+def gaussian_smooth_km(x, lats_of_x, sigma_km):
     """NaN-aware, gap-preserving Gaussian smoothing along the fault."""
-    from scipy.ndimage import gaussian_filter1d
-    spacing = float(np.median(np.abs(np.diff(lats)))) * 111.19
-    sig = max(sigma_km / spacing, 0.5)
-    fin = np.isfinite(x).astype(float); filled = np.where(fin > 0, x, 0.0)
-    den = gaussian_filter1d(fin, sig, mode="nearest")
+    spacing_km = float(np.median(np.abs(np.diff(lats_of_x)))) * 111.19
+    sig = max(sigma_km / spacing_km, 0.5)
+    finite = np.isfinite(x).astype(float)
+    filled = np.where(finite > 0, x, 0.0)
+    den = gaussian_filter1d(finite, sig, mode="nearest")
     out = np.divide(gaussian_filter1d(filled, sig, mode="nearest"), den, out=np.full_like(filled, np.nan), where=den > 0.15)
     out[~np.isfinite(x)] = np.nan
     return out
@@ -385,76 +466,106 @@ def gaussian_smooth_km(x, lats, sigma_km):
 
 def interp_nan(x, y):
     """Bridge NaN gaps inside the data range by linear interpolation (x must be sorted)."""
-    y = np.asarray(y, float).copy(); m = np.isfinite(y)
-    if m.sum() >= 2:
-        inner = (x >= x[m][0]) & (x <= x[m][-1]); fill = inner & ~m
-        y[fill] = np.interp(x[fill], x[m], y[m])
+    y = np.asarray(y, float).copy()
+    ok = np.isfinite(y)
+    if ok.sum() >= 2:
+        inner = (x >= x[ok][0]) & (x <= x[ok][-1])
+        fill = inner & ~ok
+        y[fill] = np.interp(x[fill], x[ok], y[ok])
     return y
 
 
-cols = {"lat": lat, "km": km, "inter_event_rate": rate, "inter_event_rate_smooth": gaussian_smooth_km(rate, lat, smooth_km)}
+# the joint model with every onset of both sections, at every crossing
+onsets_all = creep_events["onset_yr"].to_numpy(float)
+segment_of = creep_events["segment"].to_numpy()
+design_all = design(dates, onsets_all)
+inter_event_rate = np.full(len(lats), np.nan)
+event_amp = np.full((len(onsets_all), len(lats)), np.nan)         # one row per event, one column per crossing
+for i in range(len(lats)):
+    values = fp_matrix[i]
+    ok = np.isfinite(values)
+    if ok.sum() < min_epoch_frac * len(dates):
+        continue
+    coef_i, *_ = np.linalg.lstsq(design_all[ok], values[ok], rcond=None)
+    inter_event_rate[i] = coef_i[1]
+    event_amp[:, i] = coef_i[4:]
+
+# per section: summed event slip, the event-driven fraction, and the numbers within 2 km of the centre
+columns = {"lat": lats, "km": km, "inter_event_rate": inter_event_rate,
+           "inter_event_rate_smooth": gaussian_smooth_km(inter_event_rate, lats, smooth_km)}
 frac_stats = {}
 for title, key, col, centre, half_span, cmcode in SEGS:
-    sel = seg_of == key
-    s = amps[sel].sum(axis=0); total = rate * span + s
-    frac = 100 * s / np.where(np.abs(total) > total_floor_mm, total, np.nan)
-    cols[f"event_sum_{col}"] = s; cols[f"event_frac_{col}"] = frac
-    cols[f"event_frac_{col}_smooth"] = gaussian_smooth_km(frac, lat, smooth_km)
-    for j in np.flatnonzero(sel):
-        cols[f"amp_{onsets_all[j]:.3f}"] = amps[j]
-    d = 2.0 / 111.19
-    inseg = (lat >= segments[key]["lat"] - d) & (lat <= segments[key]["lat"] + d)
-    v = frac[inseg & np.isfinite(frac)]
-    frac_stats[key] = dict(n=int(inseg.sum()), sum_median=float(np.nanmedian(s[inseg])), median=float(np.median(v)),
-                           p5=float(np.percentile(v, 5)), p95=float(np.percentile(v, 95)))
-    print(f"{title}: {inseg.sum()} crossings within 2 km; summed event slip median {np.nanmedian(s[inseg]):.1f} mm; "
-          f"fraction median {np.median(v):.0f}%, 5-95% {np.percentile(v, 5):.0f} to {np.percentile(v, 95):.0f}%")
-fr = pd.DataFrame(cols)
-fr.to_csv(os.path.join(out_dir, "event_fraction_by_crossing.csv"), index=False)
+    in_segment = segment_of == key
+    event_sum = event_amp[in_segment].sum(axis=0)
+    total = inter_event_rate * span + event_sum
+    fraction = 100 * event_sum / np.where(np.abs(total) > total_floor_mm, total, np.nan)
+    columns[f"event_sum_{col}"] = event_sum
+    columns[f"event_frac_{col}"] = fraction
+    columns[f"event_frac_{col}_smooth"] = gaussian_smooth_km(fraction, lats, smooth_km)
+    for j in np.flatnonzero(in_segment):
+        columns[f"amp_{onsets_all[j]:.3f}"] = event_amp[j]
+    half_width_deg = 2.0 / 111.19
+    near_centre = (lats >= segments[key]["lat"] - half_width_deg) & (lats <= segments[key]["lat"] + half_width_deg)
+    fraction_valid = fraction[near_centre & np.isfinite(fraction)]
+    frac_stats[key] = dict(n=int(near_centre.sum()), sum_median=float(np.nanmedian(event_sum[near_centre])), median=float(np.median(fraction_valid)),
+                           p5=float(np.percentile(fraction_valid, 5)), p95=float(np.percentile(fraction_valid, 95)))
+    print(f"{title}: {near_centre.sum()} crossings within 2 km; summed event slip median {np.nanmedian(event_sum[near_centre]):.1f} mm; "
+          f"fraction median {np.median(fraction_valid):.0f}%, 5-95% {np.percentile(fraction_valid, 5):.0f} to {np.percentile(fraction_valid, 95):.0f}%")
+event_fraction = pd.DataFrame(columns)
+event_fraction.to_csv(os.path.join(out_dir, "event_fraction_by_crossing.csv"), index=False)
 
 # %% [markdown]
-# ## The window around the section, and the slip above the inter-event rate
+# ## [17] The window around the section, and the slip above the inter-event rate
 #
-# Per crossing, a linear + annual model is fitted to the INTER-event epochs only
-# (the event windows enter as ramp columns so they do not pull the trend) and
+# Per crossing, a linear + annual model is fitted to the INTER-event epochs only,
+# with one step column per event so the offsets between events do not drag the
+# rate up (each column is 0 before the event's 6 to 12 day acquisition interval
+# and 1 after it; no duration is fitted). The constant + rate + annual part is
 # subtracted from every epoch: what is left is the cumulative slip above the
 # inter-event rate, the hovmoller of Fig 1. The 20 km window for everything
 # along strike is re-centred on the peak of that cumulative slip at the end of
 # the record, so it follows the data rather than the seed centre.
 
 # %%
-def event_detrend(Fm, tt, windows):
-    G = np.column_stack([np.ones_like(tt), tt, np.sin(2 * np.pi * tt), np.cos(2 * np.pi * tt)]
-                        + [np.clip((tt - s_) / (e_ - s_), 0, 1) for s_, e_ in windows])
-    inter = np.ones_like(tt, dtype=bool)
-    for s_, e_ in windows:
-        inter &= ~((tt >= s_) & (tt <= e_))
-    res = np.full_like(Fm, np.nan); rates = []
-    for i in range(Fm.shape[0]):
-        yy = Fm[i]; ok = np.isfinite(yy) & inter
-        if ok.sum() < 10:
-            continue
-        c = np.linalg.lstsq(G[ok], yy[ok], rcond=None)[0]
-        res[i] = yy - G[:, :4] @ c[:4]; rates.append(c[1])
-    return res, float(np.nanmedian(rates))
+# [18]
+title, key, col, centre, half_span, cmcode = SEGS[0]                       # Tule Pond
+windows = list(zip(tulepond_events["onset_lo"], tulepond_events["onset_hi"]))
 
+# design: constant, rate, annual, plus one column per event that is 0 before its acquisition interval
+# (onset_lo to onset_hi, 6 to 12 d) and 1 after it. Only the inter-event epochs are fitted, so to the fit
+# each column is a plain step: it absorbs that event's offset so the staircase does not drag the rate up.
+# (The linear slope inside the interval is never fitted; it only touches the excluded epochs.)
+design_ramp = np.column_stack([np.ones_like(dates), dates, np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
+                              + [np.clip((dates - start) / (end - start), 0, 1) for start, end in windows])
+inter_event = np.ones_like(dates, dtype=bool)
+for start, end in windows:
+    inter_event &= ~((dates >= start) & (dates <= end))
+slip_above_rate = np.full_like(fp_matrix, np.nan)
+window_rates = []
+for i in range(fp_matrix.shape[0]):
+    values = fp_matrix[i]
+    ok = np.isfinite(values) & inter_event
+    if ok.sum() < 10:
+        continue
+    coef_i = np.linalg.lstsq(design_ramp[ok], values[ok], rcond=None)[0]
+    slip_above_rate[i] = values - np.dot(design_ramp[:, :4], coef_i[:4])          # only constant + rate + annual subtracted: the steps stay
+    window_rates.append(coef_i[1])
+inter_event_rate_median = float(np.nanmedian(window_rates))
+slip_above_rate = np.column_stack([gaussian_smooth_km(slip_above_rate[:, j], lats, smooth_km) for j in range(slip_above_rate.shape[1])])
 
-title, key, col, centre, half_span, cmcode = SEGS[0]
-windows = list(zip(tp["onset_lo"], tp["onset_hi"]))
-res, bg_rate = event_detrend(F, t, windows)
-res = np.column_stack([gaussian_smooth_km(res[:, j], lat, smooth_km) for j in range(res.shape[1])])
+# re-centre the window on the peak of the cumulative slip at the end of the record
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", RuntimeWarning)
-    final = np.nanmean(res[:, -5:], axis=1)
-w0 = (km >= centre - half_span) & (km <= centre + half_span)
-c_new = float(km[w0][np.nanargmax(final[w0])])
-centre = min(max(c_new, km.min() + half_span), km.max() - half_span)
+    final_slip = np.nanmean(slip_above_rate[:, -5:], axis=1)
+seed_window = (km >= centre - half_span) & (km <= centre + half_span)
+peak_km = float(km[seed_window][np.nanargmax(final_slip[seed_window])])
+centre = min(max(peak_km, km.min() + half_span), km.max() - half_span)
 w_lo, w_hi = centre - half_span, centre + half_span
-print(f"window re-centred on the cumulative-slip peak at {c_new:.1f} km: {w_lo:.1f} to {w_hi:.1f} km; "
-      f"median per-crossing inter-event rate in the window {bg_rate:.2f} mm/yr")
+print(f"window re-centred on the cumulative-slip peak at {peak_km:.1f} km: {w_lo:.1f} to {w_hi:.1f} km; "
+      f"median per-crossing inter-event rate in the window {inter_event_rate_median:.2f} mm/yr")
 
 # %% [markdown]
-# ## Section lengths (Dani's sketch, 2026-09-21)
+# ## [19] Section lengths (Dani's sketch, 2026-09-21)
 #
 # Two lengths on the cumulative event slip profile of Tule Pond:
 #
@@ -466,103 +577,123 @@ print(f"window re-centred on the cumulative-slip peak at {c_new:.1f} km: {w_lo:.
 #    are printed beside it as a sensitivity check.
 # 2. **Width of the peak slip zone**: the contiguous run where the smoothed
 #    event-driven fraction is at least 75% (and, alternatively, 90%) of its
-#    peak. The 75% band is what the figures draw.
+#    peak. The 90% band is what the figures draw and the paper quotes.
 
 # %%
+# [20]
 def contiguous_span(k, v, thresh):
     """Span (lo, hi, n) of the contiguous run around the peak where v >= thresh; k sorted."""
-    j = int(np.nanargmax(v)); above = np.isfinite(v) & (v >= thresh)
+    j = int(np.nanargmax(v))
+    above = np.isfinite(v) & (v >= thresh)
     lo = hi = j
-    while lo > 0 and above[lo - 1]: lo -= 1
-    while hi < len(v) - 1 and above[hi + 1]: hi += 1
+    while lo > 0 and above[lo - 1]:
+        lo -= 1
+    while hi < len(v) - 1 and above[hi + 1]:
+        hi += 1
     return float(k[lo]), float(k[hi]), int(hi - lo + 1)
 
 
-win = (ks >= w_lo) & (ks <= w_hi)
-cum = interp_nan(ks, gaussian_smooth_km(fr[f"event_sum_{col}"].values, lat, smooth_km)[o])
-cum_w = np.where(win, cum, np.nan)
-flank = np.zeros(len(ks), bool)
-for a_, b_ in flank_km:
-    flank |= (ks >= a_) & (ks <= b_)
-flank_sigma = utils.robust_sigma(cum[flank]); flank_median = np.nanmedian(cum[flank])
-thr = flank_median + 3 * flank_sigma
-peak_cum = float(np.nanmax(cum_w))
-len_lo, len_hi, len_n = contiguous_span(ks, cum_w, thr)
-print(f"cumulative event slip: peak {peak_cum:.1f} mm at {ks[np.nanargmax(cum_w)]:.1f} km; "
-      f"flanks median {flank_median:.1f} mm, robust sigma {flank_sigma:.2f} mm -> threshold {thr:.1f} mm")
+# everything along strike from here is on the north -> south sorted axis km_sorted
+in_window = (km_sorted >= w_lo) & (km_sorted <= w_hi)
+cum_event_slip = interp_nan(km_sorted, gaussian_smooth_km(event_fraction[f"event_sum_{col}"].values, lats, smooth_km)[north_to_south])
+cum_event_slip_window = np.where(in_window, cum_event_slip, np.nan)
+on_flanks = np.zeros(len(km_sorted), bool)
+for flank_lo, flank_hi in flank_km:
+    on_flanks |= (km_sorted >= flank_lo) & (km_sorted <= flank_hi)
+flank_sigma = utils.robust_sigma(cum_event_slip[on_flanks])
+flank_median = np.nanmedian(cum_event_slip[on_flanks])
+length_threshold = flank_median + 3 * flank_sigma
+peak_cum = float(np.nanmax(cum_event_slip_window))
+len_lo, len_hi, len_n = contiguous_span(km_sorted, cum_event_slip_window, length_threshold)
+print(f"cumulative event slip: peak {peak_cum:.1f} mm at {km_sorted[np.nanargmax(cum_event_slip_window)]:.1f} km; "
+      f"flanks median {flank_median:.1f} mm, robust sigma {flank_sigma:.2f} mm -> threshold {length_threshold:.1f} mm")
 print(f"  length of fault hosting the events (above threshold): {len_lo:.1f} to {len_hi:.1f} km = {len_hi - len_lo:.1f} km ({len_n} crossings)")
 lengths = {"threshold": (len_lo, len_hi)}
 for pct in (10, 20):
-    a_, b_, n_ = contiguous_span(ks, cum_w, pct / 100 * peak_cum)
-    lengths[f"{pct}pct"] = (a_, b_)
-    print(f"  sensitivity, above {pct}% of peak: {a_:.1f} to {b_:.1f} km = {b_ - a_:.1f} km")
+    pct_lo, pct_hi, pct_n = contiguous_span(km_sorted, cum_event_slip_window, pct / 100 * peak_cum)
+    lengths[f"{pct}pct"] = (pct_lo, pct_hi)
+    print(f"  sensitivity, above {pct}% of peak: {pct_lo:.1f} to {pct_hi:.1f} km = {pct_hi - pct_lo:.1f} km")
 
-frac_s = interp_nan(ks, fr[f"event_frac_{col}_smooth"].values[o])
-secular_s = interp_nan(ks, fr["inter_event_rate_smooth"].values[o])
-frac_w = np.where(win, frac_s, np.nan)
-peak_frac = float(np.nanmax(frac_w))
+# the peak slip zone: where the smoothed fraction stays above band_fracs x its peak
+fraction_smooth = interp_nan(km_sorted, event_fraction[f"event_frac_{col}_smooth"].values[north_to_south])
+secular_smooth = interp_nan(km_sorted, event_fraction["inter_event_rate_smooth"].values[north_to_south])
+fraction_window = np.where(in_window, fraction_smooth, np.nan)
+peak_frac = float(np.nanmax(fraction_window))
 bands = {}
-for bf in band_fracs:
-    b_lo, b_hi, b_n = contiguous_span(ks, frac_w, bf * peak_frac)
-    bands[bf] = (b_lo, b_hi, b_n)
-    print(f"  peak slip zone at {100 * bf:.0f}% of the fraction peak ({peak_frac:.0f}%): {b_lo:.1f} to {b_hi:.1f} km = {b_hi - b_lo:.1f} km, {b_n} crossings")
+for band_frac in band_fracs:
+    band_lo, band_hi, band_n = contiguous_span(km_sorted, fraction_window, band_frac * peak_frac)
+    bands[band_frac] = (band_lo, band_hi, band_n)
+    print(f"  peak slip zone at {100 * band_frac:.0f}% of the fraction peak ({peak_frac:.0f}%): {band_lo:.1f} to {band_hi:.1f} km = "
+          f"{band_hi - band_lo:.1f} km, {band_n} crossings")
 
 # the control: COZ1's 75% band on its own fraction
-frac_c = interp_nan(ks, fr["event_frac_coz1_smooth"].values[o])
-win_c = (ks >= SEGS[1][3] - SEGS[1][4]) & (ks <= SEGS[1][3] + SEGS[1][4])
-c_lo, c_hi, c_n = contiguous_span(ks, np.where(win_c, frac_c, np.nan), 0.75 * np.nanmax(np.where(win_c, frac_c, np.nan)))
+fraction_coz1 = interp_nan(km_sorted, event_fraction["event_frac_coz1_smooth"].values[north_to_south])
+in_window_coz1 = (km_sorted >= SEGS[1][3] - SEGS[1][4]) & (km_sorted <= SEGS[1][3] + SEGS[1][4])
+fraction_coz1_window = np.where(in_window_coz1, fraction_coz1, np.nan)
+coz1_lo, coz1_hi, coz1_n = contiguous_span(km_sorted, fraction_coz1_window, 0.75 * np.nanmax(fraction_coz1_window))
 
 # the measured extents, for the map brackets (notebook 05) and the text
-b_lo, b_hi, b_n = bands[band_main]
-pd.DataFrame([dict(name="tulepond_creep_length", km_lo=len_lo, km_hi=len_hi, lat_lo=lat_of_km(len_hi), lat_hi=lat_of_km(len_lo), n=len_n),
-              dict(name="tulepond_band75", km_lo=bands[0.75][0], km_hi=bands[0.75][1], lat_lo=lat_of_km(bands[0.75][1]), lat_hi=lat_of_km(bands[0.75][0]), n=bands[0.75][2]),
-              dict(name="tulepond_band90", km_lo=bands[0.90][0], km_hi=bands[0.90][1], lat_lo=lat_of_km(bands[0.90][1]), lat_hi=lat_of_km(bands[0.90][0]), n=bands[0.90][2]),
-              dict(name="oakland_band75", km_lo=c_lo, km_hi=c_hi, lat_lo=lat_of_km(c_hi), lat_hi=lat_of_km(c_lo), n=c_n)]
-             ).to_csv(os.path.join(out_dir, "section_lengths.csv"), index=False)
+band_lo, band_hi, band_n = bands[band_main]
+section_lengths = pd.DataFrame([
+    dict(name="tulepond_creep_length", km_lo=len_lo, km_hi=len_hi, lat_lo=lat_of_km(len_hi), lat_hi=lat_of_km(len_lo), n=len_n),
+    dict(name="tulepond_band75", km_lo=bands[0.75][0], km_hi=bands[0.75][1], lat_lo=lat_of_km(bands[0.75][1]), lat_hi=lat_of_km(bands[0.75][0]), n=bands[0.75][2]),
+    dict(name="tulepond_band90", km_lo=bands[0.90][0], km_hi=bands[0.90][1], lat_lo=lat_of_km(bands[0.90][1]), lat_hi=lat_of_km(bands[0.90][0]), n=bands[0.90][2]),
+    dict(name="oakland_band75", km_lo=coz1_lo, km_hi=coz1_hi, lat_lo=lat_of_km(coz1_hi), lat_hi=lat_of_km(coz1_lo), n=coz1_n)])
+section_lengths.to_csv(os.path.join(out_dir, "section_lengths.csv"), index=False)
 print("Saved section_lengths.csv")
 
 # %% [markdown]
-# ## The band stack: the five events
+# ## [21] The band stack: the five events
 #
 # Mean of the crossings inside the peak slip zone, then the joint model with
 # the catalogue onsets and block-bootstrap CIs on the steps. Done for both
-# band definitions; the figures draw the 75% band. The draft's numbers (same
+# band definitions; the figures draw the 90% band. The draft's numbers (same
 # code, same 0.7 stream, July 2026) are printed for comparison.
 
 # %%
+# [22]
 def band_stack(lo_km, hi_km, onsets):
-    sel = (km >= lo_km) & (km <= hi_km)
+    """Mean series of the crossings between lo_km and hi_km, zeroed at its first finite epoch, with the
+    joint fit and bootstrap CIs on the steps."""
+    in_band = (km >= lo_km) & (km <= hi_km)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        mean = np.nanmean(F[sel], axis=0); std = np.nanstd(F[sel], axis=0)
-    fin = np.isfinite(mean); mean = mean - mean[fin][0]
-    m, rss = fit_joint(t[fin], mean[fin], onsets)
-    lo_, hi_ = bootstrap_amplitudes(t[fin], mean[fin], onsets)
-    return dict(n=int(sel.sum()), mean=mean, std=std, m=m, steps=m[4:], lo=lo_, hi=hi_,
-                secular=float(m[1]), annual=float(np.hypot(m[2], m[3])), rms=float(np.sqrt(rss / fin.sum())))
+        stack_mean = np.nanmean(fp_matrix[in_band], axis=0)
+        stack_std = np.nanstd(fp_matrix[in_band], axis=0)
+    ok = np.isfinite(stack_mean)
+    stack_mean = stack_mean - stack_mean[ok][0]
+    coef, rss = fit_joint(dates[ok], stack_mean[ok], onsets)
+    ci_lo, ci_hi = bootstrap_amplitudes(dates[ok], stack_mean[ok], onsets)
+    return dict(n=int(in_band.sum()), mean=stack_mean, std=stack_std, coef=coef, steps=coef[4:], ci_lo=ci_lo, ci_hi=ci_hi,
+                secular=float(coef[1]), annual=float(np.hypot(coef[2], coef[3])), rms=float(np.sqrt(rss / ok.sum())))
 
 
-band_res = {}
-for bf, (lo_km, hi_km, n_) in bands.items():
-    bres = band_stack(lo_km, hi_km, onsets_tp)
-    band_res[bf] = bres
-    pd.DataFrame({"t": t, "stack_mm": bres["mean"], "std_mm": bres["std"]}).to_csv(os.path.join(out_dir, f"band_stack_{int(bf * 100)}pct.csv"), index=False)
-    print(f"band {100 * bf:.0f}%: {lo_km:.1f} to {hi_km:.1f} km, n = {bres['n']} crossings; secular {bres['secular']:.2f} mm/yr, "
-          f"annual {bres['annual']:.2f} mm, rms {bres['rms']:.2f} mm")
-    for on, a_, l_, h_ in zip(onsets_tp, bres["steps"], bres["lo"], bres["hi"]):
-        print(f"    {on:.3f}: {a_:5.2f} mm  [{l_:.2f}, {h_:.2f}]")
-    print(f"    sum {np.sum(bres['steps']):.1f} mm, mean {np.mean(bres['steps']):.1f} mm, range {np.min(bres['steps']):.1f} to {np.max(bres['steps']):.1f} mm")
-    print("    95% CI overlap with the others (y/n per event): " + ", ".join(
-        f"{on:.0f}:" + "".join("y" if (l1 <= h2 and l2 <= h1) else "n" for (l2, h2) in zip(bres["lo"], bres["hi"]))
-        for on, (l1, h1) in zip(onsets_tp, zip(bres["lo"], bres["hi"]))))
+band_results = {}
+for band_frac, (lo_km, hi_km, n_band) in bands.items():
+    result = band_stack(lo_km, hi_km, onsets_tulepond)
+    band_results[band_frac] = result
+    pd.DataFrame({"t": dates, "stack_mm": result["mean"], "std_mm": result["std"]}
+                 ).to_csv(os.path.join(out_dir, f"band_stack_{int(band_frac * 100)}pct.csv"), index=False)
+    print(f"band {100 * band_frac:.0f}%: {lo_km:.1f} to {hi_km:.1f} km, n = {result['n']} crossings; secular {result['secular']:.2f} mm/yr, "
+          f"annual {result['annual']:.2f} mm, rms {result['rms']:.2f} mm")
+    for onset, step, ci_lo, ci_hi in zip(onsets_tulepond, result["steps"], result["ci_lo"], result["ci_hi"]):
+        print(f"    {onset:.3f}: {step:5.2f} mm  [{ci_lo:.2f}, {ci_hi:.2f}]")
+    print(f"    sum {np.sum(result['steps']):.1f} mm, mean {np.mean(result['steps']):.1f} mm, "
+          f"range {np.min(result['steps']):.1f} to {np.max(result['steps']):.1f} mm")
+    # does each event's 95% CI overlap the others'? one y/n per event
+    overlap_lines = []
+    for onset, lo_1, hi_1 in zip(onsets_tulepond, result["ci_lo"], result["ci_hi"]):
+        flags = "".join("y" if (lo_1 <= hi_2 and lo_2 <= hi_1) else "n" for lo_2, hi_2 in zip(result["ci_lo"], result["ci_hi"]))
+        overlap_lines.append(f"{onset:.0f}:{flags}")
+    print("    95% CI overlap with the others (y/n per event): " + ", ".join(overlap_lines))
     print("")
 print("draft (July 2026, 75% band 57.7 to 60.1 km, 25 crossings): 10.84, 10.46, 10.70, 11.16, 7.67 mm, sum 50.8, secular 1.08 mm/yr")
-coz1_band = band_stack(c_lo, c_hi, ev[ev.segment == "COZ1"]["onset_yr"].to_numpy(float))
-print(f"control, Oakland 75% band {c_lo:.1f} to {c_hi:.1f} km (n = {coz1_band['n']}): steps " +
-      ", ".join(f"{a_:.2f}" for a_ in coz1_band["steps"]) + f" mm, secular {coz1_band['secular']:.2f} mm/yr")
+coz1_band = band_stack(coz1_lo, coz1_hi, creep_events[creep_events.segment == "COZ1"]["onset_yr"].to_numpy(float))
+print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_band['n']}): steps " +
+      ", ".join(f"{step:.2f}" for step in coz1_band["steps"]) + f" mm, secular {coz1_band['secular']:.2f} mm/yr")
 
 # %% [markdown]
-# ## The slip budget, the alignment arrays and the creepmeters
+# ## [23] The slip budget, the alignment arrays and the creepmeters
 #
 # Per crossing: inter-event rate, the summed event steps over the record
 # length, and their sum, smoothed 0.5 km. The alignment arrays enter twice:
@@ -571,143 +702,150 @@ print(f"control, Oakland 75% band {c_lo:.1f} to {c_hi:.1f} km (n = {coz1_band['n
 # Creepmeter rates are over the InSAR window.
 
 # %%
-amp_cols = [c for c in fr.columns if c.startswith("amp_")]
-bud = fr[["lat", "km"]].copy()
-bud["secular"] = fr["inter_event_rate"]
-bud["event_sum"] = fr[amp_cols].sum(axis=1, min_count=1)
-bud["event_rate"] = bud["event_sum"] / span
-bud["total"] = bud["secular"] + bud["event_rate"]
-bud = bud.sort_values("km").reset_index(drop=True)
-for k_ in ("secular", "event_rate", "total"):
-    bud[f"{k_}_smooth"] = gaussian_smooth_km(bud[k_].values, bud["lat"].values, rate_smooth_km)
-bud.to_csv(os.path.join(out_dir, "slip_budget_by_crossing.csv"), index=False)
+# [24]
+amp_columns = [c for c in event_fraction.columns if c.startswith("amp_")]
+slip_budget = event_fraction[["lat", "km"]].copy()
+slip_budget["secular"] = event_fraction["inter_event_rate"]
+slip_budget["event_sum"] = event_fraction[amp_columns].sum(axis=1, min_count=1)
+slip_budget["event_rate"] = slip_budget["event_sum"] / span
+slip_budget["total"] = slip_budget["secular"] + slip_budget["event_rate"]
+slip_budget = slip_budget.sort_values("km").reset_index(drop=True)
+for name in ("secular", "event_rate", "total"):
+    slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["lat"].values, rate_smooth_km)
+slip_budget.to_csv(os.path.join(out_dir, "slip_budget_by_crossing.csv"), index=False)
 
-# alignment arrays: window refit (black) and whole-record rate (grey)
-aa_sum = utils.load_aa_summary(common_paths["aa_summary"])
-aa_sum = utils.project_to_fault(aa_sum, prof, lon_col="long_deg", lat_col="lat_deg")
+# alignment arrays within 2 km of the trace: refit over the InSAR window (black) and the archive's whole-record rate (grey)
+aa_summary = utils.load_aa_summary(common_paths["aa_summary"])
+aa_summary = utils.project_to_fault(aa_summary, x_fault, lon_col="long_deg", lat_col="lat_deg")
 aa_rows = []
-for _, r_ in aa_sum.iterrows():
-    if abs(r_.dist_fault_km) > 2.0:
+for _, site in aa_summary.iterrows():
+    if abs(site.dist_fault_km) > 2.0:
         continue
     try:
-        aa = utils.load_aa(common_paths["aa_dir"], r_.site_code)
-    except (FileNotFoundError, ValueError) as e:
-        print(f"  AA {r_.site_code}: skipped ({e})"); continue
-    w = aa[(aa.year >= t0) & (aa.year <= t1)]
-    sp = w.year.max() - w.year.min() if len(w) else 0.0
-    rate_win = float(np.polyfit(w.year.values, w.cum_mm.values, 1)[0]) if (len(w) >= aa_min_surveys and sp >= aa_min_span_yr) else np.nan
-    aa_rows.append(dict(code=r_.site_code, name=r_.site_name, lat=r_.lat_deg, lon=r_.long_deg, km=float(to_km([r_.lat_deg])[0]),
-                        rate_window=rate_win, n_window=len(w), span_window=sp,
-                        rate_longterm=float(r_["rate_lnrr"]), first_yr=float(r_["first_yr"]), last_yr=float(r_["last_yr"])))
-aa_df = pd.DataFrame(aa_rows).sort_values("km")
-aa_df.to_csv(os.path.join(out_dir, "aa_rates.csv"), index=False)
-print(f"{len(aa_df)} Hayward arrays within 2 km of the trace; {aa_df.rate_window.notna().sum()} refit over the InSAR window")
+        array = utils.load_aa(common_paths["aa_dir"], site.site_code)
+    except (FileNotFoundError, ValueError) as err:
+        print(f"  AA {site.site_code}: skipped ({err})")
+        continue
+    surveys_in_window = array[(array.year >= t0) & (array.year <= t1)]
+    span_in_window = surveys_in_window.year.max() - surveys_in_window.year.min() if len(surveys_in_window) else 0.0
+    if len(surveys_in_window) >= aa_min_surveys and span_in_window >= aa_min_span_yr:
+        rate_window = float(np.polyfit(surveys_in_window.year.values, surveys_in_window.cum_mm.values, 1)[0])
+    else:
+        rate_window = np.nan
+    aa_rows.append(dict(code=site.site_code, name=site.site_name, lat=site.lat_deg, lon=site.long_deg, km=float(to_km([site.lat_deg])[0]),
+                        rate_window=rate_window, n_window=len(surveys_in_window), span_window=span_in_window,
+                        rate_longterm=float(site["rate_lnrr"]), first_yr=float(site["first_yr"]), last_yr=float(site["last_yr"])))
+aa_rates = pd.DataFrame(aa_rows).sort_values("km")
+aa_rates.to_csv(os.path.join(out_dir, "aa_rates.csv"), index=False)
+print(f"{len(aa_rates)} Hayward arrays within 2 km of the trace; {aa_rates.rate_window.notna().sum()} refit over the InSAR window")
+
+# creepmeter rates over the InSAR window: code -> (km, mm/yr)
 cm_rates = {}
 for code, la, lo, name in creepmeters:
-    tc, cc = daily_creepmeter(code)
-    cm_rates[code] = (float(to_km([la])[0]), utils.linear_rate(tc, cc)[0])
+    cm_dates, cm_slip = daily_creepmeter(code)
+    cm_rates[code] = (float(to_km([la])[0]), utils.linear_rate(cm_dates, cm_slip)[0])
 
 
 def budget_block(name, lo, hi):
-    w = (bud.km >= lo) & (bud.km <= hi)
-    la = aa_df[(aa_df.km >= lo - 1.0) & (aa_df.km <= hi + 1.0)]
-    out = dict(name=name, lo=lo, hi=hi, n=int(w.sum()),
-               secular=float(bud.loc[w, "secular"].mean()), event_rate=float(bud.loc[w, "event_rate"].mean()),
-               total=float(bud.loc[w, "total"].mean()),
-               frac_pct=100 * bud.loc[w, "event_rate"].mean() / max(bud.loc[w, "total"].mean(), 1e-9),
-               aa_window_mean=float(la.rate_window.mean()), aa_window_n=int(la.rate_window.notna().sum()),
-               aa_longterm_mean=float(la.rate_longterm.mean()), aa_n=len(la))
-    print(f"[{name}] {lo:.1f} to {hi:.1f} km, n = {out['n']}: secular {out['secular']:.2f}, event-driven {out['event_rate']:.2f}, "
-          f"total {out['total']:.2f} mm/yr ({out['frac_pct']:.0f}% event-driven); arrays: window {out['aa_window_mean']:.2f} (n {out['aa_window_n']}), "
-          f"long-term {out['aa_longterm_mean']:.2f} (n {out['aa_n']}) mm/yr")
-    return out
+    """Mean rates of the crossings between lo and hi km, and the arrays within 1 km of that block."""
+    in_block = (slip_budget.km >= lo) & (slip_budget.km <= hi)
+    arrays_near = aa_rates[(aa_rates.km >= lo - 1.0) & (aa_rates.km <= hi + 1.0)]
+    block = dict(name=name, lo=lo, hi=hi, n=int(in_block.sum()),
+                 secular=float(slip_budget.loc[in_block, "secular"].mean()), event_rate=float(slip_budget.loc[in_block, "event_rate"].mean()),
+                 total=float(slip_budget.loc[in_block, "total"].mean()),
+                 frac_pct=100 * slip_budget.loc[in_block, "event_rate"].mean() / max(slip_budget.loc[in_block, "total"].mean(), 1e-9),
+                 aa_window_mean=float(arrays_near.rate_window.mean()), aa_window_n=int(arrays_near.rate_window.notna().sum()),
+                 aa_longterm_mean=float(arrays_near.rate_longterm.mean()), aa_n=len(arrays_near))
+    print(f"[{name}] {lo:.1f} to {hi:.1f} km, n = {block['n']}: secular {block['secular']:.2f}, event-driven {block['event_rate']:.2f}, "
+          f"total {block['total']:.2f} mm/yr ({block['frac_pct']:.0f}% event-driven); arrays: window {block['aa_window_mean']:.2f} "
+          f"(n {block['aa_window_n']}), long-term {block['aa_longterm_mean']:.2f} (n {block['aa_n']}) mm/yr")
+    return block
 
 
 budget = {}
-for bf, (lo_km, hi_km, n_) in bands.items():
-    budget[f"band{int(bf * 100)}"] = budget_block(f"Tule Pond {100 * bf:.0f}% band", lo_km, hi_km)
+for band_frac, (lo_km, hi_km, n_band) in bands.items():
+    budget[f"band{int(band_frac * 100)}"] = budget_block(f"Tule Pond {100 * band_frac:.0f}% band", lo_km, hi_km)
 budget["length"] = budget_block("Tule Pond, length hosting events", len_lo, len_hi)
-budget["flanks"] = budget_block("Tule Pond flanks (band +/- 5 km)", b_lo - 5.0, b_hi + 5.0)
-budget["coz1"] = budget_block("Oakland control 75% band", c_lo, c_hi)
+budget["flanks"] = budget_block("Tule Pond flanks (band +/- 5 km)", band_lo - 5.0, band_hi + 5.0)
+budget["coz1"] = budget_block("Oakland control 75% band", coz1_lo, coz1_hi)
 
 # %% [markdown]
-# ## Recurrence intervals, and seismicity near the section
+# ## [25] Recurrence intervals, and seismicity near the section
 #
 # Seismicity is Bo Xie's GrowClust relocated catalogue (relocated plus
 # unrelocated NCSS events); repeaters are Taira GEN3 plus Waldhauser and
 # Schaff; both within 2 km of the trace and inside the InSAR window.
 
 # %%
-intervals = np.diff(onsets_tp)
+# [26]
+intervals = np.diff(onsets_tulepond)
 print("intervals between the five onsets (yr): " + ", ".join(f"{x:.2f}" for x in intervals))
 print(f"mean {intervals.mean():.2f} yr, sd {intervals.std(ddof=1) * 365.25:.0f} d, CoV {intervals.std(ddof=1) / intervals.mean():.2f}")
 
 seis = utils.load_growclust_catalog(common_paths["growclust_cat"], bbox=common_paths["aoi_bbox"])
-seis = utils.project_to_fault(seis, prof)
+seis = utils.project_to_fault(seis, x_fault)
 seis = seis[(seis.dist_fault_km.abs() <= seis_max_dist_km) & (seis.YYYY >= t0) & (seis.YYYY <= t1)].copy()
 seis["km"] = to_km(seis["ft_lat"].values)
+
 cre = pd.concat([utils.load_cre_taira(common_paths["CRE_Taira"]), utils.load_cre_waldhauser(common_paths["CRE_Wald"])], ignore_index=True)
 cre = cre.dropna(subset=["YYYY", "Lon", "Lat", "Mag"])
-w_, s_, e_, n_ = common_paths["aoi_bbox"]
-cre = cre[(cre.Lon >= w_) & (cre.Lon <= e_) & (cre.Lat >= s_) & (cre.Lat <= n_)]
-cre = utils.project_to_fault(cre, prof)
+west, south, east, north = common_paths["aoi_bbox"]
+cre = cre[(cre.Lon >= west) & (cre.Lon <= east) & (cre.Lat >= south) & (cre.Lat <= north)]
+cre = utils.project_to_fault(cre, x_fault)
 cre = cre[(cre.dist_fault_km.abs() <= seis_max_dist_km) & (cre.YYYY >= t0) & (cre.YYYY <= t1)].copy()
 cre["km"] = to_km(cre["ft_lat"].values)
-qh = seis[(seis.km >= w_lo) & (seis.km <= w_hi)]; ch = cre[(cre.km >= w_lo) & (cre.km <= w_hi)]
-n_seis_win, n_cre_win = len(qh), len(ch)
-n_cre_band = int(((cre.km >= b_lo) & (cre.km <= b_hi)).sum())
+
+seis_window = seis[(seis.km >= w_lo) & (seis.km <= w_hi)]
+cre_window = cre[(cre.km >= w_lo) & (cre.km <= w_hi)]
+n_seis_win, n_cre_win = len(seis_window), len(cre_window)
+n_cre_band = int(((cre.km >= band_lo) & (cre.km <= band_hi)).sum())
 print(f"within {seis_max_dist_km:g} km of the trace, {t0:.1f} to {t1:.1f}: {len(seis)} earthquakes ({(seis.source == 'growclust').sum()} relocated) "
       f"and {len(cre)} repeaters on the whole fault; in the Tule Pond window ({w_lo:.0f} to {w_hi:.0f} km): {n_seis_win} earthquakes, "
-      f"{n_cre_win} repeaters; in the 75% band: {n_cre_band} repeaters")
+      f"{n_cre_win} repeaters; in the {100 * band_main:.0f}% band: {n_cre_band} repeaters")
 
 # %% [markdown]
-# ## Figure 1 (all pygmt, one font)
+# ## [27] Figure 1 data: the rotated map, the hovmoller, the per-event profiles
 #
-# a) Map: fault-parallel velocity (notebook 02) on a page rotated to the mean
-# strike; creepmeter ticks; the bracket is the measured length of fault
-# hosting the events. b) Tule Pond, slip above the inter-event rate at every
-# crossing in the window, with the relocated seismicity (circles, depth colour,
-# size by magnitude) and the repeaters (green squares); dashed lines at the
-# 75% band. c) InSAR stack: the plain mean of the fault-parallel series of the
-# band crossings, zeroed at the first epoch, nothing subtracted; the joint
-# model (teal between events, orange across the steps) is drawn over it.
-# d) Cumulative slip per event along strike. e) Creep rates: inter-event
-# (teal), event-driven (orange), their sum (black); creepmeters over the
-# InSAR window (gold), alignment arrays refit over the same window (black) and
-# their whole-record rates (grey).
+# The map is fault-parallel velocity (notebook 02) looked up on a lon/lat grid
+# and referenced, for DISPLAY only, to the CTM1-COZ1 patch so the fault sits at
+# zero. The hovmoller is the slip above the inter-event rate on a regular 6-day
+# grid (GMT grids must be regular). The per-event profiles are the cumulative
+# sum of the five fitted steps along strike. Everything is saved to
+# `fig1_panels.npz` so the figure can be redrawn without the fits.
 
 # %%
-import h5py
-
-
-# --- a) the map on the rotated frame (as notebook 02) ---
-with h5py.File(map_file, "r") as h:
-    fp_map = h["fp_velocity"][:].astype(float)
-    attrs = {k: (v.decode() if isinstance(v, bytes) else str(v)) for k, v in h.attrs.items()}
+# [28]
+# --- the strike frame of the map: u along the mean strike from Point Pinole (km, + south), v across the fault (km, + east)
+with h5py.File(map_file, "r") as hf:
+    fp_map = hf["fp_velocity"][:].astype(float)
+    attrs = {k: (v.decode() if isinstance(v, bytes) else str(v)) for k, v in hf.attrs.items()}
 fp_map[fp_map == 0] = np.nan
 utm = pyproj.Transformer.from_crs(4326, int(attrs["EPSG"]), always_xy=True)
-fe, fn = utm.transform(prof["ft_lon"].values, prof["ft_lat"].values)
-th = np.deg2rad(strike_map)
-ae, an = np.sin(th), np.cos(th); pe, pn = -np.cos(th), np.sin(th)       # along-strike (SE) and cross-fault (NE) unit vectors
-u_tr, v_tr = fe * ae + fn * an, fe * pe + fn * pn
-u0, v0 = float(u_tr[int(np.argmax(prof["ft_lat"].values))]), float(np.median(v_tr))
-
-
-def to_uv(lon, lat_):
-    e, n = utm.transform(np.asarray(lon, float), np.asarray(lat_, float))
-    return ((e * ae + n * an) - u0) / 1e3, ((e * pe + n * pn) - v0) / 1e3
-
-
-tu, tv = to_uv(prof["ft_lon"].values, prof["ft_lat"].values)
-u_south = float(tu.max())
 from_utm = pyproj.Transformer.from_crs(int(attrs["EPSG"]), 4326, always_xy=True)
+trace_e, trace_n = utm.transform(x_fault["ft_lon"].values, x_fault["ft_lat"].values)
+strike_rad = np.deg2rad(strike_map)
+along_e, along_n = np.sin(strike_rad), np.cos(strike_rad)          # unit vector along strike (SE)
+cross_e, cross_n = -np.cos(strike_rad), np.sin(strike_rad)         # unit vector across the fault (NE = east side)
+trace_u = trace_e * along_e + trace_n * along_n
+trace_v = trace_e * cross_e + trace_n * cross_n
+u_origin = float(trace_u[int(np.argmax(x_fault["ft_lat"].values))])   # Point Pinole, the northern end
+v_origin = float(np.median(trace_v))
+
+
+def to_uv(lon, lat):
+    """lon/lat -> strike-frame km."""
+    easting, northing = utm.transform(np.asarray(lon, float), np.asarray(lat, float))
+    return ((easting * along_e + northing * along_n) - u_origin) / 1e3, ((easting * cross_e + northing * cross_n) - v_origin) / 1e3
 
 
 def uv_to_lonlat(u, v):
-    """Inverse of to_uv: strike-frame km -> lon/lat (for the few things defined in the frame: corners, the bracket)."""
-    u, v = np.asarray(u, float) * 1e3 + u0, np.asarray(v, float) * 1e3 + v0
-    return from_utm.transform(u * ae + v * pe, u * an + v * pn)
+    """strike-frame km -> lon/lat (for the few things defined in the frame: corners, the bracket)."""
+    u, v = np.asarray(u, float) * 1e3 + u_origin, np.asarray(v, float) * 1e3 + v_origin
+    return from_utm.transform(u * along_e + v * cross_e, u * along_n + v * cross_n)
 
+
+trace_u_km, trace_v_km = to_uv(x_fault["ft_lon"].values, x_fault["ft_lat"].values)
+u_south = float(trace_u_km.max())
 
 # The map is drawn with GMT's oblique Mercator: x axis along strike_map - 90 (north-east, across the
 # fault), so the fault runs up the page with north at the top. The region is the rectangle in the
@@ -722,88 +860,123 @@ corners = np.array([uv_to_lonlat(u_, v_) for u_, v_ in ((map_u_max, -map_half_km
 def gmt_map_size(region, projection):
     """Width and height (cm) GMT gives a region/projection pair (mapproject -W), so panels can be aligned to it."""
     with pygmt.clib.Session() as lib:
-        f_ = os.path.join(out_dir, "cpt", "dims.txt")
-        lib.call_module("mapproject", f"-R{region} -J{projection} -W ->{f_}")
-    return tuple(float(x) for x in open(f_).read().split())
+        dims_file = os.path.join(out_dir, "cpt", "dims.txt")
+        lib.call_module("mapproject", f"-R{region} -J{projection} -W ->{dims_file}")
+    return tuple(float(x) for x in open(dims_file).read().split())
 
 
-
-# the FP velocity on a regular lon/lat grid (nearest UTM pixel), referenced in the strike frame
-lat_g = np.arange(corners[:, 1].min() - 0.01, corners[:, 1].max() + 0.01, 0.00028)
-lon_g = np.arange(corners[:, 0].min() - 0.01, corners[:, 0].max() + 0.01, 0.00035)
-LON, LAT = np.meshgrid(lon_g, lat_g)
-E, N = utm.transform(LON, LAT)
-x0, dx = float(attrs["X_FIRST"]), float(attrs["X_STEP"]); y0, dy = float(attrs["Y_FIRST"]), float(attrs["Y_STEP"])
-ci = np.round((E - x0) / dx).astype(int); ri = np.round((N - y0) / dy).astype(int)
-okm = (ci >= 0) & (ci < fp_map.shape[1]) & (ri >= 0) & (ri < fp_map.shape[0])
-z = np.full(LON.shape, np.nan); z[okm] = fp_map[ri[okm], ci[okm]]
-U_g, V_g = ((E * ae + N * an) - u0) / 1e3, ((E * pe + N * pn) - v0) / 1e3     # strike-frame coordinates of the grid nodes
-# creepmeter positions: the instruments sit on the trace to within a few tens of metres (printed)
-u_cm = {}
+# --- a) the FP velocity on a regular lon/lat grid (nearest UTM pixel), referenced in the strike frame
+lat_axis = np.arange(corners[:, 1].min() - 0.01, corners[:, 1].max() + 0.01, 0.00028)
+lon_axis = np.arange(corners[:, 0].min() - 0.01, corners[:, 0].max() + 0.01, 0.00035)
+lon_grid, lat_grid = np.meshgrid(lon_axis, lat_axis)
+easting, northing = utm.transform(lon_grid, lat_grid)
+x_first, x_step = float(attrs["X_FIRST"]), float(attrs["X_STEP"])
+y_first, y_step = float(attrs["Y_FIRST"]), float(attrs["Y_STEP"])
+col_index = np.round((easting - x_first) / x_step).astype(int)
+row_index = np.round((northing - y_first) / y_step).astype(int)
+on_grid = (col_index >= 0) & (col_index < fp_map.shape[1]) & (row_index >= 0) & (row_index < fp_map.shape[0])
+fp_lonlat = np.full(lon_grid.shape, np.nan)
+fp_lonlat[on_grid] = fp_map[row_index[on_grid], col_index[on_grid]]
+u_grid = ((easting * along_e + northing * along_n) - u_origin) / 1e3        # strike-frame coordinates of the grid nodes
+v_grid = ((easting * cross_e + northing * cross_n) - v_origin) / 1e3
+# creepmeter positions along u: the instruments sit on the trace to within a few tens of metres (printed)
+u_creepmeter = {}
 for code, la, lo, name in creepmeters:
-    ui, vi = to_uv(lo, la); j = int(np.argmin(np.hypot(tu - ui, tv - vi)))
-    u_cm[code] = float(tu[j])
-    print(f"  {code}: {1e3 * np.hypot(tu[j] - ui, tv[j] - vi):.0f} m from the nearest trace vertex")
-lo_u, hi_u = sorted([u_cm["CTM1"], u_cm["COZ1"]])
+    u_i, v_i = to_uv(lo, la)
+    j = int(np.argmin(np.hypot(trace_u_km - u_i, trace_v_km - v_i)))
+    u_creepmeter[code] = float(trace_u_km[j])
+    print(f"  {code}: {1e3 * np.hypot(trace_u_km[j] - u_i, trace_v_km[j] - v_i):.0f} m from the nearest trace vertex")
+patch_lo, patch_hi = sorted([u_creepmeter["CTM1"], u_creepmeter["COZ1"]])
 # display reference: the mid-point of the two blocks' medians in the CTM1-COZ1 patch, so the
 # fault sits at zero and the colour scale swings equally blue (west) and red (east)
-in_u = (U_g >= lo_u) & (U_g <= hi_u)
-z_west = np.nanmedian(z[in_u & (V_g < 0) & (V_g >= -ref_patch_km)])
-z_east = np.nanmedian(z[in_u & (V_g > 0) & (V_g <= ref_patch_km)])
-z = z - 0.5 * (z_west + z_east)
+in_patch = (u_grid >= patch_lo) & (u_grid <= patch_hi)
+fp_west = np.nanmedian(fp_lonlat[in_patch & (v_grid < 0) & (v_grid >= -ref_patch_km)])
+fp_east = np.nanmedian(fp_lonlat[in_patch & (v_grid > 0) & (v_grid <= ref_patch_km)])
+fp_lonlat = fp_lonlat - 0.5 * (fp_west + fp_east)
 vel_lim = 4.0           # colour range +/- this (mm/yr); the block medians are ~ +/- 2.5 to 3
-print(f"map display reference: west block {z_west:+.2f}, east block {z_east:+.2f} mm/yr; mid-point removed")
-grid_ll = xr.DataArray(z, coords={"lat": lat_g, "lon": lon_g}, dims=("lat", "lon"))
+print(f"map display reference: west block {fp_west:+.2f}, east block {fp_east:+.2f} mm/yr; mid-point removed")
+grid_ll = xr.DataArray(fp_lonlat, coords={"lat": lat_axis, "lon": lon_axis}, dims=("lat", "lon"))
 
-# --- b) the hovmoller on a regular 6-day time grid (GMT grids must be regular) ---
-show = (km >= w_lo) & (km <= w_hi); osh = np.argsort(km[show])
-grid = np.arange(w_lo, w_hi + 0.05, 0.1)
-gres = np.full((grid.size, res.shape[1]), np.nan)
-gi = np.round((km[show][osh] - grid[0]) / 0.1).astype(int); okg = (gi >= 0) & (gi < grid.size)
-gres[gi[okg]] = res[show][osh][okg]
+# --- b) the hovmoller: the slip above the inter-event rate in the window, on a regular 6-day time grid
+in_window_rows = (km >= w_lo) & (km <= w_hi)
+south_to_north = np.argsort(km[in_window_rows])
+grid = np.arange(w_lo, w_hi + 0.05, 0.1)                                         # 100 m rows
+hov_rows = np.full((grid.size, slip_above_rate.shape[1]), np.nan)
+grid_index = np.round((km[in_window_rows][south_to_north] - grid[0]) / 0.1).astype(int)
+on_grid = (grid_index >= 0) & (grid_index < grid.size)
+hov_rows[grid_index[on_grid]] = slip_above_rate[in_window_rows][south_to_north][on_grid]
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", RuntimeWarning)
-    vmax = max(float(np.nanpercentile(res[show], 99.5)), 1.0)
+    vmax = max(float(np.nanpercentile(slip_above_rate[in_window_rows], 99.5)), 1.0)
 vmin = -neg_floor_frac * vmax
-t_reg = np.arange(t0, t1 + 1e-9, 6.0 / 365.25)
-near = np.abs(t_reg[:, None] - t[None, :]).argmin(axis=1)
-hov = gres[:, near]; hov[:, np.abs(t_reg - t[near]) > 9.0 / 365.25] = np.nan
-grid_hov = xr.DataArray(hov, coords={"y": grid, "x": t_reg}, dims=("y", "x"))
+t_regular = np.arange(t0, t1 + 1e-9, 6.0 / 365.25)
+nearest_epoch = np.array([int(np.argmin(np.abs(dates - t_r))) for t_r in t_regular])
+hovmoller = hov_rows[:, nearest_epoch]
+hovmoller[:, np.abs(t_regular - dates[nearest_epoch]) > 9.0 / 365.25] = np.nan     # no real epoch within 9 d: blank
+grid_hov = xr.DataArray(hovmoller, coords={"y": grid, "x": t_regular}, dims=("y", "x"))
 
-# --- d) per-event cumulative slip profiles ---
-rows_w = np.where(show)[0][osh]; kw, latw = km[show][osh], lat[show][osh]
-Gf = design(t, onsets_tp); A = np.full((rows_w.size, onsets_tp.size), np.nan)
-for ii, ri_ in enumerate(rows_w):
-    fin_r = np.isfinite(F[ri_])
-    if fin_r.sum() > Gf.shape[1] + 10:
-        sol, *_ = np.linalg.lstsq(Gf[fin_r], F[ri_][fin_r], rcond=None); A[ii] = sol[4:]
-cum_prof = np.zeros((onsets_tp.size, rows_w.size)); run = np.zeros(rows_w.size)
-for i in range(onsets_tp.size):
-    run = run + np.nan_to_num(interp_nan(kw, gaussian_smooth_km(A[:, i], latw, 0.3)))
-    cum_prof[i] = run
-resb = band_res[band_main]
-full = design(t, onsets_tp) @ resb["m"]
-in_ev = np.zeros(t.size, bool)
-for on in onsets_tp:
-    j = int(np.searchsorted(t, on))
-    if 0 < j < t.size: in_ev[j] = True
-grow = in_ev.copy(); grow[1:] |= in_ev[:-1]; grow[:-1] |= in_ev[1:]
-np.savez(os.path.join(out_dir, "fig1_panels.npz"), t=t, grid=grid, gres=gres, vmin=vmin, vmax=vmax, kw=kw, cum_prof=cum_prof,
-         onsets=onsets_tp, ks=ks, secular_smooth=secular_s, frac_smooth=frac_s, band_lo=b_lo, band_hi=b_hi,
-         stack_mean=resb["mean"], stack_std=resb["std"], model=full, w_lo=w_lo, w_hi=w_hi, bg_rate=bg_rate,
-         seis_t=qh.YYYY.values, seis_km=qh.km.values, seis_mag=qh.Mag.values, seis_depth=qh.Depth.values,
-         cre_t=ch.YYYY.values, cre_km=ch.km.values)
+# --- c) per-event cumulative slip profiles along strike, from the joint fit at every window crossing
+window_rows = np.where(in_window_rows)[0][south_to_north]
+km_window, lats_window = km[in_window_rows][south_to_north], lats[in_window_rows][south_to_north]
+design_events = design(dates, onsets_tulepond)
+event_amp_window = np.full((window_rows.size, onsets_tulepond.size), np.nan)
+for i, row in enumerate(window_rows):
+    ok = np.isfinite(fp_matrix[row])
+    if ok.sum() > design_events.shape[1] + 10:
+        coef_i, *_ = np.linalg.lstsq(design_events[ok], fp_matrix[row][ok], rcond=None)
+        event_amp_window[i] = coef_i[4:]
+cum_prof = np.zeros((onsets_tulepond.size, window_rows.size))
+running = np.zeros(window_rows.size)
+for i in range(onsets_tulepond.size):
+    running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], lats_window, 0.3)))
+    cum_prof[i] = running
 
-# --- the figure: sizes in cm, double-column width, one font ---
+# --- the band stack's model, split into inter-event (teal) and event (orange) epochs for panel E
+band_main_stack = band_results[band_main]
+model_full = np.dot(design(dates, onsets_tulepond), band_main_stack["coef"])
+is_event_epoch = np.zeros(dates.size, bool)
+for onset in onsets_tulepond:
+    j = int(np.searchsorted(dates, onset))
+    if 0 < j < dates.size:
+        is_event_epoch[j] = True
+event_epochs_wide = is_event_epoch.copy()
+event_epochs_wide[1:] |= is_event_epoch[:-1]
+event_epochs_wide[:-1] |= is_event_epoch[1:]
+
+np.savez(os.path.join(out_dir, "fig1_panels.npz"), t=dates, grid=grid, gres=hov_rows, vmin=vmin, vmax=vmax, kw=km_window, cum_prof=cum_prof,
+         onsets=onsets_tulepond, ks=km_sorted, secular_smooth=secular_smooth, frac_smooth=fraction_smooth, band_lo=band_lo, band_hi=band_hi,
+         stack_mean=band_main_stack["mean"], stack_std=band_main_stack["std"], model=model_full, w_lo=w_lo, w_hi=w_hi, bg_rate=inter_event_rate_median,
+         seis_t=seis_window.YYYY.values, seis_km=seis_window.km.values, seis_mag=seis_window.Mag.values, seis_depth=seis_window.Depth.values,
+         cre_t=cre_window.YYYY.values, cre_km=cre_window.km.values)
+
+# %% [markdown]
+# ## [29] Figure 1 (all pygmt, one font)
+#
+# A) Map: fault-parallel velocity (notebook 02) on a page rotated to the mean
+# strike; creepmeter ticks; the bracket is the measured length of fault
+# hosting the events. B) Tule Pond, slip above the inter-event rate at every
+# crossing in the window, with the relocated seismicity (circles, depth colour,
+# size by magnitude) and the repeaters (green squares); dashed lines at the
+# band. C) Cumulative slip per event along strike. D) Creep rates: inter-event
+# (teal), event-driven (orange), their sum (black); creepmeters over the
+# InSAR window (gold), alignment arrays refit over the same window (black).
+# E) InSAR stack: the plain mean of the fault-parallel series of the band
+# crossings, zeroed at the first epoch, nothing subtracted; the joint model
+# (teal between events, orange across the steps) is drawn over it.
+
+# %%
+# [30]
+# --- sizes in cm, double-column width, one font ---
 teal, orange, cm_blue, gold = "#009E73", "#E69F00", "#0b3d91", "#F5B400"
-Wh, Hh = 6.6, 5.4                  # hovmoller (6.6 cm keeps the page at the 18.3 cm Science full width)
-Ws = 3.2                           # stack: shorter than the hovmoller, so B carries the figure
-gap_be = 0.6                       # between B and E (B has no x annotation, E has its label inside)
-Wm, Hm = 3.4, Hh + gap_be + Ws     # map: as tall as B + gap + E, so the tops and bottoms line up
-Wp, Wr, Hp = 2.6, 2.6, Hh          # profiles and rates panels: the same width
-gap_map, gap_p, gap_r = 1.6, 0.35, 0.35   # B, C and D share one y axis, so the gaps are just the tick length
-cb_w = 2.5                         # every colour bar the same size and font (14p trick -> 7 pt)
-cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
+hov_w, hov_h = 6.6, 5.4                          # hovmoller (6.6 cm keeps the page at the 18.3 cm Science full width)
+stack_h = 3.2                                    # stack: shorter than the hovmoller, so B carries the figure
+gap_stack = 0.6                                  # between B and E (B has no x annotation, E has its label inside)
+map_w, map_h = 3.4, hov_h + gap_stack + stack_h  # map: as tall as B + gap + E, so the tops and bottoms line up
+profile_w, rates_w, profile_h = 2.6, 2.6, hov_h  # profiles and rates panels: the same width
+gap_map, gap_p, gap_r = 1.6, 0.35, 0.35          # B, C and D share one y axis, so the gaps are just the tick length
+cb_w = 2.5                                       # every colour bar the same size and font (14p trick -> 7 pt)
+cpt_dir = os.path.join(out_dir, "cpt")
+os.makedirs(cpt_dir, exist_ok=True)
 cpt_vel = utils.write_cpt(os.path.join(cpt_dir, "vel_vik.cpt"), "RdBu_r", -vel_lim, vel_lim)
 cpt_hov = utils.write_cpt(os.path.join(cpt_dir, "hov_reds.cpt"), "Reds", vmin, vmax)
 cpt_dep = utils.write_cpt(os.path.join(cpt_dir, "depth_plasma_r.cpt"), "plasma_r", 0, 12)
@@ -814,104 +987,109 @@ pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL=
 
 # A) the map: GMT oblique Mercator, fault up the page, north at the top; everything in lon/lat
 region_map = f"{lon_ll}/{lat_ll}/{lon_ur}/{lat_ur}+r"
-w_, h_ = gmt_map_size(region_map, f"Oa{lon_c}/{lat_c}/{strike_map - 90}/{Wm}c")
-Wm = Wm * Hm / h_                                                 # width that makes the map exactly Hm tall (true scale)
-proj_map = f"Oa{lon_c}/{lat_c}/{strike_map - 90}/{Wm:.3f}c"
-print(f"map panel {Wm:.2f} x {Hm:.2f} cm at true scale")
+_, map_h_gmt = gmt_map_size(region_map, f"Oa{lon_c}/{lat_c}/{strike_map - 90}/{map_w}c")
+map_w = map_w * map_h / map_h_gmt                                 # width that makes the map exactly map_h tall (true scale)
+proj_map = f"Oa{lon_c}/{lat_c}/{strike_map - 90}/{map_w:.3f}c"
+print(f"map panel {map_w:.2f} x {map_h:.2f} cm at true scale")
 fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
 fig.grdimage(grid=grid_ll, cmap=cpt_vel, nan_transparent=True)
-fig.plot(x=prof["ft_lon"].values, y=prof["ft_lat"].values, pen="0.6p,black")
+fig.plot(x=x_fault["ft_lon"].values, y=x_fault["ft_lat"].values, pen="0.6p,black")
 for code, la, lo, name in creepmeters:
     fig.plot(x=[lo], y=[la], style="i0.22c", fill=gold, pen="0.5p,black")                                    # the creepmeter symbol of D
     utils.text_backed(fig, x=lo, y=la, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")   # labels on the west (blue) side
 # the bracket spans the Tule Pond creep LENGTH (len_lo-len_hi, the 6 km of fault hosting the events, the number
 # the paper quotes; section_lengths.csv), not the narrower stacked band, which stays as the dashed lines in B.
 # East side of the fault so it stays clear of the creepmeter labels; "Tule Pond" beside it, creepmeter style one size up
-bx, by = uv_to_lonlat([len_lo, len_hi], [2.0, 2.0]); fig.plot(x=bx, y=by, pen="1.5p,black")
+bracket_lon, bracket_lat = uv_to_lonlat([len_lo, len_hi], [2.0, 2.0])
+fig.plot(x=bracket_lon, y=bracket_lat, pen="1.5p,black")
 for u_ in (len_lo, len_hi):
-    bx, by = uv_to_lonlat([u_, u_], [0.4, 2.0]); fig.plot(x=bx, y=by, pen="1.5p,black")   # ticks reach almost to the trace
+    tick_lon, tick_lat = uv_to_lonlat([u_, u_], [0.4, 2.0])
+    fig.plot(x=tick_lon, y=tick_lat, pen="1.5p,black")                                                      # ticks reach almost to the trace
 # two rows in one call (GMT has no newline outside paragraph mode), boxed like the creepmeters, one size up
 u_mid = 0.5 * (len_lo + len_hi)
-lx, ly = uv_to_lonlat([u_mid - 1.2, u_mid + 1.2], [4.6, 4.6])
-utils.text_backed(fig, x=lx, y=ly, text=["Tule", "Pond"], justify="CM", font="8p,Helvetica,black")
+label_lon, label_lat = uv_to_lonlat([u_mid - 1.2, u_mid + 1.2], [4.6, 4.6])
+utils.text_backed(fig, x=label_lon, y=label_lat, text=["Tule", "Pond"], justify="CM", font="8p,Helvetica,black")
 fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w5k+o0.3c/0.4c")       # frame on top, scale bar
 with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):     # GMT scales colour-bar text down with the bar thickness (-> ~6.5p)
-    fig.colorbar(cmap=cpt_vel, position=f"x{0.5 * (Wm - cb_w)}c/-0.4c+w{cb_w}c/0.3c+h+jTL", frame="xa2f1+lFault-parallel velocity (mm/yr)")
+    fig.colorbar(cmap=cpt_vel, position=f"x{0.5 * (map_w - cb_w)}c/-0.4c+w{cb_w}c/0.3c+h+jTL", frame="xa2f1+lFault-parallel velocity (mm/yr)")
 
-# b) hovmoller, top of the middle column
-fig.shift_origin(xshift=f"{Wm + gap_map}c", yshift=f"{Hm - Hh}c")
+# B) hovmoller, top of the middle column
+fig.shift_origin(xshift=f"{map_w + gap_map}c", yshift=f"{map_h - hov_h}c")
 region_hov = [t0, t1, w_lo, w_hi]
-fig.basemap(region=region_hov, projection=f"X{Wh}c/-{Hh}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])
+fig.basemap(region=region_hov, projection=f"X{hov_w}c/-{hov_h}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])
 fig.grdimage(grid=grid_hov, cmap=cpt_hov, nan_transparent=True)
-fig.plot(x=qh.YYYY.values, y=qh.km.values, style="c", size=0.09 + 0.05 * np.clip(qh.Mag.values, 0, 5), fill=qh.Depth.values, cmap=cpt_dep, pen="0.3p,white")
-fig.plot(x=ch.YYYY.values, y=ch.km.values, style="s0.16c", fill="limegreen", pen="0.4p,black")
-for y_ in (b_lo, b_hi):
+fig.plot(x=seis_window.YYYY.values, y=seis_window.km.values, style="c", size=0.09 + 0.05 * np.clip(seis_window.Mag.values, 0, 5),
+         fill=seis_window.Depth.values, cmap=cpt_dep, pen="0.3p,white")
+fig.plot(x=cre_window.YYYY.values, y=cre_window.km.values, style="s0.16c", fill="limegreen", pen="0.4p,black")
+for y_ in (band_lo, band_hi):
     fig.plot(x=[t0, t1], y=[y_, y_], pen="0.7p,gray25,3_2")
 fig.text(x=t0, y=w_lo, text="@%Helvetica-Bold%B@%% @:7p:Tule Pond, slip above the inter-event rate@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
-fig.basemap(region=region_hov, projection=f"X{Wh}c/-{Hh}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])   # frame on top: a clean edge
+fig.basemap(region=region_hov, projection=f"X{hov_w}c/-{hov_h}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])   # frame on top: a clean edge
 
-# c) the stack, bottom of the middle column, bottom aligned with the map
-fig.shift_origin(yshift=f"-{Ws + gap_be}c")
-ok_s = np.isfinite(resb["mean"])
-region_st = [t0, t1, -3, float(np.nanmax(resb["mean"] + resb["std"])) * 1.08]
-fig.basemap(region=region_st, projection=f"X{Wh}c/{Ws}c", frame=["WStr", "xa2f1+lYear", "ya20+lCumulative FP slip (mm)"])
-env_x = np.r_[t[ok_s], t[ok_s][::-1]]; env_y = np.r_[(resb["mean"] + resb["std"])[ok_s], (resb["mean"] - resb["std"])[ok_s][::-1]]
-fig.plot(x=env_x, y=env_y, fill="gray@70", close=True)
-for on in onsets_tp:
-    fig.plot(x=[on, on], y=[region_st[2], region_st[3]], pen="0.5p," + orange + "@60")
-fig.plot(x=t[ok_s], y=resb["mean"][ok_s], pen="0.9p,black", label=f"InSAR stack (n = {resb['n']})")
-fig.plot(x=t, y=np.where(in_ev, np.nan, full), pen="1.2p," + teal, label=f"Model: inter-event {resb['secular']:.1f} mm/yr")
-fig.plot(x=t, y=np.where(grow, full, np.nan), pen="1.2p," + orange, label=f"5 events (sum {np.sum(resb['steps']):.0f} mm)")
+# E) the stack, bottom of the middle column, bottom aligned with the map
+fig.shift_origin(yshift=f"-{stack_h + gap_stack}c")
+ok_stack = np.isfinite(band_main_stack["mean"])
+region_stack = [t0, t1, -3, float(np.nanmax(band_main_stack["mean"] + band_main_stack["std"])) * 1.08]
+fig.basemap(region=region_stack, projection=f"X{hov_w}c/{stack_h}c", frame=["WStr", "xa2f1+lYear", "ya20+lCumulative FP slip (mm)"])
+envelope_x = np.r_[dates[ok_stack], dates[ok_stack][::-1]]
+envelope_y = np.r_[(band_main_stack["mean"] + band_main_stack["std"])[ok_stack], (band_main_stack["mean"] - band_main_stack["std"])[ok_stack][::-1]]
+fig.plot(x=envelope_x, y=envelope_y, fill="gray@70", close=True)
+for onset in onsets_tulepond:
+    fig.plot(x=[onset, onset], y=[region_stack[2], region_stack[3]], pen="0.5p," + orange + "@60")
+fig.plot(x=dates[ok_stack], y=band_main_stack["mean"][ok_stack], pen="0.9p,black", label=f"InSAR stack (n = {band_main_stack['n']})")
+fig.plot(x=dates, y=np.where(is_event_epoch, np.nan, model_full), pen="1.2p," + teal, label=f"Model: inter-event {band_main_stack['secular']:.1f} mm/yr")
+fig.plot(x=dates, y=np.where(event_epochs_wide, model_full, np.nan), pen="1.2p," + orange, label=f"5 events (sum {np.sum(band_main_stack['steps']):.0f} mm)")
 fig.text(position="TL", text="@%Helvetica-Bold%E@%% @:7p:InSAR stack@::", font="9p,Helvetica", offset="0.1c/-0.1c")
 with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
     fig.legend(position="JBR+jBR+o0.15c/0.15c", box="+gwhite@30")
 
 # C) cumulative slip per event, right of the hovmoller
-fig.shift_origin(xshift=f"{Wh + gap_p}c", yshift=f"{Ws + gap_be}c")
-xmax_p = float(np.nanmax(cum_prof)) * 1.1
-fig.basemap(region=[-2, xmax_p, w_lo, w_hi], projection=f"X{Wp}c/-{Hp}c", frame=["wStr", "xa20f10+lEvent slip (mm)", "ya2.5"])
-fig.plot(x=[-2, xmax_p, xmax_p, -2], y=[b_lo, b_lo, b_hi, b_hi], fill="gray@85", close=True)
+fig.shift_origin(xshift=f"{hov_w + gap_p}c", yshift=f"{stack_h + gap_stack}c")
+xmax_profile = float(np.nanmax(cum_prof)) * 1.1
+fig.basemap(region=[-2, xmax_profile, w_lo, w_hi], projection=f"X{profile_w}c/-{profile_h}c", frame=["wStr", "xa20f10+lEvent slip (mm)", "ya2.5"])
+fig.plot(x=[-2, xmax_profile, xmax_profile, -2], y=[band_lo, band_lo, band_hi, band_hi], fill="gray@85", close=True)
 fig.plot(x=[0, 0], y=[w_lo, w_hi], pen="0.4p,gray70")
 blues = plt.get_cmap("Blues")
-for i, on in enumerate(onsets_tp):
-    c_ = "/".join(str(int(255 * v)) for v in blues(0.35 + 0.55 * i / 4)[:3])
-    fig.plot(x=cum_prof[i], y=kw, pen=f"0.9p,{c_}", label=f"{on:.2f}")
+for i, onset in enumerate(onsets_tulepond):
+    colour = "/".join(str(int(255 * v)) for v in blues(0.35 + 0.55 * i / 4)[:3])
+    fig.plot(x=cum_prof[i], y=km_window, pen=f"0.9p,{colour}", label=f"{onset:.2f}")
 fig.text(x=-2, y=w_lo, text="@%Helvetica-Bold%C@%% @:7p:Slip per event@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
     fig.legend(position="JBR+jBR+o0.1c/0.1c", box=False)
 
 # D) creep rates: its y axis is shared with B, so no annotation
-fig.shift_origin(xshift=f"{Wp + gap_r}c")
-inwin = (bud.km >= w_lo) & (bud.km <= w_hi)
-fig.basemap(region=[-1, 10, w_lo, w_hi], projection=f"X{Wr}c/-{Hp}c", frame=["wStr", "xa2f1+lCreep rate (mm/yr)", "ya2.5"])
-fig.plot(x=[-1, 10, 10, -1], y=[b_lo, b_lo, b_hi, b_hi], fill="gray@85", close=True)
+fig.shift_origin(xshift=f"{profile_w + gap_r}c")
+in_window_budget = (slip_budget.km >= w_lo) & (slip_budget.km <= w_hi)
+fig.basemap(region=[-1, 10, w_lo, w_hi], projection=f"X{rates_w}c/-{profile_h}c", frame=["wStr", "xa2f1+lCreep rate (mm/yr)", "ya2.5"])
+fig.plot(x=[-1, 10, 10, -1], y=[band_lo, band_lo, band_hi, band_hi], fill="gray@85", close=True)
 fig.plot(x=[0, 0], y=[w_lo, w_hi], pen="0.4p,gray70")
-fig.plot(x=bud.secular[inwin].values, y=bud.km[inwin].values, style="c0.04c", fill=teal + "@70")
-fig.plot(x=bud.event_rate[inwin].values, y=bud.km[inwin].values, style="c0.04c", fill=orange + "@70")
-fig.plot(x=bud.total[inwin].values, y=bud.km[inwin].values, style="c0.04c", fill="gray50@70")
-fig.plot(x=bud.secular_smooth[inwin].values, y=bud.km[inwin].values, pen="1.2p," + teal, label="Inter-event rate")
-fig.plot(x=bud.event_rate_smooth[inwin].values, y=bud.km[inwin].values, pen="1.2p," + orange, label=f"Event-driven rate (sum of steps / {span:.1f} yr)")
-fig.plot(x=bud.total_smooth[inwin].values, y=bud.km[inwin].values, pen="1.5p,black", label="Inter-event + event-driven")
-aw = aa_df[(aa_df.km >= w_lo) & (aa_df.km <= w_hi)]
-awin = aw[aw.rate_window.notna()]
-fig.plot(x=awin.rate_window.values, y=awin.km.values, style="s0.18c", fill="black", label=f"Alignment arrays {t0:.1f} to {t1:.1f}")
-for code, (k_, r_) in cm_rates.items():
-    if w_lo <= k_ <= w_hi:
-        fig.plot(x=[r_], y=[k_], style="i0.25c", fill=gold, pen="0.5p,black", label=f"Creepmeter {t0:.1f} to {t1:.1f}" if code == "CFW1" else None)
-        fig.text(x=r_, y=k_, text=code, justify="RM", offset="-0.2c/0c", font="7p", no_clip=True)
+fig.plot(x=slip_budget.secular[in_window_budget].values, y=slip_budget.km[in_window_budget].values, style="c0.04c", fill=teal + "@70")
+fig.plot(x=slip_budget.event_rate[in_window_budget].values, y=slip_budget.km[in_window_budget].values, style="c0.04c", fill=orange + "@70")
+fig.plot(x=slip_budget.total[in_window_budget].values, y=slip_budget.km[in_window_budget].values, style="c0.04c", fill="gray50@70")
+fig.plot(x=slip_budget.secular_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.2p," + teal, label="Inter-event rate")
+fig.plot(x=slip_budget.event_rate_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.2p," + orange,
+         label=f"Event-driven rate (sum of steps / {span:.1f} yr)")
+fig.plot(x=slip_budget.total_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.5p,black", label="Inter-event + event-driven")
+arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi)]
+arrays_refit = arrays_window[arrays_window.rate_window.notna()]
+fig.plot(x=arrays_refit.rate_window.values, y=arrays_refit.km.values, style="s0.18c", fill="black", label=f"Alignment arrays {t0:.1f} to {t1:.1f}")
+for code, (km_cm, rate_cm) in cm_rates.items():
+    if w_lo <= km_cm <= w_hi:
+        fig.plot(x=[rate_cm], y=[km_cm], style="i0.25c", fill=gold, pen="0.5p,black", label=f"Creepmeter {t0:.1f} to {t1:.1f}" if code == "CFW1" else None)
+        fig.text(x=rate_cm, y=km_cm, text=code, justify="RM", offset="-0.2c/0c", font="7p", no_clip=True)
 fig.text(x=-1, y=w_lo, text="@%Helvetica-Bold%D@%% @:7p:Creep rates@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 # legend entries for the symbols drawn in B: plotted off-region (clipped), so only the legend records them
 fig.plot(x=[-50], y=[w_lo], style="c0.17c", pen="0.6p,black", label="Seismicity (size = magnitude)")
 fig.plot(x=[-50], y=[w_lo], style="s0.16c", fill="limegreen", pen="0.4p,black", label="Repeating earthquakes")
 # the legend of D in the free space under C and D
-left_of_C = Wp + gap_r                                                 # from D's origin back to C's left edge
+left_of_C = profile_w + gap_r                                          # from D's origin back to C's left edge
 with pygmt.config(FONT_ANNOT_PRIMARY="7p"):                          # clear of the axis labels above it
-    fig.legend(position=f"JBL+jTL+o-{left_of_C}c/1.2c+w{left_of_C + Wr}c", box=False)
+    fig.legend(position=f"JBL+jTL+o-{left_of_C}c/1.2c+w{left_of_C + rates_w}c", box=False)
 # the two colour bars of B, side by side, on the same line as the map's bar (0.4 cm below the map bottom)
-cb_y = gap_be + Ws + 0.4
+cb_y = gap_stack + stack_h + 0.4
 with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):          # -> ~6.5 pt at this bar thickness, as A's
     fig.colorbar(cmap=cpt_hov, position=f"x-{left_of_C}c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa20f10+lCumulative displacement (mm)")
     fig.colorbar(cmap=cpt_dep, position=f"x0c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa4f2+lEarthquake depth (km)")
@@ -923,97 +1101,114 @@ print("Saved Fig 1 to:", f_fig1 + ".png")
 fig.show()
 
 # %% [markdown]
-# ## Figure: the slip budget along the whole fault (supplement)
+# ## [31] Figure: the slip budget along the whole fault (supplement)
 
 # %%
+# [32]
 fig, ax = plt.subplots(figsize=(7.2, 3.2), constrained_layout=True)
-for name, (lo, hi) in (("Tule Pond", (len_lo, len_hi)), ("Oakland", (c_lo, c_hi))):
-    ax.axvspan(lo, hi, color="0.9", zorder=0); ax.text(0.5 * (lo + hi), -0.75, name, ha="center", fontsize=7, color="0.35")
-ax.scatter(bud.km, bud.secular, s=3, color=teal, alpha=0.25, lw=0)
-ax.scatter(bud.km, bud.event_rate, s=3, color=orange, alpha=0.25, lw=0)
-ax.scatter(bud.km, bud.total, s=3, color="k", alpha=0.2, lw=0)
-ax.plot(bud.km, bud.secular_smooth, color=teal, lw=1.4, label="inter-event rate")
-ax.plot(bud.km, bud.event_rate_smooth, color=orange, lw=1.4, label=f"event-driven rate (sum of steps / {span:.1f} yr)")
-ax.plot(bud.km, bud.total_smooth, color="k", lw=2.0, label="inter-event + event-driven")
-ax.scatter(aa_df.km, aa_df.rate_longterm, marker="s", s=14, color="0.6", zorder=4, label="alignment arrays, whole record")
-ax.scatter(aa_df.km, aa_df.rate_window, marker="s", s=14, color="k", zorder=5, label=f"alignment arrays, {t0:.1f} to {t1:.1f}")
-ax.scatter([v[0] for v in cm_rates.values()], [v[1] for v in cm_rates.values()], marker="v", s=34, facecolor="#F5B400",
-           edgecolor="k", zorder=6, label=f"creepmeters, {t0:.1f} to {t1:.1f}")
-for code, (k_, r_) in cm_rates.items():
-    ax.annotate(code, (k_, r_), xytext=(0, 6), textcoords="offset points", ha="center", fontsize=6)
-ax.set_xlim(*km_lim); ax.set_ylim(-1, 12); ax.axhline(0, color="0.6", lw=0.5)
-ax.set_xlabel("Distance from Point Pinole (km)"); ax.set_ylabel("Fault-parallel creep rate (mm/yr)")
+for name, (lo, hi) in (("Tule Pond", (len_lo, len_hi)), ("Oakland", (coz1_lo, coz1_hi))):
+    ax.axvspan(lo, hi, color="0.9", zorder=0)
+    ax.text(0.5 * (lo + hi), -0.75, name, ha="center", fontsize=7, color="0.35")
+ax.scatter(slip_budget.km, slip_budget.secular, s=3, color=teal, alpha=0.25, lw=0)
+ax.scatter(slip_budget.km, slip_budget.event_rate, s=3, color=orange, alpha=0.25, lw=0)
+ax.scatter(slip_budget.km, slip_budget.total, s=3, color="k", alpha=0.2, lw=0)
+ax.plot(slip_budget.km, slip_budget.secular_smooth, color=teal, lw=1.4, label="inter-event rate")
+ax.plot(slip_budget.km, slip_budget.event_rate_smooth, color=orange, lw=1.4, label=f"event-driven rate (sum of steps / {span:.1f} yr)")
+ax.plot(slip_budget.km, slip_budget.total_smooth, color="k", lw=2.0, label="inter-event + event-driven")
+ax.scatter(aa_rates.km, aa_rates.rate_longterm, marker="s", s=14, color="0.6", zorder=4, label="alignment arrays, whole record")
+ax.scatter(aa_rates.km, aa_rates.rate_window, marker="s", s=14, color="k", zorder=5, label=f"alignment arrays, {t0:.1f} to {t1:.1f}")
+ax.scatter([km_cm for km_cm, rate_cm in cm_rates.values()], [rate_cm for km_cm, rate_cm in cm_rates.values()], marker="v", s=34,
+           facecolor="#F5B400", edgecolor="k", zorder=6, label=f"creepmeters, {t0:.1f} to {t1:.1f}")
+for code, (km_cm, rate_cm) in cm_rates.items():
+    ax.annotate(code, (km_cm, rate_cm), xytext=(0, 6), textcoords="offset points", ha="center", fontsize=6)
+ax.set_xlim(*km_lim)
+ax.set_ylim(-1, 12)
+ax.axhline(0, color="0.6", lw=0.5)
+ax.set_xlabel("Distance from Point Pinole (km)")
+ax.set_ylabel("Fault-parallel creep rate (mm/yr)")
 ax.legend(fontsize=6, loc="upper left", ncol=2, frameon=False)
-f_bud = os.path.join(fig_dir, f"figS_slip_budget_{params}.png")
-fig.savefig(f_bud, dpi=300); fig.savefig(f_bud.replace(".png", ".pdf")); print("Saved figure to:", f_bud)
+f_budget = os.path.join(fig_dir, f"figS_slip_budget_{params}.png")
+fig.savefig(f_budget, dpi=300)
+fig.savefig(f_budget.replace(".png", ".pdf"))
+print("Saved figure to:", f_budget)
 plt.show()
 
 # %% [markdown]
-# ## REGISTER
+# ## [33] REGISTER
 
 # %%
-L = ["04 EVENT DETECTION", f"stream {params}; stack +/-{stack_half_km:g} km of the section centre; matched filter {win_n} epochs, "
-     f"{k_sigma:g} sigma; joint model linear + annual + steps; {nboot} block bootstraps (~{block_years:g} yr blocks)", ""]
-for key_, sol in solutions.items():
-    L.append(f"[{segments[key_]['label']}] stack n = {sol['n']}, rate {sol['coef'][1]:.2f} mm/yr, annual {np.hypot(sol['coef'][2], sol['coef'][3]):.2f} mm, "
-             f"rms {np.sqrt(sol['rss'] / len(sol['series'][0])):.2f} mm")
-    for f_ in sol["fits"]:
-        L.append(f"   onset {f_['onset_yr']:.4f} [{f_['onset_lo']:.4f}, {f_['onset_hi']:.4f}] amp {f_['amplitude_mm']:.2f} [{f_['amp_lo']:.2f}, {f_['amp_hi']:.2f}] mm")
-L += ["", "event-driven fraction (crossings within 2 km of the section centre):"]
-for key_, s_ in frac_stats.items():
-    L.append(f"   {segments[key_]['label']}: n {s_['n']}, summed slip median {s_['sum_median']:.1f} mm, fraction median {s_['median']:.0f}%, 5-95% {s_['p5']:.0f} to {s_['p95']:.0f}%")
-L += ["", f"window {w_lo:.1f} to {w_hi:.1f} km (re-centred on the cumulative-slip peak at {c_new:.1f} km); median inter-event rate in the window {bg_rate:.2f} mm/yr",
-      f"cumulative event slip peak {peak_cum:.1f} mm; flank threshold {thr:.2f} mm (median {flank_median:.2f} + 3 x {flank_sigma:.2f})",
-      f"length hosting the events: {len_lo:.1f} to {len_hi:.1f} km ({len_hi - len_lo:.1f} km, {len_n} crossings); "
-      f"10%: {lengths['10pct'][1] - lengths['10pct'][0]:.1f} km; 20%: {lengths['20pct'][1] - lengths['20pct'][0]:.1f} km",
-      f"fraction peak {peak_frac:.1f}%"]
-for bf, (lo_km, hi_km, n_) in bands.items():
-    r_ = band_res[bf]
-    L += [f"band {100 * bf:.0f}%: {lo_km:.1f} to {hi_km:.1f} km ({hi_km - lo_km:.1f} km, {n_} crossings); secular {r_['secular']:.2f} mm/yr, annual {r_['annual']:.2f} mm, rms {r_['rms']:.2f} mm",
-          "   steps: " + ", ".join(f"{on:.3f} {a_:.2f} [{l_:.2f}, {h_:.2f}]" for on, a_, l_, h_ in zip(onsets_tp, r_["steps"], r_["lo"], r_["hi"])) +
-          f"; sum {np.sum(r_['steps']):.1f}, mean {np.mean(r_['steps']):.1f} mm"]
-L += ["", "slip budget (mm/yr; arrays within 1 km of the block, refit over the InSAR window / whole record):"]
-for k_, b_ in budget.items():
-    L.append(f"   {b_['name']}: {b_['lo']:.1f} to {b_['hi']:.1f} km n {b_['n']}: secular {b_['secular']:.2f}, event {b_['event_rate']:.2f}, "
-             f"total {b_['total']:.2f} ({b_['frac_pct']:.0f}%), arrays window {b_['aa_window_mean']:.2f} (n {b_['aa_window_n']}), long-term {b_['aa_longterm_mean']:.2f} (n {b_['aa_n']})")
-L += ["", "recurrence intervals (yr): " + ", ".join(f"{x:.2f}" for x in intervals) +
-      f"; mean {intervals.mean():.2f}, sd {intervals.std(ddof=1) * 365.25:.0f} d, CoV {intervals.std(ddof=1) / intervals.mean():.2f}",
-      f"seismicity (GrowClust) within {seis_max_dist_km:g} km, window {w_lo:.0f}-{w_hi:.0f} km: {n_seis_win} earthquakes, {n_cre_win} repeaters, {n_cre_band} repeaters in the 75% band",
-      f"hovmoller colour scale {vmin:.0f} to {vmax:.0f} mm"]
-sidecar = REG.sidecar("04_events", L)
+# [34]
+stats_lines = ["04 EVENT DETECTION",
+               f"stream {params}; stack +/-{stack_half_km:g} km of the section centre; matched filter {win_n} epochs, "
+               f"{k_sigma:g} sigma; joint model linear + annual + steps; {nboot} block bootstraps (~{block_years:g} yr blocks)", ""]
+for key, sol in solutions.items():
+    stats_lines.append(f"[{segments[key]['label']}] stack n = {sol['n']}, rate {sol['coef'][1]:.2f} mm/yr, "
+                       f"annual {np.hypot(sol['coef'][2], sol['coef'][3]):.2f} mm, rms {np.sqrt(sol['rss'] / len(sol['dates'])):.2f} mm")
+    for f in sol["fits"]:
+        stats_lines.append(f"   onset {f['onset_yr']:.4f} [{f['onset_lo']:.4f}, {f['onset_hi']:.4f}] amp {f['amplitude_mm']:.2f} "
+                           f"[{f['amp_lo']:.2f}, {f['amp_hi']:.2f}] mm")
+stats_lines += ["", "event-driven fraction (crossings within 2 km of the section centre):"]
+for key, stats in frac_stats.items():
+    stats_lines.append(f"   {segments[key]['label']}: n {stats['n']}, summed slip median {stats['sum_median']:.1f} mm, "
+                       f"fraction median {stats['median']:.0f}%, 5-95% {stats['p5']:.0f} to {stats['p95']:.0f}%")
+stats_lines += ["", f"window {w_lo:.1f} to {w_hi:.1f} km (re-centred on the cumulative-slip peak at {peak_km:.1f} km); "
+                f"median inter-event rate in the window {inter_event_rate_median:.2f} mm/yr",
+                f"cumulative event slip peak {peak_cum:.1f} mm; flank threshold {length_threshold:.2f} mm (median {flank_median:.2f} + 3 x {flank_sigma:.2f})",
+                f"length hosting the events: {len_lo:.1f} to {len_hi:.1f} km ({len_hi - len_lo:.1f} km, {len_n} crossings); "
+                f"10%: {lengths['10pct'][1] - lengths['10pct'][0]:.1f} km; 20%: {lengths['20pct'][1] - lengths['20pct'][0]:.1f} km",
+                f"fraction peak {peak_frac:.1f}%"]
+for band_frac, (lo_km, hi_km, n_band) in bands.items():
+    result = band_results[band_frac]
+    stats_lines += [f"band {100 * band_frac:.0f}%: {lo_km:.1f} to {hi_km:.1f} km ({hi_km - lo_km:.1f} km, {n_band} crossings); "
+                    f"secular {result['secular']:.2f} mm/yr, annual {result['annual']:.2f} mm, rms {result['rms']:.2f} mm",
+                    "   steps: " + ", ".join(f"{onset:.3f} {step:.2f} [{ci_lo:.2f}, {ci_hi:.2f}]"
+                                             for onset, step, ci_lo, ci_hi in zip(onsets_tulepond, result["steps"], result["ci_lo"], result["ci_hi"]))
+                    + f"; sum {np.sum(result['steps']):.1f}, mean {np.mean(result['steps']):.1f} mm"]
+stats_lines += ["", "slip budget (mm/yr; arrays within 1 km of the block, refit over the InSAR window / whole record):"]
+for name, block in budget.items():
+    stats_lines.append(f"   {block['name']}: {block['lo']:.1f} to {block['hi']:.1f} km n {block['n']}: secular {block['secular']:.2f}, "
+                       f"event {block['event_rate']:.2f}, total {block['total']:.2f} ({block['frac_pct']:.0f}%), arrays window "
+                       f"{block['aa_window_mean']:.2f} (n {block['aa_window_n']}), long-term {block['aa_longterm_mean']:.2f} (n {block['aa_n']})")
+stats_lines += ["", "recurrence intervals (yr): " + ", ".join(f"{x:.2f}" for x in intervals) +
+                f"; mean {intervals.mean():.2f}, sd {intervals.std(ddof=1) * 365.25:.0f} d, CoV {intervals.std(ddof=1) / intervals.mean():.2f}",
+                f"seismicity (GrowClust) within {seis_max_dist_km:g} km, window {w_lo:.0f}-{w_hi:.0f} km: {n_seis_win} earthquakes, "
+                f"{n_cre_win} repeaters, {n_cre_band} repeaters in the {100 * band_main:.0f}% band",
+                f"hovmoller colour scale {vmin:.0f} to {vmax:.0f} mm"]
+sidecar = REG.sidecar("04_events", stats_lines)
 
-REG.register("04_n_events", len(tp), "count", 0, where="P3, abstract", cell="detect", sidecar=sidecar)
-REG.register("04_detect_sigma_mm", float(tp.detect_sigma_mm[0]), "mm", 3, where="M5", cell="detect", sidecar=sidecar)
-REG.register("04_threshold_mm", k_sigma * float(tp.detect_sigma_mm[0]), "mm", 2, where="M5", cell="detect", sidecar=sidecar)
+REG.register("04_n_events", len(tulepond_events), "count", 0, where="P3, abstract", cell="detect", sidecar=sidecar)
+REG.register("04_detect_sigma_mm", float(tulepond_events.detect_sigma_mm[0]), "mm", 3, where="M5", cell="detect", sidecar=sidecar)
+REG.register("04_threshold_mm", k_sigma * float(tulepond_events.detect_sigma_mm[0]), "mm", 2, where="M5", cell="detect", sidecar=sidecar)
 REG.register("04_stack_n_crossings", solutions["TULEPOND"]["n"], "count", 0, where="M5", cell="detect", sidecar=sidecar)
-labels = [f"{int(on)}" for on in onsets_tp]
-for lab, (_, r_) in zip(labels, tp.iterrows()):
-    REG.register(f"04_onset_{lab}", r_.onset_yr, "decyear", 3, where="P3", cell="joint-fit", sidecar=sidecar)
-    REG.register(f"04_onset_lo_{lab}", r_.onset_lo, "decyear", 4, where="P3", cell="joint-fit", sidecar=sidecar)
-    REG.register(f"04_onset_hi_{lab}", r_.onset_hi, "decyear", 4, where="P3", cell="joint-fit", sidecar=sidecar)
-    REG.register(f"04_onset_window_days_{lab}", r_.onset_window_days, "d", 0, where="P3", cell="joint-fit", sidecar=sidecar)
-    REG.register(f"04_stack_amp_{lab}_mm", r_.amplitude_mm, "mm", 2, where="M5", cell="joint-fit", sidecar=sidecar)
-for bf, (lo_km, hi_km, n_) in bands.items():
-    r_ = band_res[bf]; tag = f"band{int(bf * 100)}"
+labels = [f"{int(onset)}" for onset in onsets_tulepond]
+for label, (_, event) in zip(labels, tulepond_events.iterrows()):
+    REG.register(f"04_onset_{label}", event.onset_yr, "decyear", 3, where="P3", cell="joint-fit", sidecar=sidecar)
+    REG.register(f"04_onset_lo_{label}", event.onset_lo, "decyear", 4, where="P3", cell="joint-fit", sidecar=sidecar)
+    REG.register(f"04_onset_hi_{label}", event.onset_hi, "decyear", 4, where="P3", cell="joint-fit", sidecar=sidecar)
+    REG.register(f"04_onset_window_days_{label}", event.onset_window_days, "d", 0, where="P3", cell="joint-fit", sidecar=sidecar)
+    REG.register(f"04_stack_amp_{label}_mm", event.amplitude_mm, "mm", 2, where="M5", cell="joint-fit", sidecar=sidecar)
+for band_frac, (lo_km, hi_km, n_band) in bands.items():
+    result = band_results[band_frac]
+    tag = f"band{int(band_frac * 100)}"
     REG.register(f"04_{tag}_lo_km", lo_km, "km", 1, where="Fig1 caption, P3", cell="band", sidecar=sidecar)
     REG.register(f"04_{tag}_hi_km", hi_km, "km", 1, where="Fig1 caption, P3", cell="band", sidecar=sidecar)
     REG.register(f"04_{tag}_width_km", hi_km - lo_km, "km", 1, where="P3", cell="band", sidecar=sidecar)
-    REG.register(f"04_{tag}_n_crossings", n_, "count", 0, where="Fig1 caption", cell="band", sidecar=sidecar)
-    REG.register(f"04_{tag}_inter_event_mm_yr", r_["secular"], "mm/yr", 2, where="P4, Fig1 caption", cell="band-stack", sidecar=sidecar)
-    REG.register(f"04_{tag}_annual_mm", r_["annual"], "mm", 2, where="Fig1 caption", cell="band-stack", sidecar=sidecar)
-    REG.register(f"04_{tag}_steps_sum_mm", float(np.sum(r_["steps"])), "mm", 1, where="Fig1 caption", cell="band-stack", sidecar=sidecar)
-    REG.register(f"04_{tag}_steps_mean_mm", float(np.mean(r_["steps"])), "mm", 1, where="P3", cell="band-stack", sidecar=sidecar)
-    REG.register(f"04_{tag}_steps_min_mm", float(np.min(r_["steps"])), "mm", 1, where="P3", cell="band-stack", sidecar=sidecar)
-    REG.register(f"04_{tag}_steps_max_mm", float(np.max(r_["steps"])), "mm", 1, where="P3", cell="band-stack", sidecar=sidecar)
-    for lab, a_, l_, h_ in zip(labels, r_["steps"], r_["lo"], r_["hi"]):
-        REG.register(f"04_{tag}_step_{lab}_mm", a_, "mm", 2, where="P3", cell="band-stack", sidecar=sidecar)
-        REG.register(f"04_{tag}_step_{lab}_ci_lo", l_, "mm", 2, where="P3", cell="band-stack", sidecar=sidecar)
-        REG.register(f"04_{tag}_step_{lab}_ci_hi", h_, "mm", 2, where="P3", cell="band-stack", sidecar=sidecar)
+    REG.register(f"04_{tag}_n_crossings", n_band, "count", 0, where="Fig1 caption", cell="band", sidecar=sidecar)
+    REG.register(f"04_{tag}_inter_event_mm_yr", result["secular"], "mm/yr", 2, where="P4, Fig1 caption", cell="band-stack", sidecar=sidecar)
+    REG.register(f"04_{tag}_annual_mm", result["annual"], "mm", 2, where="Fig1 caption", cell="band-stack", sidecar=sidecar)
+    REG.register(f"04_{tag}_steps_sum_mm", float(np.sum(result["steps"])), "mm", 1, where="Fig1 caption", cell="band-stack", sidecar=sidecar)
+    REG.register(f"04_{tag}_steps_mean_mm", float(np.mean(result["steps"])), "mm", 1, where="P3", cell="band-stack", sidecar=sidecar)
+    REG.register(f"04_{tag}_steps_min_mm", float(np.min(result["steps"])), "mm", 1, where="P3", cell="band-stack", sidecar=sidecar)
+    REG.register(f"04_{tag}_steps_max_mm", float(np.max(result["steps"])), "mm", 1, where="P3", cell="band-stack", sidecar=sidecar)
+    for label, step, ci_lo, ci_hi in zip(labels, result["steps"], result["ci_lo"], result["ci_hi"]):
+        REG.register(f"04_{tag}_step_{label}_mm", step, "mm", 2, where="P3", cell="band-stack", sidecar=sidecar)
+        REG.register(f"04_{tag}_step_{label}_ci_lo", ci_lo, "mm", 2, where="P3", cell="band-stack", sidecar=sidecar)
+        REG.register(f"04_{tag}_step_{label}_ci_hi", ci_hi, "mm", 2, where="P3", cell="band-stack", sidecar=sidecar)
 REG.register("04_creep_length_km", len_hi - len_lo, "km", 1, where="P3", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_lo_km", len_lo, "km", 1, where="P3", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_hi_km", len_hi, "km", 1, where="P3", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_n_crossings", len_n, "count", 0, where="P3", cell="section-length", sidecar=sidecar)
-REG.register("04_creep_length_threshold_mm", thr, "mm", 2, where="M6", cell="section-length", sidecar=sidecar)
+REG.register("04_creep_length_threshold_mm", length_threshold, "mm", 2, where="M6", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_10pct_km", lengths["10pct"][1] - lengths["10pct"][0], "km", 1, where="M6", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_20pct_km", lengths["20pct"][1] - lengths["20pct"][0], "km", 1, where="M6", cell="section-length", sidecar=sidecar)
 REG.register("04_fraction_peak_pct", peak_frac, "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
@@ -1021,25 +1216,26 @@ REG.register("04_fraction_median_pct", frac_stats["TULEPOND"]["median"], "pct", 
 REG.register("04_fraction_p5_pct", frac_stats["TULEPOND"]["p5"], "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
 REG.register("04_fraction_p95_pct", frac_stats["TULEPOND"]["p95"], "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
 REG.register("04_event_slip_sum_median_mm", frac_stats["TULEPOND"]["sum_median"], "mm", 1, where="P3", cell="fraction", sidecar=sidecar)
-REG.register("04_hovmoller_bg_rate_mm_yr", bg_rate, "mm/yr", 1, where="Fig1 caption", cell="hovmoller", sidecar=sidecar)
+REG.register("04_hovmoller_bg_rate_mm_yr", inter_event_rate_median, "mm/yr", 1, where="Fig1 caption", cell="hovmoller", sidecar=sidecar)
 REG.register("04_hovmoller_vmax_mm", vmax, "mm", 0, where="Fig1 caption", cell="hovmoller", sidecar=sidecar)
-for k_, b_ in budget.items():
-    for q_ in ("secular", "event_rate", "total"):
-        REG.register(f"04_budget_{k_}_{q_.replace('secular', 'inter_event')}_mm_yr", b_[q_], "mm/yr", 2, where="P4, Fig1c", cell="budget", sidecar=sidecar)
-    REG.register(f"04_budget_{k_}_event_pct", b_["frac_pct"], "pct", 0, where="P4", cell="budget", sidecar=sidecar)
-    REG.register(f"04_budget_{k_}_aa_window_mm_yr", b_["aa_window_mean"], "mm/yr", 2, where="P4, Fig1c", cell="budget", sidecar=sidecar)
-    REG.register(f"04_budget_{k_}_aa_longterm_mm_yr", b_["aa_longterm_mean"], "mm/yr", 2, where="P4, Fig1c", cell="budget", sidecar=sidecar)
-    REG.register(f"04_budget_{k_}_aa_n", b_["aa_n"], "count", 0, where="Fig1 caption", cell="budget", sidecar=sidecar)
+for name, block in budget.items():
+    for quantity in ("secular", "event_rate", "total"):
+        REG.register(f"04_budget_{name}_{quantity.replace('secular', 'inter_event')}_mm_yr", block[quantity], "mm/yr", 2, where="P4, Fig1c", cell="budget", sidecar=sidecar)
+    REG.register(f"04_budget_{name}_event_pct", block["frac_pct"], "pct", 0, where="P4", cell="budget", sidecar=sidecar)
+    REG.register(f"04_budget_{name}_aa_window_mm_yr", block["aa_window_mean"], "mm/yr", 2, where="P4, Fig1c", cell="budget", sidecar=sidecar)
+    REG.register(f"04_budget_{name}_aa_longterm_mm_yr", block["aa_longterm_mean"], "mm/yr", 2, where="P4, Fig1c", cell="budget", sidecar=sidecar)
+    REG.register(f"04_budget_{name}_aa_n", block["aa_n"], "count", 0, where="Fig1 caption", cell="budget", sidecar=sidecar)
 REG.register("04_record_span_yr", span, "yr", 2, where="Fig1 caption", cell="budget", sidecar=sidecar)
-REG.register_many("04_interval_yr", list(intervals), "yr", 2, where="P9", cell="intervals", labels=[f"{int(a)}_{int(b)}" for a, b in zip(onsets_tp[:-1], onsets_tp[1:])], sidecar=sidecar)
+REG.register_many("04_interval_yr", list(intervals), "yr", 2, where="P9", cell="intervals",
+                  labels=[f"{int(a)}_{int(b)}" for a, b in zip(onsets_tulepond[:-1], onsets_tulepond[1:])], sidecar=sidecar)
 REG.register("04_interval_mean_yr", intervals.mean(), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("04_interval_sd_d", intervals.std(ddof=1) * 365.25, "d", 0, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("04_interval_cov", intervals.std(ddof=1) / intervals.mean(), "1", 2, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("04_n_seis_window", n_seis_win, "count", 0, where="Fig1 caption", cell="catalogues", sidecar=sidecar)
 REG.register("04_n_cre_window", n_cre_win, "count", 0, where="Fig1 caption", cell="catalogues", sidecar=sidecar)
 REG.register("04_n_cre_band", n_cre_band, "count", 0, where="P3", cell="catalogues", sidecar=sidecar)
-for lab, r_ in zip(["2019", "2022", "2024"], ev[ev.segment == "COZ1"].itertuples()):
-    REG.register(f"04_control_coz1_onset_{lab}", r_.onset_yr, "decyear", 3, where="M5 (control)", cell="detect", sidecar=sidecar)
-    REG.register(f"04_control_coz1_amp_{lab}_mm", r_.amplitude_mm, "mm", 2, where="M5 (control)", cell="detect", sidecar=sidecar)
-    REG.register(f"04_control_coz1_creepmeter_{lab}_mm", r_.creepmeter_step_mm, "mm", 2, where="M5 (control)", cell="detect", sidecar=sidecar)
+for label, event in zip(["2019", "2022", "2024"], creep_events[creep_events.segment == "COZ1"].itertuples()):
+    REG.register(f"04_control_coz1_onset_{label}", event.onset_yr, "decyear", 3, where="M5 (control)", cell="detect", sidecar=sidecar)
+    REG.register(f"04_control_coz1_amp_{label}_mm", event.amplitude_mm, "mm", 2, where="M5 (control)", cell="detect", sidecar=sidecar)
+    REG.register(f"04_control_coz1_creepmeter_{label}_mm", event.creepmeter_step_mm, "mm", 2, where="M5 (control)", cell="detect", sidecar=sidecar)
 REG.render()

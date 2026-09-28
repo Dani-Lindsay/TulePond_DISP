@@ -370,7 +370,7 @@ for track in tracks:
 ## [6b]
 # the surface constraint (port of csi_io.load_surface_slip on 04's product)
 crossings_all = pd.read_csv(os.path.join(common_paths["out_dir"],
-                                         "04_event_detection_v2",
+                                         "04_event_detection",
                                          "event_fraction_by_crossing.csv"))
 event_cols = ["amp_2017.099", "amp_2019.186", "amp_2021.107",
               "amp_2023.080", "amp_2024.984"]

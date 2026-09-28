@@ -43,7 +43,7 @@ sfcvm["side"] = np.where(sfcvm.offset_km < 0, "west", "east")
 slip_los = pd.read_csv(os.path.join(tests_dir, "slip_surface_interp_test.csv"))
 slip_fp = pd.read_csv(os.path.join(tests_dir, "fp_inversion_surf.csv"))
 slip_fp_insar = pd.read_csv(os.path.join(tests_dir, "fp_inversion_insar.csv"))
-crossings = pd.read_csv(os.path.join(repo_dir, "outputs", "04_event_detection_v2",
+crossings = pd.read_csv(os.path.join(repo_dir, "outputs", "04_event_detection",
                                      "event_fraction_by_crossing.csv"))
 event_cols = ["amp_2017.099", "amp_2019.186", "amp_2021.107", "amp_2023.080", "amp_2024.984"]
 crossings["mean_event_mm"] = crossings[event_cols].mean(axis=1)

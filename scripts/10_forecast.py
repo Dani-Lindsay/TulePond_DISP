@@ -59,14 +59,13 @@ from matplotlib.lines import Line2D
 
 # %%
 # [4]
-notebook = "10_forecast_v2"
+notebook = "10_forecast"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
 # the products of the previous version (09_seasonality_forecast), for the CHECK cell
-parity_dir = paths_out["09_seasonality_forecast"]
 
 # the forecast
 loma_prieta = 1989.80
@@ -92,7 +91,7 @@ wet_dowy = (62, 182)               # Dec 1 to Mar 31 as day of water year
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 aa_events_file = os.path.join(paths_out["08_alignment_arrays"], "hrkt_aa_events.csv")
-rain_file = os.path.join(common_paths["out_dir"], "09_rain_seasonality_v2", "tulepond_daily_precip.csv")   # -> paths_out["09_rain_seasonality"] after the swap
+rain_file = os.path.join(paths_out["09_rain_seasonality"], "tulepond_daily_precip.csv")
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(fp_ts_file, events_file, aa_events_file, rain_file)
@@ -863,52 +862,13 @@ with open(os.path.join(out_dir, "prediction_statement.txt"), "w") as fh:
 print("\n".join(statement_lines))
 
 # %% [markdown]
-# ## [37] CHECK: the same as the previous version
-#
-# The previous version (notebook 09 before the split) wrote the same products;
-# the statement differs only in the notebook number on its first line.
-
-# %%
-# [38]
-for name in ("recurrence_forecast_models.csv", "precip_conditioning_events.csv", "precip_conditioning_thresholds.csv", "precip_conditioning_ruleC.csv"):
-    old_path = os.path.join(parity_dir, name)
-    if not os.path.exists(old_path):
-        print(f"no previous {name}; check skipped")
-        continue
-    new, old = pd.read_csv(os.path.join(out_dir, name)), pd.read_csv(old_path)
-    if name == "recurrence_forecast_models.csv":
-        # the previous version conditioned on 2025-12-21 (typed) and the issue date; this one on the data end read from the
-        # series. Report the change instead of asserting equality.
-        old = old[old.ref == "data_end"].set_index(["catalog", "model"])
-        new_idx = new.set_index(["catalog", "model"])
-        print(f"{name}: conditioning moved from {old.ref_date.iloc[0]} to {new_idx.ref_date.iloc[0]}; P(WY2027 wet season), BPT, old -> new: " +
-              ", ".join(f"{cat} {old.loc[(cat, 'bpt'), 'p_wet_season']:.2f} -> {new_idx.loc[(cat, 'bpt'), 'p_wet_season']:.2f}" for cat in ("A_insar", "B_aa_dense", "C_merged")))
-        continue
-    assert new.shape == old.shape and list(new.columns) == list(old.columns), f"{name}: layout differs"
-    numeric = new.select_dtypes("number").columns
-    assert new.drop(columns=numeric).fillna("").equals(old.drop(columns=numeric).fillna("")), f"{name}: text columns differ"
-    assert np.array_equal(np.isnan(new[numeric].values.astype(float)), np.isnan(old[numeric].values.astype(float))), f"{name}: NaN pattern differs"
-    diff = np.nanmax(np.abs(new[numeric].values.astype(float) - old[numeric].values.astype(float))) if len(numeric) else 0.0
-    print(f"{name}: same {new.shape}, max |difference| {diff:.2e}")
-    assert diff < 1e-9, f"{name} differs from the previous version"
-old_path = os.path.join(parity_dir, "prediction_statement.txt")
-if os.path.exists(old_path):
-    old_lines = open(old_path).read().splitlines()
-    new_lines = open(os.path.join(out_dir, "prediction_statement.txt")).read().splitlines()
-    changed = [i for i, (a, b) in enumerate(zip(old_lines, new_lines)) if a != b]
-    print(f"prediction_statement.txt: {len(changed)} of {len(new_lines)} lines changed against the previous version "
-          f"(expected: the conditioning moved from the issue date to the data end on 2026-09-24)")
-    for i in changed:
-        print(f"  line {i + 1}\n    was: {old_lines[i]}\n    now: {new_lines[i]}")
-
-# %% [markdown]
-# ## [39] Supplementary figure: the rainfall conditioning
+# ## [37] Supplementary figure: the rainfall conditioning
 #
 # WY accumulation with the onsets; the lag after each rule A threshold; onset
 # day against the day the best rule A threshold was crossed.
 
 # %%
-# [40]
+# [38]
 fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.9), width_ratios=[1.4, 1.0, 1.0])
 event_colours = plt.cm.viridis(np.linspace(0, 0.9, len(insar_rain)))
 # a) every water year's accumulation, the InSAR event years in colour, the onset windows as thick segments
@@ -986,10 +946,10 @@ print("Saved figure to:", f_conditioning)
 plt.show()
 
 # %% [markdown]
-# ## [41] REGISTER
+# ## [39] REGISTER
 
 # %%
-# [42]
+# [40]
 sidecar = REG.sidecar("10_forecast", stats_lines + ["", *statement_lines])
 REG.register("10_issue_date", forecast_issue_date, "date", 0, where="P10, M9", cell="constants", sidecar=sidecar)
 REG.register("10_data_end", data_end, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
