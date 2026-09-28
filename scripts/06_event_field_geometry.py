@@ -139,6 +139,8 @@ profile_pts = {"X": (-121.97816, 37.56270),      # X-X': the trace point 58.5 km
 cross_m = 2000.0                # +/- profile length (2 km: beyond that the east block is noisy)
 swath_m = 150.0                 # +/- along-strike half-width
 median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
+coh_maps = 0.9                  # temporal-coherence mask for the per-pixel maps and the decomposed field the slip model inverts
+                                # (Dani 2026-09-28: the 0.7 maps are too noisy); the crossings and the LOS checks stay at coh_timeseries
 near_bin_m, near_zone_m = 30.0, 300.0   # one-pixel bins within 300 m of the trace, so the line reaches ~15-30 m from the fault (Dani 2026-09-28)
 far_m = (1500.0, 2000.0)        # same-block far field the near-fault amplitude of each block is measured against
 median_col, grey, ann_col = "#A50F15", "gray55", "black"       # per-side running median (dark red); pixels; block annotation
@@ -652,6 +654,24 @@ if os.path.exists(f_ref):
         assert same_nan and diff == 0.0, f"{name_} differs from the MintPy-mode product"
     print("PASS: this path reproduces the MintPy-mode decomposition exactly; now the SSE-section strike")
 
+# the per-pixel maps from here on (decomposition, profiles, Fig 2) use the
+# stricter coh_maps mask; it lies inside the coh_timeseries mask the step
+# maps were fitted on, so it only removes pixels
+if coh_maps != coh_timeseries:
+    for dic in insar_dic_list:
+        orbit = dic["ORBIT_DIRECTION"]
+        with h5py.File(dic["mask_file"][coh_maps], "r") as h:
+            mx0, my0 = float(h.attrs["X_FIRST"]), float(h.attrs["Y_FIRST"])
+            col0 = int(round((x0 + c0 * dx - mx0) / dx)); row0 = int(round((y0 + r0 * dy - my0) / dy))
+            mask_maps = h[[k for k in h.keys() if k != "date"][0]][row0:row0 + nr, col0:col0 + nc].astype(bool)
+        assert not (mask_maps & ~fits[orbit]["keep"]).any(), f"{orbit}: coh_maps mask not inside the fit mask"
+        for key_ in ("mean", "scatter", "err"):
+            mean_event[orbit][key_] = np.where(mask_maps, mean_event[orbit][key_], np.nan)
+        event_maps[orbit]["rate"] = np.where(mask_maps, event_maps[orbit]["rate"], np.nan)
+        event_maps[orbit]["ev"] = np.where(mask_maps[None], event_maps[orbit]["ev"], np.nan)
+        print(f"[{orbit}] maps masked at temporal coherence {coh_maps}: {mask_maps.mean():.0%} of the box "
+              f"(fit mask {coh_timeseries}: {fits[orbit]['keep'].mean():.0%})")
+
 fp_rate, up_rate = decompose(event_maps["ascending"]["rate"], event_maps["descending"]["rate"])
 fp_evt, up_evt = decompose(mean_event["ascending"]["mean"], mean_event["descending"]["mean"])
 fp_events = {}
@@ -1112,7 +1132,7 @@ def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, col
     fig.show()
 
 
-f_fig2 = os.path.join(fig_dir, f"fig2_observations_los_coh{coh_timeseries}_{n_mean}ev")
+f_fig2 = os.path.join(fig_dir, f"fig2_observations_los_coh{coh_maps}_{n_mean}ev")
 draw_fig2(evt_field, los_profiles, f"Mean event ({n_mean} events)", f_fig2)     # the mean, not the median (Dani, 2026-09-23): it is the field 07 inverts
 
 # %% [markdown]
@@ -1135,7 +1155,7 @@ for c in fpup_profiles:
         p["blocks"] = block_amplitudes(p["de"], p["ve"])
         print(f"[{c}] {n_}-{n_}': rate step {p['rate_step']:+.2f} mm/yr, event step {p['event_step']:+.2f} mm; "
               f"per block W {p['blocks']['W']['amp']:+.2f}, E {p['blocks']['E']['amp']:+.2f} mm")
-draw_fig2(fpup_evt, fpup_profiles, f"Mean event ({n_mean} events)", os.path.join(fig_dir, f"test_fig2_fp_up_coh{coh_timeseries}_{n_mean}ev"),
+draw_fig2(fpup_evt, fpup_profiles, f"Mean event ({n_mean} events)", os.path.join(fig_dir, f"test_fig2_fp_up_coh{coh_maps}_{n_mean}ev"),
           rate_maps_in=fpup_rate, cols=list(fpup_rate), ylabs=("Rate (mm/yr)", "Displacement (mm)"), lims={"rate": 10.0, "event": 10.0})
 
 # %% [markdown]
@@ -1198,7 +1218,7 @@ profile_pair("Fault parallel (mm)", 10.0, f"@%Helvetica-Bold%C@%% @:7p:Mean even
 fig.shift_origin(xshift=f"{Wp_s + gap_x}c")
 map_panel(g_evt, cpt_evt, lim_evt, "@%Helvetica-Bold%D@%% @:7p:Mean event (FP)@::", "mm")
 
-f_figs = os.path.join(fig_dir, f"figS_fp_maps_coh{coh_timeseries}_{n_mean}ev")
+f_figs = os.path.join(fig_dir, f"figS_fp_maps_coh{coh_maps}_{n_mean}ev")
 fig.savefig(f_figs + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)
 fig.savefig(f_figs + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved the fault-parallel maps and profiles (supplement) to:", f_figs + ".png")
@@ -1230,7 +1250,7 @@ for r_, orbit in enumerate(event_maps):
         if r_ == 1 and c_ in (0, n_ev + 1):
             fig.colorbar(im, ax=axes[:, c_] if c_ else axes[:, :n_ev + 1], shrink=0.5, orientation="horizontal", pad=0.06, label="LOS mm" if c_ == 0 else "mm")
 fig.suptitle(f"Per-pixel step maps, coherence {coh_timeseries}, box median removed, descending burst offsets removed", fontsize=9)
-f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_timeseries}.png")
+f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_maps}.png")
 fig.savefig(f_grid, dpi=300, bbox_inches="tight"); print("Saved figure to:", f_grid); plt.show()
 
 # %% [markdown]

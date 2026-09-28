@@ -9,7 +9,9 @@ fp_maps.npz, decomposed at the SSE-section strike), far-field plane
 levelling, vertical fault, smooth12 mesh (50 m cells at the surface, x1.2),
 quadtree to one 30 m pixel, buildCmXY lambda (0.3, 0.05) km, sigma 24, the
 crossing-stack surface constraint interpolated to every surface triangle,
-NNLS. Homogeneous Green's functions: replaced by the 1D layered PyLith
+slip tied uniform over the top 0.2 km of each along-strike column
+(drafts/07/top_tie_test.py), NNLS. The field is at the coh_maps mask of
+notebook 06 (0.9). Homogeneous Green's functions: replaced by the 1D layered PyLith
 model when that exists. Mw at 30 GPa and with the USGS SFCVM rigidity(z).
 
 Output: outputs/07_slip_model_tests/fig2_model_row.npz
@@ -24,6 +26,7 @@ src = open("scripts/07_slip_model_tests.py").read()
 exec(src.split("# %%\n## [9]")[0])
 
 sigma_sel = 24
+tie_depth_km = 0.2
 
 # ------------------------
 # Load: the fault-parallel mean event
@@ -51,7 +54,7 @@ print(f"fault-parallel field at strike {strike_bearing:.2f} deg: {ds.vel.size} q
 # Calculate: the inversion
 # ------------------------
 surface = make_surface_interp(fault, surf_floor_mm)
-invert(fault, [ds], sigma_sel, surface=surface)
+invert(fault, [ds], sigma_sel, surface=surface, tie_depth_km=tie_depth_km)
 row, table = metrics(fault, [ds], surface)
 residual = ds.vel - ds.synth
 
@@ -84,5 +87,5 @@ np.savez(out_file, sample_lon=ds.lon, sample_lat=ds.lat, data_mm=ds.vel, model_m
          residual_mm=residual, nodes_sz=nodes, faces=faces, slip_mm=table.slip_mm.values,
          s0_km_pp=s0_km_pp, mw_30gpa=row["Mw"], mw_sfcvm=mw_sfcvm,
          rms_mm=float(np.sqrt(np.mean(residual ** 2))), surf_ratio_pct=float(surf_ratio),
-         sigma=sigma_sel, strike_deg=strike_bearing)
+         sigma=sigma_sel, strike_deg=strike_bearing, tie_depth_km=tie_depth_km)
 print("wrote", out_file)

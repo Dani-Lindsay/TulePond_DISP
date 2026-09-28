@@ -159,3 +159,33 @@ model runs.
 - Potency; event-to-event spread of surface slip and extent (from 04).
 - Rerun of `07_slip_model_tests` on the final configuration; drop panels B
   and C from `fig07_slip_model`.
+
+## F. Added later on 2026-09-28
+
+- **Decomposition strike:** the field decomposition in 06 now uses the mean
+  local strike of the SSE section (146.44°, km 56.3-62.3) instead of the
+  whole-box mean (143.05°); the crossings (03) keep their local strike. Zero-
+  difference CHECK: at 143.05° the new saved-products path reproduces the
+  MintPy-mode field exactly. Effect: mean-event fault-parallel step 7.97 ->
+  8.65 mm (registry `06_fp_event_step_mm`), vertical step 0.70 -> 0.57 mm;
+  fault-parallel inversion surface slip 68% -> 75% of the crossings, Mw 3.75
+  -> 3.76 [interim logs; 06 registry].
+- **Coherence for the maps and the inversion field: 0.9** (Dani); crossings
+  and LOS checks stay at 0.7. 30% of the box kept (0.7: 46% asc, 42% desc).
+  Mean-event fault-parallel step 8.83 mm at 0.9 (`06_fp_event_step_mm`).
+- **Top-layer tie** (slip uniform over the top of each along-strike column,
+  after Jolivet et al. 2023) [`drafts/07/top_tie_test.py`, 0.7 field]:
+  | Tie depth | Peak (depth) | Surface % of crossings | rms | Mw |
+  |---|---|---|---|---|
+  | none | 12.9 mm (140 m) | 75% | 1.96 mm | 3.76 |
+  | 0.1 km | 11.6 mm (140 m) | 79% | 1.98 mm | 3.76 |
+  | 0.2 km | 10.2 mm (30 m) | 80% | 1.99 mm | 3.76 |
+  | 0.5 km | 10.0 mm (30 m) | 80% | 1.99 mm | 3.85 |
+  Synthetic 10 mm to 0.3/0.8/1.5 km with a 0.2 km tie: surface cell 10.1-10.4
+  mm and no sub-surface overshoot; recovered Mw 3.70/3.80/3.84 (the depth bias
+  on the moment remains). **Adopted: 0.2 km.**
+- **Current best model** (Fig 2 row 3, `fig2_model_row.npz`; draft, homogeneous
+  Green's functions): fault-parallel, 0.9 field, SSE-section strike, 0.2 km
+  tie, sigma 24: Mw 3.73 (30 GPa), 2.83 (SFCVM rigidity); rms 1.79 mm;
+  surface slip 86% of the crossings; peak 10.2 mm at the surface. To be
+  replaced by the 1D layered PyLith model **[planned]**.

@@ -458,8 +458,31 @@ def get_downsampled(track, mesh_name, dip, min_km=min_block_km, aligned=True,
 
 # %%
 ## [8]
+def tie_rows(fault, n_params, tie_depth_km, tie_bin_km=0.1, tie_err_mm=0.01):
+    """Equality constraints tying slip uniform from the surface to
+    tie_depth_km (after Jolivet et al. 2023, who tie 0-1 km): cells whose
+    centroid is shallower than tie_depth_km, grouped in along-strike bins of
+    tie_bin_km, each equal to its bin's shallowest cell. Rows of
+    [cell - reference] = 0 with a tiny error (near-hard constraint)."""
+    nodes, faces, _ = fault.mesh_sz
+    centroid = nodes[faces].mean(1)
+    shallow = np.nonzero(centroid[:, 1] < tie_depth_km)[0]
+    bins = np.floor(centroid[shallow, 0] / tie_bin_km).astype(int)
+    rows = []
+    for b in np.unique(bins):
+        members = shallow[bins == b]
+        if members.size < 2:
+            continue
+        ref = members[np.argmin(centroid[members, 1])]
+        for m in members[members != ref]:
+            r = np.zeros(n_params); r[m] = 1.0; r[ref] = -1.0
+            rows.append(r)
+    E = np.array(rows) if rows else np.zeros((0, n_params))
+    return E, np.full(E.shape[0], tie_err_mm ** 2)
+
+
 def invert(fault, insar_datas, sigma, lam=lam_xz, prior="xy", slipdir="s",
-           ramp_spec="1", surface=None):
+           ramp_spec="1", surface=None, tie_depth_km=None):
     solve_datas = list(insar_datas) + ([surface] if surface is not None else [])
     for ds in insar_datas:
         fault.buildGFs(ds, vertical=True, slipdir=slipdir, verbose=False)
@@ -480,6 +503,15 @@ def invert(fault, insar_datas, sigma, lam=lam_xz, prior="xy", slipdir="s",
     trans.buildCm(1e4, verbose=False)
     solver = multisrc("mean event", [fault, trans], verbose=False)
     solver.assembleGFs(); solver.assembleCm()
+    if tie_depth_km:                                  # uniform slip over the top tie_depth_km
+        E, e_var = tie_rows(fault, solver.G.shape[1], tie_depth_km)
+        solver.G = np.vstack([solver.G, E])
+        solver.d = np.concatenate([solver.d, np.zeros(E.shape[0])])
+        n_d = solver.Cd.shape[0]
+        Cd_new = np.zeros((n_d + E.shape[0], n_d + E.shape[0]))
+        Cd_new[:n_d, :n_d] = solver.Cd
+        Cd_new[n_d:, n_d:] = np.diag(e_var)
+        solver.Cd = Cd_new
     if slipdir == "s":
         mprior = np.zeros(solver.Np)
         ramp_idx = [i for i, t in enumerate(solver.paramTypes) if t[0] == trans.name]
