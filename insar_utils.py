@@ -29,6 +29,9 @@ Sections
 import csv
 import hashlib
 import os
+import re
+import sys
+import xml.etree.ElementTree as ET
 import subprocess
 import uuid
 from datetime import datetime
@@ -743,3 +746,65 @@ class Registry:
                 f.write(f"{where}: " + ", ".join(f"{r['key']}={r['rendered']}" for _, r in grp.iterrows()) + "\n")
         print(f"Rendered registry to: {self.txt_path}")
         return self.txt_path
+
+
+# ---------------------------------------------------------------------------
+# Fault trace file reader -- ported VERBATIM from
+# Hayward_DISP-S1/analysis/run07_fault_profiles.py (notebook 07 port round,
+# 2026-09-25); the hand-drawn trace KML is read the same way everywhere.
+# ---------------------------------------------------------------------------
+def _is_number(s):
+    try:
+        float(s)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def load_trace(path):
+    """Vertices of the trace as one (N, 2) lon/lat array.
+
+    KML of Points: hand-edited crossing placemarks; placemarks whose name is
+    not a number (annotations like "multi-splay zone") are dropped.
+    KML LineString / GMT / CSV: the line vertices ('#'/'>' headers ignored;
+    lat,lon column order auto-detected).
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".kml":
+        txt = re.sub(r'xmlns="[^"]+"', "", open(path).read())
+        root = ET.fromstring(txt)
+        pt_pms = [pm for pm in root.findall(".//Placemark")
+                  if pm.find(".//Point") is not None]
+        if pt_pms:                                   # KML of crossing points
+            pts, dropped = [], []
+            for pm in pt_pms:
+                name = pm.findtext("name")
+                c = pm.find(".//coordinates")
+                lo, la = map(float, c.text.strip().split(",")[:2])
+                if _is_number(name):
+                    pts.append((lo, la))
+                else:
+                    dropped.append(name)
+            if dropped:
+                print(f"dropped {len(dropped)} non-numeric placemark(s): {dropped}")
+            return np.array(pts)
+        m = re.search(r"<coordinates>(.*?)</coordinates>", txt, re.S)
+        if not m:
+            sys.exit(f"no Points or <coordinates> in {path}")
+        return np.array([tuple(map(float, tok.split(",")[:2]))
+                         for tok in m.group(1).split() if tok.strip()])
+    # GMT / CSV / txt: two numeric columns per line
+    pts = []
+    for ln in open(path):
+        if ln.startswith(("#", ">", "@")):
+            continue
+        a = ln.replace(",", " ").split()
+        if len(a) >= 2:
+            try:
+                pts.append((float(a[0]), float(a[1])))
+            except ValueError:
+                continue
+    p = np.array(pts)
+    if np.nanmedian(p[:, 0]) > 0 and np.nanmedian(p[:, 1]) < 0:   # cols are lat,lon
+        p = p[:, ::-1]
+    return p
