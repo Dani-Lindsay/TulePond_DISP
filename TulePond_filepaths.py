@@ -18,15 +18,21 @@ done in what order.
 """
 import os
 
-# ------------------------
-# Data root -- EDIT THIS ONE LINE
-# ------------------------
-data_dir = "/Users/daniellelindsay/Tule_Pond_DISP"
-
 # The repo itself: outputs (products, stats sidecars, the number registry) and
 # figures are written NEXT TO THE NOTEBOOKS, not into data_dir, so that a
 # clean checkout plus the Zenodo data reproduces everything in one place.
 repo_dir = os.path.dirname(os.path.abspath(__file__))
+
+# ------------------------
+# Data root -- one repo, two laptops (2026-09-28): TULEPOND_DATA_DIR if set,
+# else the proj_HaywardCreep folder where it exists, else the repo itself
+# (the second laptop keeps Inputs/ inside the repo). No per-machine edits.
+# ------------------------
+data_dir = os.environ.get("TULEPOND_DATA_DIR", "")
+if not data_dir:
+    data_dir = "/Users/dlindsay/work/proj_HaywardCreep"
+    if not os.path.isdir(data_dir):
+        data_dir = repo_dir
 
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
