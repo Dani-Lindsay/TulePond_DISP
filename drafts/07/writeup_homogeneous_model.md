@@ -1,9 +1,8 @@
 # Slip model write-up draft: homogeneous baseline (2026-09-28)
 
 Draft text for the manuscript, in case the homogeneous model stays the final
-one. Every number carries a source tag. **[pending]** = from the sigma 12
-notebook run that is executing now (registry keys `07_hom_*`); fill from the
-registry once it finishes. All numbers are on the data through 2025 and move
+one. Every number carries a source tag. [nb] values are from the executed
+sigma 12 run of 2026-09-28 (registry keys `07_hom_*`). All numbers are on the data through 2025 and move
 with the March 2026 refresh.
 
 Source tags: [nb] `07_slip_model.ipynb` / registry `07_hom_*`;
@@ -94,8 +93,11 @@ The formal uncertainty is estimated from 24 inversions of the model's own
 predictions with noise drawn from the full data covariances.
 
 **Model checks.** (i) The model's predicted fault-normal horizontal motion
-is [pending] mm at most, [pending]% of its fault-parallel maximum, supporting
-the decomposition. (ii) The notebook reproduces the tested draft model to
+is at most 0.96 mm, 20% of its fault-parallel maximum (4.86 mm) at the
+samples [nb], comparable to the pixel noise (nugget 0.84 mm [nb]). NOT
+"negligible": where it sits (likely the ends of the slip patch) and whether
+it biases the decomposed field is to be checked before this sentence is
+used. (ii) The notebook reproduces the tested draft model to
 round-off (max slip difference 0 mm at sigma 24) [nb]. (iii) Sensitivity to
 the model design (section B of the lessons file): smoothing is the largest
 lever; correlation lengths moved Mw by 0.06 [suite, earlier configuration;
@@ -118,14 +120,16 @@ Software: CSI (Jolivet et al.; commit 1277bb4).
 - The mean Tule Pond event is fit by right-lateral slip concentrated in the
   top few hundred metres of the fault between km ~57 and ~62 [figure
   `test_sigma_lcurve.png`], with a maximum of 9.6 mm [lcurve, sigma 12]
-  (depth of the maximum [pending]; at the surface in the sigma 24 draft).
+  at the surface (top cell, centroid 18 m) [nb].
 - The model reproduces 83% of the surface slip measured at the fault
   crossings over the slow-slip section [lcurve, sigma 12], with an rms
   misfit of 1.82 mm to the fault-parallel field [lcurve, sigma 12].
 - The geodetic moment corresponds to Mw 3.67 for a uniform 30 GPa rigidity
-  [lcurve, sigma 12] (formal uncertainty +/- [pending]), and Mw [pending] with
-  the depth-dependent rigidity of the USGS velocity model, whose top ~500 m
-  is soft (0.3-2.7 GPa at 50-500 m) [SFCVM]; potency [pending] m^3.
+  [nb] (formal uncertainty +/- 0.01 [nb, bootstrap n = 24; the bootstrap mean
+  is 3.645, slightly below the best fit, as expected with positivity]), and
+  Mw 2.72 with the depth-dependent rigidity of the USGS velocity model
+  (effective rigidity 1.1 GPa) [nb], whose top ~500 m is soft (0.3-2.7 GPa at
+  50-500 m) [SFCVM]; potency 1.35 x 10^4 m^3 [nb].
 - Across the high-curvature part of the L-curve (sigma 8-16) Mw varies from
   3.64 to 3.70 [lcurve]; the depth extent is not resolved (0.85-3 km fit
   equally [scan]), and uniform slip over those depths gives Mw 3.91-4.26 at
@@ -134,7 +138,7 @@ Software: CSI (Jolivet et al.; commit 1277bb4).
 - Slip reaches the surface: the inversion without the crossing constraint
   already places the largest slip in the uppermost cells, and with the
   constraint the modelled surface slip matches the crossings to within
-  [surface rms, pending] mm.
+  0.83 mm rms [nb].
 - The fault dip is not resolved (vertical to 75°W and to 60°E fit
   comparably, Mw 3.82-3.89 [dip, earlier configuration]).
 
@@ -149,3 +153,14 @@ Software: CSI (Jolivet et al.; commit 1277bb4).
 - Jolivet et al. 2023 section 4.2 (p. 7 of 17) for the tie; Neyrinck et al.
   2024 (EPSL 648, 119104) used a similar smoothed least-squares approach
   with a layered model; cite where the approach is compared.
+
+### Found in the sigma 12 run (2026-09-28): the residual is not noise
+The fit maps (`fig07_hom_fit_maps.png`) leave a coherent negative residual
+along both sides of the fault near km 57-61: the model over-predicts the
+east side and under-predicts the west side. rms 1.82 mm overall, 2.07 mm
+within 200 m [nb], against a pixel nugget of 0.84 mm [nb]. This is the
+west/east asymmetry of the mean event (west -5.48 mm, east +2.10 mm, notebook
+06 profile), which a symmetric dislocation in a uniform half-space cannot
+produce. It is the main thing a layered or 3D model with the softer west side
+(SFCVM) could improve, and the metric to compare models on. State it in the
+results; do not describe the homogeneous fit as complete.
