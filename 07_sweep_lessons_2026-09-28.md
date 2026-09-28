@@ -35,7 +35,7 @@ model runs.
    non-tectonic, off-fault vertical signal east of the fault is excluded
    rather than down-weighted. Assumption: no horizontal motion
    perpendicular to the fault. Check the model's predicted fault-normal
-   motion is negligible **[planned]**.
+   motion is negligible: now a CHECK cell in `07_slip_model` (see G).
    - Consistency: the surface constraint (04 per-event crossing
      amplitudes) is also fault-parallel: the east - west step at each
      crossing (30-150 m aperture), decomposed from asc + desc in 03. From
@@ -46,10 +46,10 @@ model runs.
      just east of the fault in ascending; the fault-parallel inversion
      does not [fp; `../Figures_2026-09-25/draft_residuals_los_vs_fp.png`].
 2. **Smoothed least squares.** Regularised least squares with positivity
-   and an exponential model covariance (buildCmXY). Sigma chosen at the
-   onset of the misfit plateau, balancing misfit against over-smoothing:
-   sigma = 24 on `smooth12` [sigma]. A proper L-curve plot (misfit vs model
-   roughness) **[planned]**.
+   and an exponential model covariance (buildCmXY). **Superseded (G):**
+   sigma is now chosen at the L-curve corner, leaning to under-smoothing:
+   sigma = 12 [lcurve]. (The earlier "onset of the misfit plateau" rule
+   picked 24; on the final configuration there is no plateau.)
 3. **Parameter sweep, not Bayesian sampling**, to sample the uncertainty
    from model-design choices (section B). A small parametric Bayesian
    depth/Mw model stays optional **[planned, optional]**.
@@ -151,10 +151,13 @@ model runs.
 
 - 1D layered Green's functions (PyLith 5.0.2): uniform-rock check against
   CSI first, then the SFCVM 1D profile.
-- Uniform slip tied over the top ~200 m of the fault (test 100 and 500 m),
-  after Jolivet et al. (2023).
-- Fault-normal motion check; crossing vs field strike check.
-- Proper L-curve figure for sigma.
+- ~~Uniform slip tied over the top ~200 m~~ done (F); re-check the tie
+  depth at sigma 12 (none / 0.1 / 0.2 km).
+- ~~Fault-normal motion check~~ in the notebook (G); crossing vs field
+  strike check.
+- ~~L-curve for sigma~~ done (G).
+- Re-test dip, mesh, lambda and sampling on the final configuration (they
+  were decided on the LOS setup).
 - Recovery test with the interpolated constraint and fault-parallel input.
 - Potency; event-to-event spread of surface slip and extent (from 04).
 - Rerun of `07_slip_model_tests` on the final configuration; drop panels B
@@ -189,3 +192,65 @@ model runs.
   tie, sigma 24: Mw 3.73 (30 GPa), 2.83 (SFCVM rigidity); rms 1.79 mm;
   surface slip 86% of the crossings; peak 10.2 mm at the surface. To be
   replaced by the 1D layered PyLith model **[planned]**.
+
+## G. Smoothing by L-curve; the clean homogeneous baseline (2026-09-28, evening)
+
+Source tag: [lcurve] `sigma_lcurve.csv` / `sigma_lcurve_slip.npz`
+(`drafts/07/sigma_lcurve.py`, final configuration, 13 sigmas); figure
+`Figures_2026-09-28/test_sigma_lcurve.png` (`drafts/07/sigma_lcurve_figure.py`).
+
+- **Direction.** In CSI sigma is the prior standard deviation of slip
+  (Cm = sigma^2 exp(-d/lambda)): larger sigma = WEAKER smoothing (roughly
+  1/alpha in the damped-least-squares convention). Slip norm 6.2 at sigma 4,
+  16.1 at 128 [lcurve].
+- **The plateau rule fails** on the final configuration: rms keeps falling
+  to sigma 128 (1.968 -> 1.744 mm), so "within 0.005 mm of the minimum" just
+  returns the largest sigma tried [lcurve].
+- **L-curve (textbook, Hansen 1992):** the full weighted misfit
+  sqrt(chi2 InSAR + chi2 surface) against the prior-weighted roughness
+  sqrt(m^T C_corr^-1 m). The InSAR-only misfit alone gives a false corner
+  (it hardly changes, sqrt(chi2) 59-62); the surface chi2 changes most
+  (1429 at sigma 4 -> 125 at sigma 32). **Corner at sigma 10.1; selected the
+  next grid value above it, sigma 12** (Dani: lean to under-smoothing, and
+  textbook) [lcurve].
+
+| sigma | rms (mm) | surface % | peak (mm) | Mw 30 GPa | note |
+|---|---|---|---|---|---|
+| 4 | 1.968 | 58 | 6.9 | 3.56 | misses the crossings |
+| 8 | 1.845 | 78 | 8.9 | 3.64 | |
+| **12** | **1.819** | **83** | **9.6** | **3.67** | **selected (corner 10.1)** |
+| 16 | 1.807 | 85 | 9.9 | 3.70 | |
+| 24 | 1.792 | 86 | 10.2 | 3.73 | earlier choice |
+| 48 | 1.770 | 85 | 12.3 | 3.80 | band of slip at ~250 m, just below the tie |
+| 128 | 1.744 | 84 | 26.8 | 3.82 | band 27 mm; jagged surface |
+
+- Over the high-curvature range (sigma 8-16) Mw is 3.64-3.70 at 30 GPa: the
+  smoothing uncertainty to quote [lcurve].
+- **Surface data have no free offset.** CSI's
+  `surfaceslip.getTransformEstimator` returns zeros, so the "constant" for
+  the surface dataset is a dead parameter (it sits at its bound, -1000) and
+  the model fits the absolute surface slip. InSAR constant -0.35 mm [lcurve].
+- **Clean notebook** `scripts/07_slip_model.py` / `07_slip_model.ipynb`: the
+  homogeneous baseline, machinery ported verbatim from
+  `07_slip_model_tests.py`. CHECKs: reproduces the sigma 24 draft
+  (`fig2_model_row.npz`) with max |slip diff| 0.00e+00; its in-notebook
+  L-curve equals [lcurve]. It runs the L-curve itself, reads the event list
+  and the SSE section from 04's outputs, and skips the draft gates on new
+  data (and says so). Registry keys `07_hom_*`. Baseline numbers at sigma
+  12: see the notebook / registry once run.
+
+### Rerunning the modelling on new data (e.g. through March 2026)
+
+1. On the processing laptop: 01-05, then 06.
+2. Copy to this laptop (outputs/ is not in git):
+   `outputs/06_event_field_geometry/fp_maps.npz`;
+   `outputs/04_event_detection_v2/{event_fraction_by_crossing.csv,
+   creep_events.csv, section_lengths.csv}`.
+3. Run `07_slip_model.ipynb` (about 1.5 h: 13-sigma L-curve + 24 bootstrap
+   runs). Check the corner and the selected sigma: the rule is fixed, the
+   value is not.
+4. `fig2_model_row.npz` (Fig 2 row 3) is rewritten by the notebook; copy
+   it back for 06.
+5. `07_slip_model_tests` still hard-codes the five event columns, the SSE
+   section and imports `csi_io` from Hayward_DISP-S1 for its mesh gate;
+   make it data-driven before rerunning it **[planned]**.
