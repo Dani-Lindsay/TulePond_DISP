@@ -274,7 +274,7 @@ Source tag: [lcurve] `sigma_lcurve.csv` / `sigma_lcurve_slip.npz`
 1. On the processing laptop: 01-05, then 06.
 2. Copy to this laptop (outputs/ is not in git):
    `outputs/06_event_field_geometry/fp_maps.npz`;
-   `outputs/04_event_detection_v2/{event_fraction_by_crossing.csv,
+   `outputs/04_event_detection/{event_fraction_by_crossing.csv,
    creep_events.csv, section_lengths.csv}`.
 3. Run `07_slip_model.ipynb` (about 1.5 h: 13-sigma L-curve + 24 bootstrap
    runs). Check the corner and the selected sigma: the rule is fixed, the
@@ -284,3 +284,5 @@ Source tag: [lcurve] `sigma_lcurve.csv` / `sigma_lcurve_slip.npz`
 5. `07_slip_model_tests` still hard-codes the five event columns, the SSE
    section and imports `csi_io` from Hayward_DISP-S1 for its mesh gate;
    make it data-driven before rerunning it **[planned]**.
+6. Since 46a8410 (v2 notebooks promoted) 04 writes to
+   `outputs/04_event_detection/`, not `_v2`; 07 reads the new name.
