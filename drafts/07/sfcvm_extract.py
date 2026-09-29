@@ -32,9 +32,13 @@ import pyproj
 # Paths & constants
 # ------------------------
 from TulePond_filepaths import common_paths, inputs_dir      # was hard-coded to the modelling laptop
-model_file = os.path.join(inputs_dir, "USGS_SFCVM_v21-1", "USGS_SFCVM_v21-1_detailed.h5")
+import sys
+version = sys.argv[1] if len(sys.argv) > 1 else "v21-1"     # "v21-1" (used so far) or "v26-0" (2026-08-14)
+model_file = os.path.join(inputs_dir, f"USGS_SFCVM_{version}", f"USGS_SFCVM_{version}_detailed.h5")
+assert os.path.exists(model_file), f"missing {model_file}"
 profiles_file = common_paths["fault_profiles"]
-out_file = os.path.join(common_paths["out_dir"], "07_slip_model_tests", "sfcvm_creep_section_profiles.csv")
+out_name = "sfcvm_creep_section_profiles.csv" if version == "v21-1" else f"sfcvm_creep_section_profiles_{version}.csv"
+out_file = os.path.join(common_paths["out_dir"], "07_slip_model_tests", out_name)
 os.makedirs(os.path.dirname(out_file), exist_ok=True)
 
 strike_deg = 143.05                         # local strike of the creep section (notebook 06)

@@ -253,6 +253,7 @@ def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, s
     cols = cols or tracks
     grids = {o: to_grid(field[o], balance)[0] for o in cols}
     lim = max(max(float(np.nanpercentile(np.abs(g.values[np.isfinite(g.values)]), 98)) for g in grids.values()), 0.3)
+    lim = float(np.ceil(lim * 2) / 2)                        # rounded up to 0.5, so the bar ends are round numbers
     cpt = utils.write_cpt(os.path.join(cpt_dir, f"los_{tag}.cpt"), "RdBu_r", -lim, lim)
     for k, o in enumerate(cols):
         if k:
@@ -325,7 +326,7 @@ def model_row_placeholder():
 model_row_file = os.path.join(common_paths["out_dir"], "07_slip_model_tests", "fig2_model_row.npz")
 
 
-def model_row():
+def model_row(lim=None):
     """Row 3: I the fault-parallel model at the quadtree samples, J the
     residual (shared colour bar right of J), K slip on the unrolled fault
     with Mw. Falls back to the placeholders when 07's product is absent."""
@@ -333,7 +334,8 @@ def model_row():
         model_row_placeholder()
         return
     z = np.load(model_row_file)
-    lim = max(float(np.nanpercentile(np.abs(z["data_mm"]), 98)), 0.3)
+    if lim is None:                                          # the event row's scale, so E/F and I/J compare by colour
+        lim = float(np.ceil(max(float(np.nanpercentile(np.abs(z["data_mm"]), 98)), 0.3) * 2) / 2)
     cpt = utils.write_cpt(os.path.join(cpt_dir, "model_fp.cpt"), "RdBu_r", -lim, lim)
     for k, (lab, values) in enumerate((("I", z["model_mm"]), ("J", z["residual_mm"]))):
         if k:
@@ -367,7 +369,7 @@ def model_row():
     fig.plot(x=z["surface_km"], y=z["surface_model_mm"], pen="1.0p," + model_col, label="Model, surface")
     fig.legend(position="jTR+o0.05c/0.05c", box=False)
     fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
-    fig.text(position="TR", text=f"M@-w@- {float(z['mw_30gpa']):.2f} (30 GPa), {float(z['mw_sfcvm']):.2f} (USGS rigidity)",
+    fig.text(position="TR", text=f"M@-w@- {float(z['mw_30gpa']):.2f} (30 GPa), {float(z['mw_sfcvm']):.2f} ({float(z['mu_effective_gpa']):.1f} GPa, USGS SFCVM)",
              justify="BR", offset="0c/0.12c", font="7p,Helvetica", no_clip=True)
     # L: slip on the unrolled fault, sampled on a regular grid (each triangle's slip is constant over it)
     fig.shift_origin(yshift=f"-{Hl + gap_kl}c")
@@ -416,13 +418,13 @@ def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, col
     los_profile_pairs("v", "d", lims["rate"], ["C", "D"], ylabs[0], headings=True, cols=cols, prof_set=evt_profiles)   # the profile set holds rate and event
     # row 2: the event. E, F the maps; G, H the profiles
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
-    los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, cols=cols)
+    lim_event = los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, cols=cols)
     fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
     los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=True, prof_set=evt_profiles, cols=cols,
                       model_lines=model_lines)
     # row 3: the model, notebook 07
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
-    model_row()
+    model_row(lim_event)                                     # I, J on the same colour scale as E, F
     fig.savefig(stem + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
     fig.savefig(stem + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
     print("Saved to:", stem + ".png")

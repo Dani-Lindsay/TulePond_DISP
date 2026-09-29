@@ -108,9 +108,10 @@ shear_modulus  = 3.0e10        # uniform rigidity of the reference Mw
 mu_floor_gpa   = 0.5           # SFCVM rigidity floor (the model is ~0 at the surface)
 sigma_grid     = [4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 128]   # L-curve (larger = LESS smoothing)
 sigma_check    = 24            # sigma of the draft the CHECK compares against
-sfcvm_file     = os.path.join(tests_dir, "sfcvm_creep_section_profiles.csv")   # drafts/07/sfcvm_extract.py
-assert os.path.exists(sfcvm_file), (f"missing {sfcvm_file}: download USGS_SFCVM_v21-1_detailed.h5 "
-                                    "(doi:10.5066/P9TRDCHE) and run drafts/07/sfcvm_extract.py first")
+sfcvm_version  = "v26-0"       # USGS SFCVM v26.0 (2026-08-14; new rules west of the Hayward fault), Dani 2026-09-29
+sfcvm_file     = os.path.join(tests_dir, f"sfcvm_creep_section_profiles_{sfcvm_version}.csv")   # drafts/07/sfcvm_extract.py
+assert os.path.exists(sfcvm_file), (f"missing {sfcvm_file}: download USGS_SFCVM_{sfcvm_version}_detailed.h5 "
+                                    "(doi:10.5066/P13AEJFI) and run drafts/07/sfcvm_extract.py v26-0 first")
 n_boot         = 24
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
@@ -635,10 +636,13 @@ print("wrote fig07_hom_lcurve.png/.pdf")
 # %% [markdown]
 # ## [9] The baseline model and its numbers
 #
-# Mw at 30 GPa is the reference. Mw with the USGS SFCVM rigidity: each
-# cell's moment recomputed with the median mu(z) of the creep-section
-# profiles (`drafts/07/sfcvm_extract.py`, floored at 0.5 GPa); the slip is
-# the uniform-rock slip, so this is a rescale, not a layered inversion.
+# Mw at 30 GPa is the reference. Mw with the USGS SFCVM v26.0 rigidity,
+# following Materna et al. (2024): one shear modulus for the depth that
+# slips, taken from the regional velocity model. Here it is the SFCVM
+# rigidity weighted by the model's own potency (each cell's median mu(z) of
+# the creep-section profiles, `drafts/07/sfcvm_extract.py v26-0`, floored at
+# 0.5 GPa), reported as `mu_effective_gpa`; the slip is the uniform-rock
+# slip, so this is a rescale, not a layered inversion.
 
 # %%
 ## [9]
@@ -769,7 +773,7 @@ ax.set_xlabel("Along-strike distance from north end (km)")
 ax.set_ylabel("Depth (km)")
 fig.colorbar(pc, ax=ax, label="Right-lateral slip (mm)", shrink=0.8)
 ax.set_title(f"Homogeneous baseline, sigma {sigma_sel:g}: Mw {results.mw_30gpa:.2f} (30 GPa), "
-             f"{results.mw_sfcvm:.2f} (SFCVM rigidity)", loc="left", fontsize=7)
+             f"{results.mw_sfcvm:.2f} ({results.mu_effective_gpa:.1f} GPa, SFCVM {sfcvm_version})", loc="left", fontsize=7)
 fig.savefig(os.path.join(fig_dir, "fig07_hom_slip.png"), dpi=300)
 fig.savefig(os.path.join(fig_dir, "fig07_hom_slip.pdf"))
 print("wrote fig07_hom_slip.png/.pdf")
@@ -819,7 +823,8 @@ np.savez(os.path.join(tests_dir, "fig2_model_row.npz"),
          sample_lon=ds.lon, sample_lat=ds.lat, data_mm=ds.vel, model_mm=ds.synth,
          residual_mm=residual, nodes_sz=nodes, faces=faces, slip_mm=table.slip_mm.values,
          s0_km_pp=float(lat_to_km_pp([ref_fault.lati[0]])[0]),
-         mw_30gpa=results.mw_30gpa, mw_sfcvm=results.mw_sfcvm, rms_mm=results.rms_mm,
+         mw_30gpa=results.mw_30gpa, mw_sfcvm=results.mw_sfcvm, mu_effective_gpa=results.mu_effective_gpa,
+         sfcvm_version=sfcvm_version, rms_mm=results.rms_mm,
          surf_ratio_pct=results.surface_pct, sigma=sigma_sel, strike_deg=strike_bearing,
          tie_depth_km=tie_depth_km,
          surface_km=surface_row.km_pp.values, surface_model_mm=surface_row.slip_mm.values,
