@@ -47,6 +47,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+import pyproj
 import matplotlib.pyplot as plt
 from scipy.spatial import Delaunay, cKDTree
 
@@ -777,18 +778,54 @@ print("wrote fig07_hom_slip.png/.pdf")
 # ## [13] Products
 #
 # The slip table, and Fig 2's model row (`fig2_model_row.npz`, read by
-# notebook 06), in the format of the draft it replaces.
+# `07_slip_model_fig2`). For Fig 2 the model is also evaluated along the
+# profile lines X-X' and Y-Y' of notebook 06 (fault-parallel and vertical,
+# every 10 m, zeroed on the far field exactly as 06 zeroes the observed event
+# profiles), and along strike at the surface next to the crossing slip.
 
 # %%
 ## [13]
 table.to_csv(os.path.join(out_dir, "slip_homogeneous_baseline.csv"), index=False)
+
+# the model along 06's profile lines: the same ends, the same far-field zeroing
+fig2_in = np.load(os.path.join(field_dir, "fig2_inputs.npz"))
+to_ll_field = pyproj.Transformer.from_crs(int(fig2_in["epsg"]), 4326, always_xy=True)
+profile_cross_m = float(fig2_in["cross_m"])
+event_far_m = 1500.0                                   # 06: the event profile is zeroed on |x| >= this
+look_up = np.array([0.0, 0.0, 1.0])
+model_profiles = {}
+for name in [str(n) for n in fig2_in["names"]]:
+    x_west, y_west, x_east, y_east = fig2_in[f"prof_fp_{name}_ends"]
+    d_line = np.arange(-profile_cross_m, profile_cross_m + 1.0, 10.0)
+    d_line = d_line[np.abs(d_line) > 5.0]              # the trace itself is a discontinuity
+    frac = (d_line + profile_cross_m) / (2 * profile_cross_m)
+    lon_line, lat_line = to_ll_field.transform(x_west + frac * (x_east - x_west), y_west + frac * (y_east - y_west))
+    for component, look_vec in (("fp", look), ("up", look_up)):
+        line = insar(f"profile {name} {component}", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
+        line.read_from_binary(np.zeros(d_line.size), np.asarray(lon_line), np.asarray(lat_line), err=np.ones(d_line.size),
+                              los=np.tile(look_vec, (d_line.size, 1)), remove_nan=False, remove_zeros=False)
+        fault.buildGFs(line, vertical=True, slipdir="s", verbose=False)
+        fault.G[line.name]["strikeslip"] *= -1.0
+        line.buildsynth([fault], direction="s")
+        values = line.synth - np.median(line.synth[np.abs(d_line) >= event_far_m])
+        model_profiles[f"prof_{name}_{component}_d"] = d_line
+        model_profiles[f"prof_{name}_{component}_mm"] = values
+    step_fp = model_profiles[f"prof_{name}_fp_mm"]
+    print(f"{name}-{name}' model fault-parallel: west {step_fp[d_line < 0].min():+.2f} mm, east {step_fp[d_line > 0].max():+.2f} mm")
+
+# along strike: the model's surface cells next to the crossing slip it was fitted to
+surface_row = table[table.z_top <= 1e-6].sort_values("km_pp")
 np.savez(os.path.join(tests_dir, "fig2_model_row.npz"),
          sample_lon=ds.lon, sample_lat=ds.lat, data_mm=ds.vel, model_mm=ds.synth,
          residual_mm=residual, nodes_sz=nodes, faces=faces, slip_mm=table.slip_mm.values,
          s0_km_pp=float(lat_to_km_pp([ref_fault.lati[0]])[0]),
          mw_30gpa=results.mw_30gpa, mw_sfcvm=results.mw_sfcvm, rms_mm=results.rms_mm,
          surf_ratio_pct=results.surface_pct, sigma=sigma_sel, strike_deg=strike_bearing,
-         tie_depth_km=tie_depth_km)
+         tie_depth_km=tie_depth_km,
+         surface_km=surface_row.km_pp.values, surface_model_mm=surface_row.slip_mm.values,
+         crossing_km=crossings_all.km.values, crossing_mm=crossings_all.mean_event_mm.values,
+         crossing_profile_km=crossing_km, crossing_profile_mm=crossing_profile.vel,
+         crossing_profile_err_mm=crossing_profile.err, **model_profiles)
 print("wrote slip_homogeneous_baseline.csv and fig2_model_row.npz")
 
 # %% [markdown]

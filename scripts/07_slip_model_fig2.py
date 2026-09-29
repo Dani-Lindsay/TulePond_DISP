@@ -61,6 +61,7 @@ os.makedirs(out_dir, exist_ok=True)
 # the running median drawn on the profiles
 median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
 median_col, grey, ann_col = "#A50F15", "gray55", "black"       # per-side running median (dark red); pixels; block annotation
+model_col = "#0072B2"          # the slip model (notebook 07), blue
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault band the block amplitudes use (m), for the caption
 
 # Fig 2 map window (unrotated, north up): centred on the trace at map_centre_km from Point Pinole,
@@ -265,7 +266,7 @@ def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, s
     return lim
 
 
-def los_profile_pairs(vkey, dkey, lim, labels, ylab, headings=False, xlabel=False, annotate=False, prof_set=None, cols=None):
+def los_profile_pairs(vkey, dkey, lim, labels, ylab, headings=False, xlabel=False, annotate=False, prof_set=None, cols=None, model_lines=None):
     """For each track a stacked pair (X above Y) of LOS profiles, drawn from the
     current origin (bottom-left of the ascending TOP panel). The ascending column
     carries the y annotation, the descending column the y label. Leaves the origin
@@ -284,6 +285,11 @@ def los_profile_pairs(vkey, dkey, lim, labels, ylab, headings=False, xlabel=Fals
             fig.plot(x=d, y=v, style="c0.03c", fill=grey, transparency=30)          # the pixels
             for xm, vm in running_median(d, v):                                      # the per-side running median
                 fig.plot(x=xm, y=vm, pen="1.0p," + median_col)
+            if model_lines and (o, n_) in model_lines:                               # the slip model along the same line (notebook 07)
+                d_mod, v_mod = model_lines[(o, n_)]
+                for sgn in (-1, 1):                                                  # each side on its own: the model steps at the trace
+                    side_ = sgn * d_mod > 0
+                    fig.plot(x=d_mod[side_], y=v_mod[side_], pen="1.0p," + model_col)
             if annotate:                                                             # the event: each block's near-fault amplitude over its far field
                 for blk, sgn in (("W", -1), ("E", 1)):
                     b_ = p["blocks"][blk]
@@ -345,38 +351,49 @@ def model_row():
     fig.shift_origin(xshift=f"-{Wm + gap_map}c")
     fig.text(position="ML", text="Model (fault-parallel)", angle=90, justify="BC", offset="-0.3c/0c",
              font="9p,Helvetica-Bold", no_clip=True)
-    # K: slip on the unrolled fault, km from Point Pinole vs depth, sampled on
-    # a regular grid (each triangle's slip is constant over the triangle)
+    # K: surface slip along strike, the crossings (04) and the model's surface
+    # cells; L: slip with depth on the unrolled fault, top 1 km. Same x axis.
     from matplotlib.tri import Triangulation
+    k_indent = 0.7                                       # room for the I/J bar label and the depth label
+    Wk, Hk, gap_kl = W_model - k_indent, 0.38 * Hm, 0.5
+    Hl = Hm - Hk - gap_kl
+    km_view = [54.0, 65.0]
+    fig.shift_origin(xshift=f"{x_prof + k_indent}c", yshift=f"{Hl + gap_kl}c")
+    slip_top = float(np.ceil(max(np.nanmax(z["crossing_profile_mm"]), np.nanmax(z["surface_model_mm"])) / 2 + 1) * 2)
+    region_k = km_view + [0.0, slip_top]
+    fig.basemap(region=region_k, projection=f"X{Wk}c/{Hk}c", frame=["Wsrt", "xa2f1", f"ya{slip_top / 2:g}+lmm"])
+    fig.plot(x=z["crossing_km"], y=z["crossing_mm"], style="c0.03c", fill=grey, transparency=30)
+    fig.plot(x=z["crossing_profile_km"], y=z["crossing_profile_mm"], pen="1.0p," + median_col, label="Crossings")
+    fig.plot(x=z["surface_km"], y=z["surface_model_mm"], pen="1.0p," + model_col, label="Model, surface")
+    fig.legend(position="jTR+o0.05c/0.05c", box=False)
+    fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
+    fig.text(position="TR", text=f"M@-w@- {float(z['mw_30gpa']):.2f} (30 GPa), {float(z['mw_sfcvm']):.2f} (USGS rigidity)",
+             justify="BR", offset="0c/0.12c", font="7p,Helvetica", no_clip=True)
+    # L: slip on the unrolled fault, sampled on a regular grid (each triangle's slip is constant over it)
+    fig.shift_origin(yshift=f"-{Hl + gap_kl}c")
     nodes_sz, faces_m, slip_m = z["nodes_sz"], z["faces"], z["slip_mm"]
-    tri_obj = Triangulation(nodes_sz[:, 0], nodes_sz[:, 1], faces_m)
-    finder = tri_obj.get_trifinder()
-    z_max = 2.0
+    finder = Triangulation(nodes_sz[:, 0], nodes_sz[:, 1], faces_m).get_trifinder()
+    z_max = 1.0
     s_axis = np.arange(nodes_sz[:, 0].min(), nodes_sz[:, 0].max(), 0.025)
-    z_axis = np.arange(0.0125, z_max, 0.025)
+    z_axis = np.arange(0.00625, z_max, 0.0125)
     S_, Z_ = np.meshgrid(s_axis, z_axis)
     tri_id = finder(S_, Z_)
     slip_grid = np.where(tri_id >= 0, slip_m[np.maximum(tri_id, 0)], np.nan)
     km_axis = float(z["s0_km_pp"]) + s_axis                    # s grows southward, as km from Point Pinole
-    in_view = (km_axis >= 54.0) & (km_axis <= 65.0)
-    grid_k = xr.DataArray(slip_grid[:, in_view], coords=dict(depth=z_axis, km=km_axis[in_view]), dims=("depth", "km"))
+    in_view = (km_axis >= km_view[0]) & (km_axis <= km_view[1])
+    grid_l = xr.DataArray(slip_grid[:, in_view], coords=dict(depth=z_axis, km=km_axis[in_view]), dims=("depth", "km"))
     slip_max = float(np.nanmax(slip_grid))
-    cpt_k = utils.write_cpt(os.path.join(cpt_dir, "slip.cpt"), "viridis", 0.0, slip_max)
-    k_indent = 0.7                                       # room for the I/J bar label and K's depth label
-    fig.shift_origin(xshift=f"{x_prof + k_indent}c")
-    region_k = [54.0, 65.0, 0.0, z_max]
-    proj_k = f"X{W_model - k_indent}c/-{Hm}c"
-    fig.basemap(region=region_k, projection=proj_k, frame=["WSrt", "xa2f1+lkm from Point Pinole", "ya0.5f0.25+lDepth (km)"])
-    fig.grdimage(grid=grid_k, cmap=cpt_k, nan_transparent=True)
-    fig.basemap(region=region_k, projection=proj_k, frame=["WSrt", "xa2f1", "ya0.5f0.25"])
-    fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
-    fig.text(position="TR", text=f"M@-w@- {float(z['mw_30gpa']):.2f} (30 GPa), {float(z['mw_sfcvm']):.2f} (USGS rigidity)",
-             justify="BR", offset="0c/0.12c", font="7p,Helvetica", no_clip=True)
+    cpt_l = utils.write_cpt(os.path.join(cpt_dir, "slip.cpt"), "viridis", 0.0, slip_max)
+    region_l = km_view + [0.0, z_max]
+    proj_l = f"X{Wk}c/-{Hl}c"
+    fig.basemap(region=region_l, projection=proj_l, frame=["WSrt", "xa2f1+lkm from Point Pinole", "ya0.5f0.25+lDepth (km)"])
+    fig.grdimage(grid=grid_l, cmap=cpt_l, nan_transparent=True)
+    fig.basemap(region=region_l, projection=proj_l, frame=["WSrt", "xa2f1", "ya0.5f0.25"])
+    fig.text(position="TL", text="L", justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
     with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):
-        fig.colorbar(cmap=cpt_k, position=f"x{W_model - k_indent + gap_cb}c/0.3c+w{Hm - 0.6}c/{cb_w}c+jBL",
+        fig.colorbar(cmap=cpt_l, position=f"x{Wk + gap_cb}c/0c+w{Hl}c/{cb_w}c+jBL",
                      frame=f"xa{max(1, round(slip_max / 3)):g}+lSlip (mm)")
     fig.shift_origin(xshift=f"-{x_prof + k_indent}c")
-
 
 rate_field = {o: event_maps[o]["rate"] for o in tracks}
 evt_field = {o: mean_event[o]["mean"] for o in tracks}
@@ -386,7 +403,7 @@ evt_field = {o: np.where(common_ok, m_, np.nan) for o, m_ in evt_field.items()}
 print(f"common pixel mask for the four maps: {common_ok.sum()} pixels ({common_ok.mean():.0%} of the box)")
 
 
-def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, cols=None, ylabs=("LOS rate (mm/yr)", "LOS (mm)"), lims=None):
+def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, cols=None, ylabs=("LOS rate (mm/yr)", "LOS (mm)"), lims=None, model_lines=None):
     """The whole figure: row 1 the inter-event rate, row 2 the event maps and
     profiles given, row 3 the model placeholders. Saved as <stem>.png/.pdf.
     The two columns are the tracks unless `cols` names other fields (the test below)."""
@@ -401,7 +418,8 @@ def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, col
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
     los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, cols=cols)
     fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
-    los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=True, prof_set=evt_profiles, cols=cols)
+    los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=True, prof_set=evt_profiles, cols=cols,
+                      model_lines=model_lines)
     # row 3: the model, notebook 07
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
     model_row()
@@ -431,7 +449,12 @@ for c in fpup_profiles:
     for n_, p in fpup_profiles[c].items():
         print(f"[{c}] {n_}-{n_}': per block W {p['blocks']['W']['amp']:+.2f} +/- {p['blocks']['W']['se']:.2f}, "
               f"E {p['blocks']['E']['amp']:+.2f} +/- {p['blocks']['E']['se']:.2f} mm")
+model_lines = None
+if os.path.exists(model_row_file):
+    z_model = np.load(model_row_file)
+    model_lines = {(col, n_): (z_model[f"prof_{n_}_{key}_d"], z_model[f"prof_{n_}_{key}_mm"])
+                   for col, key in (("fault-parallel", "fp"), ("vertical", "up")) for n_ in names}
 f_fig2_fp = os.path.join(fig_dir, f"fig2_fault_parallel_vertical_coh{coh_maps:g}_{n_mean}ev")
 draw_fig2(fpup_evt, fpup_profiles, f"Mean event ({n_mean} events)", f_fig2_fp,
           rate_maps_in=fpup_rate, cols=list(fpup_rate), ylabs=("Rate (mm/yr)", "Displacement (mm)"),
-          lims={"rate": 10.0, "event": 10.0})
+          lims={"rate": 10.0, "event": 10.0}, model_lines=model_lines)
