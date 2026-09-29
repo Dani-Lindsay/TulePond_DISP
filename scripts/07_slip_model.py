@@ -24,9 +24,9 @@
 # | Fault | vertical, on the hand-drawn trace | dip unresolved 60°E-75°W, Mw 3.82-3.89 |
 # | Mesh | `smooth12`: 50 m cells at the surface, x1.2 per row, 3 km | no resolution plateau |
 # | Sampling | distance-based quadtree, 2 km to one 30 m pixel | |
-# | Prior | `buildCmXY`, lambda (0.3, 0.05) km, sigma at the L-curve corner, leaning under-smoothed (12) | `drafts/07/sigma_lcurve.py` |
+# | Prior | `buildCmXY`, lambda (0.1, 0.05) km, sigma at the L-curve corner (grid value at or above it) | L-curve in [8]; lambda from `drafts/07/along_strike_smoothing.py` |
 # | Surface | crossing-stack slip interpolated to every surface triangle | 40% -> 86% of the crossing slip |
-# | Top tie | uniform slip 0-0.2 km per 0.1 km column | removes the sub-surface overshoot |
+# | Top tie | none (dropped 2026-09-29) | at the L-curve smoothing the untied model peaks at the surface; the tie was needed only at sigma >= 24 (`drafts/07/tie_decision.py`) |
 # | Solver | NNLS (right-lateral >= 0), per-dataset constant | |
 #
 # The machinery (mesh, levelling, noise model, quadtree, surface
@@ -102,8 +102,11 @@ dip_deg        = 90
 fine_km        = (56.0, 63.0)
 far_rate       = 0.25
 smooth_iters   = 8
-lam_xz         = (0.3, 0.05)   # prior correlation lengths along strike, down dip (km)
-tie_depth_km   = 0.2           # slip uniform from the surface to this depth
+lam_xz         = (0.1, 0.05)   # prior correlation lengths along strike, down dip (km). Along strike 0.1 km (Dani 2026-09-29):
+                               # the shortest that keeps the sigma pick stable, sharper section edges, Mw unchanged
+                               # (drafts/07/along_strike_smoothing.py); down dip 0.05 km so the prior does not push slip deep
+tie_depth_km   = 0.0           # no top tie (Dani 2026-09-29): at the L-curve smoothing the untied model peaks at the surface
+                               # (drafts/07/tie_decision.py); the tie machinery stays for the tests notebook
 shear_modulus  = 3.0e10        # uniform rigidity of the reference Mw
 mu_floor_gpa   = 0.5           # SFCVM rigidity floor (the model is ~0 at the surface)
 sigma_grid     = [4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 128]   # L-curve (larger = LESS smoothing)
@@ -437,7 +440,7 @@ print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-se
 # Meade triangular dislocations (right-lateral positive) for the samples;
 # for the surface data the Green's function is 1 on the triangle's own
 # slip. Per-dataset constant (`csi.transformation`), exponential prior
-# (`buildCmXY`), the top tie (every cell shallower than 0.2 km equal to the
+# (`buildCmXY`), the optional top tie (off in this model; every cell shallower than tie_depth_km equal to the
 # shallowest cell of its 0.1 km along-strike column; after Jolivet et al.
 # 2023, who tie 0-1 km), NNLS (`multisourcesolve`).
 # [07_slip_model_tests, verbatim]
@@ -688,10 +691,13 @@ print(results.to_string(float_format=lambda v: f"{v:.4g}"))
 # %% [markdown]
 # ### CHECK -- the model's fault-normal motion is small
 #
-# The fault-parallel decomposition assumes no horizontal motion
-# perpendicular to the fault. The model's own fault-normal displacement at
-# the samples (look vector rotated to the fault-normal bearing) must be
-# small against its fault-parallel signal.
+# The fault-parallel decomposition (06) assumes no horizontal motion
+# perpendicular to the fault. Strike-slip on a curved trace, and near the
+# ends of the slipping patch, produces some. The model's own fault-normal
+# displacement at the samples (look vector rotated to the fault-normal
+# bearing) is pushed through the same two-track solve as 06 (median LOS
+# geometry of the section); the error it would put into the fault-parallel
+# field must be below the data noise.
 
 # %%
 ## [10]
@@ -709,6 +715,30 @@ parallel_max_mm = float(np.max(np.abs(ds.synth)))
 print(f"model fault-normal motion: max {normal_max_mm:.2f} mm "
       f"({100 * normal_max_mm / parallel_max_mm:.0f}% of the fault-parallel max "
       f"{parallel_max_mm:.2f} mm)")
+
+# What that motion does to the data: 06 builds the fault-parallel field from
+# the two LOS tracks assuming NO fault-normal motion. Push the model's
+# fault-normal displacement through the same two-track solve (median LOS
+# geometry of the section) to get the error it would put into the
+# fault-parallel field we invert, and compare it with the data noise.
+los_vec = {}
+for track in ("ascending", "descending"):
+    geom = np.load(os.path.join(field_dir, f"csi_mean_event_{track}.npz"))
+    los_vec[track] = utils.los_unit_vector(np.median(geom["incidence"]), np.median(geom["azimuth"]))
+s_hat = np.array([np.sin(np.deg2rad(strike_bearing)), np.cos(np.deg2rad(strike_bearing)), 0.0])
+u_hat = np.array([0.0, 0.0, 1.0])
+design = np.array([[los_vec[t] @ s_hat, los_vec[t] @ u_hat] for t in ("ascending", "descending")])
+normal_in_los = np.array([los_vec[t] @ look_normal for t in ("ascending", "descending")])
+leak_fp, leak_up = np.linalg.solve(design, normal_in_los)   # fault-parallel and vertical error per mm of fault-normal motion
+leak_field = leak_fp * normal.synth
+near_trace = dist_to_trace(ds, fault) <= 1.0
+leak_rms_mm = float(np.sqrt(np.mean(leak_field[near_trace] ** 2)))
+leak_max_mm = float(np.max(np.abs(leak_field)))
+noise_sd_mm = float(np.sqrt(cov_p[0] + cov_p[1] + cov_p[3]))
+print(f"leakage into the fault-parallel field: {leak_fp:+.2f} mm per mm of fault-normal motion; "
+      f"max {leak_max_mm:.2f} mm, rms within 1 km {leak_rms_mm:.2f} mm (data noise sd {noise_sd_mm:.2f} mm)")
+assert leak_rms_mm < noise_sd_mm, "the model's fault-normal motion biases the fault-parallel field above the noise"
+print("PASS: the model's own fault-normal motion leaks into the fault-parallel field below the noise")
 
 # %% [markdown]
 # ## [11] Bootstrap -- the formal error on Mw
@@ -846,7 +876,9 @@ sidecar = REG.sidecar("07_hom_baseline", [
     f"draft CHECK at sigma {sigma_check}: max |slip diff| {slip_diff:.2e} mm",
     f"noise model: {noise_model.round(3).to_dict()}",
     f"bootstrap Mw: {boot_mw.mean():.3f} +/- {mw_boot_sd:.3f} (n={n_boot})",
-    f"fault-normal max {normal_max_mm:.2f} mm vs fault-parallel max {parallel_max_mm:.2f} mm",
+    f"fault-normal max {normal_max_mm:.2f} mm vs fault-parallel max {parallel_max_mm:.2f} mm; "
+    f"leakage into the fault-parallel field {leak_fp:+.2f} mm/mm, max {leak_max_mm:.2f} mm, rms within 1 km {leak_rms_mm:.2f} mm "
+    f"(noise sd {noise_sd_mm:.2f} mm)",
 ] + [f"{key}: {value:.4g}" for key, value in results.items()])
 REG.register("07_hom_mw_30gpa", results.mw_30gpa, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07_hom_mw_sfcvm", results.mw_sfcvm, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
@@ -862,5 +894,6 @@ REG.register("07_hom_sigma_corner", sigma_corner, "mm", 1, where="M7", cell="sig
 REG.register("07_hom_tie_depth_m", tie_depth_km * 1000, "m", 0, where="M7", cell="constants", sidecar=sidecar)
 REG.register("07_hom_n_samples", int(results.n_samples), "count", 0, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07_hom_fault_normal_max_mm", normal_max_mm, "mm", 2, where="M7", cell="fault-normal", sidecar=sidecar)
+REG.register("07_hom_fault_normal_leak_rms_mm", leak_rms_mm, "mm", 2, where="M7", cell="fault-normal", sidecar=sidecar)
 REG.render()
 print("07_slip_model (homogeneous baseline) complete")

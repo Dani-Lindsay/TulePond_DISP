@@ -23,12 +23,12 @@
 # `07_slip_model` (the homogeneous baseline): the fault-parallel mean event
 # (06, coherence 0.9), levelled, the `smooth12` vertical mesh, quadtree to one
 # 30 m pixel, the crossing surface slip on every surface triangle, slip tied
-# uniform over the top 0.2 km, sigma at 07_slip_model's L-curve pick, lambda (0.3, 0.05) km. Each
+# no top tie, sigma at 07_slip_model's L-curve pick, lambda as 07_slip_model. Each
 # family changes ONE thing from that baseline. The machinery cells [2] to [6]
 # are copied verbatim from `07_slip_model`, so the two notebooks run the same
 # code; CHECK [21] pins this notebook's baseline to `07_slip_model`'s.
 #
-# 1. **Top tie** at the model sigma: none, 0.1, 0.2 (baseline), 0.5 km.
+# 1. **Top tie** at the model sigma: none (baseline), 0.1, 0.2, 0.5 km.
 # 2. **Fixed-depth scan** on the fault-parallel field: uniform slip from the
 #    surface to D, delta chi2 (no smoothing, no sigma). Variants: the model mesh,
 #    a 5 km mesh, the unlevelled field. Then the model difference between the
@@ -116,8 +116,8 @@ dip_deg        = 90
 fine_km        = (56.0, 63.0)
 far_rate       = 0.25
 smooth_iters   = 8
-lam_xz         = (0.3, 0.05)
-tie_depth_km   = 0.2
+lam_xz         = (0.1, 0.05)   # as 07_slip_model (along strike 0.1 km, Dani 2026-09-29)
+tie_depth_km   = 0.0           # no top tie in the model (Dani 2026-09-29); the tie family still tests 0.1-0.5 km
 shear_modulus  = 3.0e10
 # sigma: the L-curve pick of 07_slip_model on the same data (the rule is fixed, the value is not)
 sigma_file     = os.path.join(baseline_dir, "sigma_lcurve.csv")
@@ -128,7 +128,7 @@ print(f"sigma from 07_slip_model's L-curve: {sigma_model:g}")
 # ---- the families (each changes one thing from the baseline)
 tie_depths     = [0.0, 0.1, 0.2, 0.5]    # 0 = no tie
 dips_deg       = [60, 70, 75, 80, 85, 90, 95, 100, 105]   # 105 E = 75 W
-lam_grid       = [(0.3, 0.05), (0.15, 0.05), (0.6, 0.05), (0.3, 0.15), (0.6, 0.15)]
+lam_grid       = [lam_xz] + [pair for pair in [(0.3, 0.05), (0.05, 0.05), (0.3, 0.15), (0.1, 0.15)] if pair != lam_xz]   # the model's pair first
 mesh_variants  = {                        # name: (h_top, const_to, growth, h_bot) km
     "smooth12": mesh_params,
     "plateau100": (0.10, 0.5, 1.6, 1.5),
@@ -139,8 +139,8 @@ mesh_variants  = {                        # name: (h_top, const_to, growth, h_bo
 sigma_grid_lc  = [4, 6, 8, 12, 16, 24, 32, 48, 64, 128]   # L-curves of the lambda and mesh families
 surf_floors    = [0.25, 1.0]
 recovery_depths = [0.3, 0.5, 0.8, 1.0, 1.5, 2.0]
-scan_km        = (57.5, 61.5)            # uniform-slip window of the depth scan (as the earlier scans)
 scan_taper     = 0.5
+scan_km        = (creep_lo_km + scan_taper, creep_hi_km - scan_taper)   # uniform slip over the SSE section (04), tapered to zero at its ends
 scan_depths    = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65,
                   0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1, 1.25, 1.35, 1.5,
                   1.65, 1.85, 2.0, 2.25, 2.5, 3.0, 4.0, 5.0]
@@ -861,7 +861,7 @@ save_suite()
 #
 # In CSI (`Fault.buildCmXY`) Cm = sigma^2 (lam0^2 / (lamx lamz))
 # exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND enters the
-# amplitude, so the model sigma is the corner only for (0.3, 0.05) km. Each pair
+# amplitude, so the model sigma is the corner only for the model's pair. Each pair
 # gets its own L-curve; the suite row is the model at its own pick (and the
 # baseline pair's curve, on a coarser grid, is a check on 07_slip_model's corner).
 
@@ -1013,6 +1013,52 @@ ax.set_title(r"$\bf{F}$  Dip", loc="left", fontsize=7)
 fig_file = os.path.join(fig_dir, "fig07_sensitivity_final.png")
 fig.savefig(fig_file, dpi=300); fig.savefig(fig_file.replace(".png", ".pdf"))
 print("wrote", fig_file)
+
+# %% [markdown]
+# ## [17b] Inputs for a stress-drop estimate (saved, not reported)
+#
+# Depth is not constrained, so no stress drop is reported (Dani 2026-09-29);
+# a ballpark is quoted as a range. Following Materna et al. (2024, Text S3),
+# stress drop = mu d / x with d the slip and x half the depth extent. For the
+# distributed model (x = half the depth holding 95% of its potency) and for
+# every uniform-slip depth D (x = D / 2), mu is the SFCVM v26.0 rigidity
+# weighted by that model's own potency (as 07_slip_model), and d is the mean
+# band-stack event slip of notebook 04. Written to
+# `stress_drop_inputs.csv`; no registry rows.
+
+# %%
+## [17b]
+sfcvm = pd.read_csv(os.path.join(out_dir, "sfcvm_creep_section_profiles_v26-0.csv"))
+mu_by_depth = sfcvm.groupby("depth_m").mu_gpa.median()
+registry = pd.read_csv(common_paths["registry_csv"], dtype=str).groupby("key").last()
+d_band_mm = float(registry.loc["04_band90_steps_mean_mm", "value"])
+def mu_weighted(table, slip_mm):
+    """SFCVM rigidity weighted by potency (GPa), floored at 0.5 GPa as 07_slip_model."""
+    mu_cell = np.maximum(np.interp(table.z_c.values * 1000, mu_by_depth.index.values, mu_by_depth.values), 0.5)
+    return float(np.sum(mu_cell * slip_mm) / np.sum(slip_mm))
+stress_rows = []
+base_table = tie_tables[tie_depth_km]
+order = np.argsort(base_table.z_c.values)
+cum = np.cumsum(base_table.slip_mm.values[order]) / base_table.slip_mm.sum()   # slip-weighted (cell areas are similar at the top)
+depth95_km = float(base_table.z_c.values[order][np.searchsorted(cum, 0.95)])
+mu_dist = mu_weighted(base_table, base_table.slip_mm.values)
+stress_rows.append(dict(model="distributed (the model)", depth_extent_km=depth95_km, mu_gpa=mu_dist, d_mm=d_band_mm,
+                        stress_drop_kpa=mu_dist * 1e9 * d_band_mm * 1e-3 / (depth95_km * 500) / 1e3, dchi2=np.nan))
+scan_table = slip_table(scan_fault)
+in_window_scan = np.clip(np.minimum(scan_table.km_pp - scan_km[0], scan_km[1] - scan_table.km_pp) / scan_taper + 1, 0, 1).values
+for r in record_scan.itertuples():
+    shape = in_window_scan * (scan_table.z_c.values < r.D_km)
+    if shape.sum() == 0:
+        continue
+    mu_d = mu_weighted(scan_table, shape)
+    stress_rows.append(dict(model=f"uniform slip to {r.D_km:g} km", depth_extent_km=r.D_km, mu_gpa=mu_d, d_mm=d_band_mm,
+                            stress_drop_kpa=mu_d * 1e9 * d_band_mm * 1e-3 / (r.D_km * 500) / 1e3, dchi2=r.dchi2))
+stress_inputs = pd.DataFrame(stress_rows)
+stress_inputs.to_csv(os.path.join(out_dir, "stress_drop_inputs.csv"), index=False)
+accepted = stress_inputs[(stress_inputs.dchi2 <= 4) | stress_inputs.dchi2.isna()]
+print(accepted.round(2).to_string(index=False))
+print(f"ballpark (distributed model and the accepted uniform-slip depths): "
+      f"{accepted.stress_drop_kpa.min():.0f}-{accepted.stress_drop_kpa.max():.0f} kPa")
 
 # %% [markdown]
 # ## [18] Registry -- the sensitivity numbers
