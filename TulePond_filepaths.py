@@ -50,8 +50,10 @@ if not data_dir:
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
 fig_date   = "2026-09-30"         # PyLith + SFCVM model figures (Dani 2026-09-30); 2026-09-28_final = the homogeneous-model set
-fig_dir    = os.path.join(repo_dir, f"Figures_{fig_date}")
-out_dir    = os.path.join(repo_dir, "outputs")
+# Figures and notebook products live with the data, not in the repo (Dani 2026-10-01): the repo is the code
+# base archived on GitHub plus the parameter files needed to regenerate everything.
+fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
+out_dir    = os.path.join(data_dir, "outputs")
 inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
 model_uniform_dir = os.path.join(data_dir, "modeling_uniform")
