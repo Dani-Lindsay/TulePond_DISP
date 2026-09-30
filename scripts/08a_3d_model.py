@@ -1126,6 +1126,38 @@ for cd in CD_TAG:
 print("timings (s):", {k: round(v) for k, v in timings.items()})
 
 # %% [markdown]
+# ## [15b] Stress drop, Materna et al. (2024) style
+#
+# Materna et al. (2024, GRL, Text S3): a rough dimensional estimate for a long ribbon-like rupture at a
+# representative place along strike, dtau = mu d / x, with d the slip, x half the depth extent of the
+# rupture and mu one shear modulus. Here: the peak section (km 57.5-61.5), d = the section-mean slip of the
+# selected model in its top 200 m (the plateau), the depth extent where the section-mean slip falls below
+# 50 % and 10 % of its peak (the two bounds of the range), mu = the model's effective SFCVM rigidity (the one
+# behind Mw_sfcvm) and, for comparison, 30 GPa. The synthetic recovery of 08b smears slip ~0.4 km deeper than
+# the input, so the true extent is if anything shallower and dtau if anything higher: the range is a lower-end
+# estimate. Not an output of CSI or PyLith.
+
+# %%
+## [15b]
+sel = fig2_products[f"{'nuggetcd' if SELECTED[1] == 'nugget' else 'full'}"]
+nk_sd, s_sd = sel["nodes_kmz"], sel["slip_vertex_mm"]
+in_sec_sd = (nk_sd[:, 0] >= 57.5) & (nk_sd[:, 0] <= 61.5)
+z_bins = np.arange(0.0, 1.01, 0.05)
+prof_sd = np.array([s_sd[in_sec_sd & (nk_sd[:, 1] >= a) & (nk_sd[:, 1] < a + 0.05)].mean() for a in z_bins[:-1]])
+assert np.all(np.isfinite(prof_sd)), "a 50 m depth bin in the peak section has no fault vertex"
+d_sd_mm = float(prof_sd[z_bins[:-1] < 0.2].mean())
+stress_drop = {}
+for frac in (0.5, 0.1):
+    D_km = float(z_bins[np.argmax(prof_sd < frac * prof_sd.max())])
+    assert D_km > 0, f"section-mean slip never falls below {frac:.0%} of its peak in the top 1 km"
+    x_m = 0.5 * D_km * 1e3
+    stress_drop[frac] = dict(depth_extent_km=D_km, x_m=x_m,
+                             sfcvm_kpa=float(sel["mu_effective_gpa"]) * 1e9 * d_sd_mm * 1e-3 / x_m / 1e3,
+                             mu30_kpa=30e9 * d_sd_mm * 1e-3 / x_m / 1e3)
+    print(f"depth extent (< {frac:.0%} of peak) {D_km:.2f} km, x {x_m:.0f} m, d {d_sd_mm:.1f} mm: "
+          f"dtau {stress_drop[frac]['sfcvm_kpa']:.0f} kPa at {float(sel['mu_effective_gpa']):.2f} GPa, {stress_drop[frac]['mu30_kpa']:.0f} kPa at 30 GPa")
+
+# %% [markdown]
 # ## [16] Registry -- the 3D model (the paper's slip model)
 #
 # `08a_*` = the selected model (aligned SFCVM, nugget Cd); `08a_hom_*` its homogeneous twin;
@@ -1189,5 +1221,12 @@ REG.register("08a_val_csi_far_rms_mm", val_a["rms_diff_far_mm"], "mm", 3, where=
 REG.register("08a_val_screw_rel_rms_pct", 100 * val_b["rel_rms"], "%", 1, where="M8", cell="validation", sidecar=sidecar)
 REG.register("08a_val_mesh_fine_minus_default_mm", val_d["fine_minus_default_rms_mm"], "mm", 3, where="M8", cell="validation", sidecar=sidecar)
 REG.register("08a_val_fwd_vs_G_mm", fwd_validation["nuggetcd"]["rms_diff_mm"], "mm", 4, where="M8", cell="validation", sidecar=sidecar)
+REG.register("08a_stress_drop_d_mm", d_sd_mm, "mm", 1, where="P7, M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_depth_extent_lo_km", stress_drop[0.5]["depth_extent_km"], "km", 2, where="M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_depth_extent_hi_km", stress_drop[0.1]["depth_extent_km"], "km", 2, where="M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_sfcvm_lo_kpa", stress_drop[0.1]["sfcvm_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_sfcvm_hi_kpa", stress_drop[0.5]["sfcvm_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_30gpa_lo_kpa", stress_drop[0.1]["mu30_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_30gpa_hi_kpa", stress_drop[0.5]["mu30_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
 REG.render()
 print("08a_3d_model complete")
