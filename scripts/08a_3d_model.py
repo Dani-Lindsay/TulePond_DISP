@@ -1126,36 +1126,48 @@ for cd in CD_TAG:
 print("timings (s):", {k: round(v) for k, v in timings.items()})
 
 # %% [markdown]
-# ## [15b] Stress drop, Materna et al. (2024) style
+# ## [15b] Stress drop from PyLith: the shear-traction change on the fault
 #
-# Materna et al. (2024, GRL, Text S3): a rough dimensional estimate for a long ribbon-like rupture at a
-# representative place along strike, dtau = mu d / x, with d the slip, x half the depth extent of the
-# rupture and mu one shear modulus. Here: the peak section (km 57.5-61.5), d = the section-mean slip of the
-# selected model in its top 200 m (the plateau), the depth extent where the section-mean slip falls below
-# 50 % and 10 % of its peak (the two bounds of the range), mu = the model's effective SFCVM rigidity (the one
-# behind Mw_sfcvm) and, for comparison, 30 GPa. The synthetic recovery of 08b smears slip ~0.4 km deeper than
-# the input, so the true extent is if anything shallower and dtau if anything higher: the range is a lower-end
-# estimate. Not an output of CSI or PyLith.
+# The inverted slip of the selected model (and of its homogeneous twin) is run forward once more in PyLith
+# (`FaultCohesiveKin`, the same mesh, medium and slip database as [14]) with the fault observer writing
+# `traction_change` as well as `slip`. The stress drop is the slip-weighted mean of the shear-traction drop
+# over the fault, sum(dtau s A) / sum(s A) over the fault vertices (A = one third of the adjacent triangle
+# areas): the standard definition for a distributed slip model (Noda et al., 2013). PyLith's fault vectors
+# are (opening, left-lateral, reverse); right-lateral slip is minus the left-lateral component, and a drop in
+# right-lateral shear stress is a positive left-lateral traction change (CHECKED below). No single rigidity
+# or depth scale is assumed: the traction change is carried by the SFCVM cells beside the fault. Also
+# reported: the mean over the patch where slip exceeds half its peak, and over that patch in the top 100 m
+# (the soft near-surface rock next to the free surface carries almost no stress change).
 
 # %%
 ## [15b]
-sel = fig2_products[f"{'nuggetcd' if SELECTED[1] == 'nugget' else 'full'}"]
-nk_sd, s_sd = sel["nodes_kmz"], sel["slip_vertex_mm"]
-in_sec_sd = (nk_sd[:, 0] >= 57.5) & (nk_sd[:, 0] <= 61.5)
-z_bins = np.arange(0.0, 1.01, 0.05)
-prof_sd = np.array([s_sd[in_sec_sd & (nk_sd[:, 1] >= a) & (nk_sd[:, 1] < a + 0.05)].mean() for a in z_bins[:-1]])
-assert np.all(np.isfinite(prof_sd)), "a 50 m depth bin in the peak section has no fault vertex"
-d_sd_mm = float(prof_sd[z_bins[:-1] < 0.2].mean())
 stress_drop = {}
-for frac in (0.5, 0.1):
-    D_km = float(z_bins[np.argmax(prof_sd < frac * prof_sd.max())])
-    assert D_km > 0, f"section-mean slip never falls below {frac:.0%} of its peak in the top 1 km"
-    x_m = 0.5 * D_km * 1e3
-    stress_drop[frac] = dict(depth_extent_km=D_km, x_m=x_m,
-                             sfcvm_kpa=float(sel["mu_effective_gpa"]) * 1e9 * d_sd_mm * 1e-3 / x_m / 1e3,
-                             mu30_kpa=30e9 * d_sd_mm * 1e-3 / x_m / 1e3)
-    print(f"depth extent (< {frac:.0%} of peak) {D_km:.2f} km, x {x_m:.0f} m, d {d_sd_mm:.1f} mm: "
-          f"dtau {stress_drop[frac]['sfcvm_kpa']:.0f} kPa at {float(sel['mu_effective_gpa']):.2f} GPa, {stress_drop[frac]['mu30_kpa']:.0f} kPa at 30 GPa")
+for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
+    fwd_t = f"fwd_traction_{label}"
+    cached(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_t}-fault.h5"),
+           f"{pyenv} pylith {cfg_dir}/pylithapp.cfg {cfg_dir}/{media[medium]} {cfg_dir}/fwd_kin_simpledb.cfg --problem.defaults.name={fwd_t} "
+           f"--problem.mesh_initializer.phases.read_mesh.reader.filename=mesh/{os.path.basename(mesh_file)} "
+           f"--problem.solution_observers.points.reader.filename=points/fig2_points_{label}.txt "
+           f"--problem.interfaces.fault.eq_ruptures.rupture.db_auxiliary_field.iohandler.filename=spatialdb/fig2_slip_{label}.spatialdb "
+           f"'--problem.interfaces.fault.observers.observer.data_fields=[slip,traction_change]' --nodes=4")
+    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_t}-fault.h5"), "r") as h:
+        f_xyz = h["geometry/vertices"][:]; f_cells = np.asarray(h["viz/topology/cells"][:], int)
+        slip_rl = -h["vertex_fields/slip"][-1][:, 1]; dtau = h["vertex_fields/traction_change"][-1][:, 1]
+    assert np.abs(h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_t}-fault.h5"), "r")["vertex_fields/slip"][-1][:, [0, 2]]).max() < 1e-9, \
+        "opening or reverse slip in a strike-slip forward run"
+    assert abs(slip_rl.max() * 1e3 - fig2_products[label]["slip_vertex_mm"].max()) < 1e-3, f"{fwd_t}: slip is not the inverted slip"
+    tri = f_xyz[f_cells]
+    tri_a = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    v_area = np.zeros(len(f_xyz)); np.add.at(v_area, f_cells.ravel(), np.repeat(tri_a / 3.0, 3))
+    w = np.clip(slip_rl, 0.0, None) * v_area
+    assert np.sum(dtau * w) > 0, "right-lateral slip did not lower the right-lateral shear traction: sign convention broken"
+    patch = slip_rl > 0.5 * slip_rl.max()
+    top = patch & (-f_xyz[:, 2] < 100.0)
+    stress_drop[medium] = dict(weighted_kpa=float(np.sum(dtau * w) / np.sum(w) / 1e3), patch_kpa=float(dtau[patch].mean() / 1e3),
+                               top100_kpa=float(dtau[top].mean() / 1e3), p95_kpa=float(np.percentile(dtau[patch], 95) / 1e3))
+    r_ = stress_drop[medium]
+    print(f"{medium}: slip-weighted stress drop {r_['weighted_kpa']:.0f} kPa; patch (slip > 50 % of peak) mean {r_['patch_kpa']:.0f} kPa, "
+          f"95th pct {r_['p95_kpa']:.0f} kPa; patch in the top 100 m {r_['top100_kpa']:.0f} kPa")
 
 # %% [markdown]
 # ## [16] Registry -- the 3D model (the paper's slip model)
@@ -1221,12 +1233,10 @@ REG.register("08a_val_csi_far_rms_mm", val_a["rms_diff_far_mm"], "mm", 3, where=
 REG.register("08a_val_screw_rel_rms_pct", 100 * val_b["rel_rms"], "%", 1, where="M8", cell="validation", sidecar=sidecar)
 REG.register("08a_val_mesh_fine_minus_default_mm", val_d["fine_minus_default_rms_mm"], "mm", 3, where="M8", cell="validation", sidecar=sidecar)
 REG.register("08a_val_fwd_vs_G_mm", fwd_validation["nuggetcd"]["rms_diff_mm"], "mm", 4, where="M8", cell="validation", sidecar=sidecar)
-REG.register("08a_stress_drop_d_mm", d_sd_mm, "mm", 1, where="P7, M8", cell="stress drop", sidecar=sidecar)
-REG.register("08a_stress_drop_depth_extent_lo_km", stress_drop[0.5]["depth_extent_km"], "km", 2, where="M8", cell="stress drop", sidecar=sidecar)
-REG.register("08a_stress_drop_depth_extent_hi_km", stress_drop[0.1]["depth_extent_km"], "km", 2, where="M8", cell="stress drop", sidecar=sidecar)
-REG.register("08a_stress_drop_sfcvm_lo_kpa", stress_drop[0.1]["sfcvm_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
-REG.register("08a_stress_drop_sfcvm_hi_kpa", stress_drop[0.5]["sfcvm_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
-REG.register("08a_stress_drop_30gpa_lo_kpa", stress_drop[0.1]["mu30_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
-REG.register("08a_stress_drop_30gpa_hi_kpa", stress_drop[0.5]["mu30_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_pylith_kpa", stress_drop["sfcvm"]["weighted_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_pylith_patch_kpa", stress_drop["sfcvm"]["patch_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_pylith_top100m_kpa", stress_drop["sfcvm"]["top100_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_stress_drop_pylith_p95_kpa", stress_drop["sfcvm"]["p95_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
+REG.register("08a_hom_stress_drop_pylith_kpa", stress_drop["homog"]["weighted_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
 REG.render()
 print("08a_3d_model complete")
