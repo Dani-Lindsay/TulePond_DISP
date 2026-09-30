@@ -221,7 +221,7 @@ fig = None                      # the helpers below draw into the module-level f
 
 
 profile_label_font = "7p,Helvetica-Bold"      # X, X', Y, Y' on every map and profile panel (one size throughout)
-# places named on the vertical map (panel B): (label lines, lon, lat, leader dx, dy in cm); the label sits at the
+# places named on the vertical event map (panel F): (label lines, lon, lat, leader dx, dy in cm); the label sits at the
 # leader's end, two lines, above it for an up leader and below it for a down leader (clear of X' and the frame)
 map_places = [(("Alameda", "Creek"), -121.980765, 37.572280, 0.3, 0.45),
               (("Lake", "Elizabeth"), -121.962053, 37.549023, 0.4, 0.12)]
@@ -268,7 +268,7 @@ def colour_bar(cpt, lim, cb_label, x_cm):
         fig.colorbar(cmap=cpt, position=f"x{x_cm}c/0.3c+w{Hm - 0.6}c/{cb_w}c+jBL", frame=f"xa{max(1, round(lim / 2)):g}+l{cb_label}")
 
 
-def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, stations_on=(), cols=None):
+def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, stations_on=(), places_on=(), cols=None):
     """The two LOS maps of one row (ascending, descending) from the current origin
     (bottom-left of the ascending map), one shared colour bar right of the
     descending map, the row label left of the ascending map. Leaves the origin
@@ -281,8 +281,8 @@ def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, s
     for k, o in enumerate(cols):
         if k:
             fig.shift_origin(xshift=f"{Wm + gap_map}c")
-        map_base(grids[o], cpt, labels[k], stations=labels[k] in stations_on,    # stations and their labels on panel A only
-                 places=labels[k] == "B")                                        # Alameda Creek and Lake Elizabeth on panel B
+        map_base(grids[o], cpt, labels[k], stations=labels[k] in stations_on,    # all map labels sit on the quiet vertical maps,
+                 places=labels[k] in places_on)                                  # so the fault-parallel maps stay easy to read
         if headings:
             fig.text(position="TC", text=o.capitalize(), justify="BC", offset="0c/0.5c", font="9p,Helvetica-Bold", no_clip=True)
     colour_bar(cpt, lim, cb_label, Wm + gap_cb)
@@ -489,12 +489,12 @@ def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, col
     fig = pygmt.Figure()
     rate_in, lims = (rate_maps_in if rate_maps_in is not None else rate_field), (lims or lim_prof)
     # row 1: the inter-event rate. A, B the maps; C, D the profiles
-    los_maps(rate_in, True, "rate", ["A", "B"], "mm/yr", "Inter-event rate", headings=True, stations_on=("A",), cols=cols)
+    los_maps(rate_in, True, "rate", ["A", "B"], "mm/yr", "Inter-event rate", headings=True, stations_on=("B",), cols=cols)   # arrays + CFW1 on B
     fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
     los_profile_pairs("v", "d", lims["rate"], ["C", "D"], ylabs[0], headings=True, cols=cols, prof_set=evt_profiles)   # the profile set holds rate and event
     # row 2: the event. E, F the maps; G, H the profiles
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
-    lim_event = los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, cols=cols)
+    lim_event = los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, places_on=("F",), cols=cols)   # Alameda Creek, Lake Elizabeth on F
     fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
     los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=False, prof_set=evt_profiles, cols=cols,
                       model_lines=model_lines)
