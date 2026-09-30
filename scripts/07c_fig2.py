@@ -359,7 +359,13 @@ def model_row_placeholder():
 # TULEPOND_FIG2_MODEL names another product with the same keys, e.g. the PyLith + SFCVM model of
 # drafts/pylith (fig2_model_row_pylith_*.npz, slip at the fault VERTICES: nodes_kmz + slip_vertex_mm);
 # its `model_tag` is appended to the figure name so the two versions coexist.
-model_row_file = os.environ.get("TULEPOND_FIG2_MODEL", os.path.join(common_paths["out_dir"], "07b_uniform_model_tests", "fig2_model_row.npz"))
+# Default (2026-09-30): the 3D model of 08a (`fig2_model_row_pylith_nuggetcd.npz`, the paper's model) when it exists,
+# with the homogeneous PyLith model of the same inversion (`_nuggetcd_homog`) as the comparison line on the profiles;
+# 07a's own product before 08a has run. The three env vars override the defaults as before.
+pylith_model = os.path.join(paths_out["08a_3d_model"], "fig2_model_row_pylith_nuggetcd.npz")
+pylith_compare = os.path.join(paths_out["08a_3d_model"], "fig2_model_row_pylith_nuggetcd_homog.npz")
+default_model = pylith_model if os.path.exists(pylith_model) else os.path.join(paths_out["07b_uniform_model_tests"], "fig2_model_row.npz")
+model_row_file = os.environ.get("TULEPOND_FIG2_MODEL", default_model)
 model_tag = os.environ.get("TULEPOND_FIG2_TAG", "")               # e.g. pylith_nuggetcd; empty for 07's own product
 if not model_tag and os.path.exists(model_row_file):
     with np.load(model_row_file) as z_tag:
@@ -535,7 +541,8 @@ if os.path.exists(model_row_file):
     z_model = np.load(model_row_file)
     model_is_hetero = "aligned" in str(z_model["sfcvm_version"]) if "sfcvm_version" in z_model.files else False
     model_col = hetero_col if model_is_hetero else homog_col
-    compare_file = os.environ.get("TULEPOND_FIG2_COMPARE", "")
+    default_compare = pylith_compare if (model_row_file == pylith_model and os.path.exists(pylith_compare)) else ""
+    compare_file = os.environ.get("TULEPOND_FIG2_COMPARE", default_compare)
     if compare_file:
         assert os.path.exists(compare_file), f"comparison product missing: {compare_file}"
         model_lines.append((profile_lines(compare_file), homog_col, "Uniform"))

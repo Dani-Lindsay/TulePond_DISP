@@ -56,6 +56,18 @@ inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
 model_uniform_dir = os.path.join(data_dir, "modeling_uniform")
 model_sfcvm_dir   = os.path.join(data_dir, "modeling_SFCVM")
+# The PyLith side of the 3D model (notebooks 08a/08b): run ONCE (33 min per Green's-function run,
+# PyLith 5.0.2), its products are data-sized and live in modeling_SFCVM; the parameter files the
+# runs were made with are carried by the repo in scripts/pylith_cfg/ (helpers in scripts/pylith_helpers/).
+paths_sfcvm = {
+    "root":          model_sfcvm_dir,
+    "cfg":           os.path.join(repo_dir, "scripts", "pylith_cfg"),      # PyLith .cfg files (mesh, materials, GF, forward runs)
+    "mesh":          os.path.join(model_sfcvm_dir, "mesh"),               # gmsh meshes (.msh, *_fault.npz, *_report.txt), trace_tmerc.txt
+    "spatialdb":     os.path.join(model_sfcvm_dir, "spatialdb"),          # SFCVM grids (.npz) and spatialdata databases
+    "points":        os.path.join(model_sfcvm_dir, "points"),             # PyLith output points = 07a's quadtree samples
+    "gf":            os.path.join(model_sfcvm_dir, "gf"),                 # G matrices; the draft run's inversion products (08b's sensitivity table)
+    "pylith_output": os.path.join(model_sfcvm_dir, "pylith_output"),      # <run>-points.h5, -fault.h5, -elastic_info.h5, -parameters.json
+}
 # QC products of the data_prep chain (station residuals, the prep-side rain
 # tables). Deliberately NOT under a second `outputs/`: the only `outputs/` in
 # this project is the repo's, written by the notebooks. Nothing in notebooks
@@ -308,7 +320,7 @@ paths_gps = {
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
-    "07a_uniform_model", "07b_uniform_model_tests", "09_alignment_arrays",
+    "07a_uniform_model", "07b_uniform_model_tests", "08a_3d_model", "08b_3d_model_tests", "09_alignment_arrays",
     "10_rain_seasonality", "11_forecast", "12_paper_figures")}
 # The pre-2026-09-24 names 09_seasonality_forecast and 10_paper_figures are gone:
 # 09 split into 10_rain_seasonality and 11_forecast, and the paper-figure collector

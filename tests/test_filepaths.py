@@ -52,6 +52,23 @@ def test_mosaic_products_exist():
             assert os.path.exists(path), f"{orbit} {key} -> {path}"
 
 
+def test_paths_out_keys_are_notebooks():
+    """Every outputs/<nb> key names a notebook script in scripts/ (renumbering leaves no stale key), and the
+    3D-model notebooks (08a/08b, 2026-09-30) have their keys."""
+    scripts_dir = os.path.join(fp.repo_dir, "scripts")
+    for nb in fp.paths_out:
+        assert os.path.exists(os.path.join(scripts_dir, nb + ".py")), f"paths_out key {nb} has no scripts/{nb}.py"
+    assert {"08a_3d_model", "08b_3d_model_tests"} <= set(fp.paths_out)
+
+
+@pytest.mark.parametrize("key", ["cfg", "mesh", "spatialdb", "points", "gf", "pylith_output"])
+def test_pylith_side_exists(key):
+    """The PyLith products of the 3D model (modeling_SFCVM) and the repo's copy of the parameter files."""
+    assert os.path.isdir(fp.paths_sfcvm[key]), f"paths_sfcvm[{key}] -> {fp.paths_sfcvm[key]}"
+    if key == "cfg":
+        assert os.path.exists(os.path.join(fp.paths_sfcvm["cfg"], "pylithapp.cfg"))
+
+
 def test_params_string_encodes_the_aperture():
     assert fp.params == f"ap30-150m_coh{fp.coh_timeseries}_mp{fp.min_points}_sw200m"
 
