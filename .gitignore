@@ -11,3 +11,16 @@ __pycache__/
 *.log
 # local pre-refresh snapshot zip, not part of the repo
 outputs.zip
+# PyLith draft data (meshes, spatial databases, Green's functions, HDF5 outputs, run logs): kept on disk and in
+# proj_TulePond_DISP/modeling_SFCVM, not in git. The scripts, cfg files and notes in drafts/pylith are tracked.
+drafts/pylith/output/
+drafts/pylith/gf/
+drafts/pylith/spatialdb/
+drafts/pylith/mesh/*.msh
+drafts/pylith/mesh/*.npz
+drafts/pylith/mesh/debug/
+drafts/pylith/points/
+drafts/pylith/figures/
+drafts/pylith/coh07/coh07/
+drafts/pylith/coh07/coh09/
+drafts/pylith/runs/

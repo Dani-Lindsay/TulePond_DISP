@@ -416,24 +416,24 @@ for j, (title, key, col, centre, half_span, cmcode) in enumerate(SEGS):
         cm_dates, cm_slip = sol["cm_series"]
         ax.plot(cm_dates, cm_slip - cm_slip[0] + 5.0, "-", lw=1.0, color="#3182BD", label=f"{cmcode} (+5 mm)")
     for i, (onset, stat) in enumerate(sol["cm_detections"]):
-        ax.axvline(onset, color="#9ECAE1", lw=1.2, label=f"{cmcode} detection" if i == 0 else None)
+        ax.axvline(onset, color="#56B4E9", lw=1.2, label=f"{cmcode} detection" if i == 0 else None)
     for i, (onset, stat) in enumerate(sol["detections"]):
-        ax.axvline(onset, color="#FDAE6B", lw=1.2, ls="--", label="InSAR detection" if i == 0 else None)
-    ax.set_ylabel("FP displacement (mm)")
-    ax.set_title(f"{'ab'[j]}) {title} stack", loc="left")
-    ax.legend(fontsize=6, loc="upper left", frameon=False)
+        ax.axvline(onset, color="#E69F00", lw=0.9, ls="--", label="InSAR detection" if i == 0 else None)
+    ax.set_ylabel("Fault-parallel displacement (mm)")
+    utils.panel_title(ax, "AB"[j], f"{title} stack")
+    ax.legend(fontsize=6, loc="upper left")
     # bottom: the step statistic against the threshold
     ax = axes[1, j]
-    ax.axhline(k_sigma * sol["stat_sigma"], color="#6A3D9A", lw=0.8, ls="--", label=f"threshold {k_sigma:g} sigma = {k_sigma * sol['stat_sigma']:.1f} mm")
+    ax.axhline(k_sigma * sol["stat_sigma"], color="#6A3D9A", lw=0.8, ls="--", label=f"Threshold {k_sigma:g}$\\sigma$ = {k_sigma * sol['stat_sigma']:.1f} mm")
     ax.plot(sol["stat_dates"], sol["stat_values"], "-", lw=0.7, color="0.35")
     for onset, stat in sol["cm_detections"]:
-        ax.axvline(onset, color="#9ECAE1", lw=1.2)
+        ax.axvline(onset, color="#56B4E9", lw=1.2)
     for onset, stat in sol["detections"]:
-        ax.axvline(onset, color="#FDAE6B", lw=1.2, ls="--")
-    ax.set_ylabel("step statistic (mm)")
+        ax.axvline(onset, color="#E69F00", lw=0.9, ls="--")
+    ax.set_ylabel("Step statistic (mm)")
     ax.set_xlabel("Year")
-    ax.set_title(f"{'cd'[j]}) {title} detection", loc="left")
-    ax.legend(fontsize=6, loc="lower right", frameon=False)
+    utils.panel_title(ax, "CD"[j], f"{title} detection")
+    ax.legend(fontsize=6, loc="lower right")
 fig.tight_layout()
 f_detect = os.path.join(fig_dir, f"figS_event_detection_{params}_k{k_sigma:g}_win{win_n}.png")
 fig.savefig(f_detect, dpi=300)
@@ -999,7 +999,8 @@ for code, la, lo, name in creepmeters:
     utils.text_backed(fig, x=lo, y=la, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")   # labels on the west (blue) side
 # the bracket spans the Tule Pond creep LENGTH (len_lo-len_hi, the 6 km of fault hosting the events, the number
 # the paper quotes; section_lengths.csv), not the narrower stacked band, which stays as the dashed lines in B.
-# East side of the fault so it stays clear of the creepmeter labels; "Tule Pond" beside it, creepmeter style one size up
+# East side of the fault so it stays clear of the creepmeter labels; labelled "SSE extent" (Dani 2026-09-29: it is the
+# length that slips in the events, not the width of B), creepmeter style one size up
 bracket_lon, bracket_lat = uv_to_lonlat([len_lo, len_hi], [2.0, 2.0])
 fig.plot(x=bracket_lon, y=bracket_lat, pen="1.5p,black")
 for u_ in (len_lo, len_hi):
@@ -1007,8 +1008,8 @@ for u_ in (len_lo, len_hi):
     fig.plot(x=tick_lon, y=tick_lat, pen="1.5p,black")                                                      # ticks reach almost to the trace
 # two rows in one call (GMT has no newline outside paragraph mode), boxed like the creepmeters, one size up
 u_mid = 0.5 * (len_lo + len_hi)
-label_lon, label_lat = uv_to_lonlat([u_mid - 1.2, u_mid + 1.2], [4.6, 4.6])
-utils.text_backed(fig, x=label_lon, y=label_lat, text=["Tule", "Pond"], justify="CM", font="8p,Helvetica,black")
+label_lon, label_lat = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [2.5, 2.5])       # left edge 0.5 km east of the bracket, never on it
+utils.text_backed(fig, x=label_lon, y=label_lat, text=["SSE", "extent"], justify="LM", font="8p,Helvetica,black")
 fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
@@ -1126,7 +1127,7 @@ ax.set_ylim(-1, 12)
 ax.axhline(0, color="0.6", lw=0.5)
 ax.set_xlabel("Distance from Point Pinole (km)")
 ax.set_ylabel("Fault-parallel creep rate (mm/yr)")
-ax.legend(fontsize=6, loc="upper left", ncol=2, frameon=False)
+ax.legend(fontsize=6, loc="upper left", ncol=2)
 f_budget = os.path.join(fig_dir, f"figS_slip_budget_{params}.png")
 fig.savefig(f_budget, dpi=300)
 fig.savefig(f_budget.replace(".png", ".pdf"))

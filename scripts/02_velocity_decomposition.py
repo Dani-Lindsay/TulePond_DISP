@@ -387,7 +387,7 @@ for name, grid in (("FP", fp_rot), ("Up", up_rot)):
 # %%
 # [20]
 # the figure: two rotated map panels, journal double-column width, drawn the same way twice
-W = 17.5                                            # cm: panel width (double column)
+W = 17.3                                            # cm: panel width; with the label overhang the page is <= 18.3 cm (Science)
 region = [-3.0, u_south + 3.0, -map_half_km, map_half_km]
 H = W * (2 * map_half_km) / (region[1] - region[0])  # height at true aspect
 
@@ -404,7 +404,7 @@ fig.plot(x=x_fault["u_km"], y=x_fault["v_km"], pen="0.6p,black")                
 for code, u in u_creepmeter.items():                                                 # creepmeter ticks
     fig.plot(x=[u, u], y=[-1.2, 1.2], pen="1.4p,#0b3d91")
     fig.text(x=u, y=1.4, text=code, justify="BC", font="6p,Helvetica,#0b3d91")
-fig.text(x=region[0], y=region[3], text="a) Fault-parallel velocity", justify="TL", offset="0.1c/-0.1c", font="8p,Helvetica-Bold")
+fig.text(x=region[0], y=region[3], text="@%Helvetica-Bold%A@%%  Fault-parallel velocity", justify="TL", offset="0.1c/-0.1c", font="8p,Helvetica")
 fig.text(x=region[0] + 0.5, y=-map_half_km + 0.8, text="North", justify="LB", font="6.5p,gray40")
 fig.text(x=region[1] - 0.5, y=-map_half_km + 0.8, text="South", justify="RB", font="6.5p,gray40")
 fig.plot(x=[region[0] + 2, region[0] + 12], y=[-map_half_km + 2.0] * 2, pen="1.5p,black")   # 10 km scale bar
@@ -421,7 +421,7 @@ fig.plot(x=x_fault["u_km"], y=x_fault["v_km"], pen="0.6p,black")
 for code, u in u_creepmeter.items():
     fig.plot(x=[u, u], y=[-1.2, 1.2], pen="1.4p,#0b3d91")
     fig.text(x=u, y=1.4, text=code, justify="BC", font="6p,Helvetica,#0b3d91")
-fig.text(x=region[0], y=region[3], text="b) Vertical velocity", justify="TL", offset="0.1c/-0.1c", font="8p,Helvetica-Bold")
+fig.text(x=region[0], y=region[3], text="@%Helvetica-Bold%B@%%  Vertical velocity", justify="TL", offset="0.1c/-0.1c", font="8p,Helvetica")
 fig.text(x=region[0] + 0.5, y=-map_half_km + 0.8, text="North", justify="LB", font="6.5p,gray40")
 fig.text(x=region[1] - 0.5, y=-map_half_km + 0.8, text="South", justify="RB", font="6.5p,gray40")
 fig.plot(x=[region[0] + 2, region[0] + 12], y=[-map_half_km + 2.0] * 2, pen="1.5p,black")
@@ -444,20 +444,22 @@ fig.show()
 
 # %%
 # [22]
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, axes = plt.subplots(1, 5, figsize=(7.2, 2.2), sharey=True)
-for ax, (code, la, lo, name) in zip(axes, creepmeters):
+for k, (ax, (code, la, lo, name)) in enumerate(zip(axes, creepmeters)):
     transect = x_fault_transects[x_fault_transects.code == code].sort_values("dist_m")
     step, fit = step_fit(transect.dist_m.values, transect.fp_vel.values)
     ax.scatter(transect.dist_m, transect.fp_vel, s=2, color="0.6", label="pixels")
     ax.plot(transect.dist_m, fit, color="#D55E00", lw=1.2, label="step fit")
     ax.axvline(0, color="k", lw=0.5)
-    ax.set_title(f"{code}: {step:.1f} mm/yr", fontsize=8)
-    ax.set_xlabel("distance (m, + east)", fontsize=7)
+    utils.panel_title(ax, "ABCDE"[k], f"{code}: {step:.1f} mm/yr")
+    ax.set_xlabel("Distance (m, + east)", fontsize=7)
     ax.tick_params(labelsize=7)
-axes[0].set_ylabel("FP velocity (mm/yr)", fontsize=8)
-axes[0].legend(fontsize=6, frameon=False)
+axes[0].set_ylabel("Fault-parallel velocity (mm/yr)", fontsize=8)
+axes[0].legend(fontsize=6)
 fig.tight_layout()
-fig.savefig(os.path.join(fig_dir, f"fig02_transects_swath{swath_m:.0f}m_dist{max_dist_m:.0f}m.png"), dpi=300)
+f_transects = os.path.join(fig_dir, f"fig02_transects_swath{swath_m:.0f}m_dist{max_dist_m:.0f}m.png")
+fig.savefig(f_transects, dpi=300); fig.savefig(f_transects.replace(".png", ".pdf"))
 plt.show()
 
 # %% [markdown]

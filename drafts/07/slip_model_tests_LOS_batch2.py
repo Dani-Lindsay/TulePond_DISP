@@ -919,7 +919,7 @@ for k, (x_start, x_end, name) in enumerate(brackets):
     ax.plot([x_start - 0.3, x_end + 0.3], [bracket_y, bracket_y], "-",
             color="0.25", lw=0.8)
     ax.text(0.5 * (x_start + x_end), bracket_y + 0.015, name, ha="center",
-            va="bottom", fontsize=5.5, color="0.15")
+            va="bottom", fontsize=6, color="0.15")
 ax.set_xticks(ticks)
 ax.set_xticklabels(tick_labels, rotation=60, ha="right", fontsize=5)
 ax.set_ylabel(r"$M_W$")

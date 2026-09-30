@@ -24,29 +24,43 @@ import os
 repo_dir = os.path.dirname(os.path.abspath(__file__))
 
 # ------------------------
-# Data root -- one repo, two laptops (2026-09-28): TULEPOND_DATA_DIR if set,
-# else the proj_HaywardCreep folder where it exists, else the repo itself
-# (the second laptop keeps Inputs/ inside the repo). No per-machine edits.
+# Data root -- one repo, two laptops: TULEPOND_DATA_DIR if set, else the
+# proj_TulePond_DISP folder where it exists, else the repo itself (the second
+# laptop keeps the inputs inside the repo). No per-machine edits.
+#
+# proj_TulePond_DISP (2026-09-30) holds ONLY what this repo reads, in the
+# layout Zenodo will carry:
+#   09156/ 09157/ 11115/   the DISP-S1 frames (data, stack, tropo, mintpy) from data_prep/run01-04
+#   mosaic_velfield/       the tied same-orbit velocity + geometry mosaics (run04 step 6, run05)
+#   external_inputs/       fault trace, arrays, creepmeters, GHCN, catalogues, qfaults, USGS SFCVM v26
+#   GPS/                   the screened UNR series and the run05 tie table
+#   prep_validation/       run05's GNSS-tie record and run20's rain tables
+#   aperture_sweep/        the frozen aperture sweep notebook 04 loads (Hayward_DISP-S1/analysis/run11)
+#   modeling_uniform/      products of 07a/07b that are data-sized (Green's functions, sweeps)
+#   modeling_SFCVM/        PyLith: cfg, mesh, spatialdb, G matrices, inversion products (08a/08b)
+# Everything else of the older proj_HaywardCreep working tree stays there, untouched.
 # ------------------------
 data_dir = os.environ.get("TULEPOND_DATA_DIR", "")
 if not data_dir:
-    data_dir = "/Users/dlindsay/work/proj_HaywardCreep"
+    data_dir = "/Users/dlindsay/work/proj_TulePond_DISP"
     if not os.path.isdir(data_dir):
         data_dir = repo_dir
 
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-09-28"
+fig_date   = "2026-09-30"         # PyLith + SFCVM model figures (Dani 2026-09-30); 2026-09-28_final = the homogeneous-model set
 fig_dir    = os.path.join(repo_dir, f"Figures_{fig_date}")
 out_dir    = os.path.join(repo_dir, "outputs")
-inputs_dir = os.path.join(data_dir, "Inputs")
+inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
+model_uniform_dir = os.path.join(data_dir, "modeling_uniform")
+model_sfcvm_dir   = os.path.join(data_dir, "modeling_SFCVM")
 # QC products of the data_prep chain (station residuals, the prep-side rain
 # tables). Deliberately NOT under a second `outputs/`: the only `outputs/` in
 # this project is the repo's, written by the notebooks. Nothing in notebooks
 # 01-11 reads these; they are the prep chain's own record.
-prep_dir   = os.path.join(data_dir, "data_prep")
+prep_dir   = os.path.join(data_dir, "prep_validation")
 
 # ------------------------
 # Common paths & constants
@@ -136,7 +150,7 @@ common_paths = {
     # Frozen outputs of the aperture sweep made by Hayward_DISP-S1/analysis/
     # run11b_sweep_ladder.py (July/August 2026). Notebook 05 READS these; it
     # does not re-run the sweep (Dani, 2026-09-21).
-    "sweep_dir": os.path.join(data_dir, "outputs", "sweep"),
+    "sweep_dir": os.path.join(data_dir, "aperture_sweep"),
 
     # Written by the data_prep chain, read by nobody in notebooks 01-11:
     # run05's per-station GNSS/InSAR residuals, and run20's prep-side rain
@@ -267,7 +281,7 @@ frames = {f: _prep_paths(f) for f in ("09156", "09157", "11115")}
 
 # Same-orbit velocity mosaics (both ascending frames merged) used for the
 # velocity-field decomposition (notebook 02).
-mosaic_dir = os.path.join(data_dir, "mosaic")
+mosaic_dir = os.path.join(data_dir, "mosaic_velfield")
 paths_mosaic = {
     "ascending":  {"vel_NA_file": os.path.join(mosaic_dir, "ascending_velocity_NA.h5"),
                    "geo_file":    os.path.join(mosaic_dir, "ascending_geometry.h5")},
@@ -285,14 +299,14 @@ paths_gps = {
     "StaList":      os.path.join(gps_dir, "{frame}_StaList.txt"),   # data_prep/run00
     "Fig_Dir":      os.path.join(gps_dir, "Figures"),               # data_prep/run00 station plots
     "enu":          os.path.join(gps_dir, "{frame}_enu_NA.csv"),
-    "validation":   os.path.join(data_dir, "gps_insar_validation.csv"),
+    "validation":   os.path.join(gps_dir, "gps_insar_validation.csv"),
 }
 
 # ------------------------
 # Outputs, keyed by notebook. Each notebook writes only into its own folder.
 # ------------------------
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
-    "01_prep_inputs", "02_velocity_decomposition", "03_creep_timeseries",
+    "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
     "07_slip_model", "07_slip_model_tests", "08_alignment_arrays",
     "09_rain_seasonality", "10_forecast", "11_paper_figures")}

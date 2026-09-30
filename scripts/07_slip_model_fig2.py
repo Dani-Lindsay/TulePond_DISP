@@ -60,8 +60,9 @@ os.makedirs(out_dir, exist_ok=True)
 
 # the running median drawn on the profiles
 median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
-median_col, grey, ann_col = "#A50F15", "gray55", "black"       # per-side running median (dark red); pixels; block annotation
-model_col = "#0072B2"          # the slip model (notebook 07), blue
+median_col, grey, ann_col = "black", "gray55", "black"         # per-side running median (black); pixels; block annotation
+homog_col, hetero_col = "#0072B2", "#D55E00"                   # homogeneous model blue; heterogeneous (aligned SFCVM) model vermillion
+model_col = homog_col          # reset below from the model product: vermillion when it is the PyLith aligned-SFCVM model
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault band the block amplitudes use (m), for the caption
 
 # Fig 2 map window (unrotated, north up): centred on the trace at map_centre_km from Point Pinole,
@@ -202,7 +203,7 @@ aa = aa[(aa.long_deg > lon_w) & (aa.long_deg < lon_e) & (aa.lat_deg > lat_s) & (
 print("alignment arrays in the window:", ", ".join(aa.site_code))
 
 # --- sizes (cm): a double-column figure (18 cm)
-Wp, Hp = 3.7, 1.9                                   # one profile panel
+Wp, Hp = 3.4, 1.85                                  # one profile panel (sized so the page is <= 18.3 cm, Science)
 gap_pair, gap_col, gap_row = 0.25, 0.65, 1.25       # within a stacked pair; between the two profile columns (room for the +/-2000 labels); between rows
 Hpair = 2 * Hp + gap_pair                           # a stacked pair; the maps are made exactly this tall
 w_, h_ = gmt_map_size(region_map, "M4c")
@@ -219,15 +220,37 @@ pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL=
 fig = None                      # the helpers below draw into the module-level figure that draw_fig2 creates
 
 
-def map_base(grid, cpt, label, stations=True):
+profile_label_font = "7p,Helvetica-Bold"      # X, X', Y, Y' on every map and profile panel (one size throughout)
+# places named on the vertical map (panel B): (label lines, lon, lat, leader dx, dy in cm); the label sits at the
+# leader's end, two lines, above it for an up leader and below it for a down leader (clear of X' and the frame)
+map_places = [(("Alameda", "Creek"), -121.980765, 37.572280, 0.3, 0.45),
+              (("Lake", "Elizabeth"), -121.962053, 37.549023, 0.4, 0.12)]
+
+
+def profile_line_labels():
+    """X-X' and Y-Y' labels at the ends of the profile lines."""
+    for n_, (llon, llat) in lines_ll.items():
+        fig.text(x=llon[0], y=llat[0], text=n_, justify="RM", offset="-0.08c/0c", font=profile_label_font)
+        fig.text(x=llon[1], y=llat[1], text=n_ + "'", justify="LM", offset="0.08c/0c", font=profile_label_font)
+
+
+def map_base(grid, cpt, label, stations=True, places=False):
     """One map, north up, in lon/lat: the field, the trace, the profile lines, and (stations=True) CFW1 and the alignment arrays. No colour bar."""
     fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
     fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True)
     fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.7p,black")
     for n_, (llon, llat) in lines_ll.items():
         fig.plot(x=llon, y=llat, pen="1.0p,black")
-        fig.text(x=llon[0], y=llat[0], text=n_, justify="RM", offset="-0.08c/0c", font="8p,Helvetica-Bold")
-        fig.text(x=llon[1], y=llat[1], text=n_ + "'", justify="LM", offset="0.08c/0c", font="8p,Helvetica-Bold")
+    profile_line_labels()
+    if places:                                     # a leader line from each place to its label (GMT text -D...+v)
+        line_h = 0.27                              # cm between the two label lines (7 pt)
+        for (first, second), lon_, lat_, dx, dy in map_places:
+            up = dy > 0
+            near, far = (second, first) if up else (first, second)   # the line nearer the point carries the leader
+            just = "BL" if up else "TL"
+            fig.text(x=lon_, y=lat_, text=near, justify=just, offset=f"{dx}c/{dy}c+v0.6p,black", font="7p,Helvetica")   # the leader
+            for txt, dy_ in ((near, dy), (far, dy + (line_h if up else -line_h))):         # both lines on a translucent white box
+                utils.text_backed(fig, x=lon_, y=lat_, text=txt, justify=just, offset=f"{dx}c/{dy_}c", font="7p,Helvetica")
     if stations:
         used = aa.site_code.isin(aa_labelled)                                    # only the arrays the paper uses are drawn
         fig.plot(x=aa.long_deg.values[used], y=aa.lat_deg.values[used], style="s0.18c", fill="black", pen="0.4p,white")
@@ -258,7 +281,8 @@ def los_maps(field, balance, tag, labels, cb_label, row_label, headings=False, s
     for k, o in enumerate(cols):
         if k:
             fig.shift_origin(xshift=f"{Wm + gap_map}c")
-        map_base(grids[o], cpt, labels[k], stations=labels[k] in stations_on)     # stations and their labels on panel A only
+        map_base(grids[o], cpt, labels[k], stations=labels[k] in stations_on,    # stations and their labels on panel A only
+                 places=labels[k] == "B")                                        # Alameda Creek and Lake Elizabeth on panel B
         if headings:
             fig.text(position="TC", text=o.capitalize(), justify="BC", offset="0c/0.5c", font="9p,Helvetica-Bold", no_clip=True)
     colour_bar(cpt, lim, cb_label, Wm + gap_cb)
@@ -280,26 +304,35 @@ def los_profile_pairs(vkey, dkey, lim, labels, ylab, headings=False, xlabel=Fals
             d, v = p[dkey], p[vkey]
             if j > 0:
                 fig.shift_origin(yshift=f"-{Hp + gap_pair}c")
-            xfr = "xa1000f500+lCross-fault distance (m)" if (j == 1 and xlabel) else "xa1000f500"
+            xfr = "xa1f0.2+lCross-fault distance (km)" if (j == 1 and xlabel) else "xa1f0.2"   # km, ticks every 0.2 km
             side = ("W" if k == 0 else "w") + ("S" if j == 1 else "s") + "rt"
-            fig.basemap(region=[-cross_m, cross_m, -lim, lim], projection=f"X{Wp}c/{Hp}c", frame=[side, xfr, f"ya{lim / 2:g}"])
-            fig.plot(x=d, y=v, style="c0.03c", fill=grey, transparency=30)          # the pixels
-            for xm, vm in running_median(d, v):                                      # the per-side running median
-                fig.plot(x=xm, y=vm, pen="1.0p," + median_col)
-            if model_lines and (o, n_) in model_lines:                               # the slip model along the same line (notebook 07)
-                d_mod, v_mod = model_lines[(o, n_)]
+            cross_km = cross_m / 1e3                                                 # distances are stored in m; drawn in km
+            fig.basemap(region=[-cross_km, cross_km, -lim, lim], projection=f"X{Wp}c/{Hp}c", frame=[side, xfr, f"ya{lim / 2:g}"])
+            fig.plot(x=np.asarray(d) / 1e3, y=v, style="c0.03c", fill=grey, transparency=30)   # the pixels
+            for lines_, col_, lab_ in (model_lines or []):                          # the slip model(s) along the same line: the
+                if (o, n_) not in lines_:                                            # comparison (homogeneous) first, the model on top
+                    continue
+                d_mod, v_mod = lines_[(o, n_)]
                 for sgn in (-1, 1):                                                  # each side on its own: the model steps at the trace
                     side_ = sgn * d_mod > 0
-                    fig.plot(x=d_mod[side_], y=v_mod[side_], pen="1.0p," + model_col)
+                    fig.plot(x=d_mod[side_] / 1e3, y=v_mod[side_], pen="1.2p," + col_)
+            for xm, vm in running_median(d, v):                                      # the per-side running median, on top of the models
+                fig.plot(x=np.asarray(xm) / 1e3, y=vm, pen="1.0p," + median_col)
             if annotate:                                                             # the event: each block's near-fault amplitude over its far field
                 for blk, sgn in (("W", -1), ("E", 1)):
                     b_ = p["blocks"][blk]
-                    fig.text(x=sgn * 1000, y=-lim, text=f"{blk} {b_['amp']:+.2f} \u00b1 {b_['se']:.2f}", justify="BC", offset="0c/0.08c", font="6.5p,Helvetica," + ann_col)   # bottom: the corners hold X, X'
+                    fig.text(x=sgn * cross_km / 2, y=-lim, text=f"{blk} {b_['amp']:+.2f} \u00b1 {b_['se']:.2f}", justify="BC", offset="0c/0.08c", font="6.5p,Helvetica," + ann_col)   # bottom: the corners hold X, X'
             fig.plot(x=[0, 0], y=[-lim, lim], pen="0.5p,gray50")
-            fig.text(position="TL", text=n_, font="8p,Helvetica", offset="0.1c/-0.08c")
-            fig.text(position="TR", text=n_ + "'", font="8p,Helvetica", offset="-0.1c/-0.08c")
+            if model_lines and len(model_lines) > 1 and k == 0 and j == 1:            # legend: bottom centre of the fault-parallel Y-Y' panel, stacked,
+                f_leg = os.path.join(cpt_dir, "legend_models.txt")                   # on a white box, drawn after the trace line so it sits on top
+                with open(f_leg, "w") as fh:
+                    fh.writelines(f"S 0.15c - 0.3c - 1.2p,{col_} 0.35c {lab_}\n" for _, col_, lab_ in model_lines)
+                with pygmt.config(FONT_ANNOT_PRIMARY="6p,Helvetica"):
+                    fig.legend(spec=f_leg, position="jBC+o0c/0.08c", box="+gwhite+c0.05c/0.03c")      # entries stacked
+            fig.text(position="TL", text=n_, font=profile_label_font, offset="0.1c/-0.08c")
+            fig.text(position="TR", text=n_ + "'", font=profile_label_font, offset="-0.1c/-0.08c")
             if j == 0:
-                fig.text(x=-cross_m, y=lim, text=labels[k], justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
+                fig.text(x=-cross_km, y=lim, text=labels[k], justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
                 if headings:
                     fig.text(position="TC", text=o.capitalize(), justify="BC", offset="0c/0.5c", font="9p,Helvetica-Bold", no_clip=True)
     fig.text(position="MR", text=ylab, angle=90, justify="TC", offset=f"0.2c/{0.5 * (Hp + gap_pair)}c", font="9p,Helvetica", no_clip=True)
@@ -322,8 +355,18 @@ def model_row_placeholder():
 
 
 # the model row from notebook 07's product (draft until 07's record run):
-# fault-parallel model and residual at the quadtree samples, slip with depth
-model_row_file = os.path.join(common_paths["out_dir"], "07_slip_model_tests", "fig2_model_row.npz")
+# fault-parallel model and residual at the quadtree samples, slip with depth.
+# TULEPOND_FIG2_MODEL names another product with the same keys, e.g. the PyLith + SFCVM model of
+# drafts/pylith (fig2_model_row_pylith_*.npz, slip at the fault VERTICES: nodes_kmz + slip_vertex_mm);
+# its `model_tag` is appended to the figure name so the two versions coexist.
+model_row_file = os.environ.get("TULEPOND_FIG2_MODEL", os.path.join(common_paths["out_dir"], "07_slip_model_tests", "fig2_model_row.npz"))
+model_tag = os.environ.get("TULEPOND_FIG2_TAG", "")               # e.g. pylith_nuggetcd; empty for 07's own product
+if not model_tag and os.path.exists(model_row_file):
+    with np.load(model_row_file) as z_tag:
+        model_tag = str(z_tag["model_tag"]) if "model_tag" in z_tag.files else ""
+model_tag = f"_{model_tag}" if model_tag else ""
+assert model_tag or "TULEPOND_FIG2_MODEL" not in os.environ, "an alternative model product needs TULEPOND_FIG2_TAG (else it overwrites 07's Fig 2)"
+print(f"Fig 2 model row from {model_row_file} (tag {model_tag!r})")
 
 
 def model_row(lim=None):
@@ -341,10 +384,23 @@ def model_row(lim=None):
         if k:
             fig.shift_origin(xshift=f"{Wm + gap_map}c")
         fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
-        fig.plot(x=z["sample_lon"], y=z["sample_lat"], style="c0.07c", fill=values, cmap=cpt)
+        if "block_lon" in z:
+            # each quadtree sample filled over its own block, so a block's area on the page is the
+            # area it averages (equal dots over-weight the many small blocks at the trace);
+            # largest first so the small near-fault blocks are drawn on top
+            area = np.ptp(z["block_lon"], axis=1) * np.ptp(z["block_lat"], axis=1)
+            f_blocks = os.path.join(cpt_dir, f"blocks_{lab}.txt")
+            with open(f_blocks, "w") as fh:
+                for b_ in np.argsort(-area):
+                    fh.write(f"> -Z{values[b_]:.4f}\n")
+                    fh.writelines(f"{lo_:.6f} {la_:.6f}\n" for lo_, la_ in zip(z["block_lon"][b_], z["block_lat"][b_]))
+            fig.plot(data=f_blocks, fill="+z", cmap=cpt, close=True)
+        else:
+            fig.plot(x=z["sample_lon"], y=z["sample_lat"], style="c0.07c", fill=values, cmap=cpt)
         fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.7p,black")
         for n_, (llon, llat) in lines_ll.items():
             fig.plot(x=llon, y=llat, pen="1.0p,black")
+        profile_line_labels()                      # the same X-X' / Y-Y' labels as the data maps
         fig.text(position="TL", text=lab, justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
         fig.text(position="TC", text=("Model" if lab == "I" else "Residual"), justify="BC", offset="0c/0.12c",
                  font="8p,Helvetica", no_clip=True)
@@ -366,21 +422,35 @@ def model_row(lim=None):
     fig.basemap(region=region_k, projection=f"X{Wk}c/{Hk}c", frame=["Wsrt", "xa2f1", f"ya{slip_top / 2:g}+lmm"])
     fig.plot(x=z["crossing_km"], y=z["crossing_mm"], style="c0.03c", fill=grey, transparency=30)
     fig.plot(x=z["crossing_profile_km"], y=z["crossing_profile_mm"], pen="1.0p," + median_col, label="Crossings")
-    fig.plot(x=z["surface_km"], y=z["surface_model_mm"], pen="1.0p," + model_col, label="Model, surface")
+    fig.plot(x=z["surface_km"], y=z["surface_model_mm"], pen="1.0p," + model_col,
+             label="3D (SFCVM)" if model_col == hetero_col else "Model")       # no commas: GMT legend labels stop at one
     fig.legend(position="jTR+o0.05c/0.05c", box=False)
     fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
-    fig.text(position="TR", text=f"M@-w@- {float(z['mw_30gpa']):.2f} (30 GPa), {float(z['mw_sfcvm']):.2f} ({float(z['mu_effective_gpa']):.1f} GPa, USGS SFCVM)",
+    # no +/- in the label: the bootstrap 2-sigma (~0.02) understates the uncertainty, which is set by the sigma
+    # choice and the SFCVM alignment (range 3.66-3.81 for the selected PyLith model); quote the range in the caption
+    pm30 = pmcvm = ""
+    medium = f"{str(z['medium_label'])}: " if "medium_label" in z.files else ""
+    fig.text(position="TR", text=f"{medium}M@-w@- {float(z['mw_30gpa']):.2f}{pm30} (30 GPa), {float(z['mw_sfcvm']):.2f}{pmcvm} ({float(z['mu_effective_gpa']):.1f} GPa, USGS SFCVM)",
              justify="BR", offset="0c/0.12c", font="7p,Helvetica", no_clip=True)
     # L: slip on the unrolled fault, sampled on a regular grid (each triangle's slip is constant over it)
     fig.shift_origin(yshift=f"-{Hl + gap_kl}c")
-    nodes_sz, faces_m, slip_m = z["nodes_sz"], z["faces"], z["slip_mm"]
-    finder = Triangulation(nodes_sz[:, 0], nodes_sz[:, 1], faces_m).get_trifinder()
     z_max = 1.0
-    s_axis = np.arange(nodes_sz[:, 0].min(), nodes_sz[:, 0].max(), 0.025)
     z_axis = np.arange(0.00625, z_max, 0.0125)
-    S_, Z_ = np.meshgrid(s_axis, z_axis)
-    tri_id = finder(S_, Z_)
-    slip_grid = np.where(tri_id >= 0, slip_m[np.maximum(tri_id, 0)], np.nan)
+    if "slip_vertex_mm" in z.files:                            # PyLith tents: slip at the vertices, linear between them
+        # (the PyLith triangles overlap slightly once the curved fault is unrolled onto km-along x depth, so
+        # matplotlib rejects them; a linear interpolation on the vertices' own Delaunay triangulation instead)
+        from scipy.interpolate import griddata
+        nodes_sz = z["nodes_kmz"]
+        s_axis = np.arange(nodes_sz[:, 0].min(), nodes_sz[:, 0].max(), 0.025)
+        S_, Z_ = np.meshgrid(s_axis, z_axis)
+        slip_grid = griddata(nodes_sz[:, :2], z["slip_vertex_mm"], (S_, Z_), method="linear")
+    else:                                                      # 07's triangles: one slip value per triangle
+        nodes_sz, faces_m, slip_m = z["nodes_sz"], z["faces"], z["slip_mm"]
+        finder = Triangulation(nodes_sz[:, 0], nodes_sz[:, 1], faces_m).get_trifinder()
+        s_axis = np.arange(nodes_sz[:, 0].min(), nodes_sz[:, 0].max(), 0.025)
+        S_, Z_ = np.meshgrid(s_axis, z_axis)
+        tri_id = finder(S_, Z_)
+        slip_grid = np.where(tri_id >= 0, slip_m[np.maximum(tri_id, 0)], np.nan)
     km_axis = float(z["s0_km_pp"]) + s_axis                    # s grows southward, as km from Point Pinole
     in_view = (km_axis >= km_view[0]) & (km_axis <= km_view[1])
     grid_l = xr.DataArray(slip_grid[:, in_view], coords=dict(depth=z_axis, km=km_axis[in_view]), dims=("depth", "km"))
@@ -420,7 +490,7 @@ def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, col
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
     lim_event = los_maps(evt_maps_in, False, "event", ["E", "F"], "mm", evt_label, cols=cols)
     fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
-    los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=True, prof_set=evt_profiles, cols=cols,
+    los_profile_pairs("ve", "de", lims["event"], ["G", "H"], ylabs[1], xlabel=True, annotate=False, prof_set=evt_profiles, cols=cols,
                       model_lines=model_lines)
     # row 3: the model, notebook 07
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
@@ -451,12 +521,26 @@ for c in fpup_profiles:
     for n_, p in fpup_profiles[c].items():
         print(f"[{c}] {n_}-{n_}': per block W {p['blocks']['W']['amp']:+.2f} +/- {p['blocks']['W']['se']:.2f}, "
               f"E {p['blocks']['E']['amp']:+.2f} +/- {p['blocks']['E']['se']:.2f} mm")
-model_lines = None
+# Model lines on G/H: the model product's own profiles, and (TULEPOND_FIG2_COMPARE) a second product's profiles
+# drawn underneath, e.g. the homogeneous PyLith model with the same inversion, so G shows the symmetric
+# homogeneous prediction (blue) against the asymmetric aligned-SFCVM one (vermillion). Panels I-L stay the model's.
+def profile_lines(path):
+    zz = np.load(path)
+    return {(col, n_): (zz[f"prof_{n_}_{key}_d"], zz[f"prof_{n_}_{key}_mm"])
+            for col, key in (("fault-parallel", "fp"), ("vertical", "up")) for n_ in names}
+
+
+model_lines = []
 if os.path.exists(model_row_file):
     z_model = np.load(model_row_file)
-    model_lines = {(col, n_): (z_model[f"prof_{n_}_{key}_d"], z_model[f"prof_{n_}_{key}_mm"])
-                   for col, key in (("fault-parallel", "fp"), ("vertical", "up")) for n_ in names}
-f_fig2_fp = os.path.join(fig_dir, f"fig2_fault_parallel_vertical_coh{coh_maps:g}_{n_mean}ev")
+    model_is_hetero = "aligned" in str(z_model["sfcvm_version"]) if "sfcvm_version" in z_model.files else False
+    model_col = hetero_col if model_is_hetero else homog_col
+    compare_file = os.environ.get("TULEPOND_FIG2_COMPARE", "")
+    if compare_file:
+        assert os.path.exists(compare_file), f"comparison product missing: {compare_file}"
+        model_lines.append((profile_lines(compare_file), homog_col, "Uniform"))
+    model_lines.append((profile_lines(model_row_file), model_col, "3D (SFCVM)" if model_is_hetero else "Model"))   # no commas: GMT legend labels stop at one
+f_fig2_fp = os.path.join(fig_dir, f"fig2_fault_parallel_vertical_coh{coh_maps:g}_{n_mean}ev{model_tag}")
 draw_fig2(fpup_evt, fpup_profiles, f"Mean event ({n_mean} events)", f_fig2_fp,
           rate_maps_in=fpup_rate, cols=list(fpup_rate), ylabs=("Rate (mm/yr)", "Displacement (mm)"),
           lims={"rate": 10.0, "event": 10.0}, model_lines=model_lines)

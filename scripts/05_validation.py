@@ -489,7 +489,7 @@ grid_ll = xr.DataArray(zg, coords={"lat": lat_g, "lon": lon_g}, dims=("lat", "lo
 tv, tu = to_uv(prof["ft_lon"].values, prof["ft_lat"].values)
 
 # --- the figure: sizes in cm, one font, 18.3 cm wide (Science full page width)
-W_fig = 18.3
+W_fig = 18.1          # page width before crop; the label overhang brings it to <= 18.3 cm
 Hr, gap_row = 2.1, 0.35                 # one row per creepmeter; the interior rows carry no x annotation
 Hm = 5 * Hr + 4 * gap_row               # the map spans the five rows (~12 cm); its width follows at true scale (~3.2 cm)
 gap_map, gap_col, cb_w = 0.9, 0.6, 2.5
@@ -741,7 +741,7 @@ for ax in axes:
     for k in kernel_m:
         ax.axvline(k, color="0.55", lw=0.7, ls="--", zorder=1)
     ax.set_xlim(-15, 720)
-axes[0].text(3, 1.95, "phase-linking\nhalf-width\n(55 to 65 m by era)", fontsize=5.6, color="0.40", va="top")
+axes[0].text(3, 1.95, "phase-linking\nhalf-width\n(55 to 65 m by era)", fontsize=6, color="0.40", va="top")
 for ax, col, ylab, ylim, title, scale in ((axes[0], "rate_rms", "InSAR minus creepmeter rate RMS (mm/yr)", (0.3, 2.5), "A Long-term rate agreement", 1),
                                           (axes[1], "valid", "Valid data along fault strike (%)", (40, 80), "B Spatial completeness", 1),
                                           (axes[2], "coz1_det_r", "COZ1 detrended correlation r", (0, 0.8), "C Creep event shape", 1),
@@ -753,7 +753,7 @@ for ax in axes[2:]:
     ax.set_xlabel("Distance from fault trace (m)")
 axes[0].legend(handles=[Line2D([], [], color="0.55", lw=1.1, marker="o", ms=4.5, label=f"tested ({len(ladder)} bins)"),
                         Line2D([], [], color="#C1272D", lw=1.1, marker="o", ms=4.5, label=f"selected: {selected[0]} to {selected[1]} m")],
-               frameon=False, fontsize=6, loc="upper right")
+               fontsize=6, loc="upper right")
 fig.tight_layout()
 fig_lad = os.path.join(fig_dir, f"figS_binning_ladder_coh{ladder_coh:g}_mp{min_points}_stack{ladder_n_stack}x{ladder_stack_km}km.png")
 fig.savefig(fig_lad, dpi=300); fig.savefig(fig_lad.replace(".png", ".pdf"))

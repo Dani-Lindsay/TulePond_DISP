@@ -124,7 +124,7 @@ for ax, (k, constraint_name) in zip(axes, enumerate(constraints)):
         ax.plot(surfaces[label].km_pp, surfaces[label].slip_mm, "-", lw=1.0, color="#0072B2", alpha=shades[lam_s],
                 label=f"lam_s {lam_s:g} km (sigma {s_.sigma:g}, Mw {s_.Mw:.2f})")
     ax.set_xlim(54, 65); ax.set_ylabel("Surface slip (mm)")
-    ax.legend(fontsize=5.5, loc="upper right")
+    ax.legend(fontsize=6, loc="upper right")
     ax.set_title(f"{'AB'[k]}  No tie, {constraint_name} surface constraint", loc="left", fontsize=7)
 axes[-1].set_xlabel("km from Point Pinole")
 f_fig = os.path.join(fig_dir, "test_along_strike_smoothing.png")

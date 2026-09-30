@@ -278,6 +278,47 @@ def decompose_asc_desc(d_asc, d_desc, inc_asc_deg, azi_asc_deg,
 # pygmt helpers
 # ------------------------------
 
+def utm_to_lonlat_grid(arr, x0, y0, dx, dy, epsg, region, dlon, dlat):
+    """Nearest-pixel resampling of a north-up UTM raster (`x0`, `y0` the corner
+    of the first pixel, `dy` negative) onto a regular lon/lat grid covering
+    `region` = [W, E, S, N], for pygmt.grdimage. Nothing is interpolated: each
+    lon/lat node takes the value of the UTM pixel it falls in (NaN outside).
+    Returns an xarray.DataArray (lat, lon)."""
+    import xarray as xr
+    from pyproj import Transformer
+    lon = np.arange(region[0], region[1] + dlon / 2, dlon)
+    lat = np.arange(region[2], region[3] + dlat / 2, dlat)
+    LON, LAT = np.meshgrid(lon, lat)
+    X, Y = Transformer.from_crs(4326, epsg, always_xy=True).transform(LON, LAT)
+    col = np.floor((X - x0) / dx).astype(int)
+    row = np.floor((Y - y0) / dy).astype(int)
+    ok = (row >= 0) & (row < arr.shape[0]) & (col >= 0) & (col < arr.shape[1])
+    out = np.full(LON.shape, np.nan, dtype="float32")
+    out[ok] = arr[row[ok], col[ok]]
+    return xr.DataArray(out, coords={"lat": lat, "lon": lon}, dims=("lat", "lon"))
+
+
+def utm_grid_region(x0, y0, dx, dy, width, length, epsg):
+    """[W, E, S, N] in lon/lat enclosing a north-up UTM raster."""
+    from pyproj import Transformer
+    xs = [x0, x0 + width * dx]; ys = [y0, y0 + length * dy]
+    lon, lat = Transformer.from_crs(epsg, 4326, always_xy=True).transform(
+        [xs[0], xs[0], xs[1], xs[1]], [ys[0], ys[1], ys[0], ys[1]])
+    return [min(lon), max(lon), min(lat), max(lat)]
+
+
+def gmt_map_size(region, projection):
+    """Width and height (cm) GMT gives a region/projection pair (mapproject -W)."""
+    import pygmt, tempfile
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tf:
+        f_ = tf.name
+    with pygmt.clib.Session() as lib:
+        lib.call_module("mapproject", f"-R{'/'.join(str(r) for r in region)} -J{projection} -W ->{f_}")
+    w, h = (float(x) for x in open(f_).read().split())
+    os.remove(f_)
+    return w, h
+
+
 def write_cpt(path, cmap_name, vmin, vmax, n=64):
     """Write a GMT colour table sampled from a matplotlib colormap, so the
     pygmt figures use the same colours as the matplotlib QC plots. Returns path."""
@@ -374,8 +415,22 @@ def mpl_paper_style(base=8):
         # mathtext ($\\sigma$, $\\pm$, the bold panel letters) in the same face, not DejaVu
         "mathtext.fontset": "custom", "mathtext.rm": family, "mathtext.it": f"{family}:italic",
         "mathtext.bf": f"{family}:bold", "mathtext.default": "regular",
+        # legends sit on a white box so no line runs through their text (Science figure check, 2026-09-29)
+        "legend.frameon": True, "legend.facecolor": "white", "legend.edgecolor": "none", "legend.framealpha": 0.85,
+        "legend.fontsize": max(base - 2, 6),
     })
     return dict(matplotlib.rcParams)
+
+
+# Okabe-Ito colour-blind-safe categorical colours (no blue/green pair: Dani cannot tell them apart)
+okabe_ito = ["#0072B2", "#E69F00", "#D55E00", "#CC79A7", "#000000", "#56B4E9", "#F0E442"]
+
+
+def panel_title(ax, letter, text="", size=7):
+    """Science panel label on a matplotlib axis: a bold capital letter, then a
+    plain `size`-pt description, left-aligned above the axis."""
+    label = rf"$\bf{{{letter}}}$" + (f"  {text}" if text else "")
+    ax.set_title(label, loc="left", fontsize=size)
 
 
 def text_backed(fig, transparency=30, **kw):

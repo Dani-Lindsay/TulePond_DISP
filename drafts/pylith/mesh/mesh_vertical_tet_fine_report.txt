@@ -1,0 +1,7 @@
+# /Users/dlindsay/tools/internal/TulePond_DISP/drafts/pylith/generate_gmsh_vertical.py 2026-09-29 23:34
+preset fine: {'dx_fine': 60.0, 'dx_fault': 200.0, 'dx_surface': 200.0, 'dx_far': 6000.0, 'bias': 1.12}
+tets 445053, nodes 80462
+fault triangles 10734, fault vertices 5503
+fault edge length (m): patch median 61 (min 46, max 74); outside median 117
+tet minSICN: min 0.336, 1st pct 0.658, median 0.884, n<0.1 0, n<=0 0
+tet gamma: min 0.333, median 0.864

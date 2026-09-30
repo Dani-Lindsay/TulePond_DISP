@@ -302,9 +302,8 @@ ax.set_ylabel("Day of water year")
 cb = fig.colorbar(mesh, ax=ax, pad=0.01, fraction=0.03, extend="max")
 cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=7)
 cb.ax.tick_params(labelsize=6)
-ax.legend(handles=[Line2D([], [], color="0.15", lw=1.8, label="array onset window (bimonthly surveys)"),
+ax.legend(handles=[Line2D([], [], color="0.15", lw=1.8, label="Array onset window (bimonthly surveys)"),
                    Line2D([], [], color="#C1272D", lw=2.6, label="InSAR onset window (6 to 12 d)")], fontsize=6, loc="lower left")
-ax.set_title("Creep-event onset windows on the water year, over 7-day rainfall totals (Fremont/Newark)", loc="left", fontsize=8)
 f_season = os.path.join(fig_dir, f"fig3b_onset_seasonality_wateryear_density{density_days}d_vmax{density_max}mm.png")
 fig.savefig(f_season, dpi=300)
 fig.savefig(f_season.replace(".png", ".pdf"))

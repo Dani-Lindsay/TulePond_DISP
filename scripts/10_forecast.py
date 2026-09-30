@@ -422,24 +422,25 @@ single_fits[("B", "gaussian")] = describe_fit("gaussian", array_intervals, "B ar
 # %%
 # [24]
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt
-model_colours = {"exponential": "0.4", "lognormal": "#1B9E77", "weibull": "#7570B3", "bpt": "#D95F02", "gaussian": "#E7298A"}
+model_colours = {"exponential": "0.4", "lognormal": "#0072B2", "weibull": "#CC79A7", "bpt": "#E69F00", "gaussian": "#56B4E9"}   # Okabe-Ito, no green
+model_names = {"exponential": "Exponential", "lognormal": "Lognormal", "weibull": "Weibull", "bpt": "Brownian passage time", "gaussian": "Gaussian"}
 interval_axis = np.linspace(0.05, 6.0, 600)
 fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.6))
 for model in models:
     for cat, lw in (("A", 1.4), ("B", 0.7)):
         dist = single_fits[(cat, model)]
-        axes[0].plot(interval_axis, dist.pdf(interval_axis), color=model_colours[model], lw=lw, label=model if cat == "A" else None)
+        axes[0].plot(interval_axis, dist.pdf(interval_axis), color=model_colours[model], lw=lw, label=model_names[model] if cat == "A" else None)
         hazard = dist.pdf(interval_axis) / np.clip(dist.sf(interval_axis), 1e-12, None)
         axes[1].plot(interval_axis, hazard, color=model_colours[model], lw=lw)
         axes[2].plot(grid, conditional_cdf(dist, last_onset_yr, time_since_last_yr), color=model_colours[model], lw=lw)
 axes[0].plot(insar_intervals, np.full_like(insar_intervals, -0.1), "|", color="#C1272D", ms=10, mew=1.5, label="InSAR intervals")
-axes[0].plot(array_intervals, np.full_like(array_intervals, -0.25), "|", color="0.2", ms=8, mew=1.0, label="array intervals")
+axes[0].plot(array_intervals, np.full_like(array_intervals, -0.25), "|", color="0.2", ms=8, mew=1.0, label="Array intervals")
 axes[0].set_xlim(0, 6)
 axes[0].set_ylim(-0.4, None)
 axes[0].set_xlabel("Interval (yr)")
 axes[0].set_ylabel("Density (1/yr)")
-axes[0].set_title("a) Interval density", loc="left")
-axes[0].legend(fontsize=5.5, frameon=False)
+utils.panel_title(axes[0], "A", "Interval density")
+axes[0].legend(fontsize=6)
 axes[1].axvline(time_since_last_yr, color="0.3", lw=0.7, ls=":")
 axes[1].text(time_since_last_yr - 0.05, 0.97, "data end", transform=axes[1].get_xaxis_transform(), fontsize=6, color="0.3", va="top", ha="right")
 axes[1].set_xlim(0, 6)
@@ -447,16 +448,17 @@ axes[1].set_yscale("log")
 axes[1].set_ylim(0.01, 100)
 axes[1].set_xlabel("Time since the last onset (yr)")
 axes[1].set_ylabel("Hazard rate (1/yr), log")
-axes[1].set_title("b) Hazard rate: where the families differ", loc="left")
+utils.panel_title(axes[1], "B", "Hazard rate")
 axes[2].axvspan(*decyear(pd.to_datetime(list(wet))), color="#56B4E9", alpha=0.15, lw=0)
 axes[2].axvline(data_end_yr, color="0.3", lw=0.7, ls="-.")
 axes[2].set_xlim(2026.0, 2030.0)
 axes[2].set_xlabel("Year")
 axes[2].set_ylabel("P(onset by t)")
-axes[2].set_title("c) Forecast from each single fit", loc="left")
+utils.panel_title(axes[2], "C", "Forecast from each single fit")
 fig.tight_layout()
 f_models = os.path.join(fig_dir, "qc10_renewal_models_single_fits.png")
 fig.savefig(f_models, dpi=300)
+fig.savefig(f_models.replace(".png", ".pdf"))
 print("Saved figure to:", f_models)
 plt.show()
 
@@ -797,7 +799,8 @@ for event in aa_rain.itertuples():
     segment = this_year[(this_year.dowy >= event.dowy_lo) & (this_year.dowy <= event.dowy_hi)]
     ax.plot(segment.dowy, segment.cum, "-", color="0.2", lw=2.6, solid_capstyle="butt", zorder=3)
 # the InSAR event years in colour, onset window as a thick red segment, labelled by water year
-event_colours = plt.cm.viridis(np.linspace(0, 0.9, len(insar_rain)))
+event_colours = ["#0072B2", "#E69F00", "#CC79A7", "#000000", "#56B4E9"][:len(insar_rain)]   # Okabe-Ito, no green (Dani)
+assert len(event_colours) == len(insar_rain), "more InSAR events than distinct colours"
 for colour, event in zip(event_colours, insar_rain.itertuples()):
     this_year = wy_series(event.wy)
     ax.plot(this_year.dowy, this_year.cum, "-", color=colour, lw=1.4, zorder=4, label=f"WY{event.wy} ({event.wy_total_mm:.0f} mm)")
@@ -810,11 +813,10 @@ ax.set_xticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1
 ax.set_ylabel("Cumulative precipitation in the water year (mm)")
 ax.set_xlabel("Day of water year")
 ax.legend(handles=ax.get_legend_handles_labels()[0] + [Line2D([], [], color="#C1272D", lw=4, label="InSAR onset window"),
-                                                       Line2D([], [], color="0.2", lw=2.6, label="array onset window (1983 to 2006)"),
-                                                       Line2D([], [], color="0.82", lw=0.6, label=f"every water year {wy_years[0]} to {wy_years[1]}"),
-                                                       plt.Rectangle((0, 0), 1, 1, facecolor="#C1272D", alpha=0.15, edgecolor="none", label=f"rain accumulated at the InSAR onsets: {cum_lo:.0f} to {cum_hi:.0f} mm")],
-          fontsize=6, loc="upper left", frameon=False)
-ax.set_title("Onsets do not wait for a fixed amount of rain: accumulated rain at onset varies several-fold", loc="left", fontsize=8)
+                                                       Line2D([], [], color="0.2", lw=2.6, label="Array onset window (1983 to 2006)"),
+                                                       Line2D([], [], color="0.82", lw=0.6, label=f"Every water year {wy_years[0]} to {wy_years[1]}"),
+                                                       plt.Rectangle((0, 0), 1, 1, facecolor="#C1272D", alpha=0.15, edgecolor="none", label=f"Rain accumulated at the InSAR onsets: {cum_lo:.0f} to {cum_hi:.0f} mm")],
+          fontsize=6, loc="upper left")
 f_cumulative = os.path.join(fig_dir, "figS_wy_cumulative_rain_onsets.png")
 fig.savefig(f_cumulative, dpi=300)
 fig.savefig(f_cumulative.replace(".png", ".pdf"))
@@ -872,7 +874,8 @@ print("\n".join(statement_lines))
 # %%
 # [38]
 fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.9), width_ratios=[1.4, 1.0, 1.0])
-event_colours = plt.cm.viridis(np.linspace(0, 0.9, len(insar_rain)))
+event_colours = ["#0072B2", "#E69F00", "#CC79A7", "#000000", "#56B4E9"][:len(insar_rain)]   # Okabe-Ito, no green (Dani)
+assert len(event_colours) == len(insar_rain), "more InSAR events than distinct colours"
 # a) every water year's accumulation, the InSAR event years in colour, the onset windows as thick segments
 ax = axes[0]
 ax.axvspan(*wet_dowy, color="#56B4E9", alpha=0.12, lw=0)
@@ -888,15 +891,15 @@ for event in aa_rain.itertuples():
     segment = this_year[(this_year.dowy >= event.dowy_lo) & (this_year.dowy <= event.dowy_hi)]
     ax.plot(segment.dowy, segment.cum, "-", color="0.25", lw=2.2, alpha=0.7, zorder=2)
 ax.axhline(best_rule_a.thr, color="#C1272D", lw=0.7, ls="--")
-ax.text(5, best_rule_a.thr + 8, f"Y = {best_rule_a.thr:.0f} mm", fontsize=6, color="#C1272D")
+ax.text(5, best_rule_a.thr + 8, f"{best_rule_a.thr:.0f} mm", fontsize=6, color="#C1272D")
 ax.set_xlim(1, 366)
 ax.set_xticks([1, 62, 124, 182, 244, 305, 366])
 ax.set_xticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1"])
-ax.set_ylabel("WY cumulative precipitation (mm)")
+ax.set_ylabel("Water-year precipitation (mm)")
 ax.legend(handles=[Line2D([], [], color="#C1272D", lw=3, label="InSAR onset window"),
-                   Line2D([], [], color="0.25", lw=2.2, alpha=0.7, label="array onset window (1983 to 2006)"),
-                   Line2D([], [], color="0.8", lw=0.5, label="all WYs 1980 to 2026")], fontsize=5.5, loc="upper left", frameon=False)
-ax.set_title("a) Onsets vs WY accumulation", loc="left")
+                   Line2D([], [], color="0.25", lw=2.2, alpha=0.7, label="Array onset window (1983 to 2006)"),
+                   Line2D([], [], color="0.8", lw=0.5, label="All water years 1980 to 2026")], fontsize=6, loc="upper left")
+utils.panel_title(ax, "A", "Onsets against water-year accumulation")
 # b) the lag of each onset after every rule A threshold
 ax = axes[1]
 thresholds = [score.thr for score in threshold_scores[threshold_scores.kind == "Y"].itertuples()]
@@ -913,8 +916,8 @@ ax.axvline(0, color="0.3", lw=0.6)
 ax.axhline(best_rule_a.thr, color="#C1272D", lw=0.7, ls="--")
 ax.set_xlim(-120, 160)
 ax.set_xlabel("Onset minus threshold crossing (d)")
-ax.set_ylabel("WY cumulative threshold Y (mm)")
-ax.set_title("b) Lag vs threshold (array grey)", loc="left")
+ax.set_ylabel("Water-year threshold (mm)")
+utils.panel_title(ax, "B", "Lag against threshold")
 # c) onset day against the day the best rule A threshold was crossed
 ax = axes[2]
 best_Y = int(best_rule_a.thr)
@@ -937,9 +940,9 @@ ax.set_xticks(ticks)
 ax.set_xticklabels(tick_labels)
 ax.set_yticks(ticks)
 ax.set_yticklabels(tick_labels)
-ax.set_xlabel(f"Day WY rain passes {best_Y} mm")
+ax.set_xlabel(f"Day water-year rain passes {best_Y} mm")
 ax.set_ylabel("Onset day of water year")
-ax.set_title(f"c) Rule A: {best_rule_a.insar_lag_min:+.0f} to {best_rule_a.insar_lag_max:+.0f} d", loc="left")
+utils.panel_title(ax, "C", f"Onset {best_rule_a.insar_lag_min:+.0f} to {best_rule_a.insar_lag_max:+.0f} d after the threshold")
 fig.tight_layout()
 f_conditioning = os.path.join(fig_dir, f"figS_precip_conditioning_storm{storm_days}d_bestY{best_Y}mm.png")
 fig.savefig(f_conditioning, dpi=300)

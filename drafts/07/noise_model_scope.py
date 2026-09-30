@@ -18,7 +18,7 @@ noise model to see how the delta chi2 <= 4 bracket moves.
 
 Runs the machinery cells [1]-[7] of scripts/07_slip_model_tests.py unchanged.
 Run from the repo root in opera_disp_feb13 (PROJ_LIB pointed at the env).
-Output: Figures_<date>/test_noise_model_scope.png, outputs/07_slip_model_tests/noise_model_scope.csv
+Output: Figures_<date>/figS_noise_model_depth_scan.png/.pdf (supplement), outputs/07_slip_model_tests/noise_model_scope.csv
 """
 import os
 from scipy.optimize import curve_fit
@@ -59,7 +59,7 @@ def fit_variogram(hb, gam):
 d_model = dist_to_trace(sar, fault)
 keep = (d_model > cov_mask_km) & np.isfinite(sar.vel)
 hb_model, gam_model = empirical_variogram(sar.x[keep], sar.y[keep], sar.vel[keep], min(cov_distmax_km, 4 * swath_km))
-fits = {"model: swath, both sides, lags to 8 km": (hb_model, gam_model, cov_p)}
+fits = {"Inversion noise model: swath, both sides, lags to 8 km": (hb_model, gam_model, cov_p)}
 
 # 2. the whole 06 box, one side at a time, SSE section +/- 2 km left out, lags to 20 km
 box = insar("box", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
@@ -71,7 +71,7 @@ away = (np.abs(signed) > cov_mask_km) & ((box_km < creep_lo_km - 2) | (box_km > 
 for side_name, side in (("west", signed < 0), ("east", signed > 0)):
     sel = away & side & np.isfinite(box.vel)
     hb, gam = empirical_variogram(box.x[sel], box.y[sel], box.vel[sel], 20.0)
-    fits[f"{side_name} side, whole box, lags to 20 km"] = (hb, gam, fit_variogram(hb, gam))
+    fits[f"{side_name.capitalize()} side, whole box, lags to 20 km"] = (hb, gam, fit_variogram(hb, gam))
     print(f"{side_name}: {sel.sum()} pixels")
 
 # 3. the fixed-depth scan (07_slip_model_tests [9]) with each noise model
@@ -108,23 +108,26 @@ print(result.round(3).to_string(index=False))
 
 # figure: A the semivariograms and fits, B the depth scan under each
 mpl_paper_style(base=7)
-fig, axes = plt.subplots(1, 2, figsize=(7.25, 2.9), constrained_layout=True)
+fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.9), constrained_layout=True)
 colours = ["#000000", "#0072B2", "#E69F00"]
 h_fine = np.linspace(0.01, 20, 400)
 for (name, (hb, gam, p)), colour in zip(fits.items(), colours):
     axes[0].plot(hb, gam, "o", ms=1.5, color=colour, alpha=0.5)
     axes[0].plot(h_fine, variogram_model(h_fine, *p), "-", color=colour, lw=1.2, label=name)
 axes[0].axvline(8.0, color="0.5", ls=":", lw=0.8)
-axes[0].text(8.2, axes[0].get_ylim()[1] * 0.05, "model's lag limit", fontsize=6, color="0.4")
+axes[0].text(8.2, 0.03, "Inversion lag limit", transform=axes[0].get_xaxis_transform(), fontsize=6, color="0.4", va="bottom")
 axes[0].set_xlabel("Separation (km)"); axes[0].set_ylabel(r"Semivariance (mm$^2$)")
-axes[0].legend(fontsize=5.5)
-axes[0].set_title("A  Semivariogram of the fault-parallel mean event", loc="left", fontsize=7)
+axes[0].legend(fontsize=6, loc="upper right")
+utils.panel_title(axes[0], "A", "Semivariogram of the fault-parallel mean event")
 for (name, scan), colour in zip(scans_by_model.items(), colours):
     axes[1].plot(scan.D_km, scan.dchi2, "o-", ms=2, color=colour, label=name)
 axes[1].axhline(4, color="0.5", ls=":", lw=0.8)
-axes[1].set_xscale("log"); axes[1].set_ylim(-1, 40)
+axes[1].text(0.21, 4.5, r"$\Delta\chi^2$ = 4", fontsize=6, color="0.4")
+axes[1].set_xscale("log"); axes[1].set_ylim(-1, 40); axes[1].set_xlim(0.2, 3.2)
+axes[1].set_xticks([0.2, 0.5, 1, 2, 3]); axes[1].set_xticklabels(["0.2", "0.5", "1", "2", "3"]); axes[1].minorticks_off()
 axes[1].set_xlabel("Bottom depth of uniform slip, D (km)"); axes[1].set_ylabel(r"$\Delta\chi^2$")
-axes[1].set_title("B  Fixed-depth scan under each noise model", loc="left", fontsize=7)
-f_fig = os.path.join(fig_dir, "test_noise_model_scope.png")
-fig.savefig(f_fig, dpi=300)
+utils.panel_title(axes[1], "B", "Fixed-depth scan under each noise model")
+f_fig = os.path.join(fig_dir, "figS_noise_model_depth_scan.png")   # supplement figure (Dani 2026-09-29)
+fig.savefig(f_fig, dpi=300, facecolor="white")
+fig.savefig(f_fig.replace(".png", ".pdf"), facecolor="white")
 print("wrote", f_fig)

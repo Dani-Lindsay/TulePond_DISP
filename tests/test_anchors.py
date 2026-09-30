@@ -22,13 +22,13 @@ from TulePond_filepaths import common_paths                              # noqa:
 ANCHORS = {
     # 02 velocity decomposition
     "02_strike_mean_deg": (144.10, 2),
-    "02_xfault_step_CFW1_mm_yr": (6.68, 2),
-    # 03 creep time series (coherence 0.7)
-    "03_n_crossings_asc": (656, 0), "03_n_crossings_des": (633, 0),
-    "03_n_acquisitions_asc": (344, 0), "03_n_acquisitions_des": (359, 0),
-    "03_n_common_dates": (423, 0), "03_n_both_real": (277, 0),
+    "02_xfault_step_CFW1_mm_yr": (6.62, 2),
+    # 03 creep time series (coherence 0.7; March-2026 data, refit 2026-09-30)
+    "03_n_crossings_asc": (654, 0), "03_n_crossings_des": (629, 0),
+    "03_n_acquisitions_asc": (359, 0), "03_n_acquisitions_des": (374, 0),
+    "03_n_common_dates": (439, 0), "03_n_both_real": (291, 0),
     "03_interp_pct_asc": (19, 0), "03_interp_pct_desc": (15, 0),
-    "03_n_crossings_common": (609, 0),
+    "03_n_crossings_common": (610, 0),
     # 04 event detection
     "04_n_events": (5, 0),
     "04_onset_2017": (2017.099, 3), "04_onset_2019": (2019.186, 3), "04_onset_2021": (2021.107, 3),
@@ -36,17 +36,17 @@ ANCHORS = {
     "04_onset_window_days_2017": (6, 0), "04_onset_window_days_2023": (12, 0),
     # the paper quotes the 90% band (Dani, 2026-09-21); the 75% band stays registered for Methods
     "04_band90_lo_km": (58.2, 1), "04_band90_hi_km": (59.8, 1), "04_band90_n_crossings": (17, 0),
-    "04_band90_step_2017_mm": (10.62, 2), "04_band90_step_2019_mm": (10.45, 2), "04_band90_step_2021_mm": (11.17, 2),
-    "04_band90_step_2023_mm": (11.82, 2), "04_band90_step_2024_mm": (7.62, 2),
-    "04_band90_steps_sum_mm": (51.7, 1), "04_band90_inter_event_mm_yr": (0.94, 2), "04_band90_steps_mean_mm": (10.3, 1),
-    "04_band75_steps_mean_mm": (10.1, 1), "04_band75_width_km": (2.7, 1), "04_band90_width_km": (1.6, 1),
-    "04_creep_length_km": (6.0, 1), "04_creep_length_lo_km": (56.3, 1), "04_creep_length_hi_km": (62.3, 1),
+    "04_band90_step_2017_mm": (10.63, 2), "04_band90_step_2019_mm": (10.48, 2), "04_band90_step_2021_mm": (11.20, 2),
+    "04_band90_step_2023_mm": (11.74, 2), "04_band90_step_2024_mm": (7.73, 2),
+    "04_band90_steps_sum_mm": (51.8, 1), "04_band90_inter_event_mm_yr": (0.93, 2), "04_band90_steps_mean_mm": (10.4, 1),
+    "04_band75_steps_mean_mm": (10.2, 1), "04_band75_width_km": (2.6, 1), "04_band90_width_km": (1.6, 1),
+    "04_creep_length_km": (6.2, 1), "04_creep_length_lo_km": (56.2, 1), "04_creep_length_hi_km": (62.4, 1),
     "04_interval_mean_yr": (1.97, 2), "04_interval_sd_d": (30, 0), "04_interval_cov": (0.04, 2),
     # 06 event field geometry (coherence 0.7, all five events in the mean, 30-150 m steps)
-    "06_n_events_mean": (5, 0), "06_asc_desc_geom_ratio": (-0.60, 2),
-    "06_fp_rate_step_mm_yr": (1.21, 2), "06_fp_event_step_mm": (7.97, 2),
-    "06_XX_rate_step_mm_yr": (0.96, 2), "06_XX_event_step_mm": (8.63, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
-    "06_YY_rate_step_mm_yr": (6.16, 2), "06_YY_event_step_mm": (0.75, 2),
+    "06_n_events_mean": (5, 0), "06_asc_desc_geom_ratio": (-0.56, 2),
+    "06_fp_rate_step_mm_yr": (1.41, 2), "06_fp_event_step_mm": (8.74, 2),
+    "06_XX_rate_step_mm_yr": (1.17, 2), "06_XX_event_step_mm": (9.17, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
+    "06_YY_rate_step_mm_yr": (6.54, 2), "06_YY_event_step_mm": (0.88, 2),
     # 08 alignment arrays
     "08_hrkt_n_surveys": (177, 0), "08_hrkt_n_events": (14, 0), "08_hrkt_amp_median_mm": (7.4, 1),
     "08_aa_interval_median_yr": (2.8, 1), "08_aa_interval_n": (13, 0),

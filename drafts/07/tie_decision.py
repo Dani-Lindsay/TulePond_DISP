@@ -65,7 +65,7 @@ for label, res in results.items():
     surface_row = res["table"][res["table"].z_top <= 1e-6].sort_values("km_pp")
     ax.plot(surface_row.km_pp, surface_row.slip_mm, "-", color=res["colour"], lw=0.9)
 ax.set_xlim(54, 65); ax.set_xlabel("km from Point Pinole"); ax.set_ylabel("Surface slip (mm)")
-ax.legend(fontsize=5.5)
+ax.legend(fontsize=6)
 ax.set_title("E  Surface slip", loc="left", fontsize=7)
 
 ax = fig.add_subplot(grid[3, 2])                                  # F: residual rms against distance from the trace

@@ -847,10 +847,23 @@ for name in [str(n) for n in fig2_in["names"]]:
     step_fp = model_profiles[f"prof_{name}_fp_mm"]
     print(f"{name}-{name}' model fault-parallel: west {step_fp[d_line < 0].min():+.2f} mm, east {step_fp[d_line > 0].max():+.2f} mm")
 
+# the quadtree blocks as polygons, so Fig 2 can fill each block at its true size
+# (equal-size dots over-weight the many small blocks at the trace). CSI keeps two
+# opposite corners of every block in its local km frame (`xycorner`, one row per
+# sample, in sample order); the four corners go back to lon/lat with the image's xy2ll.
+xyc = np.asarray(ds.xycorner, dtype=float)
+assert xyc.shape == (ds.vel.size, 4), f"xycorner {xyc.shape} does not match {ds.vel.size} samples"
+corner_x = np.c_[xyc[:, 0], xyc[:, 2], xyc[:, 2], xyc[:, 0]]
+corner_y = np.c_[xyc[:, 1], xyc[:, 1], xyc[:, 3], xyc[:, 3]]
+block_lon, block_lat = ds.xy2ll(corner_x.ravel(), corner_y.ravel())
+block_lon, block_lat = np.reshape(block_lon, corner_x.shape), np.reshape(block_lat, corner_x.shape)
+inside = ((block_lon.min(1) <= ds.lon) & (ds.lon <= block_lon.max(1)) & (block_lat.min(1) <= ds.lat) & (ds.lat <= block_lat.max(1)))
+assert inside.mean() > 0.99, f"only {inside.mean():.1%} of samples fall inside their own block: corner order is off"
+
 # along strike: the model's surface cells next to the crossing slip it was fitted to
 surface_row = table[table.z_top <= 1e-6].sort_values("km_pp")
 np.savez(os.path.join(tests_dir, "fig2_model_row.npz"),
-         sample_lon=ds.lon, sample_lat=ds.lat, data_mm=ds.vel, model_mm=ds.synth,
+         sample_lon=ds.lon, sample_lat=ds.lat, block_lon=block_lon, block_lat=block_lat, data_mm=ds.vel, model_mm=ds.synth,
          residual_mm=residual, nodes_sz=nodes, faces=faces, slip_mm=table.slip_mm.values,
          s0_km_pp=float(lat_to_km_pp([ref_fault.lati[0]])[0]),
          mw_30gpa=results.mw_30gpa, mw_sfcvm=results.mw_sfcvm, mu_effective_gpa=results.mu_effective_gpa,

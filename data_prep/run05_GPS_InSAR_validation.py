@@ -43,7 +43,7 @@ within a track) is PRESERVED in the output, not flattened: the correction is
 re-zeroed at ZOA1 with ONE scalar per track group (`corr_ref`).
 
 Output:  <frame>/mintpy/velocity_NA.h5, mosaic/<orbit>_velocity_NA.h5,
-         <data_dir>/gps_insar_validation.csv (per-station residuals)
+         <data_dir>/GPS/gps_insar_validation.csv (per-station residuals)
 
 Run in the conda environment.
 """
@@ -485,7 +485,7 @@ if __name__ == '__main__':
               f"{100*fin.mean():.1f}% valid")
 
     # 6) Per-station residuals, as fitted -- the numbers behind Fig. S2
-    out = os.path.join(data_dir, "gps_insar_validation.csv")
+    out = os.path.join(data_dir, "GPS", "gps_insar_validation.csv")     # beside the GNSS series it was tied to
     pd.concat(all_obs, ignore_index=True).to_csv(out, index=False)
     print(f"\nstations -> {out}")
     write_tie_report(all_obs, group_stats, len(gnss) + int(subsiding.sum()),

@@ -105,7 +105,7 @@ axes[0].set_xlabel("East-block motion (mm; + away from the fault / + up)"); axes
 axes[0].legend(fontsize=6); axes[0].set_title("A  Profile of the east-block motion", loc="left", fontsize=7)
 axes[1].axvline(0, color="0.7", lw=0.6)
 axes[1].set_xlabel("East-block motion (mm)"); axes[1].set_ylabel("rms (mm)")
-axes[1].legend(fontsize=5.5); axes[1].set_title("B  Fit per track", loc="left", fontsize=7)
+axes[1].legend(fontsize=6); axes[1].set_title("B  Fit per track", loc="left", fontsize=7)
 f_fig = os.path.join(fig_dir, "test_east_block_motion.png")
 fig.savefig(f_fig, dpi=300)
 print("wrote", f_fig)

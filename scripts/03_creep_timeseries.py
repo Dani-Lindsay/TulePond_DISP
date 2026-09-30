@@ -148,17 +148,18 @@ print(f"cross-fault azimuth: raw {x_fault.profile_az.min():.1f} to {x_fault.prof
       f"smoothed {x_fault.az_smooth.min():.1f} to {x_fault.az_smooth.max():.1f} deg; "
       f"|raw - smoothed| > 10 deg at {(np.abs(x_fault.profile_az - x_fault.az_smooth) > 10).sum()} crossings")
 
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, ax = plt.subplots(figsize=(7.2, 2.2))
-ax.plot(x_fault.km, x_fault.profile_az, ".", color="0.6", ms=3, label="raw profile_az (100 m)")
-ax.plot(x_fault.km, x_fault.az_smooth, "-", color="k", lw=1.2, label=f"{az_smooth_n}-crossing rolling median")
+ax.plot(x_fault.km, x_fault.profile_az, ".", color="0.6", ms=3, label="Local azimuth at each 100 m crossing")
+ax.plot(x_fault.km, x_fault.az_smooth, "-", color="k", lw=1.2, label=f"Rolling median over {az_smooth_n} crossings")
 for code, la, lo, name in creepmeters:
     ax.axvline(km_of([la])[0], color="#0072B2", lw=0.8, ls=":")
     ax.text(km_of([la])[0], ax.get_ylim()[1], code, ha="center", va="bottom", fontsize=6, color="#0072B2")
 ax.set_xlabel("Distance from Point Pinole (km)")
 ax.set_ylabel("Cross-fault azimuth (deg)")
-ax.legend(fontsize=7, frameon=False)
+ax.legend(fontsize=7)
 fig.tight_layout()
-fig.savefig(os.path.join(fig_dir, f"qc03_profile_azimuth_smooth{az_smooth_n}.png"), dpi=300)
+f_qc = os.path.join(fig_dir, f"qc03_profile_azimuth_smooth{az_smooth_n}.png"); fig.savefig(f_qc, dpi=300); fig.savefig(f_qc.replace(".png", ".pdf"))
 plt.show()
 
 # %% [markdown]
@@ -428,9 +429,9 @@ for ax, dic, letter in zip(axes, insar_dic_list, "ab"):
     ax.axvspan(stats["rate_cut"], lim, color="tab:red", alpha=0.08)
     ax.set_xlim(-lim, lim)
     ax.set_xlabel("LOS rate deviation from side median (mm/yr)")
-    ax.set_title(f"{letter}) {track} ({dic['Frame']})", loc="left", fontsize=8)
+    utils.panel_title(ax, letter.upper(), f"{track.capitalize()} (frame {dic['Frame']})")
     ax.text(0.03, 0.95, f"$\\sigma$ = {stats['sigma']:.2f} mm/yr\ncut $\\pm${stats['rate_cut']:.2f} ({rate_nsigma:g}$\\sigma$)\n"
-            f"rejected {stats['rej_pct']:.1f}%\nmax |dev| {stats['max_dev']:.1f}",
+            f"rejected {stats['rej_pct']:.1f}%\nlargest deviation {stats['max_dev']:.1f} mm/yr",
             transform=ax.transAxes, va="top", ha="left", fontsize=7,
             bbox=dict(facecolor="white", edgecolor="none", alpha=0.7))
 axes[0].set_ylabel("Near-fault pixels")
@@ -651,9 +652,9 @@ ax.set_xlabel("Distance from Point Pinole (km)")
 ax.set_ylabel("Fault-parallel creep rate (mm/yr)")
 ax.set_ylim(0, 12)
 ax.grid(True, ls="--", alpha=0.4)
-ax.legend(fontsize=6, frameon=False, ncol=4)
+ax.legend(fontsize=6, ncol=4)
 fig.tight_layout()
-fig.savefig(os.path.join(fig_dir, f"qc03_creep_rate_profile_{params}.png"), dpi=300)
+f_qc = os.path.join(fig_dir, f"qc03_creep_rate_profile_{params}.png"); fig.savefig(f_qc, dpi=300); fig.savefig(f_qc.replace(".png", ".pdf"))
 plt.show()
 
 # %% [markdown]

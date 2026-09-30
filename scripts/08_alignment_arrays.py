@@ -55,6 +55,7 @@ from TulePond_filepaths import common_paths, params, paths_out, repo_dir
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 # %% [markdown]
 # ## [3] Paths and parameters
@@ -83,7 +84,7 @@ array_lat = {"HAPP": 37.5924, "HGIL": 37.5665, "HRKT": 37.5421, "HHAN": 37.5394,
 
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
-aa_color, insar_color, det_color = "#08306B", "#D55E00", "#0072B2"
+aa_color, insar_color, det_color = "#08306B", "#D55E00", "#E69F00"   # array navy; InSAR vermillion; InSAR onsets orange (no two blues, no blue/green)
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(fp_ts_file, events_file, common_paths["aa_summary"],
@@ -208,22 +209,22 @@ print("\n".join(stats_lines))
 # %%
 # [11]
 # supplement figure: the six arrays against the InSAR, whole record on top, since 2015 below
-utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
-fig, axes = plt.subplots(2, len(array_lat), figsize=(13.0, 5.0))
+utils.mpl_paper_style(base=6.5)        # Helvetica; 6.5 pt so six columns fit the Science page width
+fig, axes = plt.subplots(2, len(array_lat), figsize=(7.2, 3.4), constrained_layout=True)   # 18.3 cm
 for i, (code, array) in enumerate(arrays.items()):
     insar_dates, insar_slip, n_crossings = stacks[code]
     # whole record
     ax = axes[0, i]
     ax.errorbar(array.year, array.cum_mm, yerr=array.std_mm, fmt="o", ms=1.8, color=aa_color, ecolor=aa_color, elinewidth=0.4, lw=0.7, ls="-")
     ax.plot(insar_dates, insar_slip, "-", lw=0.8, color=insar_color)
-    ax.set_title(f"{'abcdef'[i]}) {code} ({array_lat[code]:.3f} N)", loc="left")
+    utils.panel_title(ax, "ABCDEF"[i], f"{code} {array_lat[code]:.3f}\u00b0N", size=6.5)
     if i == 0:
         ax.set_ylabel("Cumulative slip (mm)")
     # since zoom_t0
     ax = axes[1, i]
     recent = array.year >= zoom_t0
     ax.errorbar(array.year[recent], array.cum_mm[recent], yerr=array.std_mm[recent], fmt="o", ms=3, color=aa_color, ecolor=aa_color,
-                elinewidth=0.6, lw=0.8, ls="-", label=f"{code} array")
+                elinewidth=0.6, lw=0.8, ls="-", label="Array")
     ax.plot(insar_dates, insar_slip, "-", lw=0.8, color=insar_color, label=f"InSAR (n = {n_crossings})")
     for onset in insar_events.onset_yr:
         ax.axvline(onset, color="0.55", lw=0.6, ls="--", zorder=0)
@@ -234,9 +235,10 @@ for i, (code, array) in enumerate(arrays.items()):
     ax.set_ylim(y_lo - 3, y_hi + 3)
     if i == 0:
         ax.set_ylabel("Cumulative slip (mm)")
-        ax.legend(fontsize=6, loc="upper left", frameon=False)
-    ax.set_title(f"{'ghijkl'[i]})", loc="left")
-fig.tight_layout()
+        ax.legend(fontsize=6, loc="upper left")
+    utils.panel_title(ax, "GHIJKL"[i], f"{code} since {zoom_t0:.0f}", size=6.5)
+    ax.set_xticks([2018, 2022, 2026])
+# constrained_layout (set in subplots) does the spacing
 f_arrays = os.path.join(fig_dir, f"figS_tulepond_arrays_insar_{params}_stack{stack_km:g}km.png")
 fig.savefig(f_arrays, dpi=300)
 fig.savefig(f_arrays.replace(".png", ".pdf"))
@@ -399,7 +401,7 @@ ax.eventplot([arrays["HGIL"].year.values, survey_yr], lineoffsets=[1, 0], linele
 ax.set_yticks([1, 0])
 ax.set_yticklabels(["HGIL", "HRKT"])
 ax.set_ylim(-0.5, 1.5)
-ax.set_title("a) Survey cadence of the Tule Pond arrays", loc="left")
+utils.panel_title(ax, "A", "Survey cadence of the Tule Pond arrays")
 
 # b) the HRKT record with the detected events shaded and the InSAR onsets dashed
 ax = axes[1]
@@ -413,10 +415,10 @@ for event in hrkt_events.itertuples():
 for i, onset in enumerate(insar_events.onset_yr):
     ax.axvline(onset, color=det_color, lw=0.9, ls="--", zorder=2, label="InSAR detections" if i == 0 else None)
 ax.axvline(loma_prieta, color="0.25", lw=0.7, ls=":", zorder=2)
-ax.text(loma_prieta + 0.35, 0.02, "Loma Prieta", transform=ax.get_xaxis_transform(), rotation=90, fontsize=5.5, color="0.25", va="bottom")
+ax.text(loma_prieta + 0.35, 0.02, "Loma Prieta", transform=ax.get_xaxis_transform(), rotation=90, fontsize=6, color="0.25", va="bottom")
 ax.set_ylabel("Cumulative slip (mm)")
-ax.legend(fontsize=6, loc="lower right", frameon=False)
-ax.set_title(f"b) {site} alignment array, detected events shaded", loc="left")
+ax.legend(fontsize=6, loc="lower right")
+utils.panel_title(ax, "B", f"{site} alignment array, detected events shaded")
 # two insets since zoom_t0 (HGIL and HRKT), each zeroed at its first survey, on one y range
 zoom = {}
 for code in ("HGIL", "HRKT"):
@@ -446,8 +448,8 @@ ax = axes[2]
 ax.plot(0.5 * (survey_yr[1:] + survey_yr[:-1]), excess, "-", lw=0.6, color="0.4")
 ax.axhline(thr_mm, color=insar_color, lw=0.8, ls="--", label=f"{thr_mm:g} mm = {thr_mm / excess_sigma:.1f} sigma")
 ax.set_ylabel("Excess step\n(mm)")
-ax.legend(fontsize=6, loc="upper left", frameon=False)
-ax.set_title("c) Detection statistic", loc="left")
+ax.legend(fontsize=6, loc="upper left")
+utils.panel_title(ax, "C", "Detection statistic")
 
 # d) repeat intervals (left axis) and step sizes (right axis), medians as bars over each catalogue's span
 ax = axes[3]
@@ -455,34 +457,34 @@ interval_median = dict(AA=float(np.median(aa_interval)), InSAR=float(np.median(i
 step_median = dict(AA=float(hrkt_events.amplitude_mm.median()), InSAR=float(insar_events.amplitude_mm.median()))
 aa_span = (float(hrkt_events.onset_yr.min()), float(hrkt_events.onset_yr.max()))
 insar_span = (float(insar_events.onset_yr.min()), float(insar_events.onset_yr.max()))
-c_interval_aa, c_interval_insar, c_step_aa, c_step_insar = "#C4441C", "#FDAE6B", "#7570B3", "#6BAED6"
+c_interval_aa, c_interval_insar, c_step_aa, c_step_insar = "#000000", "#E69F00", "#999999", "#0072B2"   # Okabe-Ito: black / orange intervals, grey / blue steps
 ax.errorbar(aa_interval_mid, aa_interval, yerr=aa_interval_err, fmt="o", ms=3.2, color=c_interval_aa, ecolor="0.6", elinewidth=0.6, zorder=3,
-            label="interval between array events")
-ax.errorbar(insar_interval_mid, insar_interval, yerr=insar_interval_err, fmt="o", ms=3.2, mfc=c_interval_insar, mec="#D55E00", mew=0.5,
-            ecolor="0.6", elinewidth=0.6, ls="none", zorder=3, label="interval between InSAR events")
+            label="Interval between array events")
+ax.errorbar(insar_interval_mid, insar_interval, yerr=insar_interval_err, fmt="o", ms=3.2, mfc=c_interval_insar, mec=c_interval_insar, mew=0.5,
+            ecolor="0.6", elinewidth=0.6, ls="none", zorder=3, label="Interval between InSAR events")
 ax.plot(aa_span, [interval_median["AA"]] * 2, "-", lw=2.5, color=c_interval_aa, alpha=0.85, zorder=2, solid_capstyle="butt")
 ax.plot(insar_span, [interval_median["InSAR"]] * 2, "-", lw=2.5, color=c_interval_insar, zorder=2, solid_capstyle="butt")
-ax.text(aa_span[0] - 0.6, interval_median["AA"], f"{interval_median['AA']:.1f} yr", fontsize=5.5, color=c_interval_aa, ha="right", va="center")
-ax.text(insar_span[0] - 0.6, interval_median["InSAR"], f"{interval_median['InSAR']:.1f} yr", fontsize=5.5, color="#D55E00", ha="right", va="center")
+ax.text(aa_span[0] - 0.6, interval_median["AA"], f"{interval_median['AA']:.1f} yr", fontsize=6, color=c_interval_aa, ha="right", va="center")
+ax.text(insar_span[0] - 0.6, interval_median["InSAR"], f"{interval_median['InSAR']:.1f} yr", fontsize=6, color=c_interval_insar, ha="right", va="center")
 ax_step = ax.twinx()
 ax_step.errorbar(hrkt_events.onset_yr, hrkt_events.amplitude_mm, yerr=hrkt_events.amp_err, fmt="s", ms=3.2, mfc=c_step_aa, mec="none",
-                 ecolor="0.6", elinewidth=0.6, ls="none", zorder=3, label="step size, array events")
-ax_step.errorbar(insar_events.onset_yr, insar_events.amplitude_mm, yerr=insar_events.amp_err, fmt="s", ms=3.2, mfc=c_step_insar, mec="#2171B5",
-                 mew=0.4, ecolor="0.6", elinewidth=0.6, ls="none", zorder=3, label="step size, InSAR events")
+                 ecolor="0.6", elinewidth=0.6, ls="none", zorder=3, label="Step size, array events")
+ax_step.errorbar(insar_events.onset_yr, insar_events.amplitude_mm, yerr=insar_events.amp_err, fmt="s", ms=3.2, mfc=c_step_insar, mec=c_step_insar,
+                 mew=0.4, ecolor="0.6", elinewidth=0.6, ls="none", zorder=3, label="Step size, InSAR events")
 ax_step.plot(aa_span, [step_median["AA"]] * 2, "-", lw=2.5, color=c_step_aa, alpha=0.85, zorder=2, solid_capstyle="butt")
 ax_step.plot(insar_span, [step_median["InSAR"]] * 2, "-", lw=2.5, color=c_step_insar, zorder=2, solid_capstyle="butt")
-ax_step.text(aa_span[0] - 0.6, step_median["AA"], f"{step_median['AA']:.1f} mm", fontsize=5.5, color=c_step_aa, ha="right", va="center")
-ax_step.text(insar_span[0] - 0.6, step_median["InSAR"], f"{step_median['InSAR']:.1f} mm", fontsize=5.5, color="#2171B5", ha="right", va="center")
+ax_step.text(aa_span[0] - 0.6, step_median["AA"], f"{step_median['AA']:.1f} mm", fontsize=6, color=c_step_aa, ha="right", va="center")
+ax_step.text(insar_span[0] - 0.6, step_median["InSAR"], f"{step_median['InSAR']:.1f} mm", fontsize=6, color=c_step_insar, ha="right", va="center")
 ax_step.set_ylim(0, 15.0)
-ax_step.set_ylabel("Step size\n(mm)", color="#7570B3", fontsize=7)
-ax_step.tick_params(axis="y", labelcolor="#7570B3", labelsize=7)
+ax_step.set_ylabel("Step size\n(mm)", color="0.4", fontsize=7)
+ax_step.tick_params(axis="y", labelcolor="0.4", labelsize=7)
 ax.set_ylim(0, 8)
 ax.set_ylabel("Repeat interval (yr)")
 ax.set_xlabel("Year")
 handles, labels = ax.get_legend_handles_labels()
 handles_step, labels_step = ax_step.get_legend_handles_labels()
-ax.legend(handles + handles_step, labels + labels_step, fontsize=5.5, loc="upper left", frameon=False)
-ax.set_title("d) Repeat interval at each interval's midpoint (squares: step size)", loc="left")
+ax.legend(handles + handles_step, labels + labels_step, fontsize=6, loc="upper left")
+utils.panel_title(ax, "D", "Repeat interval at each interval's midpoint (squares: step size)")
 ax.set_xlim(1978.5, 2026.5)
 fig.tight_layout()
 f_fig3 = os.path.join(fig_dir, f"fig3_aa_history_thr{thr_mm:g}mm_nev{len(hrkt_events)}.png")
@@ -533,19 +535,19 @@ for i_case, (label, threshold_mm) in enumerate(cases):
     for onset in insar_events.onset_yr:
         ax.axvline(onset, color=det_color, lw=0.8, ls="--", zorder=1)
     ax.set_ylabel("Excess step (mm)")
-    ax.set_title(f"{'ace'[i_case]}) threshold {label}: {len(sweep_events)} array events" + (f" ({n_small} with amp < 2 mm)" if n_small else ""), loc="left")
+    utils.panel_title(ax, "ACE"[i_case], f"Threshold {label}: {len(sweep_events)} array events" + (f" ({n_small} with amplitude < 2 mm)" if n_small else ""))
     # right: the merged repeat intervals and their moving median
     ax = axes[i_case, 1]
     ax.errorbar(interval_mid[~has_insar], interval[~has_insar], yerr=interval_err[~has_insar], fmt="o", ms=3.2, color=aa_color,
-                ecolor="0.6", elinewidth=0.6, label="array intervals")
+                ecolor="0.6", elinewidth=0.6, label="Array intervals")
     ax.errorbar(interval_mid[has_insar], interval[has_insar], yerr=interval_err[has_insar], fmt="o", ms=3.2, mfc=det_color, mec=det_color,
                 ecolor="0.6", elinewidth=0.6, ls="none", label="InSAR intervals")
     ax.plot(window_centres, window_median, "-", lw=1.3, color=insar_color, label=f"{win_yr:g}-yr moving median")
     ax.set_ylim(0, None)
     ax.set_ylabel("Repeat interval (yr)")
-    ax.set_title(f"{'bdf'[i_case]}) merged intervals: trend {sweep_trend[0] * 10:+.1f} yr/decade", loc="left")
+    utils.panel_title(ax, "BDF"[i_case], f"Merged intervals: trend {sweep_trend[0] * 10:+.1f} yr/decade")
     if i_case == 0:
-        ax.legend(fontsize=6, loc="upper right", frameon=False)
+        ax.legend(fontsize=6, loc="upper right")
     if i_case == len(cases) - 1:
         axes[i_case, 0].set_xlabel("Year")
         ax.set_xlabel("Year")

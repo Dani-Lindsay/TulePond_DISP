@@ -49,7 +49,7 @@ for label, table in tables.items():
     by_depth = column.groupby(np.round(column.z_c, 3)).slip_mm.max()
     ax.plot(by_depth.values, by_depth.index, "o-", ms=2, lw=1, label=label)
 ax.set_ylim(1.0, 0); ax.set_xlabel("Slip at the peak column (mm)"); ax.set_ylabel("Depth (km)")
-ax.legend(fontsize=5.5)
+ax.legend(fontsize=6)
 ax.set_title("D  Slip with depth at the peak", loc="left", fontsize=7)
 f_fig = os.path.join(fig_dir, "test_tie_motivation.png")
 fig.savefig(f_fig, dpi=300)

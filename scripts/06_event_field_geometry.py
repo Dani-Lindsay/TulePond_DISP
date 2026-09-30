@@ -88,8 +88,10 @@ import numpy as np
 import pandas as pd
 import pyproj
 import h5py
+import pygmt
 from scipy.spatial import cKDTree
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 from mintpy.utils import time_func                                    # the design matrix timeseries2velocity uses
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert              # THE decomposition, MintPy's own
@@ -730,25 +732,61 @@ print("wrote", f_fig2_in)
 
 # %%
 clim = 4.0
+scatter_lim = 2.0          # the scatter is ~0.5-1.5 mm near the fault; 2 mm keeps it readable
 n_ev = len(onsets)
-fig, axes = plt.subplots(2, n_ev + 2, figsize=(2.1 * (n_ev + 2), 5.0), sharex=True, sharey=True)
+n_col = n_ev + 2
+# pygmt, north up in lon/lat (Dani 2026-09-29: pygmt for anything with a map).
+# 18.3 cm wide: seven maps with small gaps, lon annotated on the bottom row and
+# lat on the left column only; two colour bars of the same height and font
+# under the bottom row (step bar under the event + mean columns, scatter bar
+# under the scatter column).
+region_box = [box_lonlat[0], box_lonlat[2], box_lonlat[1], box_lonlat[3]]
+x_corner, y_corner = x0 + c0 * dx, y0 + r0 * dy                 # corner of the box's first pixel
+Wm, gap_x, gap_y = 2.3, 0.15, 0.55
+w_, h_ = utils.gmt_map_size(region_box, f"M{Wm}c")
+Hm = h_
+proj_box = f"M{Wm}c"
+cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
+cpt_step = utils.write_cpt(os.path.join(cpt_dir, "step_maps.cpt"), "RdBu_r", -clim, clim)
+cpt_scatter = utils.write_cpt(os.path.join(cpt_dir, "step_scatter.cpt"), "magma", 0, scatter_lim)   # magma, not viridis: no blue/green
+pygmt.config(FONT="7p,Helvetica", FONT_ANNOT_PRIMARY="6p,Helvetica", FONT_LABEL="6p,Helvetica", MAP_FRAME_TYPE="plain",
+             MAP_FRAME_PEN="0.5p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_ANNOT_OFFSET="2p", MAP_LABEL_OFFSET="2p", FORMAT_GEO_MAP="D")
+fig = pygmt.Figure()
+letters = iter("ABCDEFGHIJKLMNOP")
 for r_, orbit in enumerate(event_maps):
-    panels = [(event_maps[orbit]["ev"][i], f"{oy:.2f}" + (" (excl.)" if any(abs(oy - x) < 0.02 for x in exclude_events) else ""), "RdBu_r", (-clim, clim))
+    panels = [(event_maps[orbit]["ev"][i], f"{oy:.2f}" + (" (excluded)" if any(abs(oy - x) < 0.02 for x in exclude_events) else ""), cpt_step)
               for i, (_, _, oy) in enumerate(fits[orbit]["steps"])]
-    panels += [(mean_event[orbit]["mean"], f"mean of {mean_event[orbit]['n']}", "RdBu_r", (-clim, clim)),
-               (mean_event[orbit]["scatter"], "scatter (sd)", "viridis", (0, clim))]
-    for c_, (m_, ttl, cmap, cl) in enumerate(panels):
-        ax = axes[r_, c_]
-        im = ax.pcolormesh(lon_g, lat_g, m_, cmap=cmap, vmin=cl[0], vmax=cl[1], shading="nearest", rasterized=True)
-        ax.plot(prof.ft_lon, prof.ft_lat, "k-", lw=0.5)
-        ax.set_xlim(box_lonlat[0], box_lonlat[2]); ax.set_ylim(box_lonlat[1], box_lonlat[3]); ax.set_aspect(1 / np.cos(np.deg2rad(37.55)))
-        ax.set_title(f"{orbit[:3]} {ttl}", fontsize=8, loc="left")
-        ax.tick_params(labelsize=6)
-        if r_ == 1 and c_ in (0, n_ev + 1):
-            fig.colorbar(im, ax=axes[:, c_] if c_ else axes[:, :n_ev + 1], shrink=0.5, orientation="horizontal", pad=0.06, label="LOS mm" if c_ == 0 else "mm")
-fig.suptitle(f"Per-pixel step maps, coherence {coh_timeseries}, box median removed, descending burst offsets removed", fontsize=9)
-f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_maps}.png")
-fig.savefig(f_grid, dpi=300, bbox_inches="tight"); print("Saved figure to:", f_grid); plt.show()
+    panels += [(mean_event[orbit]["mean"], f"Mean of {mean_event[orbit]['n']}", cpt_step),
+               (mean_event[orbit]["scatter"], "Scatter", cpt_scatter)]
+    if r_:
+        fig.shift_origin(xshift=f"-{(n_col - 1) * (Wm + gap_x)}c", yshift=f"-{Hm + gap_y}c")
+    for c_, (m_, ttl, cpt) in enumerate(panels):
+        if c_:
+            fig.shift_origin(xshift=f"{Wm + gap_x}c")
+        grid = utils.utm_to_lonlat_grid(m_, x_corner, y_corner, dx, dy, epsg, region_box, 0.00015, 0.00012)   # ~13 m, half the 30 m pixel, so no pixel is dropped or doubled
+        sides = ("W" if c_ == 0 else "w") + ("S" if r_ == 1 else "s") + "nr"
+        fig.basemap(region=region_box, projection=proj_box, frame=[sides, "xa0.15f0.05", "ya0.05f0.025"])
+        fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True)
+        fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.5p," + ("black" if cpt == cpt_step else "white"))   # white on the dark scatter map
+        fig.basemap(region=region_box, projection=proj_box, frame=[sides, "xa0.15f0.05", "ya0.05f0.025"])
+        fig.text(position="TL", text=f"@%Helvetica-Bold%{next(letters)}@%%  {orbit[:3].capitalize()} {ttl}", justify="BL",
+                 offset="0c/0.12c", font="6.5p,Helvetica", no_clip=True)
+# colour bars, 0.25 cm tall, 0.7 cm under the bottom row
+fig.shift_origin(xshift=f"-{(n_col - 1) * (Wm + gap_x)}c")
+span_step = n_ev * (Wm + gap_x) + Wm                 # the event + mean columns
+w_step = 2 * Wm + gap_x                              # bar two maps wide (Dani 2026-09-29), centred under those columns
+cb_pt = 6.0 / min(1.0, np.sqrt(w_step / 9.0))        # GMT shrinks a short bar's fonts by ~sqrt(length / 9 cm): this prints ~6p
+with pygmt.config(FONT_ANNOT_PRIMARY=f"{cb_pt:.1f}p,Helvetica", FONT_LABEL=f"{cb_pt:.1f}p,Helvetica"):
+    fig.colorbar(cmap=cpt_step, position=f"x{0.5 * (span_step - w_step)}c/-0.75c+w{w_step}c/0.22c+h+jTL+e",
+                 frame=["xa2f1+lLOS step (mm), positive toward the satellite"])
+with pygmt.config(FONT_ANNOT_PRIMARY="12p,Helvetica", FONT_LABEL="12p,Helvetica"):    # GMT halves the fonts of a bar this short: 12p prints as ~6p
+    fig.colorbar(cmap=cpt_scatter, position=f"x{(n_col - 1) * (Wm + gap_x)}c/-0.75c+w{Wm}c/0.22c+h+jTL+ef",
+                 frame=["xa1f0.5+lScatter, 1 sd (mm)"])
+# the caption carries what the old title said: per-pixel steps, box median removed, descending burst offsets removed, coherence coh_maps
+f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_maps}")
+fig.savefig(f_grid + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)
+fig.savefig(f_grid + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
+print("Saved figure to:", f_grid + ".png")
 
 # %% [markdown]
 # ## REGISTER
