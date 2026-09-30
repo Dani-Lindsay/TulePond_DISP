@@ -1060,6 +1060,16 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
             r_off = pd.read_csv(f_off).set_index("model").loc[f"PyLith sfcvm_{off}"]
             range_vals.append(float(r_off.Mw_30gpa)); basis.append(f"SFCVM boundary 50 m {off[0].upper()} ({r_off.Mw_30gpa:.2f})")
     mw_range = [float(min(range_vals)), float(max(range_vals))]
+    # the same range at the SFCVM rigidity (Dani 2026-10-01): sigma neighbours from 08b's bootstrap table (its
+    # sigma_neighbour rows), alignment runs from the same cached tables; no new inversion
+    unc_nb = pd.read_csv(os.path.join(paths_sfcvm["gf"], f"uncertainty_{run_tag(cd)}_{medium}.csv"))
+    sfcvm_vals = [mdl["Mw_sfcvm"]] + list(unc_nb[unc_nb.kind == "sigma_neighbour"].Mw_sfcvm.values)
+    if medium == "sfcvm":
+        for off in ("e50", "w50"):
+            sfcvm_vals.append(float(pd.read_csv(os.path.join(paths_sfcvm["gf"], f"results_comparison_{off}{CD_TAG[cd]}.csv"))
+                                    .set_index("model").loc[f"PyLith sfcvm_{off}"].Mw_sfcvm))
+    mw_sfcvm_range = [float(min(sfcvm_vals)), float(max(sfcvm_vals))]
+    assert len(sfcvm_vals) >= 3 and mw_sfcvm_range[0] <= mdl["Mw_sfcvm"] + 1e-9 <= mw_sfcvm_range[1] + 2e-9
     assert mw_range[0] <= mdl["Mw_30gpa"] + 1e-9 <= mw_range[1] + 2e-9
     unc_file = os.path.join(paths_sfcvm["gf"], f"uncertainty_{run_tag(cd)}_{medium}.csv")
     assert os.path.exists(unc_file), f"missing bootstrap product {unc_file} (08b)"
@@ -1079,6 +1089,7 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
                chi2=mdl["chi2"], forward_validation=json.dumps(val), model_tag=f"pylith_{label}",
                mw_30gpa_2sig=float(s2.Mw_30gpa), mw_sfcvm_2sig=float(s2.Mw_sfcvm), surf_ratio_pct_2sig=float(s2.surface_pct),
                potency_2sig_m3=float(s2.potency_m3), mw_30gpa_range=np.array(mw_range), mw_30gpa_range_basis="; ".join(basis),
+               mw_sfcvm_range=np.array(mw_sfcvm_range),
                provenance=f"08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}: run {run_tag(cd)}, medium {medium}, PyLith GF {run_names[medium]}, "
                           f"Cd {cd}, surface constraint ON, forward run {fwd_name}; bootstrap 2-sigma from {os.path.basename(unc_file)}",
                **profiles)
@@ -1167,6 +1178,8 @@ for label, out in fig2_products.items():
     REG.register(f"{key}_surface_pct_2sig", out["surf_ratio_pct_2sig"], "%", 0, where="M8", cell="fig2 product", sidecar=sidecar)
     REG.register(f"{key}_mw_30gpa_range_lo", float(out["mw_30gpa_range"][0]), "Mw", 2, where="M8", cell="fig2 product", sidecar=sidecar)
     REG.register(f"{key}_mw_30gpa_range_hi", float(out["mw_30gpa_range"][1]), "Mw", 2, where="M8", cell="fig2 product", sidecar=sidecar)
+    REG.register(f"{key}_mw_sfcvm_range_lo", float(out["mw_sfcvm_range"][0]), "Mw", 2, where="M8", cell="fig2 product", sidecar=sidecar)
+    REG.register(f"{key}_mw_sfcvm_range_hi", float(out["mw_sfcvm_range"][1]), "Mw", 2, where="M8", cell="fig2 product", sidecar=sidecar)
 REG.register("08a_n_impulses", int(n_imp), "count", 0, where="M8", cell="G", sidecar=sidecar)
 REG.register("08a_n_samples", int(samples.vel.size), "count", 0, where="M8", cell="G", sidecar=sidecar)
 REG.register("08a_mu_west_top100_gpa", mu_top100["west_gpa"], "GPa", 2, where="M8", cell="materials", sidecar=sidecar)
