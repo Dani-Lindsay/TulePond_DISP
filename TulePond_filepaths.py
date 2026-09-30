@@ -308,8 +308,8 @@ paths_gps = {
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
-    "07_slip_model", "07_slip_model_tests", "08_alignment_arrays",
-    "09_rain_seasonality", "10_forecast", "11_paper_figures")}
+    "07a_uniform_model", "07b_uniform_model_tests", "09_alignment_arrays",
+    "10_rain_seasonality", "11_forecast", "12_paper_figures")}
 # The pre-2026-09-24 names 09_seasonality_forecast and 10_paper_figures are gone:
-# 09 split into 09_rain_seasonality and 10_forecast, and the paper-figure collector
+# 09 split into 10_rain_seasonality and 11_forecast, and the paper-figure collector
 # moved to 11. The superseded notebooks are kept under drafts/originals/.

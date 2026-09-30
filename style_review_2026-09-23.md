@@ -65,7 +65,7 @@ Semicolon-joined lines per file (the quickest measure of "three things on one li
 - 565-578 `decompose(v_asc, v_des)` closes over `fits` and `strike` and half the result is thrown away -> pass `fits` in, or inline the three-line MintPy call.
 - `map_panel` (1034) and `local_strike` (630) are thin wrappers; `block_step` (580) is used about ten times and stays.
 
-### 08_alignment_arrays (458 lines): light rename and comment pass
+### 09_alignment_arrays (458 lines): light rename and comment pass
 - 237-240 `t, cum` and `cat, excess, b, m, G = run_detector(...)` -> `survey_yr, cum_slip` and `hrkt_events, excess_mm, inter_event_rate, coef, design_G`. `b` and `m` reappear 30 lines later in print and register lines.
 - 260-264 `interval_series` returning `ivt, iv, ive` -> `interval_midpoint_yr, interval_yr, interval_window_yr`.
 - 272-277 and 380-383 `mv_t, mv, mv_err, mv_src, cc, med, tr_`: the same five merge lines twice -> one small `merge_catalogues(array_events, insar_events)` used in both places.

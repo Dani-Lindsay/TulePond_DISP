@@ -17,13 +17,13 @@
 # | Paper figure | Made by | File stem |
 # |---|---|---|
 # | Fig 1 | 04 | `fig1_tulepond_*` |
-# | Fig 2 (fault-parallel and vertical maps and profiles, 3D model row) | 07_slip_model_fig2 with the PyLith product | `fig2_fault_parallel_vertical_*_pylith_nuggetcd` |
+# | Fig 2 (fault-parallel and vertical maps and profiles, 3D model row) | 07c_fig2 with the PyLith product | `fig2_fault_parallel_vertical_*_pylith_nuggetcd` |
 # | Fig 3 (array history, repeat intervals, onsets over rainfall) | 09 | `fig3_history_rain_*` |
 # | Fig 4 | 09 | `fig4_recurrence_forecast_*` |
 # | S: velocity chain, GNSS tie | 01_prep_figures | `figS1_velocity_chain_*`, `figS2_gnss_tie_*` |
 # | S: rate mask, acquisitions | 03 | `figS_ratemask_*`, `figS_acquisitions_*` |
 # | S: event detection, slip budget | 04 | `figS_event_detection_*`, `figS_slip_budget_*` |
-# | S: LOS maps and profiles per track, with the model row | 07_slip_model_fig2 | `figS_los_maps_profiles_*` |
+# | S: LOS maps and profiles per track, with the model row | 07c_fig2 | `figS_los_maps_profiles_*` |
 # | S: per-event step maps | 06 | `figS_event_step_maps_*` |
 # | S: creepmeter validation, aperture ladder | 05 | `figS_validation_*`, `figS_binning_ladder_*` |
 # | S: arrays and InSAR, threshold sweep | 08 | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*` |

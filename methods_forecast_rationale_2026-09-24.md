@@ -4,7 +4,7 @@ Scraped from the record on disk so the Methods can be written from it. The
 email itself is not on disk; what survives is the request as it was written
 into the script headers on the day, Roland's chat notes and Dani's voice notes
 in `Hayward_DISP-S1/manuscript/`, and the assumptions register. Everything
-below is now in notebook `10_forecast` (and the rain in `09_rain_seasonality`).
+below is now in notebook `11_forecast` (and the rain in `10_rain_seasonality`).
 
 ## 1. Where each choice came from
 

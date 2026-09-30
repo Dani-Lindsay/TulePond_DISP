@@ -31,7 +31,7 @@
 # `plotting/figS_hrkt_threshold_sweep.py`. The forced-period comb tests (run17,
 # run19) are not in the paper and are not ported.
 #
-# **Outputs** (`outputs/08_alignment_arrays/`): `hrkt_aa_events.csv`,
+# **Outputs** (`outputs/09_alignment_arrays/`): `hrkt_aa_events.csv`,
 # `aa_insar_steps.csv`, `hrkt_threshold_sweep.csv`, `08_aa_stats.txt`, registry rows `08_*`.
 #
 # **Figures**: Fig 3 (a: survey cadence, b: HRKT record with events, c: the
@@ -62,7 +62,7 @@ from matplotlib.ticker import MaxNLocator
 
 # %%
 # [4]
-notebook = "08_alignment_arrays"
+notebook = "09_alignment_arrays"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -584,38 +584,38 @@ stats_lines += ["", f"repeat intervals: array only n {len(aa_interval)} median {
                 f"quiet interval {quiet_start:.2f}-{quiet_end:.2f} ({quiet_end - quiet_start:.1f} yr), {n_quiet} surveys, "
                 f"largest step {max_step_quiet:.1f} mm, spans Loma Prieta {loma_prieta}",
                 "", "threshold sweep:", sweep.round(2).to_string(index=False)]
-sidecar = REG.sidecar("08_aa", stats_lines)
+sidecar = REG.sidecar("09_aa", stats_lines)
 
-REG.register("08_hrkt_n_surveys", len(survey_yr), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_first_yr", survey_yr.min(), "decyear", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_last_yr", survey_yr.max(), "decyear", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_median_spacing_d", np.median(np.diff(survey_yr)) * 365.25, "d", 0, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_sigma_mm", excess_sigma, "mm", 2, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_threshold_sigma", thr_mm / excess_sigma, "1", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_rate_mm_yr", inter_event_rate, "mm/yr", 2, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_annual_mm", annual_mm, "mm", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_n_events", len(hrkt_events), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_amp_min_mm", hrkt_events.amplitude_mm.min(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_amp_max_mm", hrkt_events.amplitude_mm.max(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("08_hrkt_amp_median_mm", hrkt_events.amplitude_mm.median(), "mm", 1, where="P9", cell="detector", sidecar=sidecar)
-REG.register("08_aa_interval_median_yr", np.median(aa_interval), "yr", 1, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_aa_interval_n", len(aa_interval), "count", 0, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_insar_interval_median_yr", np.median(insar_interval), "yr", 1, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_insar_step_median_mm", insar_events.amplitude_mm.median(), "mm", 1, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_merged_interval_median_yr", np.median(merged_interval), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_merged_first_half_yr", np.median(merged_interval[first_half]), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_merged_second_half_yr", np.median(merged_interval[~first_half]), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_merged_trend_yr_per_decade", interval_trend[0] * 10, "yr/decade", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_quiet_start_yr", quiet_start, "decyear", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_quiet_end_yr", quiet_end, "decyear", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_quiet_max_step_mm", max_step_quiet, "mm", 1, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("08_hrkt_dense_era_end_yr", 2007.84, "decyear", 2, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_n_surveys", len(survey_yr), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_first_yr", survey_yr.min(), "decyear", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_last_yr", survey_yr.max(), "decyear", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_median_spacing_d", np.median(np.diff(survey_yr)) * 365.25, "d", 0, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_sigma_mm", excess_sigma, "mm", 2, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_threshold_sigma", thr_mm / excess_sigma, "1", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_rate_mm_yr", inter_event_rate, "mm/yr", 2, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_annual_mm", annual_mm, "mm", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_n_events", len(hrkt_events), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_amp_min_mm", hrkt_events.amplitude_mm.min(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_amp_max_mm", hrkt_events.amplitude_mm.max(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("09_hrkt_amp_median_mm", hrkt_events.amplitude_mm.median(), "mm", 1, where="P9", cell="detector", sidecar=sidecar)
+REG.register("09_aa_interval_median_yr", np.median(aa_interval), "yr", 1, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_aa_interval_n", len(aa_interval), "count", 0, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_insar_interval_median_yr", np.median(insar_interval), "yr", 1, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_insar_step_median_mm", insar_events.amplitude_mm.median(), "mm", 1, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_merged_interval_median_yr", np.median(merged_interval), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_merged_first_half_yr", np.median(merged_interval[first_half]), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_merged_second_half_yr", np.median(merged_interval[~first_half]), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_merged_trend_yr_per_decade", interval_trend[0] * 10, "yr/decade", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_quiet_start_yr", quiet_start, "decyear", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_quiet_end_yr", quiet_end, "decyear", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_quiet_max_step_mm", max_step_quiet, "mm", 1, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_hrkt_dense_era_end_yr", 2007.84, "decyear", 2, where="M8", cell="detector", sidecar=sidecar)
 for code in ("HGIL", "HRKT"):
     for kind in ("event_median", "quiet_median"):
         rows = aa_steps[(aa_steps.code == code) & (aa_steps.kind == kind)]
         if len(rows):
-            REG.register(f"08_{code.lower()}_{kind}_mm", float(rows.step_mm.iloc[0]), "mm", 1, where="P9, Fig3", cell="arrays-insar", sidecar=sidecar)
+            REG.register(f"09_{code.lower()}_{kind}_mm", float(rows.step_mm.iloc[0]), "mm", 1, where="P9, Fig3", cell="arrays-insar", sidecar=sidecar)
 for case in sweep.itertuples():
-    REG.register(f"08_sweep_{case.thr_mm:.1f}mm_n_events", case.n_events, "count", 0, where="S threshold sweep", cell="sweep", sidecar=sidecar)
-    REG.register(f"08_sweep_{case.thr_mm:.1f}mm_trend", case.trend_yr_per_decade, "yr/decade", 2, where="S threshold sweep", cell="sweep", sidecar=sidecar)
+    REG.register(f"09_sweep_{case.thr_mm:.1f}mm_n_events", case.n_events, "count", 0, where="S threshold sweep", cell="sweep", sidecar=sidecar)
+    REG.register(f"09_sweep_{case.thr_mm:.1f}mm_trend", case.trend_yr_per_decade, "yr/decade", 2, where="S threshold sweep", cell="sweep", sidecar=sidecar)
 REG.render()

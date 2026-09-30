@@ -26,7 +26,7 @@
 # Ported from `Hayward_DISP-S1/analysis/run20_precip_ghcn.py` and
 # `plotting/fig_hrkt_onset_seasonality.py`.
 #
-# **Outputs** (`outputs/09_rain_seasonality/`): `tulepond_daily_precip.csv`,
+# **Outputs** (`outputs/10_rain_seasonality/`): `tulepond_daily_precip.csv`,
 # `wateryear_totals.csv`, `09_rain_stats.txt`, registry rows `09_*`.
 #
 # **What to check.** The three gauges agree on water-year totals to ~10 %;
@@ -55,7 +55,7 @@ from matplotlib.lines import Line2D
 
 # %%
 # [4]
-notebook = "09_rain_seasonality"
+notebook = "10_rain_seasonality"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -82,11 +82,11 @@ density_days, density_max = 7, 80  # the figure: running 7-day total, mm at full
 x0, x1 = 1979.0, 2026.5           # the time axis of Fig 3: the HRKT record starts 1979.7
 
 # the InSAR stacks at the HGIL and HRKT arrays, saved by notebook 08 for the middle panel of Fig 3
-stacks_file = os.path.join(paths_out["08_alignment_arrays"], "aa_insar_stacks.csv")
+stacks_file = os.path.join(paths_out["09_alignment_arrays"], "aa_insar_stacks.csv")
 loma_prieta = 1989.79
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
-aa_events_file = os.path.join(paths_out["08_alignment_arrays"], "hrkt_aa_events.csv")
+aa_events_file = os.path.join(paths_out["09_alignment_arrays"], "hrkt_aa_events.csv")
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(events_file, aa_events_file, *[os.path.join(common_paths["ghcn_dir"], f"{sid}.csv") for sid in stations])
@@ -430,13 +430,13 @@ plt.show()
 # %%
 # [18]
 stats_lines += ["", f"season-resolved onsets: array {len(aa_dense)} ({n_dec_to_mar(aa_dense)} Dec-Mar), InSAR {len(insar_events)} ({n_dec_to_mar(insar_events)} Dec-Mar)"]
-sidecar = REG.sidecar("09_rain", stats_lines)
-REG.register("09_rain_series_start", str(days[0].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("09_rain_series_end", str(days[-1].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("09_wy_median_mm", complete_years.total_mm.median(), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("09_wy_p10_mm", complete_years.total_mm.quantile(.1), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("09_wy_p90_mm", complete_years.total_mm.quantile(.9), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("09_n_aa_season_resolved", len(aa_dense), "count", 0, where="Fig3 caption", cell="catalogues", sidecar=sidecar)
-REG.register("09_n_aa_dec_mar", n_dec_to_mar(aa_dense), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register("09_n_insar_dec_mar", n_dec_to_mar(insar_events), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+sidecar = REG.sidecar("10_rain", stats_lines)
+REG.register("10_rain_series_start", str(days[0].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("10_rain_series_end", str(days[-1].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("10_wy_median_mm", complete_years.total_mm.median(), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("10_wy_p10_mm", complete_years.total_mm.quantile(.1), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("10_wy_p90_mm", complete_years.total_mm.quantile(.9), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("10_n_aa_season_resolved", len(aa_dense), "count", 0, where="Fig3 caption", cell="catalogues", sidecar=sidecar)
+REG.register("10_n_aa_dec_mar", n_dec_to_mar(aa_dense), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register("10_n_insar_dec_mar", n_dec_to_mar(insar_events), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
 REG.render()

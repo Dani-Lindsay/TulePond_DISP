@@ -48,12 +48,12 @@ ANCHORS = {
     "06_XX_rate_step_mm_yr": (1.17, 2), "06_XX_event_step_mm": (9.17, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
     "06_YY_rate_step_mm_yr": (6.54, 2), "06_YY_event_step_mm": (0.88, 2),
     # 08 alignment arrays
-    "08_hrkt_n_surveys": (177, 0), "08_hrkt_n_events": (14, 0), "08_hrkt_amp_median_mm": (7.4, 1),
-    "08_aa_interval_median_yr": (2.8, 1), "08_aa_interval_n": (13, 0),
-    "08_insar_interval_median_yr": (1.9, 1),
+    "09_hrkt_n_surveys": (177, 0), "09_hrkt_n_events": (14, 0), "09_hrkt_amp_median_mm": (7.4, 1),
+    "09_aa_interval_median_yr": (2.8, 1), "09_aa_interval_n": (13, 0),
+    "09_insar_interval_median_yr": (1.9, 1),
     # 10 forecast (was 09_* until the split of 2026-09-24)
-    "10_next_clock_date": ("2026-12-15", 0), "10_pi95_lo": ("2026-08-29", 0), "10_pi95_hi": ("2027-04-02", 0),
-    "10_ruleC_Z_mm": (40, 0), "10_ruleC_X_d": (21, 0), "10_ruleC_p_chance": (0.02, 2),
+    "11_next_clock_date": ("2026-12-15", 0), "11_pi95_lo": ("2026-08-29", 0), "11_pi95_hi": ("2027-04-02", 0),
+    "11_ruleC_Z_mm": (40, 0), "11_ruleC_X_d": (21, 0), "11_ruleC_p_chance": (0.02, 2),
 }
 
 

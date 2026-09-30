@@ -67,7 +67,7 @@ rebuilt** (documented in `data_prep/README.md` under Provenance):
 ## 3. The chain is single-track and is Dani's code
 
 The `_v2` notebooks were promoted to the plain names (`46a8410`). `02`, `03`,
-`04` and `08` take the canonical names; `09_rain_seasonality` and `10_forecast`
+`04` and `08` take the canonical names; `10_rain_seasonality` and `11_forecast`
 replace the pre-split `09_seasonality_forecast`; the superseded AI-written
 notebooks moved to `drafts/originals/`, byte-identical to their old blobs.
 
@@ -88,8 +88,8 @@ writes those folders now. The zero-difference proof stands in history at
 
 **Crossed the two-laptop split, with Dani's approval:** notebook 07 read
 notebook 04's output folder by its `_v2` name, so the rename would have broken
-it. Three strings changed to `04_event_detection`, in `scripts/07_slip_model.py`
-(line 68), `scripts/07_slip_model_tests.py` (373) and
+it. Three strings changed to `04_event_detection`, in `scripts/07a_uniform_model.py`
+(line 68), `scripts/07b_uniform_model_tests.py` (373) and
 `drafts/07/interim_results_2026-09-28.py` (46). Nothing else in 07 was touched.
 **The modelling laptop must pull before its next 07 run.**
 
@@ -185,7 +185,7 @@ Specific decisions already taken:
 - **Fig 2 moves out of 06** into its own notebook that runs *after* the model, so
   its row 3 is the real model rather than a placeholder.
 - **Drop the ascending-deficit check plot** (06 CHECK 6) — not useful. The
-  ascending test itself goes to `07_slip_model_tests`.
+  ascending test itself goes to `07b_uniform_model_tests`.
 - The legacy parity checks (06 CHECK 4 and 5, both gated) and the symmetry
   material are exploration and belong in `drafts/` or `tests/`.
 - Renumbering is permitted to get the run order right.
@@ -197,11 +197,11 @@ hardcoded strings and do not move with the notebook name: 26 distinct `08_*`
 keys (3 anchor lines), 10 `09_*` keys, 26 `10_*` keys (2 anchor lines). Since the
 anchors are being refitted anyway, the marginal cost is lower than usual — but it
 is a real decision and was left to Dani. The alternative is to leave the numbers
-alone and let `11_paper_figures` draw Fig 2, at the cost of turning a collector
+alone and let `12_paper_figures` draw Fig 2, at the cost of turning a collector
 into a drawer.
 
 **Independent of all that, a live bug:** `run_all.sh` globs alphabetically, so
-`07_slip_model` runs **before** `07_slip_model_tests`, which is the wrong order.
+`07a_uniform_model` runs **before** `07b_uniform_model_tests`, which is the wrong order.
 Renaming the tests notebook to `07_model_tests` sorts it first and needs no
 renumbering.
 

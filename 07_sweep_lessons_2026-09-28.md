@@ -5,7 +5,7 @@ source tag. Where no run exists yet the entry says **[planned]**. No number
 here is in the registry yet; replace with registry values once the final
 model runs.
 
-**Source tags** (all files in `outputs/07_slip_model_tests/` unless noted):
+**Source tags** (all files in `outputs/07b_uniform_model_tests/` unless noted):
 - [suite] `suite_results.csv`, batch-2 run of 2026-09-28 (37 configurations,
   every CHECK passed). LOS input (asc + desc), surface constraint with CSI's
   single-triangle link, uniform 30 GPa, homogeneous Green's functions.
@@ -35,7 +35,7 @@ model runs.
    non-tectonic, off-fault vertical signal east of the fault is excluded
    rather than down-weighted. Assumption: no horizontal motion
    perpendicular to the fault. Check the model's predicted fault-normal
-   motion is negligible: now a CHECK cell in `07_slip_model` (see G).
+   motion is negligible: now a CHECK cell in `07a_uniform_model` (see G).
    - Consistency: the surface constraint (04 per-event crossing
      amplitudes) is also fault-parallel: the east - west step at each
      crossing (30-150 m aperture), decomposed from asc + desc in 03. From
@@ -190,7 +190,7 @@ model runs.
     model gives the shallowest consistent solution and a minimum moment."
 - Recovery test with the interpolated constraint and fault-parallel input.
 - Potency; event-to-event spread of surface slip and extent (from 04).
-- Rerun of `07_slip_model_tests` on the final configuration; drop panels B
+- Rerun of `07b_uniform_model_tests` on the final configuration; drop panels B
   and C from `fig07_slip_model`.
 
 ## F. Added later on 2026-09-28
@@ -260,9 +260,9 @@ Source tag: [lcurve] `sigma_lcurve.csv` / `sigma_lcurve_slip.npz`
   `surfaceslip.getTransformEstimator` returns zeros, so the "constant" for
   the surface dataset is a dead parameter (it sits at its bound, -1000) and
   the model fits the absolute surface slip. InSAR constant -0.35 mm [lcurve].
-- **Clean notebook** `scripts/07_slip_model.py` / `07_slip_model.ipynb`: the
+- **Clean notebook** `scripts/07a_uniform_model.py` / `07a_uniform_model.ipynb`: the
   homogeneous baseline, machinery ported verbatim from
-  `07_slip_model_tests.py`. CHECKs: reproduces the sigma 24 draft
+  `07b_uniform_model_tests.py`. CHECKs: reproduces the sigma 24 draft
   (`fig2_model_row.npz`) with max |slip diff| 0.00e+00; its in-notebook
   L-curve equals [lcurve]. It runs the L-curve itself, reads the event list
   and the SSE section from 04's outputs, and skips the draft gates on new
@@ -276,12 +276,12 @@ Source tag: [lcurve] `sigma_lcurve.csv` / `sigma_lcurve_slip.npz`
    `outputs/06_event_field_geometry/fp_maps.npz`;
    `outputs/04_event_detection/{event_fraction_by_crossing.csv,
    creep_events.csv, section_lengths.csv}`.
-3. Run `07_slip_model.ipynb` (about 1.5 h: 13-sigma L-curve + 24 bootstrap
+3. Run `07a_uniform_model.ipynb` (about 1.5 h: 13-sigma L-curve + 24 bootstrap
    runs). Check the corner and the selected sigma: the rule is fixed, the
    value is not.
 4. `fig2_model_row.npz` (Fig 2 row 3) is rewritten by the notebook; copy
    it back for 06.
-5. `07_slip_model_tests` still hard-codes the five event columns, the SSE
+5. `07b_uniform_model_tests` still hard-codes the five event columns, the SSE
    section and imports `csi_io` from Hayward_DISP-S1 for its mesh gate;
    make it data-driven before rerunning it **[planned]**.
 6. Since 46a8410 (v2 notebooks promoted) 04 writes to

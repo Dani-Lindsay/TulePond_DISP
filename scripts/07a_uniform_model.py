@@ -8,7 +8,7 @@
 #
 # The best slip model with **uniform-rock (homogeneous half-space) Green's
 # functions**, with every lesson of the 2026-09-25 to 28 tests applied
-# (`07_sweep_lessons_2026-09-28.md`, `07_slip_model_tests.ipynb`,
+# (`07_sweep_lessons_2026-09-28.md`, `07b_uniform_model_tests.ipynb`,
 # `drafts/07/`). It is the baseline that a 1D layered model (PyLith Green's
 # functions from the USGS SFCVM profile) and later a 3D model have to beat,
 # measured the same way. The rock enters the INVERSION as uniform; the USGS
@@ -31,7 +31,7 @@
 #
 # The machinery (mesh, levelling, noise model, quadtree, surface
 # constraint, tie, inversion) is ported verbatim from
-# `07_slip_model_tests.py`, where it is pinned by the zero-difference mesh
+# `07b_uniform_model_tests.py`, where it is pinned by the zero-difference mesh
 # gate and the m02 parity gate; CHECK [7] below pins this notebook to the
 # draft the tests were run on. CSI calls follow the tutorials
 # (`external/csi/notebooks/`).
@@ -62,9 +62,9 @@ from csi import imagedownsampling as imdown
 from csi import transformation as transform
 from csi import multisourcesolve as multisrc
 
-notebook = "07_slip_model"
+notebook = "07a_uniform_model"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
-tests_dir = os.path.join(common_paths["out_dir"], "07_slip_model_tests")
+tests_dir = os.path.join(common_paths["out_dir"], "07b_uniform_model_tests")
 field_dir = os.path.join(common_paths["out_dir"], "06_event_field_geometry")
 events_dir = os.path.join(common_paths["out_dir"], "04_event_detection")
 fig_dir = common_paths["fig_dir"]
@@ -163,7 +163,7 @@ trace_km_pp = lat_to_km_pp(ref_fault.lati)
 
 def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
     """Node rows + Delaunay + Laplacian smoothing in the unrolled plane.
-    [07_slip_model_tests, verbatim]"""
+    [07b_uniform_model_tests, verbatim]"""
     row_depths = [0.0]
     row_step = h_top
     while row_depths[-1] < z_max:
@@ -215,7 +215,7 @@ def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
 def wrap_fault(nodes, faces, dip_deg, name):
     """csi.TriangularPatches hinged east about the FIXED surface trace.
     Each fault owns its faces copy (homogeneizeStrike flips winding rows
-    in place). [07_slip_model_tests, verbatim]"""
+    in place). [07b_uniform_model_tests, verbatim]"""
     flt = TriangularPatches(name, lon0=frame_lon0, lat0=frame_lat0, verbose=False)
     flt.trace(trace_lonlat[:, 0], trace_lonlat[:, 1])
     flt.discretize2(every=0.02)
@@ -273,7 +273,7 @@ def dist_to_trace(sar, fault, signed=False):
 def align_track(sar):
     """Far-field plane alignment: slip section +/- align_mask_km masked,
     1,x,y fit to the rest, removed from the whole track in place.
-    [07_slip_model_tests, verbatim]"""
+    [07b_uniform_model_tests, verbatim]"""
     km_pp = lat_to_km_pp(sar.lat)
     far = (km_pp < creep_lo_km - align_mask_km) | (km_pp > creep_hi_km + align_mask_km)
     plane = np.c_[np.ones(sar.x.size), sar.x, sar.y]
@@ -342,7 +342,7 @@ def downsample(sar, fault, start_km, min_km):
 
 
 def build_cd(ds, cov_p, asc_scale=1.0):
-    """Two exponentials + nugget/blocksize. [m02; 07_slip_model_tests, verbatim]"""
+    """Two exponentials + nugget/blocksize. [m02; 07b_uniform_model_tests, verbatim]"""
     nug2, s1, l1, s2, l2 = cov_p
     dx = ds.x[:, None] - ds.x[None, :]; dy = ds.y[:, None] - ds.y[None, :]
     dist = np.sqrt(dx * dx + dy * dy)
@@ -384,7 +384,7 @@ trace_south_north = trace_lonlat[np.argsort(trace_lonlat[:, 1])]
 
 def make_surface(floor_mm):
     """csi.surfaceslip: running median of the 5-event crossing means,
-    error = 1.4826 MAD / sqrt(n) floored at floor_mm. [07_slip_model_tests, verbatim]"""
+    error = 1.4826 MAD / sqrt(n) floored at floor_mm. [07b_uniform_model_tests, verbatim]"""
     rows = []
     for k_centre in np.arange(np.ceil(crossings_all.km.min()),
                               crossings_all.km.max(), surf_step_km):
@@ -408,7 +408,7 @@ def make_surface(floor_mm):
 
 def make_surface_interp(fault, floor_mm):
     """The running-median profile interpolated to the centre of EVERY
-    surface triangle of this fault. [07_slip_model_tests, verbatim]"""
+    surface triangle of this fault. [07b_uniform_model_tests, verbatim]"""
     base = make_surface(floor_mm)
     base_km = lat_to_km_pp(base.lat)
     order = np.argsort(base_km)
@@ -443,7 +443,7 @@ print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-se
 # (`buildCmXY`), the optional top tie (off in this model; every cell shallower than tie_depth_km equal to the
 # shallowest cell of its 0.1 km along-strike column; after Jolivet et al.
 # 2023, who tie 0-1 km), NNLS (`multisourcesolve`).
-# [07_slip_model_tests, verbatim]
+# [07b_uniform_model_tests, verbatim]
 
 # %%
 ## [6]
@@ -606,7 +606,7 @@ sigma_corner = float(10 ** fine_log_sigma[np.argmax(curvature)])
 sigma_sel = float(sigma_family.sigma[sigma_family.sigma >= sigma_corner].min())
 print(f"L-curve corner: sigma {sigma_corner:.1f}; selected grid sigma {sigma_sel:g} "
       f"(12 on the data through 2025, corner 10.1)")
-sigma_family["corner"], sigma_family["selected"] = sigma_corner, sigma_sel      # read by 07_slip_model_tests
+sigma_family["corner"], sigma_family["selected"] = sigma_corner, sigma_sel      # read by 07b_uniform_model_tests
 sigma_family.to_csv(os.path.join(out_dir, "sigma_lcurve.csv"), index=False)
 
 mpl_paper_style(base=7)
@@ -812,7 +812,7 @@ print("wrote fig07_hom_slip.png/.pdf")
 # ## [13] Products
 #
 # The slip table, and Fig 2's model row (`fig2_model_row.npz`, read by
-# `07_slip_model_fig2`). For Fig 2 the model is also evaluated along the
+# `07c_fig2`). For Fig 2 the model is also evaluated along the
 # profile lines X-X' and Y-Y' of notebook 06 (fault-parallel and vertical,
 # every 10 m, zeroed on the far field exactly as 06 zeroes the observed event
 # profiles), and along strike at the surface next to the crossing slip.
@@ -881,7 +881,7 @@ print("wrote slip_homogeneous_baseline.csv and fig2_model_row.npz")
 
 # %%
 ## [14]
-sidecar = REG.sidecar("07_hom_baseline", [
+sidecar = REG.sidecar("07a_hom_baseline", [
     f"configuration: fault-parallel (strike {strike_bearing:.2f}), coherence 0.9, levelled, "
     f"smooth12, dip {dip_deg}, quadtree {min_block_km * 1000:.0f} m, surface interp, "
     f"tie {tie_depth_km * 1000:.0f} m, sigma {sigma_sel:g}, homogeneous GFs",
@@ -893,20 +893,20 @@ sidecar = REG.sidecar("07_hom_baseline", [
     f"leakage into the fault-parallel field {leak_fp:+.2f} mm/mm, max {leak_max_mm:.2f} mm, rms within 1 km {leak_rms_mm:.2f} mm "
     f"(noise sd {noise_sd_mm:.2f} mm)",
 ] + [f"{key}: {value:.4g}" for key, value in results.items()])
-REG.register("07_hom_mw_30gpa", results.mw_30gpa, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_mw_sfcvm", results.mw_sfcvm, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_mw_boot_sd", mw_boot_sd, "Mw", 3, where="M7", cell="bootstrap", sidecar=sidecar)
-REG.register("07_hom_potency_m3", results.potency_m3, "m3", 0, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_mu_effective_gpa", results.mu_effective_gpa, "GPa", 1, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_surface_pct", results.surface_pct, "%", 0, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_peak_slip_mm", results.peak_slip_mm, "mm", 1, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_rms_mm", results.rms_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_rms_near_mm", results.rms_near_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_sigma", sigma_sel, "mm", 0, where="M7", cell="sigma", sidecar=sidecar)
-REG.register("07_hom_sigma_corner", sigma_corner, "mm", 1, where="M7", cell="sigma", sidecar=sidecar)
-REG.register("07_hom_tie_depth_m", tie_depth_km * 1000, "m", 0, where="M7", cell="constants", sidecar=sidecar)
-REG.register("07_hom_n_samples", int(results.n_samples), "count", 0, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07_hom_fault_normal_max_mm", normal_max_mm, "mm", 2, where="M7", cell="fault-normal", sidecar=sidecar)
-REG.register("07_hom_fault_normal_leak_rms_mm", leak_rms_mm, "mm", 2, where="M7", cell="fault-normal", sidecar=sidecar)
+REG.register("07a_hom_mw_30gpa", results.mw_30gpa, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_mw_sfcvm", results.mw_sfcvm, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_mw_boot_sd", mw_boot_sd, "Mw", 3, where="M7", cell="bootstrap", sidecar=sidecar)
+REG.register("07a_hom_potency_m3", results.potency_m3, "m3", 0, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_mu_effective_gpa", results.mu_effective_gpa, "GPa", 1, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_surface_pct", results.surface_pct, "%", 0, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_peak_slip_mm", results.peak_slip_mm, "mm", 1, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_rms_mm", results.rms_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_rms_near_mm", results.rms_near_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_sigma", sigma_sel, "mm", 0, where="M7", cell="sigma", sidecar=sidecar)
+REG.register("07a_hom_sigma_corner", sigma_corner, "mm", 1, where="M7", cell="sigma", sidecar=sidecar)
+REG.register("07a_hom_tie_depth_m", tie_depth_km * 1000, "m", 0, where="M7", cell="constants", sidecar=sidecar)
+REG.register("07a_hom_n_samples", int(results.n_samples), "count", 0, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07a_hom_fault_normal_max_mm", normal_max_mm, "mm", 2, where="M7", cell="fault-normal", sidecar=sidecar)
+REG.register("07a_hom_fault_normal_leak_rms_mm", leak_rms_mm, "mm", 2, where="M7", cell="fault-normal", sidecar=sidecar)
 REG.render()
-print("07_slip_model (homogeneous baseline) complete")
+print("07a_uniform_model (homogeneous baseline) complete")

@@ -23,7 +23,7 @@
 # differences (east minus west medians). Here we map them: every pixel in a box
 # around Tule Pond gets its own time-function fit, so we see the SHAPE of each
 # event across the fault, not just its size. Notebook 07 inverts the mean event
-# for slip at depth; `07_slip_model_fig2` draws Fig 2 from both.
+# for slip at depth; `07c_fig2` draws Fig 2 from both.
 #
 # 1. **Per-pixel model** on each track: MintPy's `timeseries2velocity` model
 #    (intercept + linear rate + annual cycle + one Heaviside step per event, step
@@ -44,7 +44,7 @@
 #    west band, the aperture of notebook 04). No fit here: the model is
 #    notebook 07.
 # 6. **Hand-off to Fig 2**: the maps and profiles, one file, drawn by
-#    `07_slip_model_fig2` after the slip model.
+#    `07c_fig2` after the slip model.
 #
 # Ported from `Hayward_DISP-S1/modelling/m01_step_maps.py` (steps 1 to 4),
 # `hayward_creep/analysis/event_map_profiles.py` (decomposition, profiles) and
@@ -58,7 +58,7 @@
 # (every per-event LOS step map, raw and burst-fixed, mean, scatter, rate,
 # geometry), `csi_mean_event_<track>.npz` (07's input), `fp_maps.npz`
 # (fault-parallel and vertical rate and mean event), `profile_<XX|YY>_<field>[_<track>].csv`,
-# `fig2_inputs.npz` (for `07_slip_model_fig2`), `06_event_field_stats.txt`,
+# `fig2_inputs.npz` (for `07c_fig2`), `06_event_field_stats.txt`,
 # registry rows `06_*`.
 #
 # **Figures**: the step-map grid (supplement).
@@ -690,7 +690,7 @@ assert los_profiles["ascending"]["X"]["event_step"] < 0 < los_profiles["descendi
 # %% [markdown]
 # ## RUN: write the maps and profiles Fig 2 draws
 #
-# Fig 2 is drawn in its own notebook (`07_slip_model_fig2`) after the slip model,
+# Fig 2 is drawn in its own notebook (`07c_fig2`) after the slip model,
 # so its model row is the real model. It needs the per-track LOS maps (masked
 # at `coh_maps`), the fault-parallel maps and the profiles; they go into one
 # file. The fault-parallel and vertical profiles get their block amplitudes

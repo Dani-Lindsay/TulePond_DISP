@@ -20,13 +20,13 @@
 # ```
 #
 # **What this notebook does.** Every test is run on the configuration of
-# `07_slip_model` (the homogeneous baseline): the fault-parallel mean event
+# `07a_uniform_model` (the homogeneous baseline): the fault-parallel mean event
 # (06, coherence 0.9), levelled, the `smooth12` vertical mesh, quadtree to one
 # 30 m pixel, the crossing surface slip on every surface triangle, slip tied
-# no top tie, sigma at 07_slip_model's L-curve pick, lambda as 07_slip_model. Each
+# no top tie, sigma at 07a_uniform_model's L-curve pick, lambda as 07a_uniform_model. Each
 # family changes ONE thing from that baseline. The machinery cells [2] to [6]
-# are copied verbatim from `07_slip_model`, so the two notebooks run the same
-# code; CHECK [21] pins this notebook's baseline to `07_slip_model`'s.
+# are copied verbatim from `07a_uniform_model`, so the two notebooks run the same
+# code; CHECK [21] pins this notebook's baseline to `07a_uniform_model`'s.
 #
 # 1. **Top tie** at the model sigma: none (baseline), 0.1, 0.2, 0.5 km.
 # 2. **Fixed-depth scan** on the fault-parallel field: uniform slip from the
@@ -49,8 +49,8 @@
 # `07_sweep_lessons_2026-09-28.md`). The legacy parity gates of that suite are
 # gone: the paper has no legacy chain to check against.
 #
-# **Inputs**: as `07_slip_model` (06 `fp_maps.npz`, 04 crossings, events and
-# section lengths, the trace). **Outputs** (`outputs/07_slip_model_tests/`):
+# **Inputs**: as `07a_uniform_model` (06 `fp_maps.npz`, 04 crossings, events and
+# section lengths, the trace). **Outputs** (`outputs/07b_uniform_model_tests/`):
 # `final_suite.csv`, `final_lcurves.csv`, `final_tie_slip_<tie>.csv`,
 # `final_depth_scan_<variant>.csv`, `final_depth_vs_noise.csv`,
 # `final_recovery.csv`, `final_recovery_profiles.csv`. **Figure**:
@@ -82,16 +82,16 @@ from csi import imagedownsampling as imdown
 from csi import transformation as transform
 from csi import multisourcesolve as multisrc
 
-notebook = "07_slip_model_tests"
+notebook = "07b_uniform_model_tests"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
-baseline_dir = os.path.join(common_paths["out_dir"], "07_slip_model")
+baseline_dir = os.path.join(common_paths["out_dir"], "07a_uniform_model")
 field_dir = os.path.join(common_paths["out_dir"], "06_event_field_geometry")
 events_dir = os.path.join(common_paths["out_dir"], "04_event_detection")
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-# ---- the baseline configuration: identical to 07_slip_model
+# ---- the baseline configuration: identical to 07a_uniform_model
 frame_lon0, frame_lat0 = -121.968, 37.557
 swath_km       = 4.0
 exclude_km     = 0.03
@@ -116,14 +116,14 @@ dip_deg        = 90
 fine_km        = (56.0, 63.0)
 far_rate       = 0.25
 smooth_iters   = 8
-lam_xz         = (0.1, 0.05)   # as 07_slip_model (along strike 0.1 km, Dani 2026-09-29)
+lam_xz         = (0.1, 0.05)   # as 07a_uniform_model (along strike 0.1 km, Dani 2026-09-29)
 tie_depth_km   = 0.0           # no top tie in the model (Dani 2026-09-29); the tie family still tests 0.1-0.5 km
 shear_modulus  = 3.0e10
-# sigma: the L-curve pick of 07_slip_model on the same data (the rule is fixed, the value is not)
+# sigma: the L-curve pick of 07a_uniform_model on the same data (the rule is fixed, the value is not)
 sigma_file     = os.path.join(baseline_dir, "sigma_lcurve.csv")
-assert os.path.exists(sigma_file), f"missing {sigma_file}: run 07_slip_model first"
+assert os.path.exists(sigma_file), f"missing {sigma_file}: run 07a_uniform_model first"
 sigma_model    = float(pd.read_csv(sigma_file).selected.iloc[0])
-print(f"sigma from 07_slip_model's L-curve: {sigma_model:g}")
+print(f"sigma from 07a_uniform_model's L-curve: {sigma_model:g}")
 
 # ---- the families (each changes one thing from the baseline)
 tie_depths     = [0.0, 0.1, 0.2, 0.5]    # 0 = no tie
@@ -191,7 +191,7 @@ trace_km_pp = lat_to_km_pp(ref_fault.lati)
 
 def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
     """Node rows + Delaunay + Laplacian smoothing in the unrolled plane.
-    [07_slip_model_tests, verbatim]"""
+    [07b_uniform_model_tests, verbatim]"""
     row_depths = [0.0]
     row_step = h_top
     while row_depths[-1] < z_max:
@@ -243,7 +243,7 @@ def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
 def wrap_fault(nodes, faces, dip_deg, name):
     """csi.TriangularPatches hinged east about the FIXED surface trace.
     Each fault owns its faces copy (homogeneizeStrike flips winding rows
-    in place). [07_slip_model_tests, verbatim]"""
+    in place). [07b_uniform_model_tests, verbatim]"""
     flt = TriangularPatches(name, lon0=frame_lon0, lat0=frame_lat0, verbose=False)
     flt.trace(trace_lonlat[:, 0], trace_lonlat[:, 1])
     flt.discretize2(every=0.02)
@@ -301,7 +301,7 @@ def dist_to_trace(sar, fault, signed=False):
 def align_track(sar):
     """Far-field plane alignment: slip section +/- align_mask_km masked,
     1,x,y fit to the rest, removed from the whole track in place.
-    [07_slip_model_tests, verbatim]"""
+    [07b_uniform_model_tests, verbatim]"""
     km_pp = lat_to_km_pp(sar.lat)
     far = (km_pp < creep_lo_km - align_mask_km) | (km_pp > creep_hi_km + align_mask_km)
     plane = np.c_[np.ones(sar.x.size), sar.x, sar.y]
@@ -370,7 +370,7 @@ def downsample(sar, fault, start_km, min_km):
 
 
 def build_cd(ds, cov_p, asc_scale=1.0):
-    """Two exponentials + nugget/blocksize. [m02; 07_slip_model_tests, verbatim]"""
+    """Two exponentials + nugget/blocksize. [m02; 07b_uniform_model_tests, verbatim]"""
     nug2, s1, l1, s2, l2 = cov_p
     dx = ds.x[:, None] - ds.x[None, :]; dy = ds.y[:, None] - ds.y[None, :]
     dist = np.sqrt(dx * dx + dy * dy)
@@ -412,7 +412,7 @@ trace_south_north = trace_lonlat[np.argsort(trace_lonlat[:, 1])]
 
 def make_surface(floor_mm):
     """csi.surfaceslip: running median of the 5-event crossing means,
-    error = 1.4826 MAD / sqrt(n) floored at floor_mm. [07_slip_model_tests, verbatim]"""
+    error = 1.4826 MAD / sqrt(n) floored at floor_mm. [07b_uniform_model_tests, verbatim]"""
     rows = []
     for k_centre in np.arange(np.ceil(crossings_all.km.min()),
                               crossings_all.km.max(), surf_step_km):
@@ -436,7 +436,7 @@ def make_surface(floor_mm):
 
 def make_surface_interp(fault, floor_mm):
     """The running-median profile interpolated to the centre of EVERY
-    surface triangle of this fault. [07_slip_model_tests, verbatim]"""
+    surface triangle of this fault. [07b_uniform_model_tests, verbatim]"""
     base = make_surface(floor_mm)
     base_km = lat_to_km_pp(base.lat)
     order = np.argsort(base_km)
@@ -471,7 +471,7 @@ print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-se
 # (`buildCmXY`), the top tie (every cell shallower than 0.2 km equal to the
 # shallowest cell of its 0.1 km along-strike column; after Jolivet et al.
 # 2023, who tie 0-1 km), NNLS (`multisourcesolve`).
-# [07_slip_model_tests, verbatim]
+# [07b_uniform_model_tests, verbatim]
 
 # %%
 ## [6]
@@ -547,7 +547,7 @@ def invert(fault, insar_datas, sigma, lam=lam_xz, prior="xy", slipdir="s",
 # rebuilt; the quadtree is computed once per geometry. `run_case` builds a
 # fresh fault and inverts once; `model_numbers` gives the numbers every row
 # carries. `lcurve` runs one case per sigma and finds the corner exactly as
-# `07_slip_model` [8] does.
+# `07a_uniform_model` [8] does.
 
 # %%
 ## [7]
@@ -651,7 +651,7 @@ def save_suite():
 lcurve_rows = []
 def lcurve(label, mesh_name="smooth12", lam=lam_xz, sigmas=sigma_grid_lc):
     """One case per sigma; the corner and the grid sigma the rule picks
-    (07_slip_model [8], verbatim). Returns the L-curve table, the corner,
+    (07a_uniform_model [8], verbatim). Returns the L-curve table, the corner,
     the pick, and the row at the pick."""
     rows = []
     for sigma in sigmas:
@@ -863,7 +863,7 @@ save_suite()
 # exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND enters the
 # amplitude, so the model sigma is the corner only for the model's pair. Each pair
 # gets its own L-curve; the suite row is the model at its own pick (and the
-# baseline pair's curve, on a coarser grid, is a check on 07_slip_model's corner).
+# baseline pair's curve, on a coarser grid, is a check on 07a_uniform_model's corner).
 
 # %%
 ## [14]
@@ -900,10 +900,10 @@ mesh_corners = pd.DataFrame(mesh_corners)
 print(mesh_corners.round(3).to_string(index=False))
 
 # %% [markdown]
-# ### CHECK -- repeatable, and the same model as 07_slip_model
+# ### CHECK -- repeatable, and the same model as 07a_uniform_model
 #
 # The baseline case run again must reproduce the tie family's 0.2 km row
-# exactly; and where `07_slip_model` has run on the same inputs, its slip
+# exactly; and where `07a_uniform_model` has run on the same inputs, its slip
 # table must equal this notebook's baseline to round-off (same machinery,
 # same data, same sigma).
 
@@ -917,11 +917,11 @@ baseline_file = os.path.join(baseline_dir, "slip_homogeneous_baseline.csv")
 if os.path.exists(baseline_file):
     baseline_slip = pd.read_csv(baseline_file).slip_mm.values
     slip_diff = float(np.max(np.abs(baseline_slip - repeat_fault.slip[:, 0])))
-    print(f"max |slip - 07_slip_model baseline| = {slip_diff:.2e} mm")
-    assert slip_diff < 1e-6, "this notebook's baseline differs from 07_slip_model's"
-    print("PASS: same model as 07_slip_model")
+    print(f"max |slip - 07a_uniform_model baseline| = {slip_diff:.2e} mm")
+    assert slip_diff < 1e-6, "this notebook's baseline differs from 07a_uniform_model's"
+    print("PASS: same model as 07a_uniform_model")
 else:
-    print("SKIPPED: 07_slip_model has not written slip_homogeneous_baseline.csv yet")
+    print("SKIPPED: 07a_uniform_model has not written slip_homogeneous_baseline.csv yet")
 save_suite()
 
 # %% [markdown]
@@ -1022,7 +1022,7 @@ print("wrote", fig_file)
 # stress drop = mu d / x with d the slip and x half the depth extent. For the
 # distributed model (x = half the depth holding 95% of its potency) and for
 # every uniform-slip depth D (x = D / 2), mu is the SFCVM v26.0 rigidity
-# weighted by that model's own potency (as 07_slip_model), and d is the mean
+# weighted by that model's own potency (as 07a_uniform_model), and d is the mean
 # band-stack event slip of notebook 04. Written to
 # `stress_drop_inputs.csv`; no registry rows.
 
@@ -1033,7 +1033,7 @@ mu_by_depth = sfcvm.groupby("depth_m").mu_gpa.median()
 registry = pd.read_csv(common_paths["registry_csv"], dtype=str).groupby("key").last()
 d_band_mm = float(registry.loc["04_band90_steps_mean_mm", "value"])
 def mu_weighted(table, slip_mm):
-    """SFCVM rigidity weighted by potency (GPa), floored at 0.5 GPa as 07_slip_model."""
+    """SFCVM rigidity weighted by potency (GPa), floored at 0.5 GPa as 07a_uniform_model."""
     mu_cell = np.maximum(np.interp(table.z_c.values * 1000, mu_by_depth.index.values, mu_by_depth.values), 0.5)
     return float(np.sum(mu_cell * slip_mm) / np.sum(slip_mm))
 stress_rows = []
@@ -1083,22 +1083,22 @@ sidecar = REG.sidecar("07_tests_final", [
     "mesh at own corners: " + "; ".join(f"{r.mesh} corner {r.corner:.1f} pick {r.pick:g} Mw {r.Mw:.3f}"
                                         for r in mesh_corners.itertuples()),
 ])
-REG.register("07_test_n_samples", baseline_row["n_samples"], "count", 0, where="M7", cell="baseline", sidecar=sidecar)
+REG.register("07b_n_samples", baseline_row["n_samples"], "count", 0, where="M7", cell="baseline", sidecar=sidecar)
 for tie, r in tie_rows.iterrows():
-    REG.register(f"07_test_tie{tie * 1000:.0f}m_mw", r.Mw, "Mw", 2, where="M7", cell="tie", sidecar=sidecar)
-    REG.register(f"07_test_tie{tie * 1000:.0f}m_surface_pct", r.surface_pct, "%", 0, where="M7", cell="tie", sidecar=sidecar)
-REG.register("07_test_depth_best_km", record_scan.loc[record_scan.chi2.idxmin(), "D_km"], "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
-REG.register("07_test_depth_lo_km", d_shallow, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
-REG.register("07_test_depth_hi_km", d_deep, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
-REG.register("07_test_depth_mw_lo", bracket.Mw.min(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)
-REG.register("07_test_depth_mw_hi", bracket.Mw.max(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)
-REG.register("07_test_dip_mw_min", by_family["dip"].Mw.min(), "Mw", 2, where="M7", cell="dip", sidecar=sidecar)
-REG.register("07_test_dip_mw_max", by_family["dip"].Mw.max(), "Mw", 2, where="M7", cell="dip", sidecar=sidecar)
-REG.register("07_test_lam_mw_min", lambda_corners.Mw.min(), "Mw", 2, where="M7", cell="lambda", sidecar=sidecar)
-REG.register("07_test_lam_mw_max", lambda_corners.Mw.max(), "Mw", 2, where="M7", cell="lambda", sidecar=sidecar)
-REG.register("07_test_mesh_mw_min", mesh_corners.Mw.min(), "Mw", 2, where="M7", cell="mesh", sidecar=sidecar)
-REG.register("07_test_mesh_mw_max", mesh_corners.Mw.max(), "Mw", 2, where="M7", cell="mesh", sidecar=sidecar)
+    REG.register(f"07b_tie{tie * 1000:.0f}m_mw", r.Mw, "Mw", 2, where="M7", cell="tie", sidecar=sidecar)
+    REG.register(f"07b_tie{tie * 1000:.0f}m_surface_pct", r.surface_pct, "%", 0, where="M7", cell="tie", sidecar=sidecar)
+REG.register("07b_depth_best_km", record_scan.loc[record_scan.chi2.idxmin(), "D_km"], "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07b_depth_lo_km", d_shallow, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07b_depth_hi_km", d_deep, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07b_depth_mw_lo", bracket.Mw.min(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07b_depth_mw_hi", bracket.Mw.max(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07b_dip_mw_min", by_family["dip"].Mw.min(), "Mw", 2, where="M7", cell="dip", sidecar=sidecar)
+REG.register("07b_dip_mw_max", by_family["dip"].Mw.max(), "Mw", 2, where="M7", cell="dip", sidecar=sidecar)
+REG.register("07b_lam_mw_min", lambda_corners.Mw.min(), "Mw", 2, where="M7", cell="lambda", sidecar=sidecar)
+REG.register("07b_lam_mw_max", lambda_corners.Mw.max(), "Mw", 2, where="M7", cell="lambda", sidecar=sidecar)
+REG.register("07b_mesh_mw_min", mesh_corners.Mw.min(), "Mw", 2, where="M7", cell="mesh", sidecar=sidecar)
+REG.register("07b_mesh_mw_max", mesh_corners.Mw.max(), "Mw", 2, where="M7", cell="mesh", sidecar=sidecar)
 for r in recovery.itertuples():
-    REG.register(f"07_test_recovery_{r.D_km * 1000:.0f}m", r.moment_recovery, "fraction", 2, where="M7", cell="recovery", sidecar=sidecar)
+    REG.register(f"07b_recovery_{r.D_km * 1000:.0f}m", r.moment_recovery, "fraction", 2, where="M7", cell="recovery", sidecar=sidecar)
 REG.render()
-print("07_slip_model_tests (final configuration) complete")
+print("07b_uniform_model_tests (final configuration) complete")

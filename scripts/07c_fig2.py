@@ -29,7 +29,7 @@
 # 2026-09-28); the per-track LOS version is the supplement figure.
 #
 # **Inputs**: `06_event_field_geometry/fig2_inputs.npz`,
-# `07_slip_model_tests/fig2_model_row.npz` (placeholders if absent),
+# `07b_uniform_model_tests/fig2_model_row.npz` (placeholders if absent),
 # `hayward_fault_profiles.csv`, the alignment-array summary.
 #
 # **Figures**: `fig2_fault_parallel_vertical_coh<c>_<n>ev` (Fig 2) and
@@ -53,7 +53,7 @@ import pygmt
 # ## Constants
 
 # %%
-notebook = "07_slip_model_fig2"
+notebook = "07c_fig2"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -359,7 +359,7 @@ def model_row_placeholder():
 # TULEPOND_FIG2_MODEL names another product with the same keys, e.g. the PyLith + SFCVM model of
 # drafts/pylith (fig2_model_row_pylith_*.npz, slip at the fault VERTICES: nodes_kmz + slip_vertex_mm);
 # its `model_tag` is appended to the figure name so the two versions coexist.
-model_row_file = os.environ.get("TULEPOND_FIG2_MODEL", os.path.join(common_paths["out_dir"], "07_slip_model_tests", "fig2_model_row.npz"))
+model_row_file = os.environ.get("TULEPOND_FIG2_MODEL", os.path.join(common_paths["out_dir"], "07b_uniform_model_tests", "fig2_model_row.npz"))
 model_tag = os.environ.get("TULEPOND_FIG2_TAG", "")               # e.g. pylith_nuggetcd; empty for 07's own product
 if not model_tag and os.path.exists(model_row_file):
     with np.load(model_row_file) as z_tag:
