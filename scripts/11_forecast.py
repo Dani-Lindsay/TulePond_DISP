@@ -18,7 +18,7 @@
 #    the merged record. The forecast is conditioned on no event through the
 #    last InSAR acquisition (read from the data), so the numbers reproduce.
 #    The InSAR clock is also given in closed form (mean interval, t-based
-#    prediction interval), the numbers the text quotes. Fig 4.
+#    prediction interval), the numbers the text quotes. Fig 3 (the old Figs 3 and 4 combined).
 # 2. **Rainfall conditioning**: for each onset, the water-year rain accumulated
 #    by then, the lag after fixed cumulative thresholds (rule A) and after the
 #    first storm of the year (rule B), and the storm-proximity test (rule C)
@@ -53,6 +53,7 @@ import pandas as pd                              # Tables
 from scipy import stats                          # the renewal distributions
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.colors import LinearSegmentedColormap
 
 # %% [markdown]
 # ## [3] Paths and parameters
@@ -540,14 +541,15 @@ stats_lines += clock_lines
 print("\n".join(clock_lines))
 
 # %% [markdown]
-# ## [29] Figure 4: the repeat intervals and the next-onset forecast
+# ## [29] Figure 3: the HRKT history, the onsets on the water year, the repeat intervals and the forecast
 #
-# A) the intervals of the three catalogues the text quotes; the array record and
-# the combined record leave out the interval spanning the 1989 Loma Prieta
-# earthquake (Dani, 2026-09-29: the text says so explicitly; the array record
-# with it, B, stays in the table). B) the conditional probability
-# of the next onset from the BPT model of each catalogue, one line each, the
-# 2026-27 wet season shaded.
+# The old Figs 3 and 4 in one (Dani 2026-10-01: the text refers to them together; the survey cadence panel
+# dropped). Left column on one time axis: A) the HRKT record with the dense-era detections shaded, the
+# annual-survey years greyed, the InSAR stack tied to it and the InSAR onsets dashed, the two arrays since 2015
+# as insets; B) the onset windows on the water year over the 7-day rain (from 10_rain_seasonality). Right
+# column: C) the repeat intervals of the three catalogues the text quotes (the array and combined records leave
+# out the interval spanning Loma Prieta); D) the conditional probability of the next onset, BPT, one line per
+# catalogue, the 2026-27 wet season shaded.
 
 # %%
 # [30]
@@ -556,17 +558,112 @@ shown = ["A_insar", "B_aa_dense_noLP", "C_merged"]       # the array without the
 colours = {"A_insar": "#C1272D", "B_aa_dense_noLP": "#08306B", "C_merged": "#7570B3"}
 labels = {"A_insar": "InSAR", "B_aa_dense_noLP": "A. Array", "C_merged": "Combined"}
 spans = {"A_insar": "2017 to 2025", "B_aa_dense_noLP": "1983 to 2006", "C_merged": "1983 to 2006\n2017 to 2025"}
+aa_color, insar_color, det_color, insar_bar = "#08306B", "#D55E00", "#0072B2", "#C1272D"
 label_pt = 7
-# 1.5-column width (4.72 in); the two panels are placed by hand so they are the same square, whatever the label widths
-fig_w, fig_h, box = 4.72, 2.20, 1.45                # inches: figure, and the side of each panel
+
+# the left column's inputs, saved by 09 and 10
+rain_panel = np.load(os.path.join(paths_out["10_rain_seasonality"], "fig3_rain_panel.npz"))
+windows = pd.read_csv(os.path.join(paths_out["10_rain_seasonality"], "fig3_onset_windows.csv"))
+aa_stacks = pd.read_csv(os.path.join(paths_out["09_alignment_arrays"], "aa_insar_stacks.csv"))
+arrays = {code: utils.load_aa(common_paths["aa_dir"], code) for code in ("HGIL", "HRKT")}
+stacks = {code: aa_stacks[aa_stacks.code == code] for code in ("HGIL", "HRKT")}
+x0, x1 = float(rain_panel["x0"]), float(rain_panel["x1"])
+# the catalogues drawn on the left are the ones the forecast fits: same onsets, in the same order
+assert np.allclose(np.sort(windows.query("src == 'insar'").onset_yr), np.sort(catalogues["A_insar"][0].onset_yr))
+
+
+def onset_bar(ax, x, day_lo, day_hi, color, lw):
+    """A vertical bar from day_lo to day_hi of the water year at x, wrapping across Oct 1 if needed."""
+    segments = [(day_lo, day_hi)] if day_hi >= day_lo else [(day_lo, 366), (1, day_hi)]
+    for lo_, hi_ in segments:
+        ax.plot([x, x], [lo_, hi_], "-", color=color, lw=lw, solid_capstyle="butt", zorder=5)
+    for y in (day_lo, day_hi):
+        ax.plot([x - 0.28, x + 0.28], [y, y], "-", color=color, lw=lw * 0.8, zorder=5)
+
+
+# full Science width (7.2 in = 18.3 cm); panels placed by hand (inches) so the columns align whatever the labels
+fig_w, fig_h = 7.2, 4.75
+def place(x, y, w, h):
+    return fig.add_axes([x / fig_w, y / fig_h, w / fig_w, h / fig_h])
 fig = plt.figure(figsize=(fig_w, fig_h))
-axes = [fig.add_axes([1.05 / fig_w, 0.45 / fig_h, box / fig_w, box / fig_h]),      # A: room on the left for its tick labels
-        fig.add_axes([2.95 / fig_w, 0.45 / fig_h, box / fig_w, box / fig_h])]      # B: room on the right for its title and last tick
-for ax in axes:
+left_x, left_w, right_x, right_w, panel_h = 0.50, 3.95, 5.30, 1.70, 1.85
+ax_a, ax_b = place(left_x, 2.62, left_w, panel_h), place(left_x, 0.42, left_w, panel_h)
+right_h = 1.65                                       # shorter than the left panels: room for C's x label above D's title
+ax_c, ax_d = place(right_x, 2.62 + panel_h - right_h, right_w, right_h), place(right_x, 0.42, right_w, right_h)
+for ax in (ax_a, ax_b, ax_c, ax_d):
     ax.tick_params(labelsize=label_pt)
 
-# A) the repeat intervals of each catalogue with their window uncertainty; the bar is the mean, written under it with the sd
-ax = axes[0]
+# A) the HRKT record
+ax = ax_a
+hrkt, hrkt_stack = arrays["HRKT"], stacks["HRKT"]
+ax.plot(hrkt.year, hrkt.cum_mm, "o", ms=1.6, color=aa_color, lw=0.6, ls="-", zorder=3,
+        label=f"Alignment array ({hrkt.year.min():.0f} to {hrkt.year.max():.0f})")
+ax.plot(hrkt_stack.date, hrkt_stack.slip_mm, "-", lw=0.8, color=insar_color, zorder=5,
+        label=f"InSAR FP stack (n = {int(hrkt_stack.n_crossings.iloc[0])})")       # shifted onto the array datum (caption)
+for i, w in enumerate(windows.query("src == 'aa_dense'").itertuples()):
+    ax.axvspan(w.onset_lo, w.onset_hi, color=insar_color, alpha=0.20, lw=0, zorder=1, label="Alignment array detection" if i == 0 else None)
+ax.axvspan(float(rain_panel["dense_era_end"]), float(rain_panel["insar_start"]), color="0.5", alpha=0.10, lw=0, zorder=0, label="Annual surveys")
+for i, onset in enumerate(windows.query("src == 'insar'").onset_yr):
+    ax.axvline(onset, color=det_color, lw=0.9, ls="--", zorder=2, label="InSAR detection" if i == 0 else None)
+ax.axvline(float(rain_panel["loma_prieta"]), color="0.25", lw=0.7, ls=":", zorder=2)
+ax.text(float(rain_panel["loma_prieta"]), 0.43, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=6.5, color="0.25",
+        ha="center", va="top", bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))
+ax.set_ylabel("Cumulative slip (mm)", fontsize=label_pt)
+handles, leg_labels = ax.get_legend_handles_labels()
+order = [i for i, lab in enumerate(leg_labels) if lab != "Annual surveys"] + [leg_labels.index("Annual surveys")]     # the grey last
+ax.legend([handles[i] for i in order], [leg_labels[i] for i in order], fontsize=6.5, loc="lower right", frameon=True,
+          facecolor="white", edgecolor="none", framealpha=0.9)
+ax.set_title(r"$\bf{A}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
+ax.set_xlim(x0, x1)
+ax.tick_params(labelbottom=False)
+zoom_t0 = 2015.0
+zoom = {}
+for code in ("HGIL", "HRKT"):
+    recent = arrays[code][arrays[code].year >= zoom_t0]
+    zoom[code] = (recent, stacks[code], float(recent.cum_mm.iloc[0]))
+zoom_hi = max(max(float(stack.slip_mm.max()), float(recent.cum_mm.max())) - zero for recent, stack, zero in zoom.values())
+for i, code in enumerate(("HGIL", "HRKT")):
+    recent, stack, zero = zoom[code]
+    inset = ax.inset_axes([0.05 + 0.26 * i, 0.63, 0.24, 0.33])
+    inset.plot(recent.year, recent.cum_mm - zero, "o", ms=1.2, color=aa_color, lw=0.5, ls="-")
+    inset.plot(stack.date, stack.slip_mm - zero, "-", lw=0.6, color=insar_color)
+    for onset in windows.query("src == 'insar'").onset_yr:
+        inset.axvline(onset, color="0.7", lw=0.4, ls="--", zorder=0)
+    inset.set_xlim(zoom_t0, 2026.2)
+    inset.set_ylim(-2, zoom_hi + 3)
+    inset.set_xticks([2016, 2020, 2024])
+    inset.tick_params(labelsize=5, length=1.5, pad=1.5)
+    if i == 1:
+        inset.set_yticklabels([])
+    inset.text(0.05, 0.95, code, transform=inset.transAxes, fontsize=6.5, va="top")
+
+# B) the onset windows on the water year over the 7-day rain
+ax = ax_b
+rain_cmap = LinearSegmentedColormap.from_list("rain", list(rain_panel["rain_colours"]))
+density_max, density_days = float(rain_panel["density_max"]), int(rain_panel["density_days"])
+mesh = ax.pcolormesh(rain_panel["x_edges"], np.arange(-0.5, 367.5), rain_panel["rain_grid"], cmap=rain_cmap, vmin=0, vmax=density_max,
+                     shading="flat", rasterized=True, zorder=0)
+for w in windows.itertuples():
+    onset_bar(ax, w.onset_yr, w.dowy_lo, w.dowy_hi, "0.15" if w.src == "aa_dense" else insar_bar, 1.4)
+ax.set_ylim(366, 1)
+ax.set_yticks([1, 62, 124, 182, 244, 305, 366])
+ax.set_yticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1"])
+ax.set_xlabel("Year", fontsize=label_pt)
+ax.set_ylabel("Day of water year", fontsize=label_pt)
+ax.add_patch(plt.Rectangle((0.575, 0.04), 0.415, 0.24, transform=ax.transAxes, facecolor="white", edgecolor="none", alpha=0.85, zorder=4))
+cax = ax.inset_axes([0.61, 0.11, 0.35, 0.035])
+cb = fig.colorbar(mesh, cax=cax, orientation="horizontal", extend="max")
+cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=label_pt, labelpad=2)
+cb.ax.xaxis.set_label_position("top")
+cb.ax.tick_params(labelsize=label_pt, length=2, pad=1.5)
+ax.legend(handles=[Line2D([], [], color="0.15", lw=1.4, label="Alignment array onset window"),
+                   Line2D([], [], color=insar_bar, lw=1.4, label="InSAR onset window (6 to 12 d)")], fontsize=6.5, loc="lower left",
+          frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
+ax.set_title(r"$\bf{B}$  Onset windows on the water year, over 7-day rainfall", loc="left", fontsize=8)
+ax.set_xlim(x0, x1)
+
+# C) the repeat intervals of each catalogue with their window uncertainty; the bar is the mean, written under it with the sd
+ax = ax_c
 tick_labels = []
 for j, cat_name in enumerate(shown):
     catalogue, drop_lp = catalogues[cat_name]
@@ -580,14 +677,14 @@ for j, cat_name in enumerate(shown):
             fontsize=6, color=colours[cat_name])
     tick_labels.append(f"{labels[cat_name]} (n = {len(intervals)})\n{spans[cat_name]}")
 ax.set_yticks(range(len(shown)))
-ax.set_yticklabels(tick_labels, fontsize=6.5, linespacing=1.1)
+ax.set_yticklabels(tick_labels, fontsize=6, linespacing=1.1)
 ax.set_ylim(len(shown) - 0.35, -0.6)          # inverted: first catalogue on top; room under the last bar for its number
 ax.set_xlim(0, 6)
 ax.set_xlabel("Repeat interval (yr)", fontsize=label_pt)
-ax.set_title(r"$\bf{A}$  SSE repeat intervals", loc="left", fontsize=8)
+ax.set_title(r"$\bf{C}$  SSE repeat intervals", loc="left", fontsize=8)
 
-# B) the conditional forecast, BPT, one line per catalogue; the wet season shaded, the data end marked
-ax = axes[1]
+# D) the conditional forecast, BPT, one line per catalogue; the wet season shaded, the data end marked
+ax = ax_d
 wet_years = decyear(pd.to_datetime(list(wet)))
 ax.axvspan(wet_years[0], wet_years[1], color="#56B4E9", alpha=0.15, lw=0)
 for cat_name in shown:
@@ -598,13 +695,13 @@ ax.set_xlim(2025.5, 2030.0)
 ax.set_ylim(0, 1.02)
 ax.set_xlabel("Year", fontsize=label_pt)
 ax.set_ylabel("Cumulative probability", fontsize=label_pt)
-ax.set_title(r"$\bf{B}$  Probability of the next SSE", loc="left", fontsize=8)
+ax.set_title(r"$\bf{D}$  Probability of the next SSE", loc="left", fontsize=8)
 ax.legend(fontsize=6.5, loc="lower right", handlelength=1.2, handletextpad=0.5, borderpad=0.3, labelspacing=0.3,
           frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
-f_forecast = os.path.join(fig_dir, f"fig4_recurrence_forecast_ntiming{n_timing}_nboot{n_boot}_issue{forecast_issue_date}.png")
-fig.savefig(f_forecast, dpi=300)
-fig.savefig(f_forecast.replace(".png", ".pdf"))
-print("Saved Fig 4 to:", f_forecast)
+f_fig3 = os.path.join(fig_dir, f"fig3_history_forecast_ntiming{n_timing}_nboot{n_boot}_issue{forecast_issue_date}.png")
+fig.savefig(f_fig3, dpi=600)
+fig.savefig(f_fig3.replace(".png", ".pdf"))
+print("Saved Fig 3 to:", f_fig3)
 plt.show()
 
 # %% [markdown]
@@ -963,18 +1060,18 @@ REG.register("11_insar_interval_sd_d", interval_sd_yr * 365.25, "d", 0, where="P
 REG.register("11_insar_interval_sd_ci_lo_d", sd_ci_days[0], "d", 0, where="M9", cell="clock", sidecar=sidecar)
 REG.register("11_insar_interval_sd_ci_hi_d", sd_ci_days[1], "d", 0, where="M9", cell="clock", sidecar=sidecar)
 REG.register("11_insar_cov", interval_sd_yr / interval_mean_yr, "1", 2, where="P10", cell="clock", sidecar=sidecar)
-REG.register("11_next_clock_date", ymd(next_onset_yr), "date", 0, where="P10, Fig4", cell="clock", sidecar=sidecar)
+REG.register("11_next_clock_date", ymd(next_onset_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
 REG.register("11_next_1sd_lo", ymd(next_onset_yr - interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
 REG.register("11_next_1sd_hi", ymd(next_onset_yr + interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("11_pi95_lo", ymd(next_onset_yr - half_width_yr), "date", 0, where="P10, Fig4", cell="clock", sidecar=sidecar)
-REG.register("11_pi95_hi", ymd(next_onset_yr + half_width_yr), "date", 0, where="P10, Fig4", cell="clock", sidecar=sidecar)
+REG.register("11_pi95_lo", ymd(next_onset_yr - half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
+REG.register("11_pi95_hi", ymd(next_onset_yr + half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
 for cat_name, key in (("A_insar", "insar"), ("B_aa_dense", "aa_dense"), ("B_aa_dense_noLP", "aa_dense_nolp"), ("C_merged", "merged")):
     issue = forecasts[(forecasts.catalog == cat_name) & (forecasts.ref == "data_end")].set_index("model")
     for model in ("bpt", "lognormal", "weibull", "exponential"):
-        REG.register(f"11_{key}_{model}_q05", issue.loc[model, "q05"], "date", 0, where="P10, Fig4", cell="forecast", sidecar=sidecar)
-        REG.register(f"11_{key}_{model}_q50", issue.loc[model, "q50"], "date", 0, where="P10, Fig4", cell="forecast", sidecar=sidecar)
-        REG.register(f"11_{key}_{model}_q95", issue.loc[model, "q95"], "date", 0, where="P10, Fig4", cell="forecast", sidecar=sidecar)
-        REG.register(f"11_{key}_{model}_p_wet_wy2027", issue.loc[model, "p_wet_season"], "1", 2, where="P10, Fig4", cell="forecast", sidecar=sidecar)
+        REG.register(f"11_{key}_{model}_q05", issue.loc[model, "q05"], "date", 0, where="P10, Fig3", cell="forecast", sidecar=sidecar)
+        REG.register(f"11_{key}_{model}_q50", issue.loc[model, "q50"], "date", 0, where="P10, Fig3", cell="forecast", sidecar=sidecar)
+        REG.register(f"11_{key}_{model}_q95", issue.loc[model, "q95"], "date", 0, where="P10, Fig3", cell="forecast", sidecar=sidecar)
+        REG.register(f"11_{key}_{model}_p_wet_wy2027", issue.loc[model, "p_wet_season"], "1", 2, where="P10, Fig3", cell="forecast", sidecar=sidecar)
         REG.register(f"11_{key}_{model}_p_by_end_2027", issue.loc[model, "p_by_2027"], "1", 2, where="P10", cell="forecast", sidecar=sidecar)
         REG.register(f"11_{key}_{model}_daicc", issue.loc[model, "daicc"], "1", 2, where="M9", cell="forecast", sidecar=sidecar)
     REG.register(f"11_{key}_n_intervals", int(issue.n_intervals.iloc[0]), "count", 0, where="M9", cell="forecast", sidecar=sidecar)

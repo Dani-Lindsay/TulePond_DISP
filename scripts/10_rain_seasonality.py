@@ -312,117 +312,31 @@ plt.show()
 print(f"array resolvable: {len(aa_dense)} ({n_dec_to_mar(aa_dense)} Dec-Mar); InSAR: {len(insar_events)} ({n_dec_to_mar(insar_events)} Dec-Mar)")
 
 # %% [markdown]
-# ## [15] Figure 3: the 45-year history at Tule Pond and the onsets on the water year
+# ## [15] The Fig 3 panels: the HRKT history and the onsets on the water year
 #
-# One time axis, three panels. a) The survey cadence of the two arrays that
-# span the section. b) The HRKT record with the dense-era detections shaded (08;
-# the annual-survey years after 2006 are unobserved by the detector and greyed),
-# the InSAR fault-parallel stack tied to it, the InSAR onsets dashed, and the
-# two arrays since 2015 as insets. c) The onset windows on the water year over
-# the 7-day rain totals (the panel above), so the reader sees the clock and
-# the season in one look.
+# Fig 3 (Dani 2026-10-01: the old Figs 3 and 4 combined, the survey cadence dropped) is drawn by 11_forecast,
+# which also has the repeat intervals and the forecast. This cell saves what its left column needs: the rain
+# grid on the water year, the onset windows of both catalogues, and the end of the bimonthly HRKT surveys.
 
 # %%
 # [16]
-aa_stacks = pd.read_csv(stacks_file)
-stacks = {code: aa_stacks[aa_stacks.code == code] for code in ("HGIL", "HRKT")}
 hrkt = utils.load_aa(common_paths["aa_dir"], "HRKT")
-hgil = utils.load_aa(common_paths["aa_dir"], "HGIL")
-aa_color, insar_color, det_color = "#08306B", "#D55E00", "#0072B2"
-
-# sized for a 1.5-column slot (12.0 cm wide, 0.65 of the Science text width); fonts stay at 7-8 pt at that size
-fig, axes = plt.subplots(3, 1, figsize=(4.72, 5.0), sharex=True, height_ratios=[0.28, 1.6, 1.6], constrained_layout=True)     # B and C the same height
-label_pt = 7                                     # axis titles the same size as the tick labels
-for ax in axes:
-    ax.tick_params(labelsize=label_pt)
-
-# a) survey cadence
-ax = axes[0]
-ax.eventplot([hgil.year.values, hrkt.year.values], lineoffsets=[1, 0], linelengths=0.55, colors=["0.55", aa_color], lw=0.6)
-ax.set_yticks([1, 0])
-ax.set_yticklabels(["HGIL", "HRKT"])
-ax.set_ylim(-0.5, 1.5)
-ax.set_title(r"$\bf{A}$  Survey cadence of the Tule Pond arrays", loc="left", fontsize=8)
-
-# b) the HRKT record: the dense-era detections shaded, the unobserved annual-survey years greyed, the InSAR onsets dashed
-ax = axes[1]
-hrkt_stack = stacks["HRKT"]
-ax.plot(hrkt.year, hrkt.cum_mm, "o", ms=1.6, color=aa_color, lw=0.6, ls="-", zorder=3,
-        label=f"Alignment array ({hrkt.year.min():.0f} to {hrkt.year.max():.0f})")
-ax.plot(hrkt_stack.date, hrkt_stack.slip_mm, "-", lw=0.8, color=insar_color, zorder=5, label=f"InSAR FP stack (n = {int(hrkt_stack.n_crossings.iloc[0])})")      # shifted onto the array datum (caption)
-# only the dense-era detections, the ones the forecast uses; the annual-survey years after them are unobserved by
-# the clock's standard, so the section is greyed until the first InSAR detection (Dani, 2026-09-24)
-for event in aa_dense.itertuples():
-    ax.axvspan(event.onset_lo, event.onset_hi, color=insar_color, alpha=0.20, lw=0, zorder=1,
-               label="Alignment array detection" if event.Index == 0 else None)
-# the grey starts where the bimonthly surveys end: the last HRKT survey after which every gap to the next survey
-# is longer than resolvable_days (130 d, the window the seasonality needs); the arrays were then surveyed annually
+hrkt_stack = pd.read_csv(stacks_file).query("code == 'HRKT'")
+# the bimonthly surveys end at the last HRKT survey after which every gap to the next survey is longer than
+# resolvable_days (130 d, the window the seasonality needs); the arrays were then surveyed annually until InSAR
 survey_gap_days = np.diff(hrkt.year.values) * 365.25
 dense_era_end = float(hrkt.year.values[np.max(np.where(survey_gap_days <= resolvable_days)[0]) + 1])
-insar_start = float(hrkt_stack.date.min())                       # from here the InSAR samples every 6 to 12 d
+insar_start = float(hrkt_stack.date.min())
 print(f"bimonthly surveys at HRKT end {dense_era_end:.2f}; annual surveys from then until the InSAR record starts {insar_start:.2f}")
-ax.axvspan(dense_era_end, insar_start, color="0.5", alpha=0.10, lw=0, zorder=0, label="Annual surveys")
-for i, onset in enumerate(insar_events.onset_yr):
-    ax.axvline(onset, color=det_color, lw=0.9, ls="--", zorder=2, label="InSAR detection" if i == 0 else None)
-ax.axvline(loma_prieta, color="0.25", lw=0.7, ls=":", zorder=2)
-ax.text(loma_prieta, 0.43, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=6.5, color="0.25", ha="center", va="top",
-        bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))   # below the insets, above the curve
-ax.set_ylabel("Cumulative slip (mm)", fontsize=label_pt)
-handles, labels = ax.get_legend_handles_labels()
-order = [i for i, label in enumerate(labels) if label != "Annual surveys"] + [labels.index("Annual surveys")]     # the grey last
-ax.legend([handles[i] for i in order], [labels[i] for i in order], fontsize=6.5, loc="lower right", frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
-ax.set_title(r"$\bf{B}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
-# the two arrays since 2015 as insets, each zeroed at its first survey, on one y range
-zoom_t0 = 2015.0
-zoom = {}
-for code, array in (("HGIL", hgil), ("HRKT", hrkt)):
-    recent = array[array.year >= zoom_t0]
-    zoom[code] = (recent, stacks[code], float(recent.cum_mm.iloc[0]))
-zoom_hi = max(max(float(stack.slip_mm.max()), float(recent.cum_mm.max())) - zero for recent, stack, zero in zoom.values())
-for i, code in enumerate(("HGIL", "HRKT")):
-    recent, stack, zero = zoom[code]
-    inset = ax.inset_axes([0.05 + 0.26 * i, 0.63, 0.24, 0.33])      # above the array curve, which reaches the insets' height only after 2010
-    inset.plot(recent.year, recent.cum_mm - zero, "o", ms=1.2, color=aa_color, lw=0.5, ls="-")
-    inset.plot(stack.date, stack.slip_mm - zero, "-", lw=0.6, color=insar_color)
-    for onset in insar_events.onset_yr:
-        inset.axvline(onset, color="0.7", lw=0.4, ls="--", zorder=0)
-    inset.set_xlim(zoom_t0, 2026.2)
-    inset.set_ylim(-2, zoom_hi + 3)
-    inset.set_xticks([2016, 2020, 2024])
-    inset.tick_params(labelsize=5, length=1.5, pad=1.5)      # small on purpose: the insets must not distract
-    if i == 1:
-        inset.set_yticklabels([])
-    inset.text(0.05, 0.95, code, transform=inset.transAxes, fontsize=6.5, va="top")
-
-# c) the onset windows on the water year over the rain (the grid of the figure above)
-ax = axes[2]
-mesh = ax.pcolormesh(np.array(x_edges), np.arange(-0.5, 367.5), rain_grid, cmap=cmap, vmin=0, vmax=density_max, shading="flat", rasterized=True, zorder=0)
-for event in aa_dense.itertuples():
-    onset_bar(ax, event.onset_yr, dowy_frac(event.onset_lo), dowy_frac(event.onset_hi), "0.15", 1.4)
-for event in insar_events.itertuples():
-    onset_bar(ax, event.onset_yr, dowy_frac(event.onset_lo), dowy_frac(event.onset_hi), "#C1272D", 1.4)
-ax.set_ylim(366, 1)
-ax.set_yticks([1, 62, 124, 182, 244, 305, 366])
-ax.set_yticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1"])
-ax.set_xlabel("Year", fontsize=label_pt)
-ax.set_ylabel("Day of water year", fontsize=label_pt)
-# the colour bar horizontal inside the panel at the bottom right (the summer is empty), on a white backing
-ax.add_patch(plt.Rectangle((0.575, 0.04), 0.415, 0.24, transform=ax.transAxes, facecolor="white", edgecolor="none", alpha=0.85, zorder=4))
-cax = ax.inset_axes([0.61, 0.11, 0.35, 0.035])
-cb = fig.colorbar(mesh, cax=cax, orientation="horizontal", extend="max")
-cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=label_pt, labelpad=2)
-cb.ax.xaxis.set_label_position("top")
-cb.ax.tick_params(labelsize=label_pt, length=2, pad=1.5)
-ax.legend(handles=[Line2D([], [], color="0.15", lw=1.4, label="Alignment array onset window"),
-                   Line2D([], [], color="#C1272D", lw=1.4, label="InSAR onset window (6 to 12 d)")], fontsize=6.5, loc="lower left",
-          frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
-ax.set_title(r"$\bf{C}$  Onset windows on the water year, over 7-day rainfall", loc="left", fontsize=8)
-ax.set_xlim(x0, x1)
-f_fig3 = os.path.join(fig_dir, f"fig3_history_rain_{params}_density{density_days}d.png")
-fig.savefig(f_fig3, dpi=300)
-fig.savefig(f_fig3.replace(".png", ".pdf"))
-print("Saved Fig 3 to:", f_fig3)
-plt.show()
+windows = pd.concat([pd.DataFrame(dict(src=src, onset_yr=cat.onset_yr.values, onset_lo=cat.onset_lo.values, onset_hi=cat.onset_hi.values,
+                                       dowy_lo=dowy_frac(cat.onset_lo.values), dowy_hi=dowy_frac(cat.onset_hi.values)))
+                     for src, cat in (("aa_dense", aa_dense), ("insar", insar_events))], ignore_index=True)
+assert len(windows) == len(aa_dense) + len(insar_events) and windows[["dowy_lo", "dowy_hi"]].notna().all().all()
+windows.to_csv(os.path.join(out_dir, "fig3_onset_windows.csv"), index=False)
+np.savez(os.path.join(out_dir, "fig3_rain_panel.npz"), rain_grid=rain_grid, x_edges=np.asarray(x_edges), density_days=density_days,
+         density_max=density_max, x0=x0, x1=x1, loma_prieta=loma_prieta, dense_era_end=dense_era_end, insar_start=insar_start,
+         rain_colours=np.array(["#FFFFFF", "#C6DBEF", "#4292C6", "#08306B"]))
+print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 11_forecast")
 
 # %% [markdown]
 # ## [17] REGISTER
