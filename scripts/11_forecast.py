@@ -614,8 +614,7 @@ order = [i for i, lab in enumerate(leg_labels) if lab != "Annual surveys"] + [le
 ax.legend([handles[i] for i in order], [leg_labels[i] for i in order], fontsize=label_pt, loc="lower right", frameon=True,
           facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{A}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
-ax.set_xlim(x0, x1)
-ax.tick_params(labelbottom=False)
+ax.set_xlim(x0, x1)                                  # year labels but no "Year" title: it fills the row gap (Dani 2026-10-01)
 zoom_t0 = 2015.0
 zoom = {}
 for code in ("HGIL", "HRKT"):
