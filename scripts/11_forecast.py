@@ -54,6 +54,7 @@ from scipy import stats                          # the renewal distributions
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.ticker import MultipleLocator
 
 # %% [markdown]
 # ## [3] Paths and parameters
@@ -557,7 +558,6 @@ utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 shown = ["A_insar", "B_aa_dense_noLP", "C_merged"]       # the array without the Loma Prieta interval; B (with it) stays in the table
 colours = {"A_insar": "#C1272D", "B_aa_dense_noLP": "#08306B", "C_merged": "#7570B3"}
 labels = {"A_insar": "InSAR", "B_aa_dense_noLP": "A. Array", "C_merged": "Combined"}
-spans = {"A_insar": "2017 to 2025", "B_aa_dense_noLP": "1983 to 2006", "C_merged": "1983 to 2006\n2017 to 2025"}
 aa_color, insar_color, det_color, insar_bar = "#08306B", "#D55E00", "#0072B2", "#C1272D"
 label_pt = 7
 
@@ -582,14 +582,14 @@ def onset_bar(ax, x, day_lo, day_hi, color, lw):
 
 
 # full Science width (7.2 in = 18.3 cm); panels placed by hand (inches) so the columns align whatever the labels
-fig_w, fig_h = 7.2, 4.75
+fig_w, fig_h = 7.2, 5.05
 def place(x, y, w, h):
     return fig.add_axes([x / fig_w, y / fig_h, w / fig_w, h / fig_h])
 fig = plt.figure(figsize=(fig_w, fig_h))
-left_x, left_w, right_x, right_w, panel_h = 0.50, 3.95, 5.30, 1.70, 1.85
-ax_a, ax_b = place(left_x, 2.62, left_w, panel_h), place(left_x, 0.42, left_w, panel_h)
-right_h = 1.65                                       # shorter than the left panels: room for C's x label above D's title
-ax_c, ax_d = place(right_x, 2.62 + panel_h - right_h, right_w, right_h), place(right_x, 0.42, right_w, right_h)
+# all four panels the same height (Dani 2026-10-01); the row gap leaves room for C's x label above D's title
+left_x, left_w, right_x, right_w, panel_h, row_y = 0.50, 4.05, 5.20, 1.88, 1.85, (2.90, 0.42)
+ax_a, ax_b = place(left_x, row_y[0], left_w, panel_h), place(left_x, row_y[1], left_w, panel_h)
+ax_c, ax_d = place(right_x, row_y[0], right_w, panel_h), place(right_x, row_y[1], right_w, panel_h)
 for ax in (ax_a, ax_b, ax_c, ax_d):
     ax.tick_params(labelsize=label_pt)
 
@@ -606,12 +606,12 @@ ax.axvspan(float(rain_panel["dense_era_end"]), float(rain_panel["insar_start"]),
 for i, onset in enumerate(windows.query("src == 'insar'").onset_yr):
     ax.axvline(onset, color=det_color, lw=0.9, ls="--", zorder=2, label="InSAR detection" if i == 0 else None)
 ax.axvline(float(rain_panel["loma_prieta"]), color="0.25", lw=0.7, ls=":", zorder=2)
-ax.text(float(rain_panel["loma_prieta"]), 0.43, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=6.5, color="0.25",
+ax.text(float(rain_panel["loma_prieta"]), 0.43, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=label_pt, color="0.25",
         ha="center", va="top", bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))
 ax.set_ylabel("Cumulative slip (mm)", fontsize=label_pt)
 handles, leg_labels = ax.get_legend_handles_labels()
 order = [i for i, lab in enumerate(leg_labels) if lab != "Annual surveys"] + [leg_labels.index("Annual surveys")]     # the grey last
-ax.legend([handles[i] for i in order], [leg_labels[i] for i in order], fontsize=6.5, loc="lower right", frameon=True,
+ax.legend([handles[i] for i in order], [leg_labels[i] for i in order], fontsize=label_pt, loc="lower right", frameon=True,
           facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{A}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
 ax.set_xlim(x0, x1)
@@ -632,10 +632,10 @@ for i, code in enumerate(("HGIL", "HRKT")):
     inset.set_xlim(zoom_t0, 2026.2)
     inset.set_ylim(-2, zoom_hi + 3)
     inset.set_xticks([2016, 2020, 2024])
-    inset.tick_params(labelsize=5, length=1.5, pad=1.5)
+    inset.tick_params(labelsize=6, length=1.5, pad=1.5)      # 6 pt: the smallest text on the page
     if i == 1:
         inset.set_yticklabels([])
-    inset.text(0.05, 0.95, code, transform=inset.transAxes, fontsize=6.5, va="top")
+    inset.text(0.05, 0.95, code, transform=inset.transAxes, fontsize=7, va="top")
 
 # B) the onset windows on the water year over the 7-day rain
 ax = ax_b
@@ -657,10 +657,13 @@ cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=label_pt,
 cb.ax.xaxis.set_label_position("top")
 cb.ax.tick_params(labelsize=label_pt, length=2, pad=1.5)
 ax.legend(handles=[Line2D([], [], color="0.15", lw=1.4, label="Alignment array onset window"),
-                   Line2D([], [], color=insar_bar, lw=1.4, label="InSAR onset window (6 to 12 d)")], fontsize=6.5, loc="lower left",
+                   Line2D([], [], color=insar_bar, lw=1.4, label="InSAR onset window (6 to 12 d)")], fontsize=label_pt, loc="lower left",
           frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{B}$  Onset windows on the water year, over 7-day rainfall", loc="left", fontsize=8)
 ax.set_xlim(x0, x1)
+for ax in (ax_a, ax_b):                              # Roland: annual ticks, years labelled every 5 (B; A shares the axis)
+    ax.xaxis.set_major_locator(MultipleLocator(5))
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
 
 # C) the repeat intervals of each catalogue with their window uncertainty; the bar is the mean, written under it with the sd
 ax = ax_c
@@ -674,10 +677,10 @@ for j, cat_name in enumerate(shown):
     ax.errorbar(intervals, j + rng.uniform(-0.15, 0.15, len(intervals)), xerr=window_err, fmt="o", ms=3.0, color=colours[cat_name], ecolor="0.6", elinewidth=0.6)
     ax.plot([np.mean(intervals)] * 2, [j - 0.3, j + 0.3], "-", color=colours[cat_name], lw=1.5)
     ax.text(np.mean(intervals), j + 0.36, f"{np.mean(intervals):.2f} $\\pm$ {np.std(intervals, ddof=1):.2f} yr", ha="center", va="top",
-            fontsize=6, color=colours[cat_name])
-    tick_labels.append(f"{labels[cat_name]} (n = {len(intervals)})\n{spans[cat_name]}")
+            fontsize=7, color=colours[cat_name])
+    tick_labels.append(f"{labels[cat_name]}\n(n = {len(intervals)})")      # the spans are read from A (Dani 2026-10-01)
 ax.set_yticks(range(len(shown)))
-ax.set_yticklabels(tick_labels, fontsize=6, linespacing=1.1)
+ax.set_yticklabels(tick_labels, fontsize=label_pt, linespacing=1.1)
 ax.set_ylim(len(shown) - 0.35, -0.6)          # inverted: first catalogue on top; room under the last bar for its number
 ax.set_xlim(0, 6)
 ax.set_xlabel("Repeat interval (yr)", fontsize=label_pt)
@@ -690,13 +693,14 @@ ax.axvspan(wet_years[0], wet_years[1], color="#56B4E9", alpha=0.15, lw=0)
 for cat_name in shown:
     ax.plot(grid, forecast_curves[(cat_name, "bpt", "data_end")], "-", color=colours[cat_name], lw=1.2, label=labels[cat_name])
 ax.axvline(refs["data_end"], color="0.3", lw=0.7, ls="-.")
-ax.text(refs["data_end"] + 0.06, 0.98, "Data end", fontsize=6.5, color="0.3", va="top", ha="left", rotation=90)
+ax.text(refs["data_end"] + 0.06, 0.98, "Data end", fontsize=label_pt, color="0.3", va="top", ha="left", rotation=90)
 ax.set_xlim(2025.5, 2030.0)
+ax.xaxis.set_major_locator(MultipleLocator(1))
 ax.set_ylim(0, 1.02)
 ax.set_xlabel("Year", fontsize=label_pt)
 ax.set_ylabel("Cumulative probability", fontsize=label_pt)
 ax.set_title(r"$\bf{D}$  Probability of the next SSE", loc="left", fontsize=8)
-ax.legend(fontsize=6.5, loc="lower right", handlelength=1.2, handletextpad=0.5, borderpad=0.3, labelspacing=0.3,
+ax.legend(fontsize=label_pt, loc="lower right", handlelength=1.2, handletextpad=0.5, borderpad=0.3, labelspacing=0.3,
           frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
 f_fig3 = os.path.join(fig_dir, f"fig3_history_forecast_ntiming{n_timing}_nboot{n_boot}_issue{forecast_issue_date}.png")
 fig.savefig(f_fig3, dpi=600)
