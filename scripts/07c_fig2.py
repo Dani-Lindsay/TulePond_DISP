@@ -501,7 +501,7 @@ def draw_fig2(evt_maps_in, evt_profiles, evt_label, stem, rate_maps_in=None, col
     # row 3: the model, notebook 07
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
     model_row(lim_event)                                     # I, J on the same colour scale as E, F
-    fig.savefig(stem + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
+    fig.savefig(stem + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
     fig.savefig(stem + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
     print("Saved to:", stem + ".png")
     fig.show()

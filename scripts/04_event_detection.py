@@ -992,11 +992,11 @@ map_w = map_w * map_h / map_h_gmt                                 # width that m
 proj_map = f"Oa{lon_c}/{lat_c}/{strike_map - 90}/{map_w:.3f}c"
 print(f"map panel {map_w:.2f} x {map_h:.2f} cm at true scale")
 fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
-fig.grdimage(grid=grid_ll, cmap=cpt_vel, nan_transparent=True)
+fig.grdimage(grid=grid_ll, cmap=cpt_vel, nan_transparent=True, interpolation="c")   # -nc: bicubic when GMT resamples the grid
+                                                                                     # to the page (display only, the grid is the data)
 fig.plot(x=x_fault["ft_lon"].values, y=x_fault["ft_lat"].values, pen="0.6p,black")
-for code, la, lo, name in creepmeters:
-    fig.plot(x=[lo], y=[la], style="i0.22c", fill=gold, pen="0.5p,black")                                    # the creepmeter symbol of D
-    utils.text_backed(fig, x=lo, y=la, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")   # labels on the west (blue) side
+for code, la, lo, name in creepmeters:                                                                       # labels on the west (blue) side;
+    utils.text_backed(fig, x=lo, y=la, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")   # the triangles go on top, below
 # the bracket spans the Tule Pond creep LENGTH (len_lo-len_hi, the 6 km of fault hosting the events, the number
 # the paper quotes; section_lengths.csv), not the narrower stacked band, which stays as the dashed lines in B.
 # East side of the fault so it stays clear of the creepmeter labels; labelled "SSE extent" (Dani 2026-09-29: it is the
@@ -1008,7 +1008,7 @@ for u_ in (len_lo, len_hi):
     fig.plot(x=tick_lon, y=tick_lat, pen="1.1p,black")                                                      # ticks reach almost to the trace
 # two rows in one call (GMT has no newline outside paragraph mode), boxed like the creepmeters, one size up
 u_mid = 0.5 * (len_lo + len_hi)
-label_lon, label_lat = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [2.5, 2.5])       # left edge 0.5 km east of the bracket, never on it
+label_lon, label_lat = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [2.9, 2.9])       # left edge 0.9 km east of the bracket, never on it
 utils.text_backed(fig, x=label_lon, y=label_lat, text=["SSE", "extent"], justify="LM", font="8p,Helvetica,black")
 # the cities along the fault (Dani 2026-10-01), east side opposite the creepmeter labels. Each label sits within
 # the city's stretch of the fault, not at its downtown (Oakland's downtown is on the bay flats and lines up with
@@ -1029,6 +1029,8 @@ for city, u_city in city_u.items():
     city_lon, city_lat = uv_to_lonlat([u_city], [trace_v_km[j] + 0.6])
     utils.text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black")
 print("city labels at km:", {c: round(u, 1) for c, u in city_u.items()})
+for code, la, lo, name in creepmeters:                                                                       # the creepmeter symbol of D, on top of
+    fig.plot(x=[lo], y=[la], style="i0.22c", fill=gold, pen="0.5p,black")                                    # every label (Dani 2026-10-01)
 fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
@@ -1126,7 +1128,7 @@ with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):          # -> ~6.
     fig.colorbar(cmap=cpt_dep, position=f"x0c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa4f2+lEarthquake depth (km)")
 
 f_fig1 = os.path.join(fig_dir, f"fig1_tulepond_{params}_band{int(band_main * 100)}")
-fig.savefig(f_fig1 + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
+fig.savefig(f_fig1 + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
 fig.savefig(f_fig1 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved Fig 1 to:", f_fig1 + ".png")
 fig.show()
