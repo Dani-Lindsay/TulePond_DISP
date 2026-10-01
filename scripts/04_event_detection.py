@@ -1010,19 +1010,25 @@ for u_ in (len_lo, len_hi):
 u_mid = 0.5 * (len_lo + len_hi)
 label_lon, label_lat = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [2.5, 2.5])       # left edge 0.5 km east of the bracket, never on it
 utils.text_backed(fig, x=label_lon, y=label_lat, text=["SSE", "extent"], justify="LM", font="8p,Helvetica,black")
-# the cities along the fault (Dani 2026-10-01), east side opposite the creepmeter labels, at each city centre's
-# along-strike position (approximate centres: labels only, nothing is measured from them). Fremont's centre
-# (Central Park) sits beside the SSE bracket, so its label goes just south of the bracket, still inside the city.
-cities = [("Berkeley", -122.2727, 37.8716), ("Oakland", -122.2712, 37.8044),
-          ("Union City", -122.0439, 37.5934), ("Fremont", -121.9886, 37.5485)]
-for city, lo_, la_ in cities:
-    u_city = float(to_uv([lo_], [la_])[0][0])
-    if city == "Fremont":
-        u_city = max(u_city, len_hi + 2.0)
+# the cities along the fault (Dani 2026-10-01), east side opposite the creepmeter labels. Each label sits within
+# the city's stretch of the fault, not at its downtown (Oakland's downtown is on the bay flats and lines up with
+# CTM1, the north end of the city's stretch). Labels only, nothing is measured from them:
+#   Berkeley, Union City: the city centre's along-strike position
+#   Oakland: midway between CTM1 (Temescal) and COZ1 (Oakland Zoo), both in Oakland
+#   Hayward: at CHP1 (Palisade Street, Hayward)
+#   Fremont: its centre (Central Park) sits beside the SSE bracket, so just south of the bracket, still in the city
+# San Leandro is left off: the text does not mention it.
+city_u = {"Berkeley": float(to_uv([-122.2727], [37.8716])[0][0]),
+          "Oakland": 0.5 * (u_creepmeter["CTM1"] + u_creepmeter["COZ1"]),
+          "Hayward": u_creepmeter["CHP1"],
+          "Union City": float(to_uv([-122.0439], [37.5934])[0][0]),
+          "Fremont": max(float(to_uv([-121.9886], [37.5485])[0][0]), len_hi + 2.0)}
+for city, u_city in city_u.items():
     assert -3.0 < u_city < map_u_max, f"{city} (u {u_city:.1f} km) falls off the map"
     j = int(np.argmin(np.abs(trace_u_km - u_city)))
     city_lon, city_lat = uv_to_lonlat([u_city], [trace_v_km[j] + 0.6])
     utils.text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black")
+print("city labels at km:", {c: round(u, 1) for c, u in city_u.items()})
 fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
