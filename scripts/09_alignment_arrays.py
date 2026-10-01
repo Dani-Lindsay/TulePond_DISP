@@ -70,7 +70,7 @@ os.makedirs(fig_dir, exist_ok=True)
 
 # the products of the previous version of this notebook, for the CHECK cell
 
-stack_km = 1.0                 # half-width of the InSAR stack around each array
+stack_km = 0.5                 # half-width ALONG STRIKE of the InSAR stack around each array (Dani 2026-10-01: was 1 km of latitude)
 site = "HRKT"                  # the array with the dense record
 thr_mm = 6.0                   # detection threshold: fixed excess per survey interval (see the sweep)
 n_pass = 2                     # detector passes (pass 2 uses the fitted inter-event rate)
@@ -97,6 +97,7 @@ REG.inputs(fp_ts_file, events_file, common_paths["aa_summary"],
 # [6]
 # the fault-parallel time series from 03: lat x decimal year, mm
 fp_ts = pd.read_csv(fp_ts_file, index_col=0)
+to_km = utils.lat_to_km_map(common_paths["fault_profiles"])    # latitude -> km from Point Pinole along the trace
 fp_ts.columns = fp_ts.columns.astype(float)
 fp_ts.index = fp_ts.index.astype(float)
 fp_dates = fp_ts.columns.values.astype(float)
@@ -119,7 +120,7 @@ for code, array in arrays.items():
 # %% [markdown]
 # ## [7] The InSAR stack at each array
 #
-# The mean of the fault-parallel series of every crossing within `stack_km` of
+# The mean of the fault-parallel series of every crossing within `stack_km` along strike of
 # the array (crossings with fewer than half their dates are left out), tied to
 # the array by the mean offset at the surveys that fall inside the InSAR window.
 # A vertical shift only: nothing is fitted.
@@ -129,8 +130,9 @@ for code, array in arrays.items():
 def insar_stack(code, array):
     """(dates, slip_mm, n_crossings) of the InSAR stack at one array, tied to the array."""
     lat = array_lat[code]
-    half_width_deg = stack_km / 111.19            # fp_ts is indexed by latitude: 1 km = 1/111.19 deg of latitude
-    nearby = fp_ts[(fp_ts.index >= lat - half_width_deg) & (fp_ts.index <= lat + half_width_deg)]
+    crossing_km = to_km(fp_ts.index.values.astype(float))      # fp_ts is indexed by latitude: along-strike km of each crossing
+    array_km = float(to_km([lat])[0])
+    nearby = fp_ts[np.abs(crossing_km - array_km) <= stack_km]
     nearby = nearby[nearby.notna().sum(axis=1) > 0.5 * fp_ts.shape[1]]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -153,6 +155,16 @@ stack_rows = []
 for code, (insar_dates, insar_slip, n_crossings) in stacks.items():
     stack_rows += [dict(code=code, date=date, slip_mm=slip, n_crossings=n_crossings) for date, slip in zip(insar_dates, insar_slip)]
 pd.DataFrame(stack_rows).to_csv(os.path.join(out_dir, "aa_insar_stacks.csv"), index=False)
+
+# the five event steps ON THE HRKT STACK, so the InSAR-era event size is compared with the array's dense-era steps at
+# the same place (the 8.8 mm InSAR median of 04 is the peak band, km 58.2-59.8, not HRKT). Same joint model as 04:
+# constant + rate + annual sin/cos + a Heaviside step at each onset, least squares.
+hrkt_dates, hrkt_slip, hrkt_n = stacks["HRKT"]
+G_hrkt = np.column_stack([np.ones_like(hrkt_dates), hrkt_dates - hrkt_dates.mean(), np.sin(2 * np.pi * hrkt_dates), np.cos(2 * np.pi * hrkt_dates)]
+                         + [(hrkt_dates > onset).astype(float) for onset in insar_events.onset_yr])
+hrkt_insar_steps = np.linalg.lstsq(G_hrkt, hrkt_slip, rcond=None)[0][4:]
+assert len(hrkt_insar_steps) == len(insar_events) and np.all(np.isfinite(hrkt_insar_steps))
+print(f"HRKT InSAR stack ({hrkt_n} crossings): event steps {np.round(hrkt_insar_steps, 1)} mm, mean {hrkt_insar_steps.mean():.1f}, median {np.median(hrkt_insar_steps):.1f}")
 
 # %% [markdown]
 # ## [9] The arrays against the InSAR at each site
@@ -602,6 +614,14 @@ REG.register("09_aa_interval_median_yr", np.median(aa_interval), "yr", 1, where=
 REG.register("09_aa_interval_n", len(aa_interval), "count", 0, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("09_insar_interval_median_yr", np.median(insar_interval), "yr", 1, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("09_insar_step_median_mm", insar_events.amplitude_mm.median(), "mm", 1, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("09_hrkt_insar_step_mean_mm", hrkt_insar_steps.mean(), "mm", 1, where="P9 event size", cell="intervals", sidecar=sidecar)
+REG.register("09_hrkt_insar_step_median_mm", np.median(hrkt_insar_steps), "mm", 1, where="P9 event size", cell="intervals", sidecar=sidecar)
+dense_steps = hrkt_events[hrkt_events.window_days <= dense_window_days].amplitude_mm
+REG.register("09_hrkt_dense_step_mean_mm", dense_steps.mean(), "mm", 1, where="P9 event size", cell="intervals", sidecar=sidecar)
+REG.register("09_hrkt_dense_step_median_mm", dense_steps.median(), "mm", 1, where="P9 event size", cell="intervals", sidecar=sidecar)
+print(f"HRKT event size: dense-era array (n {len(dense_steps)}) mean {dense_steps.mean():.1f}, median {dense_steps.median():.1f} mm, "
+      f"range {dense_steps.min():.1f}-{dense_steps.max():.1f}; InSAR era on the HRKT stack (n {len(hrkt_insar_steps)}) mean "
+      f"{hrkt_insar_steps.mean():.1f}, median {np.median(hrkt_insar_steps):.1f} mm, range {hrkt_insar_steps.min():.1f}-{hrkt_insar_steps.max():.1f}")
 REG.register("09_merged_interval_median_yr", np.median(merged_interval), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("09_merged_first_half_yr", np.median(merged_interval[first_half]), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
 REG.register("09_merged_second_half_yr", np.median(merged_interval[~first_half]), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)

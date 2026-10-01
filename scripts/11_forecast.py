@@ -565,8 +565,8 @@ label_pt = 7
 rain_panel = np.load(os.path.join(paths_out["10_rain_seasonality"], "fig3_rain_panel.npz"))
 windows = pd.read_csv(os.path.join(paths_out["10_rain_seasonality"], "fig3_onset_windows.csv"))
 aa_stacks = pd.read_csv(os.path.join(paths_out["09_alignment_arrays"], "aa_insar_stacks.csv"))
-arrays = {code: utils.load_aa(common_paths["aa_dir"], code) for code in ("HGIL", "HRKT")}
-stacks = {code: aa_stacks[aa_stacks.code == code] for code in ("HGIL", "HRKT")}
+arrays = {code: utils.load_aa(common_paths["aa_dir"], code) for code in ("HRKT",)}
+stacks = {code: aa_stacks[aa_stacks.code == code] for code in ("HRKT",)}
 x0, x1 = float(rain_panel["x0"]), float(rain_panel["x1"])
 # the catalogues drawn on the left are the ones the forecast fits: same onsets, in the same order
 assert np.allclose(np.sort(windows.query("src == 'insar'").onset_yr), np.sort(catalogues["A_insar"][0].onset_yr))
@@ -606,8 +606,8 @@ ax.axvspan(float(rain_panel["dense_era_end"]), float(rain_panel["insar_start"]),
 for i, onset in enumerate(windows.query("src == 'insar'").onset_yr):
     ax.axvline(onset, color=det_color, lw=0.9, ls="--", zorder=2, label="InSAR detection" if i == 0 else None)
 ax.axvline(float(rain_panel["loma_prieta"]), color="0.25", lw=0.7, ls=":", zorder=2)
-ax.text(float(rain_panel["loma_prieta"]), 0.43, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=label_pt, color="0.25",
-        ha="center", va="top", bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))
+ax.text(float(rain_panel["loma_prieta"]) + 0.3, 0.04, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=label_pt, color="0.25",
+        ha="left", va="bottom", bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))     # between the array curve and the x axis
 ax.set_ylabel("Cumulative slip (mm)", fontsize=label_pt)
 handles, leg_labels = ax.get_legend_handles_labels()
 order = [i for i, lab in enumerate(leg_labels) if lab != "Annual surveys"] + [leg_labels.index("Annual surveys")]     # the grey last
@@ -615,26 +615,19 @@ ax.legend([handles[i] for i in order], [leg_labels[i] for i in order], fontsize=
           facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{A}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
 ax.set_xlim(x0, x1)                                  # year labels but no "Year" title: it fills the row gap (Dani 2026-10-01)
+# HRKT since 2015 as one larger inset (Dani 2026-10-01: HGIL dropped), zeroed at its first survey
 zoom_t0 = 2015.0
-zoom = {}
-for code in ("HGIL", "HRKT"):
-    recent = arrays[code][arrays[code].year >= zoom_t0]
-    zoom[code] = (recent, stacks[code], float(recent.cum_mm.iloc[0]))
-zoom_hi = max(max(float(stack.slip_mm.max()), float(recent.cum_mm.max())) - zero for recent, stack, zero in zoom.values())
-for i, code in enumerate(("HGIL", "HRKT")):
-    recent, stack, zero = zoom[code]
-    inset = ax.inset_axes([0.05 + 0.26 * i, 0.63, 0.24, 0.33])
-    inset.plot(recent.year, recent.cum_mm - zero, "o", ms=1.2, color=aa_color, lw=0.5, ls="-")
-    inset.plot(stack.date, stack.slip_mm - zero, "-", lw=0.6, color=insar_color)
-    for onset in windows.query("src == 'insar'").onset_yr:
-        inset.axvline(onset, color="0.7", lw=0.4, ls="--", zorder=0)
-    inset.set_xlim(zoom_t0, 2026.2)
-    inset.set_ylim(-2, zoom_hi + 3)
-    inset.set_xticks([2016, 2020, 2024])
-    inset.tick_params(labelsize=6, length=1.5, pad=1.5)      # 6 pt: the smallest text on the page
-    if i == 1:
-        inset.set_yticklabels([])
-    inset.text(0.05, 0.95, code, transform=inset.transAxes, fontsize=7, va="top")
+recent = hrkt[hrkt.year >= zoom_t0]
+zero = float(recent.cum_mm.iloc[0])
+inset = ax.inset_axes([0.05, 0.50, 0.40, 0.46])      # top left, above the array curve, which reaches this height only after 2010
+inset.plot(recent.year, recent.cum_mm - zero, "o", ms=1.6, color=aa_color, lw=0.6, ls="-")
+inset.plot(hrkt_stack.date, hrkt_stack.slip_mm - zero, "-", lw=0.7, color=insar_color)
+for onset in windows.query("src == 'insar'").onset_yr:
+    inset.axvline(onset, color="0.7", lw=0.5, ls="--", zorder=0)
+inset.set_xlim(zoom_t0, 2026.2)
+inset.set_xticks([2016, 2018, 2020, 2022, 2024])
+inset.tick_params(labelsize=6, length=1.5, pad=1.5)
+inset.text(0.04, 0.95, "HRKT since 2015", transform=inset.transAxes, fontsize=label_pt, va="top")
 
 # B) the onset windows on the water year over the 7-day rain
 ax = ax_b
@@ -656,7 +649,7 @@ cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=label_pt,
 cb.ax.xaxis.set_label_position("top")
 cb.ax.tick_params(labelsize=label_pt, length=2, pad=1.5)
 ax.legend(handles=[Line2D([], [], color="0.15", lw=1.4, label="Alignment array onset window"),
-                   Line2D([], [], color=insar_bar, lw=1.4, label="InSAR onset window (6 to 12 d)")], fontsize=label_pt, loc="lower left",
+                   Line2D([], [], color=insar_bar, lw=1.4, label="InSAR onset window")], fontsize=label_pt, loc="lower left",
           frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{B}$  Onset windows on the water year, over 7-day rainfall", loc="left", fontsize=8)
 ax.set_xlim(x0, x1)
