@@ -1002,10 +1002,10 @@ for code, la, lo, name in creepmeters:
 # East side of the fault so it stays clear of the creepmeter labels; labelled "SSE extent" (Dani 2026-09-29: it is the
 # length that slips in the events, not the width of B), creepmeter style one size up
 bracket_lon, bracket_lat = uv_to_lonlat([len_lo, len_hi], [2.0, 2.0])
-fig.plot(x=bracket_lon, y=bracket_lat, pen="1.5p,black")
+fig.plot(x=bracket_lon, y=bracket_lat, pen="1.1p,black")
 for u_ in (len_lo, len_hi):
     tick_lon, tick_lat = uv_to_lonlat([u_, u_], [0.4, 2.0])
-    fig.plot(x=tick_lon, y=tick_lat, pen="1.5p,black")                                                      # ticks reach almost to the trace
+    fig.plot(x=tick_lon, y=tick_lat, pen="1.1p,black")                                                      # ticks reach almost to the trace
 # two rows in one call (GMT has no newline outside paragraph mode), boxed like the creepmeters, one size up
 u_mid = 0.5 * (len_lo + len_hi)
 label_lon, label_lat = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [2.5, 2.5])       # left edge 0.5 km east of the bracket, never on it
@@ -1027,6 +1027,17 @@ fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,g
 fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w5k+o0.3c/0.4c")       # frame on top, scale bar
+# distance from Point Pinole down the left edge (Dani 2026-10-01): the map's vertical IS the strike frame u (true
+# scale, -3 km at the top to map_u_max at the bottom), so a linear axis over the same box reads u directly. Checked:
+# GMT's own page y of the creepmeters must match the linear axis to 0.02 cm.
+with pygmt.clib.Session() as lib, pygmt.helpers.GMTTempFile() as cm_xy:
+    with pygmt.helpers.GMTTempFile() as cm_ll:
+        np.savetxt(cm_ll.name, [[lo, la] for code, la, lo, name in creepmeters])
+        lib.call_module("mapproject", f"{cm_ll.name} -R{region_map} -J{proj_map} ->{cm_xy.name}")
+    cm_page_y = np.loadtxt(cm_xy.name, ndmin=2)[:, 1]
+cm_axis_y = [map_h * (map_u_max - u_creepmeter[code]) / (map_u_max + 3.0) for code, la, lo, name in creepmeters]
+assert np.max(np.abs(cm_page_y - cm_axis_y)) < 0.02, f"distance axis off the map by {np.max(np.abs(cm_page_y - cm_axis_y)):.3f} cm"
+fig.basemap(region=[0, 1, -3.0, map_u_max], projection=f"X{map_w:.3f}c/-{map_h}c", frame=["W", "ya10f5+lDistance from Point Pinole (km)"])
 with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):     # GMT scales colour-bar text down with the bar thickness (-> ~6.5p)
     fig.colorbar(cmap=cpt_vel, position=f"x{0.5 * (map_w - cb_w)}c/-0.4c+w{cb_w}c/0.3c+h+jTL", frame="xa2f1+lFault-parallel velocity (mm/yr)")
 
