@@ -967,7 +967,7 @@ np.savez(os.path.join(out_dir, "fig1_panels.npz"), t=dates, grid=grid, gres=hov_
 # %%
 # [30]
 # --- sizes in cm, double-column width, one font ---
-teal, orange, cm_blue, gold = "#009E73", "#E69F00", "#0b3d91", "#F5B400"
+teal, orange, cm_blue, gold = "#009E73", "#E69F00", "#0b3d91", "#F0E442"
 hov_w, hov_h = 6.6, 5.4                          # hovmoller (6.6 cm keeps the page at the 18.3 cm Science full width)
 stack_h = 3.2                                    # stack: shorter than the hovmoller, so B carries the figure
 gap_stack = 0.6                                  # between B and E (B has no x annotation, E has its label inside)
@@ -1010,6 +1010,19 @@ for u_ in (len_lo, len_hi):
 u_mid = 0.5 * (len_lo + len_hi)
 label_lon, label_lat = uv_to_lonlat([u_mid - 1.0, u_mid + 1.0], [2.5, 2.5])       # left edge 0.5 km east of the bracket, never on it
 utils.text_backed(fig, x=label_lon, y=label_lat, text=["SSE", "extent"], justify="LM", font="8p,Helvetica,black")
+# the cities along the fault (Dani 2026-10-01), east side opposite the creepmeter labels, at each city centre's
+# along-strike position (approximate centres: labels only, nothing is measured from them). Fremont's centre
+# (Central Park) sits beside the SSE bracket, so its label goes just south of the bracket, still inside the city.
+cities = [("Berkeley", -122.2727, 37.8716), ("Oakland", -122.2712, 37.8044),
+          ("Union City", -122.0439, 37.5934), ("Fremont", -121.9886, 37.5485)]
+for city, lo_, la_ in cities:
+    u_city = float(to_uv([lo_], [la_])[0][0])
+    if city == "Fremont":
+        u_city = max(u_city, len_hi + 2.0)
+    assert -3.0 < u_city < map_u_max, f"{city} (u {u_city:.1f} km) falls off the map"
+    j = int(np.argmin(np.abs(trace_u_km - u_city)))
+    city_lon, city_lat = uv_to_lonlat([u_city], [trace_v_km[j] + 0.6])
+    utils.text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black")
 fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
 fig.text(position="TL", text="@%Helvetica-Bold%A@%% @:7p:Hayward Fault@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
@@ -1119,7 +1132,7 @@ ax.plot(slip_budget.km, slip_budget.total_smooth, color="k", lw=2.0, label="inte
 ax.scatter(aa_rates.km, aa_rates.rate_longterm, marker="s", s=14, color="0.6", zorder=4, label="alignment arrays, whole record")
 ax.scatter(aa_rates.km, aa_rates.rate_window, marker="s", s=14, color="k", zorder=5, label=f"alignment arrays, {t0:.1f} to {t1:.1f}")
 ax.scatter([km_cm for km_cm, rate_cm in cm_rates.values()], [rate_cm for km_cm, rate_cm in cm_rates.values()], marker="v", s=34,
-           facecolor="#F5B400", edgecolor="k", zorder=6, label=f"creepmeters, {t0:.1f} to {t1:.1f}")
+           facecolor="#F0E442", edgecolor="k", zorder=6, label=f"creepmeters, {t0:.1f} to {t1:.1f}")
 for code, (km_cm, rate_cm) in cm_rates.items():
     ax.annotate(code, (km_cm, rate_cm), xytext=(0, 6), textcoords="offset points", ha="center", fontsize=6)
 ax.set_xlim(*km_lim)

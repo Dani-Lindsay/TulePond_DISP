@@ -348,7 +348,7 @@ print("\n".join(L))
 
 # %%
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text (the ladder figure below)
-cm_blue, insar_grey, gold = "#0b3d91", "gray55", "#F5B400"
+cm_blue, insar_grey, gold = "#0b3d91", "gray55", "#F0E442"
 fp_clim, prof_ylim = 5.0, 7.0
 
 with h5py.File(map_file, "r") as h:
