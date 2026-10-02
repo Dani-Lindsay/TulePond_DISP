@@ -48,7 +48,8 @@ ANCHORS = {
     "06_XX_rate_step_mm_yr": (1.17, 2), "06_XX_event_step_mm": (9.17, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
     "06_YY_rate_step_mm_yr": (6.54, 2), "06_YY_event_step_mm": (0.88, 2),
     # 08a the 3D model (PyLith GFs, aligned SFCVM v26, nugget Cd, sigma 12; selected 2026-09-30)
-    "08a_mw_30gpa": (3.76, 2), "08a_rms_west300_mm": (1.50, 2), "08a_surface_pct": (98, 0), "08a_potency_m3": (18073, 0),
+    # rerun 2026-10-03 (surface constraint = the measured crossings): rms W 1.50 -> 1.46, surface 98 -> 105 %, potency 18073 -> 18080
+    "08a_mw_30gpa": (3.76, 2), "08a_rms_west300_mm": (1.46, 2), "08a_surface_pct": (105, 0), "08a_potency_m3": (18080, 0),
     "08a_mw_sfcvm": (3.04, 2), "08a_sigma": (12, 0),
     # 09 alignment arrays: detector on the bimonthly era only, steps under 2 sigma dropped (Dani 2026-10-02);
     # the repeat intervals live only in 11
