@@ -26,6 +26,10 @@ for b in "$D/gf/pre_2026-10-02" "$M/gf/pre_2026-10-02" "$DATA/outputs/registry_p
     [ -e "$b" ] || { echo "missing backup $b: stop" | tee -a "$LOG"; exit 1; }
 done
 
+# the registry as it stands at launch: step 8 diffs against this, so the report lists only what this rerun changed
+cp -p "$DATA/outputs/registry.csv" "$DATA/outputs/registry_before_rerun.csv"
+step "0/8 registry snapshot -> $DATA/outputs/registry_before_rerun.csv"
+
 # 1. the CSI baseline (07a) and its tests (07b): 08a and the draft runs read 07b's fig2_model_row.npz
 step "1/8 07a + 07b (log: $D/runs/r1002_07ab.log)"
 # run_all.sh ends with pytest; a non-zero exit is a failure only if a notebook itself raised
@@ -104,7 +108,7 @@ D = "/Users/dlindsay/work/proj_TulePond_DISP/outputs"
 def latest(f):
     r = pd.read_csv(f)
     return r.groupby("key").tail(1).set_index("key")
-old, new = latest(f"{D}/registry_pre_2026-10-02.csv"), latest(f"{D}/registry.csv")
+old, new = latest(f"{D}/registry_before_rerun.csv"), latest(f"{D}/registry.csv")
 lines = ["Registry changes, overnight rerun 2026-10-02 (surface constraint = measured crossings; 07a window fix)", ""]
 for k in sorted(set(old.index) | set(new.index)):
     a = old["value"].get(k) if k in old.index else "(new)"
