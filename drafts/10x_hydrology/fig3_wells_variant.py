@@ -64,17 +64,18 @@ for side, (colour, label) in side_style.items():
     print(f"{side}: {table.shape[1]} water years; median cycle {q50.min():.1f} to {q50.max():.1f} kPa, peak day {int(q50.idxmax())}")
 ax_c.axhline(0, color="0.6", lw=0.5, ls=":")
 # the onset windows, one row each, oldest at the top, just under the curves
-row_gap = 1.45                                                      # kPa between rows: compact, the curves keep the panel
-top = lowest - 2.2
+row_gap = 1.35                                                      # kPa between rows: compact, the curves keep the panel
+top = -14.0                                                         # the rows start inside the pressure plot (they may overlap its lower band)
 ordered = events.sort_values("window_lo").reset_index(drop=True)
 for k, e in enumerate(ordered.itertuples()):
     y = top - k * row_gap
     colour = "#C1272D" if e.source == "InSAR" else "#08306B"
-    ax_c.plot([rain.dowy[e.window_lo], rain.dowy[e.window_hi]], [y, y], "-", color=colour, lw=2.0, solid_capstyle="butt")
+    ax_c.plot([rain.dowy[e.window_lo], rain.dowy[e.window_hi]], [y, y], "-", color=colour, lw=2.0, solid_capstyle="butt", zorder=5)
 bottom = top - (len(ordered) - 1) * row_gap - 1.5
-ax_c.text(4, top + 0.8, f"Onset windows ({ordered.window_lo.dt.year.min()} to {ordered.window_lo.dt.year.max()})", fontsize=6, color="0.3", va="bottom")
+ax_c.text(362, bottom + 1.0, f"Onset windows\n({ordered.window_lo.dt.year.min()} to {ordered.window_lo.dt.year.max()})", fontsize=6, color="0.3",
+          ha="right", va="bottom", linespacing=1.1)     # bottom right, beside the rows
 ax_c.set_ylim(bottom, 21)
-ax_c.set_yticks([v for v in (-20, -10, 0, 10, 20) if v > lowest])     # pressure ticks only, none beside the window rows
+ax_c.set_yticks([-10, 0, 10, 20])                                   # pressure ticks only, none beside the window rows
 ax_c.set_xlim(1, 366)
 ax_c.set_xticks([1, 62, 124, 183, 244, 305])
 ax_c.set_xticklabels(["Oct", "Dec", "Feb", "Apr", "Jun", "Aug"], fontsize=label_pt)
