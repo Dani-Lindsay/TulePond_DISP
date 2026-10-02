@@ -75,7 +75,7 @@ def main(gf_dir=None, out_path=None):
             if r.dip != "90":
                 ax.annotate(r.dip, (r[xcol], r[ycol]), xytext=(3, 3), textcoords="offset points", fontsize=5.5, color="0.35")
         ax.scatter(ref[xcol], ref[ycol], marker="*", s=110, color="#000000", zorder=4, label="07a CSI homogeneous")
-        for r, name, col in ((primary, "companion: SFCVM, full Cd", "#0072B2"), (selected, "selected: SFCVM, nugget Cd", "#D55E00")):
+        for r, name, col in ((primary, "companion: SFSVM, full Cd", "#0072B2"), (selected, "selected: SFSVM, nugget Cd", "#D55E00")):
             ax.scatter(r[xcol], r[ycol], marker="s", s=170, facecolors="none", edgecolors=col, linewidths=2.0, zorder=5, label=name)
 
     ax = fig.add_subplot(gs[0, 0])
@@ -88,10 +88,10 @@ def main(gf_dir=None, out_path=None):
     scatter(ax, "rms_west300_mm", "Mw_30gpa")
     ax.set_xlabel("rms within 300 m WEST of the trace (mm)"); ax.set_ylabel("Mw (30 GPa)")
     ax.set_title(r"$\bf{B}$  West-side fit against event size", loc="left", fontsize=7)
-    handles = [plt.Line2D([], [], marker="o", ls="", color="0.3", label="homogeneous"), plt.Line2D([], [], marker="s", ls="", color="0.3", label="SFCVM aligned"),
+    handles = [plt.Line2D([], [], marker="o", ls="", color="0.3", label="homogeneous"), plt.Line2D([], [], marker="s", ls="", color="0.3", label="SFSVM aligned"),
                plt.Line2D([], [], marker="s", ls="", mfc="none", color="0.3", label="surface constraint off"),
                plt.Line2D([], [], marker="s", ls="", color="0.3", ms=8, label="order-2 elements"),
-               plt.Line2D([], [], marker="D", ls="", color="0.3", label="SFCVM boundary 50 m E / W")]
+               plt.Line2D([], [], marker="D", ls="", color="0.3", label="SFSVM boundary 50 m E / W")]
     handles += [plt.Line2D([], [], marker="s", ls="", color=c, label=k) for k, c in c_cd.items()]
     ax.legend(handles=handles, fontsize=6, loc="lower left", ncol=2)
 
@@ -110,8 +110,8 @@ def main(gf_dir=None, out_path=None):
     ax.scatter(selected.rms_west300_mm, order.index("nuggetcd"), marker="s", s=170, facecolors="none", edgecolors="#D55E00", linewidths=2.0, zorder=5)
     ax.scatter(primary.rms_west300_mm, order.index("default"), marker="s", s=170, facecolors="none", edgecolors="#0072B2", linewidths=2.0, zorder=5)
     ax.set_yticks(y); ax.set_yticklabels([t.replace("_", " + ") for t in order]); ax.invert_yaxis()
-    ax.set_xlabel("rms within 300 m WEST of the trace (mm); circle = homogeneous, square = SFCVM aligned")
-    ax.set_title(r"$\bf{C}$  Every test: west-side fit, homogeneous vs SFCVM on the same settings", loc="left", fontsize=7)
+    ax.set_xlabel("rms within 300 m WEST of the trace (mm); circle = homogeneous, square = SFSVM aligned")
+    ax.set_title(r"$\bf{C}$  Every test: west-side fit, homogeneous vs SFSVM on the same settings", loc="left", fontsize=7)
     ax.grid(axis="x", color="0.9", lw=0.6)
     ax.legend(fontsize=6, loc="lower right")
     fig.suptitle("PyLith Green's functions + CSI inversion: all runs (vertical fault unless labelled; default mesh unless 'shallow')", fontsize=7)

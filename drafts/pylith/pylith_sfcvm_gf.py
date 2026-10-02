@@ -328,8 +328,12 @@ if "sfcvmasis" in media:
 
 # %%
 ## [6]
-source_07 = open(os.path.join(REPO, "scripts", "07_slip_model.py")).read()
-exec(source_07.split("# %% [markdown]\n# ### CHECK")[0])
+source_07 = open(os.path.join(REPO, "scripts", "07a_uniform_model.py")).read()      # renamed from 07_slip_model.py 2026-09-30
+head_07 = source_07.split("# %% [markdown]\n# ### CHECK")[0]
+for old, new in (("REG = utils.Registry(notebook, common_paths, repo_dir)", "REG = None"), ("REG.inputs(", "inputs_07a = (")):
+    assert head_07.count(old) == 1, f"07a_uniform_model.py layout changed: {old!r} not found once"   # as 08a: no registry writes from here
+    head_07 = head_07.replace(old, new)
+exec(head_07)
 row07 = np.load(os.path.join(tests_dir, "fig2_model_row.npz"))
 fault07_trace = copy.deepcopy(fault)                    # 07's fault (trace), for maps
 if points_set in ("swath7", "coh07"):                   # make_points_swath.py: 07's cells [1]-[4] with swath_km 7 (2396 samples) or on
@@ -639,24 +643,23 @@ def tent_fault(name):
     return flt
 
 
+sys.path.insert(0, os.path.join(REPO, "scripts", "pylith_helpers"))
+from surface_crossings import crossing_constraint        # the surface constraint (Dani 2026-10-02), shared with 08a
+top_order = surface_imp[np.argsort(imp_xyz[surface_imp, 1])]          # top-edge impulse vertices, south to north (mesh y)
+assert np.all(np.diff(imp_xyz[top_order, 1]) > 0), "top-edge vertices not monotone in mesh y"
+crossings_in = crossings_all[(crossings_all.km >= km_window[0]) & (crossings_all.km <= km_window[1])]
+
+
 def surface_constraint(floor_mm=surf_floor_mm):
-    """07's crossing-stack profile (make_surface) interpolated to every top-edge impulse vertex; the error scaled
-    by sqrt(vertices per 0.2 km) (07's make_surface_interp rule); G selects the vertex's own slip."""
-    base = make_surface(floor_mm)
-    base_km = lat_to_km_pp(base.lat)
-    order_km = np.argsort(base_km)
-    v_km = lat_to_km_pp(imp_lat[surface_imp])
-    keep = (v_km >= base_km.min()) & (v_km <= base_km.max())
-    idx, v_km = surface_imp[keep], v_km[keep]
-    vals = np.interp(v_km, base_km[order_km], base.vel[order_km])
-    errs = np.interp(v_km, base_km[order_km], base.err[order_km])
-    per_step = np.array([np.sum(np.abs(v_km - k) <= surf_step_km / 2) for k in v_km])
-    errs = errs * np.sqrt(np.maximum(per_step, 1))
-    ss = surfaceslip(f"crossing interp vertices f{floor_mm:g}", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    ss.read_from_binary(vals, imp_lon[idx], imp_lat[idx], err=errs)
+    """The measured crossings, each tied to the tent slip at its own top-edge position (surface_crossings.py;
+    until 2026-10-02: 07's running median interpolated to every vertex, which lost half its windows to float roundoff)."""
+    sc = crossing_constraint(crossings_in.km.values, crossings_in.lat.values, crossings_in.mean_event_mm.values,
+                             lambda la: np.interp(la, trace_south_north[:, 1], trace_south_north[:, 0]),
+                             lambda lo, la: to_mesh.transform(lo, la), imp_xyz[top_order, :2], top_order, n_imp, floor_mm=floor_mm)
+    ss = surfaceslip(f"crossings f{floor_mm:g}", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
+    ss.read_from_binary(sc["vel"], sc["lon"], sc["lat"], err=sc["err"])
     ss.buildCd()
-    G_surf = np.zeros((idx.size, n_imp)); G_surf[np.arange(idx.size), idx] = 1.0
-    return ss, G_surf
+    return ss, sc["G"]
 
 
 def invert_tents(medium, sigma, lam=lam_xz, vel_insar=None, vel_surface=None):

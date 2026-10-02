@@ -261,6 +261,18 @@ def test_linear_rate_recovers_slope_and_ignores_nan():
     assert np.allclose(utils.detrend(t, y)[np.isfinite(y)], 0.0, atol=1e-9)
 
 
+def test_annual_increment_rate_steady_and_stepped():
+    # steady creep: every year gains the rate, so the sigma is zero
+    t = np.arange(2016.0, 2025.01, 1 / 365.25)        # nine whole years
+    rate, sigma, n = utils.annual_increment_rate(t, 7.0 * (t - 2016))
+    assert np.isclose(rate, 7.0, atol=1e-6) and sigma < 1e-6 and n == 9
+    # all slip in steps: 14 mm every other year -> yearly gains 14, 0, 14, ... (n = 9)
+    y = 14.0 * np.floor((t - 2016 + 0.5) / 2)
+    rate, sigma, n = utils.annual_increment_rate(t, y)
+    gains = np.array([0, 14, 0, 14, 0, 14, 0, 14, 0], float)
+    assert np.isclose(rate, gains.mean()) and np.isclose(sigma, gains.std(ddof=1) / 3.0)
+
+
 def test_render_value():
     assert utils.render_value(10.836, 2) == "10.84"
     assert utils.render_value(25.0, 0) == "25"
@@ -315,3 +327,13 @@ def test_read_creepmeter_10min_raw_matches_daily_reader():
     d1 = daily.slip_mm.iloc[1] + d0
     day1 = raw[(raw.decimal_year >= daily.decimal_year.iloc[1]) & (raw.decimal_year < daily.decimal_year.iloc[1] + 1 / 365.25)]
     assert np.isclose(day1.slip_mm.mean(), d1, atol=0.05)
+
+
+def test_gaussian_smooth_km_constant_gaps_and_width():
+    lats = 37.5 + 0.1 / 111.19 * np.arange(200)                  # crossings every 0.1 km
+    x = np.full(200, 5.0); x[50:53] = np.nan
+    out = utils.gaussian_smooth_km(x, lats, 0.15)
+    assert np.allclose(out[np.isfinite(x)], 5.0) and np.isnan(out[50:53]).all()   # constant kept, gaps stay gaps
+    spike = np.zeros(200); spike[100] = 1.0
+    w = utils.gaussian_smooth_km(spike, lats, 0.15)
+    assert np.isclose(w.sum(), 1.0, atol=1e-6) and np.isclose(np.sqrt(np.sum(w * (np.arange(200) - 100) ** 2)) * 0.1, 0.15, atol=0.01)

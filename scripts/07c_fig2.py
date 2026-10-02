@@ -40,7 +40,7 @@ import os
 
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, creepmeters, paths_out, dist_min, dist_max,
-                                fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km)
+                                fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km, profile_smooth_km)
 
 import numpy as np
 import pandas as pd
@@ -222,9 +222,12 @@ fig = None                      # the helpers below draw into the module-level f
 
 profile_label_font = "7p,Helvetica-Bold"      # X, X', Y, Y' on every map and profile panel (one size throughout)
 # places named on the vertical event map (panel F): (label lines, lon, lat, leader dx, dy in cm); the label sits at the
-# leader's end, two lines, above it for an up leader and below it for a down leader (clear of X' and the frame)
+# leader's end, two lines, above it for an up leader and below it for a down leader, left of it for a leader to the
+# left (clear of X' and the frame). Tule Pond (Dani 2026-10-02): the pond itself, labelled bottom left of the fault
+# between X and Y.
 map_places = [(("Alameda", "Creek"), -121.980765, 37.572280, 0.3, 0.45),
-              (("Lake", "Elizabeth"), -121.962053, 37.549023, 0.4, 0.12)]
+              (("Lake", "Elizabeth"), -121.962053, 37.549023, 0.4, 0.12),
+              (("Tule", "Pond"), -121.975545, 37.558686, -0.35, -0.45)]
 
 
 def profile_line_labels():
@@ -247,7 +250,7 @@ def map_base(grid, cpt, label, stations=True, places=False):
         for (first, second), lon_, lat_, dx, dy in map_places:
             up = dy > 0
             near, far = (second, first) if up else (first, second)   # the line nearer the point carries the leader
-            just = "BL" if up else "TL"
+            just = ("B" if up else "T") + ("L" if dx >= 0 else "R")
             fig.text(x=lon_, y=lat_, text=near, justify=just, offset=f"{dx}c/{dy}c+v0.6p,black", font="7p,Helvetica")   # the leader
             for txt, dy_ in ((near, dy), (far, dy + (line_h if up else -line_h))):         # both lines on a translucent white box
                 utils.text_backed(fig, x=lon_, y=lat_, text=txt, justify=just, offset=f"{dx}c/{dy_}c", font="7p,Helvetica")
@@ -374,6 +377,17 @@ model_tag = f"_{model_tag}" if model_tag else ""
 assert model_tag or "TULEPOND_FIG2_MODEL" not in os.environ, "an alternative model product needs TULEPOND_FIG2_TAG (else it overwrites 07's Fig 2)"
 print(f"Fig 2 model row from {model_row_file} (tag {model_tag!r})")
 
+# K's black line (Dani 2026-10-02): the five-event mean at every crossing (04's table, the grey dots), smoothed
+# exactly as Fig 1C (Gaussian, profile_smooth_km). It is a display line only: the model is fitted to the crossings.
+crossings04 = pd.read_csv(os.path.join(paths_out["04_event_detection"], "event_fraction_by_crossing.csv")).sort_values("km").reset_index(drop=True)
+events04 = pd.read_csv(os.path.join(paths_out["04_event_detection"], "creep_events.csv"))
+cols04 = [f"amp_{onset:.3f}" for onset in events04[events04.segment == "TULEPOND"].onset_yr]
+assert len(cols04) == 5 and all(c in crossings04.columns for c in cols04), f"04's crossing table lacks the Tule Pond events {cols04}"
+crossing_mean04 = crossings04[cols04].mean(axis=1).values
+k_line_km = crossings04.km.values
+k_line_mm = utils.gaussian_smooth_km(crossing_mean04, crossings04.lat.values, profile_smooth_km)
+print(f"K line: {np.isfinite(crossing_mean04).sum()} crossings, Gaussian sigma {profile_smooth_km} km")
+
 
 def model_row(lim=None):
     """Row 3: I the fault-parallel model at the quadtree samples, J the
@@ -423,20 +437,24 @@ def model_row(lim=None):
     Hl = Hm - Hk - gap_kl
     km_view = [54.0, 65.0]
     fig.shift_origin(xshift=f"{x_prof + k_indent}c", yshift=f"{Hl + gap_kl}c")
-    slip_top = float(np.ceil(max(np.nanmax(z["crossing_profile_mm"]), np.nanmax(z["surface_model_mm"])) / 2 + 1) * 2)
+    dots = np.sort(np.asarray(z["crossing_mm"])[np.isfinite(z["crossing_mm"])])
+    assert dots.size == np.isfinite(crossing_mean04).sum() and np.allclose(dots, np.sort(crossing_mean04[np.isfinite(crossing_mean04)]), atol=1e-6), \
+        "the model product's crossings are not 04's five-event means: re-run 07a / 08a"
+    k_view = (k_line_km >= km_view[0]) & (k_line_km <= km_view[1])
+    slip_top = float(np.ceil(max(np.nanmax(k_line_mm[k_view]), np.nanmax(z["surface_model_mm"])) / 2 + 1) * 2)
     region_k = km_view + [0.0, slip_top]
     fig.basemap(region=region_k, projection=f"X{Wk}c/{Hk}c", frame=["Wsrt", "xa2f1", f"ya{slip_top / 2:g}+lmm"])
     fig.plot(x=z["crossing_km"], y=z["crossing_mm"], style="c0.03c", fill=grey, transparency=30)
-    fig.plot(x=z["crossing_profile_km"], y=z["crossing_profile_mm"], pen="1.0p," + median_col, label="Crossings")
+    fig.plot(x=k_line_km, y=k_line_mm, pen="1.0p," + median_col, label="Crossings")       # NaN in data gaps: GMT breaks the line there
     fig.plot(x=z["surface_km"], y=z["surface_model_mm"], pen="1.0p," + model_col,
-             label="3D (SFCVM)" if model_col == hetero_col else "Model")       # no commas: GMT legend labels stop at one
+             label="3D (SFSVM)" if model_col == hetero_col else "Model")       # no commas: GMT legend labels stop at one
     fig.legend(position="jTR+o0.05c/0.05c", box=False)
     fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)
     # no +/- in the label: the bootstrap 2-sigma (~0.02) understates the uncertainty, which is set by the sigma
     # choice and the SFCVM alignment (range 3.66-3.81 for the selected PyLith model); quote the range in the caption
     pm30 = pmcvm = ""
     medium = f"{str(z['medium_label'])}: " if "medium_label" in z.files else ""
-    fig.text(position="TR", text=f"{medium}M@-w@- {float(z['mw_30gpa']):.2f}{pm30} (30 GPa), {float(z['mw_sfcvm']):.2f}{pmcvm} ({float(z['mu_effective_gpa']):.1f} GPa, USGS SFCVM)",
+    fig.text(position="TR", text=f"{medium}M@-w@- {float(z['mw_30gpa']):.2f}{pm30} (30 GPa), {float(z['mw_sfcvm']):.2f}{pmcvm} ({float(z['mu_effective_gpa']):.1f} GPa, USGS SFSVM)",
              justify="BR", offset="0c/0.12c", font="7p,Helvetica", no_clip=True)
     # L: slip on the unrolled fault, sampled on a regular grid (each triangle's slip is constant over it)
     fig.shift_origin(yshift=f"-{Hl + gap_kl}c")
@@ -546,7 +564,7 @@ if os.path.exists(model_row_file):
     if compare_file:
         assert os.path.exists(compare_file), f"comparison product missing: {compare_file}"
         model_lines.append((profile_lines(compare_file), homog_col, "Uniform"))
-    model_lines.append((profile_lines(model_row_file), model_col, "3D (SFCVM)" if model_is_hetero else "Model"))   # no commas: GMT legend labels stop at one
+    model_lines.append((profile_lines(model_row_file), model_col, "3D (SFSVM)" if model_is_hetero else "Model"))   # no commas: GMT legend labels stop at one
 f_fig2_fp = os.path.join(fig_dir, f"fig2_fault_parallel_vertical_coh{coh_maps:g}_{n_mean}ev{model_tag}")
 draw_fig2(fpup_evt, fpup_profiles, f"Mean event ({n_mean} events)", f_fig2_fp,
           rate_maps_in=fpup_rate, cols=list(fpup_rate), ylabs=("Rate (mm/yr)", "Displacement (mm)"),

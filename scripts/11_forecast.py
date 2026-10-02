@@ -1,14 +1,14 @@
 # %% [markdown]
-# # [1] 10 The next-event forecast and the rainfall conditioning
+# # [1] 11 The next-event forecast and the rainfall conditioning
 #
 # ```
 # Created on Thu Sep 24 2026
 # @author: daniellelindsay
-# Run in opera_disp_feb13. The forecast mixture takes ~5 min.
+# Run in opera_disp_feb13. The forecast (400 timing draws per model) takes ~1 min.
 # ```
 #
 # **What this notebook does.** Everything the paper predicts is here, in one
-# place, from the event catalogues (04, 08) and the rain table (09):
+# place, from the event catalogues (04, 09) and the rain table (10):
 #
 # 1. **Renewal forecast** of the next onset: onsets drawn uniformly within
 #    their windows (no midpoints), intervals fitted by exponential, lognormal,
@@ -28,17 +28,24 @@
 #
 # Ported from `Hayward_DISP-S1/analysis/run21_recurrence_forecast.py` and
 # `run22_precip_conditioning.py`; until 2026-09-24 this was the second half of
-# notebook 09.
+# the old notebook 09_seasonality_forecast (its registry rows, `10_*` from
+# `10_seasonality_forecast_v2`, are listed as RETIRED in registry.txt: do not quote them).
 #
 # **Outputs** (`outputs/11_forecast/`): `recurrence_forecast_models.csv`,
 # `precip_conditioning_{events,thresholds,ruleC}.csv`, `prediction_statement.txt`,
-# `10_forecast_stats.txt`, registry rows `10_*`.
+# `11_forecast_stats.txt`, registry rows `11_*`.
+#
+# **Figures**: the paper's Fig 3 (A HRKT history, B onsets over the rain, C repeat
+# intervals, D the forecast), the five renewal models (supplement), the cumulative
+# rain of every water year, the rainfall conditioning (supplement).
 #
 # **What to check.** InSAR onsets fall Dec 13 to Mar 9; the InSAR clock gives
 # the next event about mid December 2026 with a 95% prediction interval of
-# late August 2026 to early April 2027; the array record gives ~28% for the
-# same wet season. Rule C: a 40 mm storm within 21 d of all five onsets. The
-# CHECK cell compares every product with the previous run.
+# late August 2026 to early April 2027; the InSAR BPT window is 28 Oct 2026 to
+# 21 Jan 2027 (5 to 95 %); the array record without the Loma Prieta interval
+# gives ~27 % for the same wet season and the merged record ~32 % (BPT). Rule C:
+# a 40 mm storm within 21 d of all five onsets. Every number is registered in
+# the last cell (`11_*`).
 
 # %%
 # [2]
@@ -67,7 +74,6 @@ fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-# the products of the previous version (09_seasonality_forecast), for the CHECK cell
 
 # the forecast
 loma_prieta = 1989.80
@@ -141,9 +147,9 @@ def dowy_label(day):
 # %% [markdown]
 # ## [7] Load: the rain table and the event catalogues
 #
-# The rain table is notebook 09's composite (one value per day, Fremont >
+# The rain table is notebook 10's composite (one value per day, Fremont >
 # Newark > Hayward). The catalogues: InSAR events from 04; the HRKT array
-# events from 08, of which the dense-era ones (windows of 130 d or less)
+# events from 09, of which the dense-era ones (windows of 130 d or less)
 # resolve the season; and the merged record, the dense-era array events and the
 # InSAR events, with the annual-survey years 2006 to 2017 treated as unobserved:
 # no interval is formed across them, the clock simply restarts with the first
@@ -182,8 +188,8 @@ print(f"forecast conditioned on no event through {data_end} (the last InSAR acqu
 # For each catalogue: onsets drawn uniformly in their windows (400 draws), the
 # intervals fitted by each model, and for each fit a parametric bootstrap (5
 # refits) of the conditional next-onset distribution given no event by the
-# reference date. The quantiles and wet-season probabilities are the mixture
-# over all of them. Model families are compared by AICc on the median draw.
+# reference date. The quantiles and wet-season probabilities are pooled
+# over all the draws and refits (a mixture over the onset timing, not a mix of models). Model families are compared by AICc on the median draw.
 #
 # One random-number generator (`seed`) feeds every draw in order, so the
 # forecast reproduces exactly.
@@ -285,7 +291,7 @@ def prob_between(cdf, date_a, date_b):
 # %% [markdown]
 # ## [11] The five renewal models, one at a time
 #
-# Before the mixture, each model on its own, fitted once by maximum likelihood
+# Before the forecast, each model on its own, fitted once by maximum likelihood
 # to the midpoint intervals of catalogue A (the five InSAR events, 4 intervals)
 # and of catalogue B (the dense-era array events, 8 intervals). The forecast
 # below never uses these single fits (it draws the onsets within their windows
@@ -458,14 +464,14 @@ axes[2].set_xlabel("Year")
 axes[2].set_ylabel("P(onset by t)")
 utils.panel_title(axes[2], "C", "Forecast from each single fit")
 fig.tight_layout()
-f_models = os.path.join(fig_dir, "qc10_renewal_models_single_fits.png")
+f_models = os.path.join(fig_dir, "qc11_renewal_models_single_fits.png")
 fig.savefig(f_models, dpi=300)
 fig.savefig(f_models.replace(".png", ".pdf"))
 print("Saved figure to:", f_models)
 plt.show()
 
 # %% [markdown]
-# ## [25] The mixture forecast
+# ## [25] The forecast: onsets drawn within their windows (Fig 3D and the registered window)
 #
 # Now the real thing: for each catalogue and model, 400 draws of the onsets
 # within their windows, each fitted and bootstrapped, conditioned on the two
@@ -478,7 +484,7 @@ t_last_window = (float(insar_events.onset_lo.iloc[-1]), float(insar_events.onset
 refs = {key: float(decyear(pd.to_datetime([date]))[0]) for key, date in ref_dates.items()}
 forecast_rows = []
 forecast_curves = {}
-stats_lines = ["10 FORECAST AND RAINFALL CONDITIONING", "", "RENEWAL FORECAST",
+stats_lines = ["11 FORECAST AND RAINFALL CONDITIONING", "", "RENEWAL FORECAST",
                f"last event onset window {ymd(t_last_window[0])} to {ymd(t_last_window[1])}; reference dates " +
                ", ".join(f"{k} {v}" for k, v in ref_dates.items()) + f"; {n_timing} timing draws x {n_boot} bootstrap refits; "
                f"wet season {wet[0]}..{wet[1]}"]
@@ -930,7 +936,7 @@ insar_forecast = forecasts[(forecasts.catalog == "A_insar") & (forecasts.ref == 
 array_forecast = forecasts[(forecasts.catalog == "B_aa_dense_noLP") & (forecasts.ref == "data_end")].set_index("model")
 merged_forecast = forecasts[(forecasts.catalog == "C_merged") & (forecasts.ref == "data_end")].set_index("model")
 statement_lines = [
-    "TULE POND CREEP-EVENT PREDICTION STATEMENT (generated by notebook 10; the wording is the legacy run22 template)",
+    "TULE POND CREEP-EVENT PREDICTION STATEMENT (generated by notebook 11_forecast; the wording is the legacy run22 template)",
     f"written {forecast_issue_date}; conditioned on no event through the last InSAR acquisition on both tracks, {data_end}; "
     f"data: OPERA DISP-S1 to {data_end}, HRKT alignment array to {aa_events.onset_hi.max():.2f}, "
     f"Fremont GHCN gauge to {rain.index[rain.prcp_mm.notna()].max().date()}", "",

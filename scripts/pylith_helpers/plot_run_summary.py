@@ -215,7 +215,7 @@ def _main(tag, media, gf_dir, fig_dir, prefix):
                  f"rms: all {res.rms_mm:.2f}   W<=300 m {res.rms_west300_mm:.2f}   E<=300 m {res.rms_east300_mm:.2f} mm",
                  f"chi2 (InSAR, with the Cd above): {res.chi2:.0f}   n = {data.size}",
                  f"surface slip / crossings: {res.surface_pct:.0f} %",
-                 f"potency: {res.potency_m3:.0f} m3   Mw(30 GPa) {res.Mw_30gpa:.2f}   Mw(SFCVM mu) {res.Mw_sfcvm:.2f}",
+                 f"potency: {res.potency_m3:.0f} m3   Mw(30 GPa) {res.Mw_30gpa:.2f}   Mw(SFSVM mu) {res.Mw_sfcvm:.2f}",
                  f"peak slip {res.get('peak_slip_mm', np.nan):.1f} mm at {abs(res.get('peak_depth_m', np.nan)):.0f} m depth",
                  "",
                  f"impulses: {n_imp}   run time: " + (f"{wall / 60:.0f} min ({wall / n_imp:.2f} s per impulse, 8 ranks)"

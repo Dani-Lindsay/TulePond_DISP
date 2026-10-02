@@ -41,6 +41,7 @@ import numpy as np                 # Matrix calculations
 import pandas as pd                # Tables
 import h5py                        # MintPy HDF5 products
 from scipy import stats            # linregress
+from scipy.ndimage import gaussian_filter1d      # gaussian_smooth_km
 import geopy.distance              # geodesic distance along the fault trace
 
 
@@ -475,6 +476,39 @@ def linear_rate(t, y):
     return slope, intercept, std_err, int(m.sum())
 
 
+def gaussian_smooth_km(x, lats_of_x, sigma_km):
+    """NaN-aware, gap-preserving Gaussian smoothing along the fault (crossings
+    in fault order; spacing from the latitudes, 1 deg = 111.19 km). Weights are
+    renormalised over the finite neighbours; NaN where fewer than 15 % of the
+    kernel weight is data, and NaN wherever the input is NaN. Used by 03, 04
+    (Fig 1C, sigma 0.15 km) and 07c (Fig 2K, the same 0.15 km)."""
+    spacing_km = float(np.median(np.abs(np.diff(lats_of_x)))) * 111.19
+    sig = max(sigma_km / spacing_km, 0.5)
+    finite = np.isfinite(x).astype(float)
+    filled = np.where(finite > 0, x, 0.0)
+    den = gaussian_filter1d(finite, sig, mode="nearest")
+    out = np.divide(gaussian_filter1d(filled, sig, mode="nearest"), den, out=np.full_like(filled, np.nan), where=den > 0.15)
+    out[~np.isfinite(x)] = np.nan
+    return out
+
+
+def annual_increment_rate(t, y):
+    """Rate and 1-sigma of a continuous record (creepmeter) from its slip gained
+    in each whole year from the first sample: rate = mean(dy), sigma =
+    std(dy, ddof=1) / sqrt(n). Daily samples are not independent (episodic
+    creep), so linregress's std_err (~0.01 mm/yr) understates the uncertainty;
+    one-year blocks are treated as the independent samples instead.
+    Returns (rate, sigma, n_years)."""
+    t = np.asarray(t, float)
+    y = np.asarray(y, float)
+    m = np.isfinite(t) & np.isfinite(y)
+    t, y = t[m], y[m]
+    edges = t[0] + np.arange(0, np.floor(t[-1] - t[0]) + 1)
+    dy = np.diff(np.interp(edges, t, y))
+    assert dy.size >= 3, f"annual_increment_rate needs >= 3 whole years, got {dy.size}"
+    return float(dy.mean()), float(dy.std(ddof=1) / np.sqrt(dy.size)), int(dy.size)
+
+
 # ------------------------------
 # Creepmeters (USGS, Langbein et al. 2024)
 # ------------------------------
@@ -810,18 +844,36 @@ class Registry:
         """Rewrite registry.txt: latest value per key, grouped by notebook,
         then an index grouped by manuscript location."""
         latest = self.latest()
-        with open(self.txt_path, "w") as f:
-            f.write(f"# TulePond_DISP number registry, rendered {datetime.now():%Y-%m-%d %H:%M}\n")
-            f.write("# One line per key: key = rendered units (precision) -> where [notebook/cell; git; date]\n\n")
-            for nb, grp in latest.groupby("notebook"):
+        # keys whose notebook is no longer in the repo (renamed or retired) are listed apart, at the end, and are
+        # left out of the by-location index, so a stale value is never copied by mistake (Dani 2026-10-02:
+        # 10_seasonality_forecast_v2 rows sat beside 11_forecast's). registry.csv itself stays append-only.
+        current = {os.path.splitext(n)[0] for n in os.listdir(self.repo_dir) if n.endswith(".ipynb")}
+        # a key is live only if its notebook still exists AND the notebook's latest run registered it (a key the
+        # notebook no longer produces, e.g. 09's interval keys moved to 11 on 2026-10-02, is retired with it)
+        rows = pd.read_csv(self.csv_path, dtype=str)
+        last_run = rows.sort_values("timestamp").groupby("notebook")["run_id"].last()
+        in_last_run = latest.apply(lambda r: r["run_id"] == last_run.get(r["notebook"]), axis=1).astype(bool)
+        is_live = latest["notebook"].isin(current) & in_last_run
+        live, retired = latest[is_live], latest[~is_live]
+
+        def lines(f, frame):
+            for nb, grp in frame.groupby("notebook"):
                 f.write(f"## {nb}\n")
                 for _, r in grp.sort_values("key").iterrows():
                     f.write(f"{r['key']} = {r['rendered']} {r['units']} ({r['precision']} dp) -> {r['where']}"
                             f"  [{r['cell']}; git {r['git_hash']}; {str(r['timestamp'])[:10]}]\n")
                 f.write("\n")
+        with open(self.txt_path, "w") as f:
+            f.write(f"# TulePond_DISP number registry, rendered {datetime.now():%Y-%m-%d %H:%M}\n")
+            f.write("# One line per key: key = rendered units (precision) -> where [notebook/cell; git; date]\n\n")
+            lines(f, live)
             f.write("## By manuscript location\n")
-            for where, grp in latest.groupby("where"):
+            for where, grp in live.groupby("where"):
                 f.write(f"{where}: " + ", ".join(f"{r['key']}={r['rendered']}" for _, r in grp.iterrows()) + "\n")
+            if len(retired):
+                f.write(f"\n# ===== RETIRED: {len(retired)} keys from notebooks no longer in the repo or not produced by "
+                        f"their notebook's latest run ({', '.join(sorted(retired['notebook'].unique()))}). DO NOT QUOTE. =====\n\n")
+                lines(f, retired)
         print(f"Rendered registry to: {self.txt_path}")
         return self.txt_path
 

@@ -28,7 +28,7 @@ def paths(tmp_path):
 
 
 def test_register_appends_and_renders(paths, tmp_path):
-    reg = utils.Registry("05_event_detection", paths, REPO)
+    reg = utils.Registry("05_validation", paths, REPO)                    # a notebook that exists in the repo
     f = tmp_path / "in.csv"; f.write_text("a,b\n1,2\n")
     reg.inputs(str(f))
     reg.register("05_n_events", 5, "count", 0, where="P3", cell="detector")
@@ -43,6 +43,26 @@ def test_register_appends_and_renders(paths, tmp_path):
     assert "P3: 05_amp_2017_mm=10.84, 05_n_events=5" in txt
 
 
+def test_render_puts_keys_of_missing_notebooks_apart(paths):
+    utils.Registry("05_validation", paths, REPO).register("05_n_events", 5, "count", 0, "P3", "detector")
+    old = utils.Registry("99_gone_notebook", paths, REPO)                  # no 99_gone_notebook.ipynb in the repo
+    old.register("99_old_value", 2.78, "yr", 2, "P10", "forecast")
+    txt = open(old.render()).read()
+    index, retired = txt.split("## By manuscript location")[1].split("RETIRED")
+    assert "99_old_value" not in index and "05_n_events=5" in index
+    assert "99_old_value = 2.78 yr" in retired and "DO NOT QUOTE" in txt
+
+
+def test_render_retires_keys_the_latest_run_no_longer_makes(paths):
+    first = utils.Registry("05_validation", paths, REPO)
+    first.register("05_kept", 1, "count", 0, "P3", "a"); first.register("05_dropped", 2, "count", 0, "P3", "a")
+    second = utils.Registry("05_validation", paths, REPO)                      # the next run no longer makes 05_dropped
+    second.register("05_kept", 1, "count", 0, "P3", "a")
+    txt = open(second.render()).read()
+    live, retired = txt.split("RETIRED")
+    assert "05_kept = 1" in live and "05_dropped" not in live and "05_dropped = 2" in retired
+
+
 def test_same_value_rerun_is_allowed_and_kept(paths):
     reg = utils.Registry("05_event_detection", paths, REPO)
     reg.register("05_n_events", 5, "count", 0, "P3", "detector")
@@ -53,6 +73,7 @@ def test_same_value_rerun_is_allowed_and_kept(paths):
 
 
 def test_changed_value_raises_unless_superseded(paths, monkeypatch):
+    monkeypatch.delenv("TULEPOND_SUPERSEDE", raising=False)          # a run with supersede on must not leak into this test
     reg = utils.Registry("05_event_detection", paths, REPO)
     reg.register("05_band_secular_mm_yr", 1.084, "mm/yr", 2, "P4", "band-stack")
     with pytest.raises(utils.RegistryConflict):

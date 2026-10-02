@@ -416,7 +416,7 @@ def make_surface(floor_mm):
     rows = []
     for k_centre in np.arange(np.ceil(crossings_all.km.min()),
                               crossings_all.km.max(), surf_step_km):
-        in_win = np.abs(crossings_all.km - k_centre) <= surf_win_km / 2
+        in_win = np.abs(crossings_all.km - k_centre) <= surf_win_km / 2 + 1e-6   # 1e-6: keep the edge crossings (float roundoff dropped them, fixed 2026-10-02)
         amps = crossings_all.mean_event_mm[in_win].dropna()
         if len(amps) < 4:
             continue
@@ -447,7 +447,7 @@ def make_surface_interp(fault, floor_mm):
     ll, tri_km = ll[keep], tri_km[keep]
     vals = np.interp(tri_km, base_km[order], base.vel[order])
     errs = np.interp(tri_km, base_km[order], base.err[order])
-    per_step = np.array([np.sum(np.abs(tri_km - k) <= surf_step_km / 2) for k in tri_km])
+    per_step = np.array([np.sum(np.abs(tri_km - k) <= surf_step_km / 2 + 1e-6) for k in tri_km])
     errs = errs * np.sqrt(np.maximum(per_step, 1))
     ss = surfaceslip(f"crossing interp f{floor_mm:g}", lon0=frame_lon0,
                      lat0=frame_lat0, verbose=False)

@@ -50,11 +50,10 @@ ANCHORS = {
     # 08a the 3D model (PyLith GFs, aligned SFCVM v26, nugget Cd, sigma 12; selected 2026-09-30)
     "08a_mw_30gpa": (3.76, 2), "08a_rms_west300_mm": (1.50, 2), "08a_surface_pct": (98, 0), "08a_potency_m3": (18073, 0),
     "08a_mw_sfcvm": (3.04, 2), "08a_sigma": (12, 0),
-    # 08 alignment arrays
-    "09_hrkt_n_surveys": (177, 0), "09_hrkt_n_events": (14, 0), "09_hrkt_amp_median_mm": (7.4, 1),
-    "09_aa_interval_median_yr": (2.8, 1), "09_aa_interval_n": (13, 0),
-    "09_insar_interval_median_yr": (1.9, 1),
-    # 10 forecast (was 09_* until the split of 2026-09-24)
+    # 09 alignment arrays: detector on the bimonthly era only, steps under 2 sigma dropped (Dani 2026-10-02);
+    # the repeat intervals live only in 11
+    "09_hrkt_n_surveys": (159, 0), "09_hrkt_n_events": (9, 0), "09_hrkt_amp_median_mm": (8.2, 1),
+    # 11 forecast
     "11_next_clock_date": ("2026-12-15", 0), "11_pi95_lo": ("2026-08-29", 0), "11_pi95_hi": ("2027-04-02", 0),
     "11_ruleC_Z_mm": (40, 0), "11_ruleC_X_d": (21, 0), "11_ruleC_p_chance": (0.02, 2),
 }

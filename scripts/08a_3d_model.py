@@ -102,6 +102,7 @@ fig_dir = common_paths["fig_dir"]
 helpers_dir = os.path.join(repo_dir, "scripts", "pylith_helpers")
 cfg_dir = paths_sfcvm["cfg"]                        # scripts/pylith_cfg: the PyLith parameter files the runs were made with
 sys.path.insert(0, helpers_dir)
+from surface_crossings import crossing_constraint      # the surface constraint (Dani 2026-10-02)
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 WORK = model_sfcvm_dir                              # the PyLith side (mesh/, spatialdb/, points/, gf/, pylith_output/)
@@ -601,9 +602,14 @@ print("wrote qc08a_validation_mesh.png")
 # matrix enters through `Fault.setGFs`. Everything else is 07a's `invert`: exponential prior
 # `buildCmXY` with lambda (0.1, 0.05) km on the vertex positions, per-dataset constant
 # (`csi.transformation`), NNLS (`multisourcesolve.ConstrainedLeastSquareSoln`). The surface
-# constraint: 07a's crossing-stack running median (`make_surface`) interpolated to every top-edge
-# impulse vertex, errors scaled by sqrt(vertices per 0.2 km) as 07a does for its triangles, with
-# G = 1 on that vertex's own slip (the tent equals the slip at its vertex).
+# constraint (Dani 2026-10-02, `pylith_helpers/surface_crossings.py`): every measured fault crossing
+# inside the mesh (04's five-event mean step, one every 0.1 km) is one datum, tied to the modelled
+# slip at its own position on the top edge, i.e. linear between the two neighbouring top-edge
+# vertices (the order-1 tents); error = the local scatter of the crossings (1.4826 MAD within
+# +/- 0.2 km), floored at 0.5 mm. No running median, nothing invented across data gaps. (Until
+# 2026-10-02: 07a's 0.4 km running median interpolated to every vertex; its window test lost the
+# edge crossings to float roundoff and kept 29 of 57 points. On the selected model the change leaves
+# Mw30 at 3.756 and the rms within 0.02 mm.)
 # NB: `buildCmXY` normalises by lambda0 from the parameter spacing, so sigma is not numerically
 # comparable with 07a's triangle sigma; each model gets its own L-curve corner, by 07a's rule.
 #
@@ -669,24 +675,28 @@ def tent_fault(name):
     return flt
 
 
+top_order = surface_imp[np.argsort(imp_xyz[surface_imp, 1])]          # top-edge impulse vertices, south to north (mesh y)
+assert np.all(np.diff(imp_xyz[top_order, 1]) > 0), "top-edge vertices not monotone in mesh y"
+crossings_in = crossings_all[(crossings_all.km >= km_window[0]) & (crossings_all.km <= km_window[1])]
+
+
 def surface_constraint(floor_mm=surf_floor_mm):
-    """07a's crossing-stack profile (make_surface) interpolated to every top-edge impulse vertex; the error scaled
-    by sqrt(vertices per 0.2 km) (07a's make_surface_interp rule); G selects the vertex's own slip."""
-    base = make_surface(floor_mm)
-    base_km = lat_to_km_pp(base.lat)
-    order_km = np.argsort(base_km)
-    v_km = lat_to_km_pp(imp_lat[surface_imp])
-    keep = (v_km >= base_km.min()) & (v_km <= base_km.max())
-    idx, v_km = surface_imp[keep], v_km[keep]
-    vals = np.interp(v_km, base_km[order_km], base.vel[order_km])
-    errs = np.interp(v_km, base_km[order_km], base.err[order_km])
-    per_step = np.array([np.sum(np.abs(v_km - k) <= surf_step_km / 2) for k in v_km])
-    errs = errs * np.sqrt(np.maximum(per_step, 1))
-    ss = surfaceslip(f"crossing interp vertices f{floor_mm:g}", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    ss.read_from_binary(vals, imp_lon[idx], imp_lat[idx], err=errs)
+    """The measured crossings, each tied to the tent slip at its own top-edge position (surface_crossings.py)."""
+    sc = crossing_constraint(crossings_in.km.values, crossings_in.lat.values, crossings_in.mean_event_mm.values,
+                             lambda la: np.interp(la, trace_south_north[:, 1], trace_south_north[:, 0]),
+                             lambda lo, la: to_mesh.transform(lo, la), imp_xyz[top_order, :2], top_order, n_imp, floor_mm=floor_mm)
+    ss = surfaceslip(f"crossings f{floor_mm:g}", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
+    ss.read_from_binary(sc["vel"], sc["lon"], sc["lat"], err=sc["err"])
     ss.buildCd()
-    G_surf = np.zeros((idx.size, n_imp)); G_surf[np.arange(idx.size), idx] = 1.0
-    return ss, G_surf
+    return ss, sc["G"]
+
+
+_sc0 = crossing_constraint(crossings_in.km.values, crossings_in.lat.values, crossings_in.mean_event_mm.values,
+                           lambda la: np.interp(la, trace_south_north[:, 1], trace_south_north[:, 0]),
+                           lambda lo, la: to_mesh.transform(lo, la), imp_xyz[top_order, :2], top_order, n_imp)
+print(f"surface constraint: {_sc0['vel'].size} crossings inside the mesh top edge (km {_sc0['km'].min():.1f}-{_sc0['km'].max():.1f}; "
+      f"{_sc0['n_outside']} beyond its ends), distance to the edge median {np.median(_sc0['dist_m']):.1f} m, max {_sc0['dist_m'].max():.1f} m; "
+      f"error median {np.median(_sc0['err']):.2f} mm")
 
 
 def data_cd(cd):
@@ -927,7 +937,7 @@ for ax, (medium, cd), letter in zip(axes, RUNS, "ABCD"):
     ax.set_xlabel("km from Point Pinole (orange bar: SSE section)"); ax.set_ylabel("z (km)")
     tag_txt = "SELECTED, " if (medium, cd) == SELECTED else ("companion, " if (medium, cd) == COMPANION else "")
     ax.set_title(r"$\bf{" + letter + r"}$  " + f"{tag_txt}PyLith {medium}, Cd {cd}: sigma {mdl['sigma']:g}, rms {mdl['rms_mm']:.2f} mm, "
-                 f"Mw {mdl['Mw_30gpa']:.2f} (30 GPa), {mdl['Mw_sfcvm']:.2f} (SFCVM mu)", loc="left", fontsize=7)
+                 f"Mw {mdl['Mw_30gpa']:.2f} (30 GPa), {mdl['Mw_sfcvm']:.2f} (SFSVM mu)", loc="left", fontsize=7)
     ax.hlines(0.04, creep_lo_km, creep_hi_km, color=OK["orange"], lw=4, clip_on=False)   # SSE section (04)
 fig.colorbar(tp, ax=axes, label="right-lateral slip (mm)", shrink=0.6)
 fig.savefig(os.path.join(fig_dir, "figS_pylith_slip.png"), dpi=300)
@@ -1058,7 +1068,7 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
             f_off = os.path.join(paths_sfcvm["gf"], f"results_comparison_{off}{CD_TAG[cd]}.csv")
             assert os.path.exists(f_off), f"missing alignment-sensitivity product {f_off} (08b's table)"
             r_off = pd.read_csv(f_off).set_index("model").loc[f"PyLith sfcvm_{off}"]
-            range_vals.append(float(r_off.Mw_30gpa)); basis.append(f"SFCVM boundary 50 m {off[0].upper()} ({r_off.Mw_30gpa:.2f})")
+            range_vals.append(float(r_off.Mw_30gpa)); basis.append(f"SFSVM boundary 50 m {off[0].upper()} ({r_off.Mw_30gpa:.2f})")
     mw_range = [float(min(range_vals)), float(max(range_vals))]
     # the same range at the SFCVM rigidity (Dani 2026-10-01): sigma neighbours from 08b's bootstrap table (its
     # sigma_neighbour rows), alignment runs from the same cached tables; no new inversion
@@ -1170,6 +1180,77 @@ for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
           f"95th pct {r_['p95_kpa']:.0f} kPa; patch in the top 100 m {r_['top100_kpa']:.0f} kPa")
 
 # %% [markdown]
+# ## [15c] Mw and the rigidity: the options side by side (Dani 2026-10-02)
+#
+# Potency P = sum over fault triangles of area x mean tent slip is what the inversion constrains; the
+# moment M0 = sum(mu_t x P_t) needs a rigidity, and Mw = 2/3 (log10 M0 - 9.1) (Hanks & Kanamori 1979, M0 in
+# N m). One table, the selected model's slip throughout, every row a different rigidity choice:
+# - 30 GPa: the crustal reference value (the convention for comparing with other slow-slip events).
+# - Per triangle, from the PyLith cells either side of the fault (`mu_beside_fault`, [6]):
+#   arithmetic mean (mu_W + mu_E) / 2 (what `Mw_sfcvm` has used so far); harmonic mean
+#   2 mu_W mu_E / (mu_W + mu_E), the effective rigidity of a fault on a material interface (Vavrycuk 2013,
+#   GJI 194, 395-400, doi:10.1093/gji/ggt084, Roland's note); west side only; east side only.
+# - mu_eff = M0 / P for each per-triangle row: the single rigidity that gives the same Mw.
+# - A sweep of single uniform rigidities, Mw(mu) = Mw30 + 2/3 log10(mu / 30 GPa), for quoting a range.
+# Potency is the same in every row, so only the rigidity differs. Printed and saved
+# (`mw_rigidity_options.csv`); not registered until the choice is made.
+
+# %%
+## [15c]
+slip_sel = models[SELECTED]["slip"]
+v_sel = np.zeros(len(fault_xyz)); v_sel[vertex_index] = slip_sel
+pot_tri = tri_area * v_sel[fault_cells].mean(1) * 1e-3                     # m3 per triangle (tent slip exact for linear tents)
+P_sel = float(pot_tri.sum())
+assert abs(P_sel - potency_m3(slip_sel)) < 1e-6 * P_sel, "per-triangle potency does not sum to potency_m3"
+mu_options = {"arithmetic mean of the two sides": 0.5 * (mu_west + mu_east),
+              "harmonic mean of the two sides (Vavrycuk 2013)": 2.0 * mu_west * mu_east / (mu_west + mu_east),
+              "west side only": mu_west, "east side only": mu_east}
+assert np.allclose(mu_options["arithmetic mean of the two sides"], mu_fault["sfcvm"]), "arithmetic row is not Mw_sfcvm's rigidity"
+rows_mu = [dict(option="reference 30 GPa (uniform)", mu_eff_gpa=mu_ref / 1e9, M0_Nm=mu_ref * P_sel, Mw=float(mw(mu_ref * P_sel)))]
+for name, mu_t in mu_options.items():
+    m0 = float(np.sum(mu_t * pot_tri))
+    rows_mu.append(dict(option=f"SFSVM per triangle, {name}", mu_eff_gpa=m0 / P_sel / 1e9, M0_Nm=m0, Mw=float(mw(m0))))
+for mu_gpa in (0.5, 1.0, 2.0, 3.0, 5.0, 10.0):
+    rows_mu.append(dict(option=f"uniform {mu_gpa:g} GPa", mu_eff_gpa=mu_gpa, M0_Nm=mu_gpa * 1e9 * P_sel, Mw=float(mw(mu_gpa * 1e9 * P_sel))))
+mw_rigidity = pd.DataFrame(rows_mu)
+mw_rigidity["potency_m3"] = P_sel
+assert abs(mw_rigidity.Mw[1] - models[SELECTED]["Mw_sfcvm"]) < 1e-9, "arithmetic row differs from the selected model's Mw_sfcvm"
+# where the moment sits: potency-weighted rigidity (harmonic) by depth band
+depth_t = -tri_cen[:, 2]
+for lo_m, hi_m in ((0, 100), (100, 300), (300, 1000), (1000, 1e6)):
+    in_band = (depth_t >= lo_m) & (depth_t < hi_m)
+    if pot_tri[in_band].sum() > 0:
+        mh = mu_options["harmonic mean of the two sides (Vavrycuk 2013)"][in_band]
+        print(f"  depth {lo_m:>4.0f}-{min(hi_m, 99999):>5.0f} m: {100 * pot_tri[in_band].sum() / P_sel:5.1f} % of the potency, "
+              f"potency-weighted mu: harmonic {np.sum(mh * pot_tri[in_band]) / pot_tri[in_band].sum() / 1e9:.2f}, "
+              f"arithmetic {np.sum(mu_fault['sfcvm'][in_band] * pot_tri[in_band]) / pot_tri[in_band].sum() / 1e9:.2f} GPa")
+mw_rigidity.to_csv(os.path.join(out_dir, "mw_rigidity_options.csv"), index=False)
+print(f"\nselected model ({run_tag(SELECTED[1])} / {SELECTED[0]}), potency {P_sel:.0f} m3:")
+print(mw_rigidity[["option", "mu_eff_gpa", "Mw"]].to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+
+# %% [markdown]
+# ## [15d] Where the 3D medium improves the fit (Dani 2026-10-02)
+#
+# The selected model against its homogeneous twin (same inversion, nugget Cd, each at its own L-curve sigma):
+# rms of the residual within 200 m of the trace (near field) and beyond it (and beyond 1 km), the drop in
+# percent, and the share of the total misfit reduction (sum of squared residuals, uniform minus 3D) that
+# comes from the near-field samples.
+
+# %%
+## [15d]
+r_3d, r_uni = models[SELECTED]["residual"], models[("homog", SELECTED[1])]["residual"]
+abs_d = np.abs(signed_d_km)
+near_far = {}
+for name, m in (("near200", abs_d <= 0.2), ("beyond200", abs_d > 0.2), ("beyond1km", abs_d > 1.0)):
+    rms_u, rms_3 = float(np.sqrt(np.mean(r_uni[m] ** 2))), float(np.sqrt(np.mean(r_3d[m] ** 2)))
+    near_far[name] = dict(n=int(m.sum()), rms_uniform_mm=rms_u, rms_3d_mm=rms_3, drop_pct=100 * (rms_u - rms_3) / rms_u)
+    print(f"{name:10s} n {m.sum():4d}: uniform {rms_u:.2f} mm, 3D {rms_3:.2f} mm, {near_far[name]['drop_pct']:.0f} % lower")
+d_ss = r_uni ** 2 - r_3d ** 2
+near_far["near200_share_of_reduction_pct"] = float(100 * d_ss[abs_d <= 0.2].sum() / d_ss.sum())
+assert d_ss.sum() > 0, "the 3D model does not reduce the total misfit"
+print(f"share of the total misfit reduction from samples within 200 m: {near_far['near200_share_of_reduction_pct']:.0f} %")
+
+# %% [markdown]
 # ## [16] Registry -- the 3D model (the paper's slip model)
 #
 # `08a_*` = the selected model (aligned SFCVM, nugget Cd); `08a_hom_*` its homogeneous twin;
@@ -1181,7 +1262,7 @@ for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
 REG.inputs(*[os.path.join(paths_sfcvm["gf"], f"G_{run_names[m]}.npz") for m in media], mesh_fault_npz, grid_file, points_file + ".npz",
            os.path.join(field_dir, "fp_maps.npz"), row07_file, os.path.join(events_dir, "section_lengths.csv"),
            os.path.join(paths_sfcvm["gf"], "final_comparison.csv"))
-lines = [f"selected model: {run_tag(SELECTED[1])} / {SELECTED[0]} (vertical fault, {mesh_preset} mesh, order {elem_order}, aligned SFCVM v26-0, "
+lines = [f"selected model: {run_tag(SELECTED[1])} / {SELECTED[0]} (vertical fault, {mesh_preset} mesh, order {elem_order}, aligned SFSVM v26-0, "
          f"nugget Cd, surface constraint ON); companion {run_tag(COMPANION[1])} / {COMPANION[0]} (07a full Cd)",
          f"PyLith runs: {run_names}; {n_imp} impulses on {len(fault_xyz)} fault vertices; {samples.vel.size} samples",
          f"validation (a) PyLith homog vs CSI Meade: rel rms {100 * val_a['rel_rms']:.2f} % (agreeing sides {100 * val_a['rel_rms_okside']:.2f} %, far field {val_a['rms_diff_far_mm']:.3f} mm); (b) vs 2D screw: {100 * val_b['rel_rms']:.2f} %; "
@@ -1228,6 +1309,11 @@ REG.register("08a_n_impulses", int(n_imp), "count", 0, where="M8", cell="G", sid
 REG.register("08a_n_samples", int(samples.vel.size), "count", 0, where="M8", cell="G", sidecar=sidecar)
 REG.register("08a_mu_west_top100_gpa", mu_top100["west_gpa"], "GPa", 2, where="M8", cell="materials", sidecar=sidecar)
 REG.register("08a_mu_east_top100_gpa", mu_top100["east_gpa"], "GPa", 2, where="M8", cell="materials", sidecar=sidecar)
+for name in ("near200", "beyond200", "beyond1km"):                                            # [15d] 3D vs uniform fit
+    REG.register(f"08a_rms_{name}_uniform_mm", near_far[name]["rms_uniform_mm"], "mm", 2, where="M8", cell="near/far fit", sidecar=sidecar)
+    REG.register(f"08a_rms_{name}_3d_mm", near_far[name]["rms_3d_mm"], "mm", 2, where="M8", cell="near/far fit", sidecar=sidecar)
+    REG.register(f"08a_rms_{name}_drop_pct", near_far[name]["drop_pct"], "%", 0, where="M8", cell="near/far fit", sidecar=sidecar)
+REG.register("08a_rms_near200_share_of_reduction_pct", near_far["near200_share_of_reduction_pct"], "%", 0, where="M8", cell="near/far fit", sidecar=sidecar)
 REG.register("08a_val_csi_rel_rms_pct", 100 * val_a["rel_rms_okside"], "%", 1, where="M8", cell="validation", sidecar=sidecar)
 REG.register("08a_val_csi_far_rms_mm", val_a["rms_diff_far_mm"], "mm", 3, where="M8", cell="validation", sidecar=sidecar)
 REG.register("08a_val_screw_rel_rms_pct", 100 * val_b["rel_rms"], "%", 1, where="M8", cell="validation", sidecar=sidecar)

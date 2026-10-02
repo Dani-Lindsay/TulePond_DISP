@@ -396,7 +396,7 @@ for medium, cd in RUNS:
                  f"W mean residual {rec.mean_res_west300_mm.min():+.2f}..{rec.mean_res_west300_mm.max():+.2f} mm; "
                  f"depth scan: best {sc.loc[sc.chi2.idxmin()].D_km:g} km, bracket {br.D_km.min():g}-{br.D_km.max():g} km (Mw {br.Mw.min():.2f}-{br.Mw.max():.2f})")
 sens_sfcvm = pylith_rows[(pylith_rows.medium.str.startswith("sfcvm")) & (pylith_rows.surface == "on")]
-lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions; SFCVM with surface constraint ({len(sens_sfcvm)} runs): "
+lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions; SFSVM with surface constraint ({len(sens_sfcvm)} runs): "
              f"Mw30 {sens_sfcvm.Mw_30gpa.min():.2f}-{sens_sfcvm.Mw_30gpa.max():.2f}, rms W300 {sens_sfcvm.rms_W300_mm.min():.2f}-{sens_sfcvm.rms_W300_mm.max():.2f} mm, "
              f"surface {sens_sfcvm.surface_pct.min():.0f}-{sens_sfcvm.surface_pct.max():.0f} %")
 print("\n".join(lines))

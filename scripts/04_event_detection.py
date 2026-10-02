@@ -56,7 +56,7 @@ import warnings
 
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, segments, creepmeters, params, coh_timeseries,
-                                dist_min, dist_max, rate_smooth_km, paths_out, repo_dir)
+                                dist_min, dist_max, profile_smooth_km, paths_out, repo_dir)   # profile_smooth_km: Fig 1C (0.3 clipped the peak 59 -> 53 mm; 0.15 -> 56)
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -452,16 +452,7 @@ plt.show()
 
 # %%
 # [16]
-def gaussian_smooth_km(x, lats_of_x, sigma_km):
-    """NaN-aware, gap-preserving Gaussian smoothing along the fault."""
-    spacing_km = float(np.median(np.abs(np.diff(lats_of_x)))) * 111.19
-    sig = max(sigma_km / spacing_km, 0.5)
-    finite = np.isfinite(x).astype(float)
-    filled = np.where(finite > 0, x, 0.0)
-    den = gaussian_filter1d(finite, sig, mode="nearest")
-    out = np.divide(gaussian_filter1d(filled, sig, mode="nearest"), den, out=np.full_like(filled, np.nan), where=den > 0.15)
-    out[~np.isfinite(x)] = np.nan
-    return out
+gaussian_smooth_km = utils.gaussian_smooth_km      # NaN-aware, gap-preserving Gaussian along the fault (one definition, insar_utils)
 
 
 def interp_nan(x, y):
@@ -696,10 +687,18 @@ print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_b
 # ## [23] The slip budget, the alignment arrays and the creepmeters
 #
 # Per crossing: inter-event rate, the summed event steps over the record
-# length, and their sum, smoothed 0.5 km. The alignment arrays enter twice:
-# refit over the InSAR window from their survey files (black in the figures;
-# needs 4 surveys spanning 5 yr), and the archive's whole-record rate (grey).
-# Creepmeter rates are over the InSAR window.
+# length, and their sum, smoothed as Fig 1C (Gaussian sigma profile_smooth_km = 0.15 km; Dani 2026-10-02,
+# was rate_smooth_km 0.5 km). The alignment arrays enter twice:
+# refit over the InSAR window from their survey files (dark grey in Fig 1,
+# black in the supplement; needs 4 surveys spanning 5 yr), and the archive's
+# whole-record rate (grey). Creepmeter rates are over the InSAR window.
+#
+# 1-sigma error bars (Dani 2026-10-02, "reviewers always ask"): arrays = the
+# least-squares standard error of the refit, from the scatter of the surveys
+# about the line (the survey std's alone give a 3-10x smaller formal error:
+# the scatter is episodic creep, not survey error); creepmeters = the standard
+# error of the slip gained in each whole year (daily samples are not
+# independent, so the regression error, ~0.01 mm/yr, would be meaningless).
 
 # %%
 # [24]
@@ -711,7 +710,7 @@ slip_budget["event_rate"] = slip_budget["event_sum"] / span
 slip_budget["total"] = slip_budget["secular"] + slip_budget["event_rate"]
 slip_budget = slip_budget.sort_values("km").reset_index(drop=True)
 for name in ("secular", "event_rate", "total"):
-    slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["lat"].values, rate_smooth_km)
+    slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["lat"].values, profile_smooth_km)   # = Fig 1C
 slip_budget.to_csv(os.path.join(out_dir, "slip_budget_by_crossing.csv"), index=False)
 
 # alignment arrays within 2 km of the trace: refit over the InSAR window (black) and the archive's whole-record rate (grey)
@@ -729,21 +728,29 @@ for _, site in aa_summary.iterrows():
     surveys_in_window = array[(array.year >= t0) & (array.year <= t1)]
     span_in_window = surveys_in_window.year.max() - surveys_in_window.year.min() if len(surveys_in_window) else 0.0
     if len(surveys_in_window) >= aa_min_surveys and span_in_window >= aa_min_span_yr:
-        rate_window = float(np.polyfit(surveys_in_window.year.values, surveys_in_window.cum_mm.values, 1)[0])
+        rate_window, _, rate_window_se, _ = utils.linear_rate(surveys_in_window.year.values, surveys_in_window.cum_mm.values)
     else:
-        rate_window = np.nan
+        rate_window = rate_window_se = np.nan
     aa_rows.append(dict(code=site.site_code, name=site.site_name, lat=site.lat_deg, lon=site.long_deg, km=float(to_km([site.lat_deg])[0]),
-                        rate_window=rate_window, n_window=len(surveys_in_window), span_window=span_in_window,
+                        rate_window=rate_window, rate_window_se=rate_window_se, n_window=len(surveys_in_window), span_window=span_in_window,
                         rate_longterm=float(site["rate_lnrr"]), first_yr=float(site["first_yr"]), last_yr=float(site["last_yr"])))
 aa_rates = pd.DataFrame(aa_rows).sort_values("km")
 aa_rates.to_csv(os.path.join(out_dir, "aa_rates.csv"), index=False)
 print(f"{len(aa_rates)} Hayward arrays within 2 km of the trace; {aa_rates.rate_window.notna().sum()} refit over the InSAR window")
 
-# creepmeter rates over the InSAR window: code -> (km, mm/yr)
-cm_rates = {}
+# creepmeter rates over the InSAR window: code -> (km, mm/yr), and their 1-sigma from the whole-year gains
+cm_rates, cm_rate_sigma = {}, {}
 for code, la, lo, name in creepmeters:
     cm_dates, cm_slip = daily_creepmeter(code)
     cm_rates[code] = (float(to_km([la])[0]), utils.linear_rate(cm_dates, cm_slip)[0])
+    mean_gain, cm_rate_sigma[code], n_years = utils.annual_increment_rate(cm_dates, cm_slip)
+    assert abs(mean_gain - cm_rates[code][1]) < 0.5, f"{code}: mean yearly gain {mean_gain:.2f} vs fitted rate {cm_rates[code][1]:.2f} mm/yr"
+    print(f"  creepmeter {code}: {cm_rates[code][1]:.2f} +/- {cm_rate_sigma[code]:.2f} mm/yr (1 sigma, {n_years} whole years; mean yearly gain {mean_gain:.2f})")
+pd.DataFrame([dict(code=c, km=k, rate=r, rate_se=cm_rate_sigma[c]) for c, (k, r) in cm_rates.items()]
+             ).to_csv(os.path.join(out_dir, "creepmeter_rates.csv"), index=False)
+in_section = aa_rates[(aa_rates.km >= len_lo - 1.0) & (aa_rates.km <= len_hi + 1.0) & aa_rates.rate_window.notna()]   # as budget_block
+print(f"  arrays at Tule Pond ({len_lo - 1:.1f}-{len_hi + 1:.1f} km), window refit +/- 1 sigma (mm/yr): "
+      + ", ".join(f"{r.code} {r.rate_window:.2f} +/- {r.rate_window_se:.2f}" for r in in_section.itertuples()))
 
 
 def budget_block(name, lo, hi):
@@ -928,7 +935,7 @@ for i, row in enumerate(window_rows):
 cum_prof = np.zeros((onsets_tulepond.size, window_rows.size))
 running = np.zeros(window_rows.size)
 for i in range(onsets_tulepond.size):
-    running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], lats_window, 0.3)))
+    running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], lats_window, profile_smooth_km)))
     cum_prof[i] = running
 
 # --- the band stack's model, split into inter-event (teal) and event (orange) epochs for panel E
@@ -1108,10 +1115,14 @@ fig.plot(x=slip_budget.event_rate_smooth[in_window_budget].values, y=slip_budget
 fig.plot(x=slip_budget.total_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.5p,black", label="Inter-event + event-driven")
 arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi)]
 arrays_refit = arrays_window[arrays_window.rate_window.notna()]
-fig.plot(x=arrays_refit.rate_window.values, y=arrays_refit.km.values, style="s0.18c", fill="black", label=f"Alignment arrays {t0:.1f} to {t1:.1f}")
+aa_grey = "gray30"                                                    # dark grey (Dani 2026-10-02): reads apart from the black total
+fig.plot(data=np.column_stack([arrays_refit.rate_window.values, arrays_refit.km.values, arrays_refit.rate_window_se.values]),
+         error_bar="x+p0.6p," + aa_grey + "+w0.08c", style="s0.16c", fill=aa_grey, pen="0.3p," + aa_grey,
+         label=f"Alignment arrays {t0:.1f} to {t1:.1f}")                   # +/- 1 sigma
 for code, (km_cm, rate_cm) in cm_rates.items():
     if w_lo <= km_cm <= w_hi:
-        fig.plot(x=[rate_cm], y=[km_cm], style="i0.25c", fill=gold, pen="0.5p,black", label=f"Creepmeter {t0:.1f} to {t1:.1f}" if code == "CFW1" else None)
+        fig.plot(data=[[rate_cm, km_cm, cm_rate_sigma[code]]], error_bar="x+p0.6p,black+w0.08c", style="i0.25c", fill=gold, pen="0.5p,black",
+                 label=f"Creepmeter {t0:.1f} to {t1:.1f}" if code == "CFW1" else None)                    # +/- 1 sigma
         fig.text(x=rate_cm, y=km_cm, text=code, justify="RM", offset="-0.2c/0c", font="7p", no_clip=True)
 fig.text(x=-1, y=w_lo, text="@%Helvetica-Bold%D@%% @:7p:Creep rates@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
 # legend entries for the symbols drawn in B: plotted off-region (clipped), so only the legend records them

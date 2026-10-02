@@ -562,17 +562,7 @@ def rate_per_crossing(ts):
     return rate
 
 
-def gaussian_smooth_km(rate, lats, sigma_km):
-    """NaN-aware, gap-preserving Gaussian smoothing along the fault."""
-    spacing_km = float(np.median(np.abs(np.diff(lats)))) * 111.19
-    sig = max(sigma_km / spacing_km, 0.5)
-    finite = np.isfinite(rate).astype(float)
-    filled = np.where(finite > 0, rate, 0.0)
-    num = gaussian_filter1d(filled, sig, mode="nearest")
-    den = gaussian_filter1d(finite, sig, mode="nearest")
-    out = np.divide(num, den, out=np.full_like(num, np.nan), where=den > 0.15)
-    out[~np.isfinite(rate)] = np.nan
-    return out
+gaussian_smooth_km = utils.gaussian_smooth_km      # NaN-aware, gap-preserving Gaussian along the fault (one definition, insar_utils)
 
 
 fp_rate_raw = rate_per_crossing(fp_ts)

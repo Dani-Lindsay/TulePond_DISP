@@ -49,7 +49,7 @@ if not data_dir:
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-09-30"         # PyLith + SFCVM model figures (Dani 2026-09-30); 2026-09-28_final = the homogeneous-model set
+fig_date   = "2026-10-02"         # manuscript-pass figure notes (Dani 2026-10-02); 2026-09-30 = PyLith + SFCVM model set; 2026-09-28_final = homogeneous
 # Figures and notebook products live with the data, not in the repo (Dani 2026-10-01): the repo is the code
 # base archived on GitHub plus the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
@@ -193,6 +193,7 @@ rate_nsigma = 3.0      # near-fault rate mask: reject pixels > 3 robust sigma fr
 az_smooth_n = 21       # crossings in the rolling median of the local strike (2.1 km)
 max_interp_gap_days = 45   # interpolate asc/desc onto common dates only across gaps shorter than this
 rate_smooth_km = 0.5   # Gaussian smoothing of the along-fault rate profile
+profile_smooth_km = 0.15   # Gaussian sigma of the drawn along-strike slip profiles: Fig 1C per event, Fig 2K mean event (Dani 2026-10-02)
 
 # Along-strike parameter string that goes into every product and figure name
 # (NC_ALOS-2 convention: the filename tells you what was run).
