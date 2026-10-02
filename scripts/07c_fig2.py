@@ -70,7 +70,8 @@ xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault band the blo
 # The values live in TulePond_filepaths so Fig 1 (notebook 04) draws the same box.
 map_centre_km, map_half_km, map_extra_km = fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km
 aa_labelled = ["HGIL", "HRKT"]  # the arrays named in the paper (notebook 08); the other arrays of the section are not drawn
-aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"), "HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of each label about its symbol
+aa_label_pos = {"HGIL": ("RB", "-0.12c/0.08c"),   # HGIL up-left: the west well 29A006 is labelled at its own height below it
+                "HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of each label about its symbol
 
 f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz")
 aa_file = common_paths["aa_summary"]
@@ -225,6 +226,18 @@ profile_label_font = "7p,Helvetica-Bold"      # X, X', Y, Y' on every map and pr
 # leader's end, two lines, above it for an up leader and below it for a down leader, left of it for a leader to the
 # left (clear of X' and the frame). Tule Pond (Dani 2026-10-02): the pond itself, labelled bottom left of the fault
 # between X and Y.
+# the hydrology sites on panel B (Dani 2026-10-02): the two ACWD indicator wells (positions from public registers,
+# well_locations.csv) and the two rain gauges of notebook 10's composite (positions from their GHCN files).
+# Newark lies ~70 m west of the map frame: drawn at its true position, unclipped, on the frame edge.
+wells = pd.read_csv(common_paths["well_locations"], comment="#")
+assert set(wells.side) == {"east", "west"}, "well_locations.csv must hold the east and the west well"
+rain_gauges = {}
+for sid, name in (("USC00043244", "Fremont"), ("USC00046144", "Newark")):
+    head = pd.read_csv(os.path.join(common_paths["ghcn_dir"], f"{sid}.csv"), nrows=1)
+    rain_gauges[name] = (float(head.LATITUDE.iloc[0]), float(head.LONGITUDE.iloc[0]))
+print("wells:", ", ".join(f"{w.well} ({w.side}) {w.lat:.5f} {w.lon:.5f}" for w in wells.itertuples()),
+      "| rain gauges:", ", ".join(f"{k} {v[0]:.4f} {v[1]:.4f}" for k, v in rain_gauges.items()))
+well_col, gauge_col = "#0072B2", "white"            # wells Okabe-Ito blue circles; gauges white diamonds (no blue/green pair)
 map_places = [(("Alameda", "Creek"), -121.980765, 37.572280, 0.3, 0.45),
               (("Lake", "Elizabeth"), -121.962053, 37.549023, 0.4, 0.12),
               (("Tule", "Pond"), -121.975545, 37.558686, -0.35, -0.45)]
@@ -262,6 +275,15 @@ def map_base(grid, cpt, label, stations=True, places=False):
             utils.text_backed(fig, x=r_.long_deg, y=r_.lat_deg, text=r_.site_code, justify=just, offset=off, font="7p,Helvetica")
         fig.plot(x=[cfw[2]], y=[cfw[1]], style="i0.22c", fill="#F0E442", pen="0.5p,black")
         utils.text_backed(fig, x=cfw[2], y=cfw[1], text="CFW1", justify="RM", offset="-0.15c/0c", font="7p,Helvetica")
+        # the two ACWD wells (label on the far side from the fault) and the two rain gauges
+        fig.plot(x=wells.lon.values, y=wells.lat.values, style="c0.18c", fill=well_col, pen="0.5p,white")
+        for w in wells.itertuples():                       # east label right; west label left and down, clear of HGIL's
+            just, off = ("LM", "0.14c/0c") if w.side == "east" else ("RM", "-0.14c/0c")
+            utils.text_backed(fig, x=w.lon, y=w.lat, text=w.well.split("-")[-1], justify=just, offset=off, font="6.5p,Helvetica")
+        for name, (la, lo) in rain_gauges.items():          # Newark sits on the frame: its label above it, clear of the scale bar
+            fig.plot(x=[lo], y=[la], style="d0.22c", fill=gauge_col, pen="0.6p,black", no_clip=True)
+            just, off = ("LM", "0.16c/0c") if name == "Fremont" else ("LB", "0.08c/0.55c")
+            utils.text_backed(fig, x=lo, y=la, text=name, justify=just, offset=off, font="6.5p,Helvetica", no_clip=True)
     fig.text(position="TL", text=label, justify="BL", offset="0c/0.12c", font="9p,Helvetica-Bold", no_clip=True)     # Science: bold capital panel letters
     fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"], map_scale="jBL+w2k+o0.3c/0.55c")      # frame on top, scale bar
 

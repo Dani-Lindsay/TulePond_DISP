@@ -133,8 +133,9 @@ story += B(["InSAR: the five Tule Pond events of notebook 04, onset windows of 6
             "The onset is taken as equally likely anywhere in its window. Every test below draws it uniformly within the window (2000 draws per event); "
             "every quantity at onset is given at both ends of the window, never at a midpoint."])
 story += [P("2.2 Rain", h2),
-          P("The daily composite of notebook 10: the three nearest NOAA GHCN-daily gauges (Fremont 4 km, Newark 7 km, Hayward Air Terminal 18 km), spliced day by day "
-            "in that order, the morning-observer Newark gauge shifted one day earlier; 1 October 1978 to 25 August 2026. Water years run 1 October to 30 September "
+          P("The daily composite of notebook 10: the two nearest NOAA GHCN-daily gauges (Fremont 4 km, Newark 7 km), Fremont where it reported and Newark "
+            "otherwise, the morning-observer Newark gauge shifted one day earlier (checked against Hayward Air Terminal, which is not in the composite); "
+            "1 October 1978 to 25 August 2026; 99 days have no reading. Water years run 1 October to 30 September "
             "and are named by the year they end. The median water-year total is 362 mm (10 to 90 %: 219 to 567 mm).")]
 story += [P("2.3 Groundwater (ACWD indicator wells, received 2 October 2026)", h2)]
 story += [table([["", "4S/1W-27D008", "4S/1W-29A006"],

@@ -9,9 +9,11 @@
 #
 # **What this notebook does.**
 #
-# 1. **Daily rain at Tule Pond** from the three nearest NOAA GHCN-daily gauges,
-#    spliced day by day in the order Fremont > Newark > Hayward Air Terminal (no
-#    rescaling; the overlaps are documented). The morning-observer COOP gauge
+# 1. **Daily rain at Tule Pond** from the two nearest NOAA GHCN-daily gauges,
+#    spliced day by day, Fremont first, then Newark (no rescaling; the overlap is
+#    documented). Hayward Air Terminal (18 km) is read only as the midnight-basis
+#    reference for the check below; it is not in the composite (Dani 2026-10-02:
+#    it filled only 69 days, so two gauges is the cleaner record). The morning-observer COOP gauge
 #    (Newark) is shifted one day earlier onto the midnight basis, and that shift
 #    is checked on a storm with a date in the news. Water year Oct 1 to Sep 30,
 #    named by the year it ends. The gauge files in `Inputs/GHCN_daily` are the
@@ -33,7 +35,7 @@
 # `wateryear_totals.csv`, the Fig 3 panel products `fig3_rain_panel.npz` and
 # `fig3_onset_windows.csv` (read by 11), `10_rain_stats.txt`, registry rows `10_*`.
 #
-# **What to check.** The three gauges agree on water-year totals to ~10 %;
+# **What to check.** Fremont and Newark agree on water-year totals to ~10 %;
 # Newark shifted by one day lines up with Hayward on the 11 Dec 2014 storm;
 # the onset windows counted against the wet season BY WINDOW, not midpoint
 # (November to March: wholly inside, partly, wholly outside; `10_n_wet_season_*`).
@@ -67,13 +69,14 @@ os.makedirs(fig_dir, exist_ok=True)
 
 
 # the gauges: id -> (short name, order in the composite, day shift for morning-observer COOP gauges).
-# Only the three nearest Tule Pond (4, 7 and 18 km); Livermore, San Jose and Oakland Museum (22 to 37 km)
+# The composite is the two nearest Tule Pond (4 and 7 km); Hayward Air Terminal (18 km) is the midnight-basis
+# reference for the Newark observation-time check only. Livermore, San Jose and Oakland Museum (22 to 37 km)
 # were carried as alternates until 2026-09-24 and entered no number.
 ncei = "https://www.ncei.noaa.gov/data/global-historical-climatology-network-daily/access/{sid}.csv"
 stations = {"USC00043244": ("FREMONT", "composite-1", 0),      # COOP but on the midnight basis (checked against Hayward)
             "USC00046144": ("NEWARK", "composite-2", -1),      # COOP, morning observer (checked on the 11 Dec 2014 storm below)
-            "USW00093228": ("HAYWARD_AT", "composite-3", 0)}   # ASOS, midnight basis
-composite = ["FREMONT", "NEWARK", "HAYWARD_AT"]
+            "USW00093228": ("HAYWARD_AT", "check only", 0)}    # ASOS, midnight basis: the reference for the Newark shift check
+composite = ["FREMONT", "NEWARK"]
 tulepond = (37.557, -121.970)      # section centre (lat, lon)
 t_start = "1978-10-01"             # start of WY1979 (first HRKT survey 1979.7)
 series_end = pd.Timestamp(forecast_issue_date)   # the rain series ends at the forecast issue date so the run reproduces
@@ -129,8 +132,7 @@ def dowy_frac(decimal_years):
 # %% [markdown]
 # ## [7] The daily rain composite
 #
-# One value per day: the first gauge that reported, in the order Fremont >
-# Newark > Hayward Air Terminal. The water-year totals table records which
+# One value per day: Fremont where it reported, otherwise Newark. The water-year totals table records which
 # gauges made each year and how many days are missing.
 
 # %%
@@ -194,7 +196,7 @@ for name, info in gauge_info.items():
 n_by_source = rain.src.value_counts()
 stats_lines.append("composite = first reporting gauge in the order " + " > ".join(composite) + ": " +
                    ", ".join(f"{k} {v} d" for k, v in n_by_source.items()))
-# how the three gauges agree where they overlap
+# how the gauges agree where they overlap (Hayward rows are the reference for the check, not the composite)
 for gauge_a, gauge_b in [("FREMONT", "NEWARK"), ("FREMONT", "HAYWARD_AT"), ("NEWARK", "HAYWARD_AT")]:
     both_complete = wy_totals[(wy_totals[f"{gauge_a}_ndays"] >= 350) & (wy_totals[f"{gauge_b}_ndays"] >= 350)]
     ratio = both_complete[f"{gauge_a}_mm"] / both_complete[f"{gauge_b}_mm"]

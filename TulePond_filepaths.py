@@ -127,6 +127,9 @@ common_paths = {
     # NOAA GHCN-daily rain gauges near Tule Pond (downloaded once; the csv
     # files in ghcn_dir are the frozen inputs of notebook 09).
     "ghcn_dir": os.path.join(inputs_dir, "GHCN_daily"),
+    # the ACWD indicator wells (levels) and their positions (public registers; see the file header)
+    "acwd_dir": os.path.join(inputs_dir, "ACWD_water_well_data"),
+    "well_locations": os.path.join(inputs_dir, "ACWD_water_well_data", "well_locations.csv"),
 
     # Seismicity / repeating-earthquake catalogues.
     # T. Taira's HFRC linkage-cluster catalogue, GEN3 (1984 to end-2025), the
