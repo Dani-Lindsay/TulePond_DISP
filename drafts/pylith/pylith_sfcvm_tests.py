@@ -60,11 +60,11 @@ exec(head, globals())
 print(f"notebook cells [1]-[8] exec'd in {time.time() - t_setup:.0f} s; media {list(media)}; cd_mode {cd_mode!r}")
 assert use_surface and dip == "90" and points_set == "default" and elem_order == "1"
 
-tests_src = open(os.path.join(REPO, "scripts", "07_slip_model_tests.py")).read()
+tests_src = open(os.path.join(REPO, "scripts", "07b_uniform_model_tests.py")).read()
 def param(name):
     """A parameter list/number from the tests notebook source (derived, not re-typed)."""
     m = re.search(rf"^{name}\s*=\s*(\[[^\]]*\]|[0-9.]+)", tests_src, re.S | re.M)
-    assert m, f"{name} not found in 07_slip_model_tests.py"
+    assert m, f"{name} not found in 07b_uniform_model_tests.py"
     return eval(m.group(1))
 recovery_depths, scan_taper, scan_depths = param("recovery_depths"), param("scan_taper"), param("scan_depths")
 scan_km = (creep_lo_km + scan_taper, creep_hi_km - scan_taper)      # tests notebook [1]: SSE section tapered at its ends
