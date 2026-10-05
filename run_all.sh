@@ -39,7 +39,9 @@ else
     done
 fi
 
-mkdir -p executed
+# the HTML copies go to the results directory (TulePond_filepaths.executed_dir), not into the repo (2026-10-06)
+EXECUTED=$(python -c "import TulePond_filepaths as f; print(f.executed_dir)")
+mkdir -p "$EXECUTED"
 for nb in $nbs; do
     echo ""
     echo "=============================== $nb  $(date '+%H:%M:%S')"
@@ -48,7 +50,7 @@ for nb in $nbs; do
     jupytext --sync "$nb"
     jupyter nbconvert --to notebook --execute --inplace \
         --ExecutePreprocessor.timeout=-1 --ExecutePreprocessor.kernel_name=python3 "$nb"
-    jupyter nbconvert --to html "$nb" --output-dir executed >/dev/null 2>&1
+    jupyter nbconvert --to html "$nb" --output-dir "$EXECUTED" >/dev/null 2>&1
     echo "done in $(( $(date +%s) - start )) s"
 done
 

@@ -57,6 +57,7 @@ fig_date   = "2026-10-06"   # full update on the 2026-10-05 fixes (audit, along-
 # base archived on GitHub plus the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
 out_dir    = os.path.join(data_dir, "outputs")
+executed_dir = os.path.join(data_dir, "executed")   # run_all.sh: the HTML copy of every executed notebook (until 2026-10-06 in the repo)
 inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
 # ------------------------
@@ -463,7 +464,7 @@ paths_out = {nb: os.path.join(out_dir, nb) for nb in (
 # ------------------------
 def output_locations():
     """Every folder products, figures or model runs are written into, as (name, path) pairs."""
-    locations = [("fig_dir", fig_dir), ("out_dir", out_dir), ("registry_csv", common_paths["registry_csv"]),
+    locations = [("fig_dir", fig_dir), ("out_dir", out_dir), ("executed_dir", executed_dir), ("registry_csv", common_paths["registry_csv"]),
                  ("registry_txt", common_paths["registry_txt"])]
     locations += [(f"paths_out[{nb}]", path) for nb, path in paths_out.items()]
     for label, group in (("paths_inputs", paths_inputs), ("paths_uniform", paths_uniform), ("paths_sfcvm", paths_sfcvm)):
