@@ -8,8 +8,8 @@
 # ```
 #
 # **What this notebook does.** Takes the GNSS-tied ascending and descending
-# velocity mosaics (`mosaic/<orbit>_velocity_NA.h5`, from the preparation chain
-# in notebook 01) and solves, pixel by pixel, for the fault-parallel (FP) and
+# velocity mosaics (`mosaic_velfield/<orbit>_velocity_NA.h5`, made by
+# `data_prep/run04` and `run05` and fingerprinted in notebook 01) and solves, pixel by pixel, for the fault-parallel (FP) and
 # vertical (Up) velocity. The solve is MintPy's own `asc_desc2horz_vert`, with
 # the mean strike of the mapped Hayward trace as the horizontal direction. All
 # horizontal motion is assumed fault-parallel, the standard two-look
@@ -36,13 +36,15 @@
 #   the five creepmeters
 # - `02_velocity_stats.txt` and the registry rows `02_*`
 #
-# **Figures**: the rotated FP / Up velocity maps (Fig 1a) and the five transects.
+# **Figures** (working figures, not paper figures): the rotated FP / Up velocity
+# maps `qc02_velocity_maps_rotated_*` and the five transects `qc02_transects_*`.
+# The map product `fp_velocity_map.h5` is what 04 (the Fig 1 map), 05 and 09 read.
 #
 # **What to check when you run it.** CHECK 1 re-derives the decomposition at
 # random pixels with our own design matrix and compares with MintPy's numbers;
-# CHECK 2 fits the fault-crossing step at the five creepmeters (CFW1 should be
-# ~7 mm/yr, the creepmeter's rate); CHECK 3 compares every product with the
-# previous run of this notebook.
+# CHECK 2 asserts a positive (right-lateral) fault-crossing step at all five
+# creepmeters (CFW1's step, ~6.6 mm/yr, is compared with its creepmeter in
+# notebook 05).
 
 # %%
 # [2]
@@ -73,7 +75,6 @@ fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-# the products of the previous version of this notebook, for CHECK 3
 
 geom_step = 20        # MintPy medians the geometry in windows of this many pixels (its default)
 swath_m = 200.0       # transects: along-fault half-width of the swath (m)
@@ -101,7 +102,9 @@ for orbit in ("ascending", "descending"):
     print(f"Loading {orbit} mosaic")
     with h5py.File(paths_mosaic[orbit]["vel_NA_file"], "r") as hf:
         vel = hf["velocity"][:] * unit                                  # m/yr -> mm/yr
-        attrs = {k: (v.decode() if isinstance(v, bytes) else str(v)) for k, v in hf.attrs.items()}
+        attrs = {}
+        for key, value in hf.attrs.items():                               # MintPy attributes, as text
+            attrs[key] = value.decode() if isinstance(value, bytes) else str(value)
     with h5py.File(paths_mosaic[orbit]["geo_file"], "r") as hf:
         inc = hf["incidenceAngle"][:].astype(np.float32)               # as stored; MintPy handles the no-data
         azi = hf["azimuthAngle"][:].astype(np.float32)
@@ -126,8 +129,13 @@ los_vector_desc = utils.los_unit_vector(np.nanmedian(inc_desc[inc_desc > 0]), np
 assert los_vector_asc[0] < 0 < los_vector_desc[0], "look directions are not asc-west / desc-east: check the azimuth convention"
 print("median LOS unit vectors (E, N, U): asc", los_vector_asc.round(3), " desc", los_vector_desc.round(3))
 
+# %% [markdown]
+# ## [7] Quick look: both LOS mosaics on their native grid
+#
+# Colour range +/-10 mm/yr, positive toward the satellite.
+
 # %%
-# [7]
+# [8]
 # quick look: both LOS velocity mosaics on their native grid
 fig, axes = plt.subplots(1, 2, figsize=(9, 5), sharex=True, sharey=True)
 for ax, orbit in zip(axes, ("ascending", "descending")):
@@ -139,7 +147,7 @@ fig.colorbar(im, ax=axes, shrink=0.6, label="mm/yr")
 plt.show()
 
 # %% [markdown]
-# ## [8] Fault trace: the one strike that enters the decomposition
+# ## [9] Fault trace: the one strike that enters the decomposition
 #
 # `hayward_fault_profiles.csv` is the mapped trace every 100 m (built in
 # notebook 01): `ft_lon, ft_lat, profile_az`, `profile_az` the cross-fault
@@ -150,7 +158,7 @@ plt.show()
 # matters (the creep time series) notebook 03 applies it crossing by crossing.
 
 # %%
-# [9]
+# [10]
 x_fault = pd.read_csv(common_paths["fault_profiles"])
 x_fault["az_smooth"] = x_fault["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()
 x_fault["strike"] = x_fault["az_smooth"] + 90.0                 # compass bearing, pointing SE along the fault
@@ -162,7 +170,7 @@ print(f"mean strike used for the map: {strike:.2f} deg (compass bearing, clockwi
 assert 130 < strike < 160, "the Hayward strikes ~N36W; a mean strike outside 130-160 means the trace file is wrong"
 
 # %% [markdown]
-# ## [10] RUN: MintPy's two-look decomposition
+# ## [11] RUN: MintPy's two-look decomposition
 #
 # `asc_desc2horz_vert` solves, in windows of `geom_step` x `geom_step` pixels
 # with the window-median geometry,
@@ -176,7 +184,7 @@ assert 130 < strike < 160, "the Hayward strikes ~N36W; a mean strike outside 130
 # both so the solve never mixes a valid value with a zero.
 
 # %%
-# [11]
+# [12]
 vel_asc, vel_desc = insar["ascending"]["vel"], insar["descending"]["vel"]
 both = np.isfinite(vel_asc) & np.isfinite(vel_desc)
 print(f"pixels valid on both tracks: {both.sum()} ({100 * both.mean():.1f}% of the grid)")
@@ -195,7 +203,7 @@ print(f"FP velocity: {100 * np.isfinite(fp_vel).mean():.1f}% valid, median {np.n
 print(f"Up velocity: median {np.nanmedian(up_vel):+.2f} mm/yr, 5-95% {np.nanpercentile(up_vel, 5):+.2f} to {np.nanpercentile(up_vel, 95):+.2f}")
 
 # %% [markdown]
-# ## [12] CHECK 1: re-derive the decomposition by hand at random pixels
+# ## [13] CHECK 1: re-derive the decomposition by hand at random pixels
 #
 # MintPy is a black box to the reader, so the solve is redone at `n_check`
 # random pixels with `utils.design_matrix_up_fp` (our own, tested design
@@ -204,7 +212,7 @@ print(f"Up velocity: median {np.nanmedian(up_vel):+.2f} mm/yr, 5-95% {np.nanperc
 # and MintPy's are the same thing.
 
 # %%
-# [13]
+# [14]
 # MintPy returns NaN where a window has no valid geometry; report, then compare only where it returned a number
 lost = both & ~np.isfinite(fp_vel)
 print(f"pixels valid on both tracks but NaN after the solve: {lost.sum()} ({100 * lost.sum() / both.sum():.2f}%)")
@@ -229,19 +237,20 @@ assert np.abs(diff_fp).max() < 1e-3 and np.abs(diff_up).max() < 1e-3, "our desig
 print("PASS: MintPy's decomposition equals ours (same convention, same numbers)")
 
 # %% [markdown]
-# ## [14] CHECK 2: the sign and size of the fault-parallel step at the creepmeters
+# ## [15] CHECK 2: the sign and size of the fault-parallel step at the creepmeters
 #
 # Right-lateral creep means the EAST block moves south-east relative to the
 # west block. FP is positive along the strike bearing (south-east), so the east
 # side of the trace must be MORE positive than the west side. At each
-# creepmeter a cross-fault transect is cut from the FP map (every finite pixel
-# within +/- `swath_m` along the fault and +/- `max_dist_m` across, centred on
-# the trace point nearest the instrument) and fitted with
+# creepmeter a cross-fault transect is cut from the FP map (points every 30 m
+# within +/- `swath_m` along the fault and +/- `max_dist_m` across, each taking
+# the value of the pixel under it, so a pixel can be sampled twice; centred on
+# the trace point at the creepmeter's latitude) and fitted with
 # `v = a + b d + step H(d > 0)`: the step is the creep rate seen by the
 # velocity field, to compare with the creepmeter (CFW1 7.0 mm/yr).
 
 # %%
-# [15]
+# [16]
 def step_fit(dist, vel):
     """v = a + b*d + step*[d > 0]; the step is the fault-crossing creep rate.
     Solved by least squares (three unknowns, so linregress alone cannot do it)."""
@@ -261,21 +270,21 @@ pixel_m = abs(x_step)
 # the transects: walk a grid of points across (dist) and along (offset) the fault at each creepmeter
 # and read the FP pixel under each point
 transect_rows = []
-for code, la, lo, name in creepmeters:
-    row = x_fault.loc[(x_fault.ft_lat - la).abs().idxmin()]              # the trace point nearest the creepmeter
-    cross_az = np.deg2rad(row["az_smooth"])                              # cross-fault direction, toward the east side
-    along_az = np.deg2rad(row["strike"])                                 # along the fault
+for code, cm_lat, cm_lon, name in creepmeters:
+    trace_point = x_fault.loc[(x_fault.ft_lat - cm_lat).abs().idxmin()]  # the trace point at the creepmeter's latitude
+    cross_az = np.deg2rad(trace_point["az_smooth"])                      # cross-fault direction, toward the east side
+    along_az = np.deg2rad(trace_point["strike"])                         # along the fault
     n_pixels = 0
     for dist in np.arange(-max_dist_m, max_dist_m + pixel_m, pixel_m):          # across the fault, + = east
         for offset in np.arange(-swath_m, swath_m + pixel_m, pixel_m):          # along the fault
-            easting = row["easting"] + dist * np.sin(cross_az) + offset * np.sin(along_az)
-            northing = row["northing"] + dist * np.cos(cross_az) + offset * np.cos(along_az)
+            easting = trace_point["easting"] + dist * np.sin(cross_az) + offset * np.sin(along_az)
+            northing = trace_point["northing"] + dist * np.cos(cross_az) + offset * np.cos(along_az)
             col = int(round((easting - x_first) / x_step))
             pixel_row = int(round((northing - y_first) / y_step))
             if 0 <= pixel_row < n_rows and 0 <= col < n_cols and np.isfinite(fp_vel[pixel_row, col]):
                 transect_rows.append((code, float(dist), float(fp_vel[pixel_row, col])))
                 n_pixels += 1
-    print(f"  transect {code} ({name}, lat {la}): {n_pixels} finite pixels")
+    print(f"  transect {code} ({name}, lat {cm_lat}): {n_pixels} finite samples")
 x_fault_transects = pd.DataFrame(transect_rows, columns=["code", "dist_m", "fp_vel"])
 transects_csv = os.path.join(out_dir, f"fp_velocity_xfault_swath{swath_m:.0f}m_dist{max_dist_m:.0f}m.csv")
 x_fault_transects.to_csv(transects_csv, index=False)
@@ -284,9 +293,9 @@ print(f"Saved transects to: {transects_csv}")
 steps = {}
 print("")
 print("fault-parallel velocity step across the trace (east minus west, mm/yr):")
-for code, la, lo, name in creepmeters:
+for code, cm_lat, cm_lon, name in creepmeters:
     transect = x_fault_transects[x_fault_transects.code == code]
-    step, fit = step_fit(transect.dist_m.values, transect.fp_vel.values)
+    step, _ = step_fit(transect.dist_m.values, transect.fp_vel.values)
     # the simplest route to the same number: median of the near-field east side minus the west side
     east = transect[(transect.dist_m > 0) & (transect.dist_m <= 300)].fp_vel.median()
     west = transect[(transect.dist_m < 0) & (transect.dist_m >= -300)].fp_vel.median()
@@ -296,7 +305,7 @@ for code, la, lo, name in creepmeters:
 print("PASS: every creepmeter site shows a right-lateral (positive) step")
 
 # %% [markdown]
-# ## [16] Save the maps: MintPy files, GMT grids, and the combined product
+# ## [17] Save the maps: MintPy files, GMT grids, and the combined product
 #
 # `fp_velocity.h5` and `up_velocity.h5` are written as MintPy velocity files
 # (attributes grafted from the mosaic), so MintPy's own tools work on them, and
@@ -304,7 +313,7 @@ print("PASS: every creepmeter site shows a right-lateral (positive) step")
 # `fp_velocity_map.h5` carries both datasets and the strike used.
 
 # %%
-# [17]
+# [18]
 src_file = paths_mosaic["ascending"]["vel_NA_file"]
 provenance = {"PROVENANCE": utils.provenance_stamp(notebook, repo_dir), "FAULT_AZIMUTH_DEG": strike, "UNIT": "mm/year"}
 for name, velocity in (("fp_velocity", fp_vel), ("up_velocity", up_vel)):
@@ -323,7 +332,7 @@ with h5py.File(map_h5, "w") as hf:
 print(f"Saved FP + Up maps to: {map_h5}")
 
 # %% [markdown]
-# ## [18] Figure: the rotated velocity maps
+# ## [19] Figure: the rotated velocity maps
 #
 # The maps are drawn in the strike-rotated frame used throughout the paper:
 # `u` runs along the mean strike from Point Pinole (0 km) increasing SOUTH, `v`
@@ -334,7 +343,7 @@ print(f"Saved FP + Up maps to: {map_h5}")
 # exact.
 
 # %%
-# [19]
+# [20]
 # the strike frame: unit vectors along the mean strike (SE) and across it (NE = east side), in UTM metres
 strike_rad = np.deg2rad(strike)
 along_e, along_n = np.sin(strike_rad), np.cos(strike_rad)
@@ -350,8 +359,8 @@ u_south = float(x_fault["u_km"].max())
 
 # the creepmeters along the same axis
 u_creepmeter = {}
-for code, la, lo, name in creepmeters:
-    easting, northing = utm.transform(lo, la)
+for code, cm_lat, cm_lon, name in creepmeters:
+    easting, northing = utm.transform(cm_lon, cm_lat)
     u_creepmeter[code] = float(((easting * along_e + northing * along_n) - u_origin) / 1e3)
 print(f"trace runs u = 0 (Point Pinole) to {u_south:.1f} km; creepmeters at " +
       ", ".join(f"{code} {u:.1f}" for code, u in u_creepmeter.items()))
@@ -384,8 +393,14 @@ for name, grid in (("FP", fp_rot), ("Up", up_rot)):
     grid -= ref
     print(f"{name} map display reference (CTM1-COZ1 patch mean): {ref:+.2f} mm/yr removed")
 
+# %% [markdown]
+# ## [21] Draw the two rotated maps
+#
+# Fault-parallel (A) and vertical (B), at journal width and true aspect, with a
+# 10 km scale bar and the creepmeters as ticks on the trace.
+
 # %%
-# [20]
+# [22]
 # the figure: two rotated map panels, journal double-column width, drawn the same way twice
 W = 17.3                                            # cm: panel width; with the label overhang the page is <= 18.3 cm (Science)
 region = [-3.0, u_south + 3.0, -map_half_km, map_half_km]
@@ -402,8 +417,8 @@ fig.basemap(region=region, projection=f"X{W}c/{H}c",
 fig.grdimage(grid=fp_rot, cmap=True, nan_transparent=True)
 fig.plot(x=x_fault["u_km"], y=x_fault["v_km"], pen="0.6p,black")                    # the mapped trace
 for code, u in u_creepmeter.items():                                                 # creepmeter ticks
-    fig.plot(x=[u, u], y=[-1.2, 1.2], pen="1.4p,#0b3d91")
-    fig.text(x=u, y=1.4, text=code, justify="BC", font="6p,Helvetica,#0b3d91")
+    fig.plot(x=[u, u], y=[-1.2, 1.2], pen="1.4p,black")                              # black: visible on both sides of vik
+    fig.text(x=u, y=1.4, text=code, justify="BC", font="6p,Helvetica,black")
 fig.text(x=region[0], y=region[3], text="@%Helvetica-Bold%A@%%  Fault-parallel velocity", justify="TL", offset="0.1c/-0.1c", font="8p,Helvetica")
 fig.text(x=region[0] + 0.5, y=-map_half_km + 0.8, text="North", justify="LB", font="6.5p,gray40")
 fig.text(x=region[1] - 0.5, y=-map_half_km + 0.8, text="South", justify="RB", font="6.5p,gray40")
@@ -419,8 +434,8 @@ fig.basemap(region=region, projection=f"X{W}c/{H}c",
 fig.grdimage(grid=up_rot, cmap=True, nan_transparent=True)
 fig.plot(x=x_fault["u_km"], y=x_fault["v_km"], pen="0.6p,black")
 for code, u in u_creepmeter.items():
-    fig.plot(x=[u, u], y=[-1.2, 1.2], pen="1.4p,#0b3d91")
-    fig.text(x=u, y=1.4, text=code, justify="BC", font="6p,Helvetica,#0b3d91")
+    fig.plot(x=[u, u], y=[-1.2, 1.2], pen="1.4p,black")                              # black: visible on both sides of vik
+    fig.text(x=u, y=1.4, text=code, justify="BC", font="6p,Helvetica,black")
 fig.text(x=region[0], y=region[3], text="@%Helvetica-Bold%B@%%  Vertical velocity", justify="TL", offset="0.1c/-0.1c", font="8p,Helvetica")
 fig.text(x=region[0] + 0.5, y=-map_half_km + 0.8, text="North", justify="LB", font="6.5p,gray40")
 fig.text(x=region[1] - 0.5, y=-map_half_km + 0.8, text="South", justify="RB", font="6.5p,gray40")
@@ -428,25 +443,25 @@ fig.plot(x=[region[0] + 2, region[0] + 12], y=[-map_half_km + 2.0] * 2, pen="1.5
 fig.text(x=region[0] + 7, y=-map_half_km + 2.1, text="10 km", justify="BC", font="6.5p")
 fig.colorbar(cmap=True, position=f"JBC+o0c/0.9c+w{W * 0.4}c/0.25c+h", frame="xa2f1+lVertical velocity (mm/yr)")
 
-stem = os.path.join(fig_dir, f"fig02_velocity_maps_rotated_strike{strike:.1f}_clim5-3mm")
+stem = os.path.join(fig_dir, f"qc02_velocity_maps_rotated_strike{strike:.1f}_clim5-3mm")
 fig.savefig(stem + ".png", dpi=300, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
 fig.savefig(stem + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved figure to:", stem + ".png")
 fig.show()
 
 # %% [markdown]
-# ## [21] Figure: the five creepmeter transects
+# ## [23] Figure: the five creepmeter transects
 #
-# Grey points are every pixel in the 400 m swath, the line is the step fit.
+# Grey points are the samples in the 400 m swath, the line is the step fit.
 # The step at CFW1 (Fremont) is the number compared with the creepmeter in
 # notebook 05; here it is a sanity check that the decomposition produced
 # right-lateral creep of the right size everywhere along the fault.
 
 # %%
-# [22]
+# [24]
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, axes = plt.subplots(1, 5, figsize=(7.2, 2.2), sharey=True)
-for k, (ax, (code, la, lo, name)) in enumerate(zip(axes, creepmeters)):
+for k, (ax, (code, cm_lat, cm_lon, name)) in enumerate(zip(axes, creepmeters)):
     transect = x_fault_transects[x_fault_transects.code == code].sort_values("dist_m")
     step, fit = step_fit(transect.dist_m.values, transect.fp_vel.values)
     ax.scatter(transect.dist_m, transect.fp_vel, s=2, color="0.6", label="pixels")
@@ -458,15 +473,16 @@ for k, (ax, (code, la, lo, name)) in enumerate(zip(axes, creepmeters)):
 axes[0].set_ylabel("Fault-parallel velocity (mm/yr)", fontsize=8)
 axes[0].legend(fontsize=6)
 fig.tight_layout()
-f_transects = os.path.join(fig_dir, f"fig02_transects_swath{swath_m:.0f}m_dist{max_dist_m:.0f}m.png")
-fig.savefig(f_transects, dpi=300); fig.savefig(f_transects.replace(".png", ".pdf"))
+f_transects = os.path.join(fig_dir, f"qc02_transects_swath{swath_m:.0f}m_dist{max_dist_m:.0f}m.png")
+fig.savefig(f_transects, dpi=300)
+fig.savefig(f_transects.replace(".png", ".pdf"))
 plt.show()
 
 # %% [markdown]
-# ## [23] REGISTER
+# ## [25] REGISTER
 
 # %%
-# [24]
+# [26]
 lines = [
     "02 VELOCITY DECOMPOSITION",
     f"inputs: GNSS-tied velocity mosaics, {attrs['LENGTH']} x {attrs['WIDTH']} px at {attrs['X_STEP']} m, EPSG {attrs['EPSG']}",
@@ -487,6 +503,6 @@ REG.register("02_strike_mean_deg", strike, "deg", 2, where="M2", cell="strike", 
 REG.register("02_fp_valid_pct", 100 * np.isfinite(fp_vel).mean(), "pct", 1, where="M2", cell="decompose", sidecar=sidecar)
 REG.register("02_fp_median_mm_yr", np.nanmedian(fp_vel), "mm/yr", 2, where="M2", cell="decompose", sidecar=sidecar)
 for code in steps:
-    REG.register(f"02_xfault_step_{code}_mm_yr", steps[code], "mm/yr", 2, where="M4, Fig S4", cell="transects", sidecar=sidecar)
+    REG.register(f"02_xfault_step_{code}_mm_yr", steps[code], "mm/yr", 2, where="M4", cell="transects", sidecar=sidecar)
 REG.register("02_mintpy_version", mintpy.__version__, "1", 0, where="M1", cell="register", sidecar=sidecar)
 REG.render()

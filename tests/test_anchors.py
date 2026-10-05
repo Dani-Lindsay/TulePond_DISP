@@ -31,8 +31,8 @@ ANCHORS = {
     "03_n_crossings_common": (610, 0),
     # 04 event detection
     "04_n_events": (5, 0),
-    "04_onset_2017": (2017.099, 3), "04_onset_2019": (2019.186, 3), "04_onset_2021": (2021.107, 3),
-    "04_onset_2023": (2023.080, 3), "04_onset_2024": (2024.984, 3),
+    "04_onset_lo_2017": (2017.099, 3), "04_onset_lo_2019": (2019.186, 3), "04_onset_lo_2021": (2021.107, 3),
+    "04_onset_lo_2023": (2023.080, 3), "04_onset_lo_2024": (2024.984, 3),
     "04_onset_window_days_2017": (6, 0), "04_onset_window_days_2023": (12, 0),
     # the paper quotes the 90% band (Dani, 2026-09-21); the 75% band stays registered for Methods
     "04_band90_lo_km": (58.2, 1), "04_band90_hi_km": (59.8, 1), "04_band90_n_crossings": (17, 0),
@@ -56,7 +56,6 @@ ANCHORS = {
     "09_hrkt_n_surveys": (159, 0), "09_hrkt_n_events": (9, 0), "09_hrkt_amp_median_mm": (8.2, 1),
     # 11 forecast
     "11_next_clock_date": ("2026-12-15", 0), "11_pi95_lo": ("2026-08-29", 0), "11_pi95_hi": ("2027-04-02", 0),
-    "11_ruleC_Z_mm": (40, 0), "11_ruleC_X_d": (21, 0), "11_ruleC_p_chance": (0.02, 2),
 }
 
 

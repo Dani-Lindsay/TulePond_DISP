@@ -49,7 +49,7 @@ if not data_dir:
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-10-02"         # manuscript-pass figure notes (Dani 2026-10-02); 2026-09-30 = PyLith + SFCVM model set; 2026-09-28_final = homogeneous
+fig_date   = "2026-10-03_final"   # clean sweep of every notebook in order (Dani 2026-10-03); 2026-10-03 = onset-window fix + publication style pass; 2026-10-02 = manuscript-pass figure notes; 2026-09-30 = PyLith + SFCVM model set
 # Figures and notebook products live with the data, not in the repo (Dani 2026-10-01): the repo is the code
 # base archived on GitHub plus the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
@@ -113,6 +113,11 @@ common_paths = {
     # copies are the refreshed ones; insar_utils.creepmeter_file prefers them).
     "creepmeter_locations": os.path.join(inputs_dir, "creepmeter_locations.csv"),
     "creepmeter_dir":       os.path.join(inputs_dir, "creepmeter_data"),
+    # Gittins et al. 2026, Seismica 5(2), doi:10.26443/seismica.v5i2.2818: the
+    # digital catalogue (v1.0.0) of the aseismic slip events the creepmeters
+    # recorded, with trigger information; ends December 2023 (notebook 05).
+    "gittins_catalogue": os.path.join(inputs_dir, "Gittins2026_catalogue",
+                                      "Digital_catalogue_of_5000_aseismic_slip_events_recorded_by_creepmeters_with_trigger_info.csv"),
 
     # USGS alignment arrays, Bay Area archive v3.0 (McFarland / Lienkaemper):
     # one csv per array under datafiles/, plus the summary table.
@@ -196,7 +201,7 @@ rate_nsigma = 3.0      # near-fault rate mask: reject pixels > 3 robust sigma fr
 az_smooth_n = 21       # crossings in the rolling median of the local strike (2.1 km)
 max_interp_gap_days = 45   # interpolate asc/desc onto common dates only across gaps shorter than this
 rate_smooth_km = 0.5   # Gaussian smoothing of the along-fault rate profile
-profile_smooth_km = 0.15   # Gaussian sigma of the drawn along-strike slip profiles: Fig 1C per event, Fig 2K mean event (Dani 2026-10-02)
+profile_smooth_km = 0.2    # Gaussian sigma of the drawn along-strike slip profiles: Fig 1C per event, Fig 1D rates, Fig 2K mean event (Dani 2026-10-03: 0.2 km)
 
 # Along-strike parameter string that goes into every product and figure name
 # (NC_ALOS-2 convention: the filename tells you what was run).
@@ -227,9 +232,45 @@ creepmeters = [("CPP1", 37.9895,  -122.3559,  "Pinole Point"),
                ("CHP1", 37.66274, -122.0740,  "Palisade Street"),
                ("CFW1", 37.53237, -121.95230, "Fremont")]
 
+# Creepmeter glitch days (insar_utils.daily_creepmeter, notebooks 04 and 05), found by inspection
+# (Dani 2026-10-05: drop only the listed days, no automatic filter; QC figure qc05_creepmeter_glitches
+# from notebook 05). (code, first day, last day, reason). Days are in the reader's day-of-year convention
+# (record day N of a year -> 1 January + N days); the pending day-of-year check may move every creepmeter
+# date, these included, by one day. The five records over the InSAR window (2016-09 to 2026-03) were
+# screened for days whose mean departs from the median of their 10-minute samples by > 0.2 mm or from a
+# 15-day running median by > 0.3 mm, and for offsets across data gaps; only these two are glitches (COZ1's
+# two flagged days are creep events inside the day). The whole-record 6-sigma + 10 mm cut it replaces
+# dropped no day in that window and did not catch these.
+creepmeter_glitches = [
+    ("CPP1", "2017-05-19", "2017-05-19", "two 10-min samples at -283.7 mm (~340 mm below the record) pull the daily mean down 4.8 mm"),
+    ("CPP1", "2018-02-13", "2018-02-13", "one 10-min sample at -283.7 mm (~350 mm below the record) pulls the daily mean down 2.4 mm"),
+]
+# Checked and NOT listed: CTM1 around 2025.3-2025.5. Its record is smooth there; the drop-and-recover in the
+# cumulative panel of Fig S validation is one InSAR epoch (2025-04-01, ~5.6 mm below its neighbours), as is
+# the dip at CHP1 in 2021-10 (2021-10-25, ~7.5 mm). Both are InSAR, not creepmeter (QC figure, last panels).
+
+# Catalogued creepmeter events (Gittins et al. 2026) in notebook 05: used for TIMING only (Dani 2026-10-05:
+# the catalogue-amplitude score, InSAR step / catalogued slip of every event >= 2 mm, is retired; the
+# amplitude statement uses notebook 04's joint-model COZ1 steps against the creepmeter's).
+# The catalogue is not drawn on Fig S validation (Dani 2026-10-05: it goes into a table in the text); 05
+# lists every CFW1 catalogue event that overlaps a Tule Pond InSAR onset window widened by this many days
+# on each side (outputs/05_validation/cfw1_gittins_near_windows.csv, the table's source).
+gittins_window_pad_days = 7
+
 # Date the forecast is issued from (notebook 09). Pinned so the forecast
 # numbers are reproducible; do not use "today".
 forecast_issue_date = "2026-08-25"
+# The last observation with no event, on which notebook 11 conditions the forecast: the last
+# descending acquisition of the CSLC + Dolphin extension check (extension_2026-09/RESULT.md,
+# 2026-10-05; ascending ends 2026-09-12). The paper's InSAR record itself still ends at
+# notebook 11's data_end (the end of 03's fp_ts, 2026-03-21).
+forecast_last_obs_date = "2026-09-24"
+
+# Running rain totals (notebooks 10 and 11). 11 tests a grid of totals and lags before the InSAR onsets
+# (Fremont gauge); 10's event table only describes each window by the days since a 3-day total of at least
+# rain_total_mm (a description, no test uses that single value).
+rain_total_days = 3        # length of the running rain total (days)
+rain_total_mm = 40.0       # 10's event-table description: days since a 3-day total of at least this (mm)
 
 # ------------------------
 # Per-track paths: one ascending frame (09157, track 35) and one descending
@@ -246,7 +287,13 @@ def _track_paths(frame, orbit, path):
         "Platform": "Sentinel-1",
         "mintpy_dir":   mdir,
         "geometry_dir": os.path.join(fdir, "geometry"),   # OPERA los_east/los_north tifs (ground truth for the LOS convention test)
-        "geo_file":     os.path.join(mdir, "geometryGeo.h5"),      # incidenceAngle, azimuthAngle, height
+        # OPERA CSLC-S1-STATIC files of the bursts covering box_lonlat (notebook 06 reads their
+        # 'identification/bounding_polygon' to place the burst seams): 09157 T035-073249-IW2/-IW3 and
+        # T035-073250-IW2, 11115 T042-088917-IW3 and T042-088918-IW3, copied 2026-10-05 from
+        # proj_HaywardCreep_bad/<frame>/static_lyrs. data_prep/run02 deletes the static files it downloads
+        # into this folder after stitching: re-copy them if run02 is rerun.
+        "static_dir":   os.path.join(fdir, "static_lyrs"),
+        "geo_file":    os.path.join(mdir, "geometryGeo.h5"),      # incidenceAngle, azimuthAngle, height
         "ts_file":      os.path.join(mdir, "timeseries_tropo.h5"),  # tropo-corrected, unmasked, referenced at ZOA1
         "vel_file":     os.path.join(mdir, "velocity_masked.h5"),   # coh 0.7 masked, ZOA1 datum, no GNSS ramp
         "vel_NA_file":  os.path.join(mdir, "velocity_NA.h5"),       # GNSS-tied, North America frame, zero at ZOA1

@@ -11,28 +11,30 @@
 # ---
 
 # %% [markdown]
-# # 07 Slip model -- sensitivity tests on the final configuration
+# # 07b Uniform model -- sensitivity tests on 07a's configuration
 #
 # ```
-# Created on Thu Sep 25 2026; rebuilt on Mon Sep 28 2026 on the final configuration
+# Created on Thu Sep 25 2026; rebuilt on Mon Sep 28 2026 on 07a's configuration
 # @author: daniellelindsay
-# Run in opera_disp_feb13. Several hours (about 150 inversions).
+# Run in opera_disp_feb13, after 07a. About 3 h (169 min on 2026-10-03): 117 inversions and 4 fixed-depth scans.
 # ```
 #
 # **What this notebook does.** Every test is run on the configuration of
 # `07a_uniform_model` (the homogeneous baseline): the fault-parallel mean event
 # (06, coherence 0.9), levelled, the `smooth12` vertical mesh, quadtree to one
-# 30 m pixel, the crossing surface slip on every surface triangle, slip tied
-# no top tie, sigma at 07a_uniform_model's L-curve pick, lambda as 07a_uniform_model. Each
+# 30 m pixel, the crossing surface slip on every surface triangle, no top tie,
+# sigma at 07a_uniform_model's L-curve pick, lambda as 07a_uniform_model. Each
 # family changes ONE thing from that baseline. The machinery cells [2] to [6]
-# are copied verbatim from `07a_uniform_model`, so the two notebooks run the same
-# code; CHECK [21] pins this notebook's baseline to `07a_uniform_model`'s.
+# are a verbatim copy of `07a_uniform_model`'s, so the two notebooks run the same
+# code (change both together); CHECK [16] asserts that this notebook's baseline
+# slip equals `07a_uniform_model`'s. The paper's selected model is the 3D model of
+# `08a_3d_model`; its own sensitivity runs are in `08b_3d_model_tests`.
 #
 # 1. **Top tie** at the model sigma: none (baseline), 0.1, 0.2, 0.5 km.
 # 2. **Fixed-depth scan** on the fault-parallel field: uniform slip from the
 #    surface to D, delta chi2 (no smoothing, no sigma). Variants: the model mesh,
-#    a 5 km mesh, the unlevelled field. Then the model difference between the
-#    two ends of the bracket against the noise model.
+#    the 3 km `plateau100` mesh, a 5 km version of it, the unlevelled field. Then
+#    the model difference between the two ends of the bracket against the noise model.
 # 3. **Synthetic recovery**: 10 mm to D through this pipeline.
 # 4. **Isolation rows**: no surface constraint, unlevelled (with a plane per
 #    dataset instead), surface error floors 0.25 and 1.0 mm.
@@ -44,17 +46,39 @@
 # 8. **Mesh**: plateau 100 m, 50 m, 30 m and a deep plateau, each with its own
 #    L-curve.
 #
-# Replaces the batch-2 LOS suite of 2026-09-28 (now
-# `drafts/07/slip_model_tests_LOS_batch2.py`; its numbers are in
-# `07_sweep_lessons_2026-09-28.md`). The legacy parity gates of that suite are
-# gone: the paper has no legacy chain to check against.
+# PREPUB: Replaces the batch-2 LOS suite of 2026-09-28 (now
+# PREPUB: `drafts/07/slip_model_tests_LOS_batch2.py`; its numbers are in
+# PREPUB: `07_sweep_lessons_2026-09-28.md`). The legacy parity gates of that suite are
+# PREPUB: gone: the paper has no legacy chain to check against.
 #
 # **Inputs**: as `07a_uniform_model` (06 `fp_maps.npz`, 04 crossings, events and
-# section lengths, the trace). **Outputs** (`outputs/07b_uniform_model_tests/`):
-# `final_suite.csv`, `final_lcurves.csv`, `final_tie_slip_<tie>.csv`,
-# `final_depth_scan_<variant>.csv`, `final_depth_vs_noise.csv`,
-# `final_recovery.csv`, `final_recovery_profiles.csv`. **Figure**:
-# `fig07_sensitivity_final`. Registry keys `07_test_*`.
+# section lengths, the trace), plus 07a's `sigma_lcurve.csv` (the sigma pick, [1]) and
+# `slip_homogeneous_baseline.csv` (CHECK [16]). Notebook 08b reads `recovery_depths`,
+# `scan_taper` and `scan_depths` from this file's text: keep each as one `name = value`
+# statement starting its line.
+#
+# **Outputs** (`outputs/07b_uniform_model_tests/`): `final_suite.csv`, `final_lcurves.csv`,
+# `final_tie_slip_<tie>.csv`, `final_depth_scan_<variant>.csv`, `final_depth_vs_noise.csv`,
+# `final_recovery.csv`, `final_recovery_profiles.csv`, `stress_drop_inputs.csv` (cell [17b],
+# to be removed), the stats sidecar `07_tests_final_stats.txt`. **Figure**:
+# `fig07_sensitivity_final`. **Registry keys** `07b_*`.
+#
+# **What to check**
+# - [1] the sigma read from 07a.
+# - [8]-[15] each family's printed rows: Mw, rms, surface %, peak slip and its depth.
+# - [9] the delta chi2 <= 4 bracket of each fixed-depth scan; [10] the bracket ends'
+#   model difference against the noise.
+# - [11] the moment recovered for each input depth.
+# - [14] the baseline lambda pair's pick against 07a's sigma (printed). [14] and [15]: a
+#   corner at the lower edge of the searched range (the second grid sigma) is the edge,
+#   not a curvature maximum (a WARNING is printed), and its pick's Mw is not a corner Mw.
+# - [16] PASS twice: the baseline repeats exactly, and equals 07a's slip.
+
+# %% [markdown]
+# ## [1] Paths and constants
+#
+# The baseline configuration (identical to `07a_uniform_model`), the sigma picked
+# by 07a's L-curve, the parameters of every test family, and the registry.
 
 # %%
 ## [1]
@@ -68,8 +92,9 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.spatial import Delaunay, cKDTree
 from scipy.interpolate import CubicSpline
+from scipy.optimize import curve_fit
+from scipy.spatial import Delaunay, cKDTree
 
 warnings.simplefilter("ignore")
 from TulePond_filepaths import common_paths, repo_dir
@@ -128,7 +153,8 @@ print(f"sigma from 07a_uniform_model's L-curve: {sigma_model:g}")
 # ---- the families (each changes one thing from the baseline)
 tie_depths     = [0.0, 0.1, 0.2, 0.5]    # 0 = no tie
 dips_deg       = [60, 70, 75, 80, 85, 90, 95, 100, 105]   # 105 E = 75 W
-lam_grid       = [lam_xz] + [pair for pair in [(0.3, 0.05), (0.05, 0.05), (0.3, 0.15), (0.1, 0.15)] if pair != lam_xz]   # the model's pair first
+lam_grid       = [(0.1, 0.05), (0.3, 0.05), (0.05, 0.05), (0.3, 0.15), (0.1, 0.15)]   # (along strike, down dip) km
+assert lam_grid[0] == lam_xz and len(set(lam_grid)) == len(lam_grid), "lam_grid must start with the model's pair, no repeats"
 mesh_variants  = {                        # name: (h_top, const_to, growth, h_bot) km
     "smooth12": mesh_params,
     "plateau100": (0.10, 0.5, 1.6, 1.5),
@@ -151,7 +177,8 @@ REG.inputs(os.path.join(field_dir, "fp_maps.npz"),
            common_paths["fault_trace"], common_paths["fault_profiles"],
            os.path.join(events_dir, "event_fraction_by_crossing.csv"),
            os.path.join(events_dir, "creep_events.csv"),
-           os.path.join(events_dir, "section_lengths.csv"))
+           os.path.join(events_dir, "section_lengths.csv"),
+           sigma_file)
 print(f"SSE section: km {creep_lo_km:.1f}-{creep_hi_km:.1f} (04 section_lengths.csv)")
 
 # %% [markdown]
@@ -178,20 +205,32 @@ arc_total = arc_s[-1]
 
 profile_points = pd.read_csv(common_paths["fault_profiles"])
 profile_km_pp = (len(profile_points) - 1 - np.arange(len(profile_points))) * 0.1
+
+
 def lat_to_km_pp(lats):
+    """km from Point Pinole of each latitude: the km of the nearest vertex of the fault-profile
+    trace (vertices 0.1 km apart, km = (n - 1 - index) x 0.1). Worked in chunks of 20000
+    latitudes so the latitude-difference matrix stays small."""
     lats = np.asarray(lats, float)
     out = np.empty(lats.size)
     for lo in range(0, lats.size, 20000):
         chunk = lats[lo:lo + 20000]
-        out[lo:lo + 20000] = profile_km_pp[np.abs(profile_points.ft_lat.values[None, :]
-                                                  - chunk[:, None]).argmin(axis=1)]
+        lat_diff = np.abs(profile_points.ft_lat.values[None, :] - chunk[:, None])
+        out[lo:lo + 20000] = profile_km_pp[lat_diff.argmin(axis=1)]
     return out
+
+
 trace_km_pp = lat_to_km_pp(ref_fault.lati)
 
 
 def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
-    """Node rows + Delaunay + Laplacian smoothing in the unrolled plane.
-    [07b_uniform_model_tests, verbatim]"""
+    """The mesh in the unrolled (s, z) plane, in km. Node rows from the surface to z_max: the
+    first row h_top deep, the row height constant down to const_to, then multiplied by
+    `growth` per row up to h_bot. Along strike the node spacing equals the row height inside
+    fine_km and widens by far_rate per km outside it. Delaunay triangles (slivers dropped),
+    then smooth_iters rounds of Laplacian smoothing of the interior nodes.
+    Returns the nodes (s, z) and the faces."""
+    # [07b_uniform_model_tests, verbatim]  # PREPUB
     row_depths = [0.0]
     row_step = h_top
     while row_depths[-1] < z_max:
@@ -212,7 +251,8 @@ def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
         while row[-1] < arc_total:
             row.append(row[-1] + spacing_at(row[-1], height))
         row = np.array(row) * arc_total / row[-1]
-        nodes += [(pos, depth) for pos in row]
+        for pos in row:
+            nodes.append((pos, depth))
     nodes = np.array(nodes)
 
     def triangulate(pts):
@@ -243,7 +283,8 @@ def build_unrolled(h_top, const_to, growth, h_bot, z_max=mesh_depth_km):
 def wrap_fault(nodes, faces, dip_deg, name):
     """csi.TriangularPatches hinged east about the FIXED surface trace.
     Each fault owns its faces copy (homogeneizeStrike flips winding rows
-    in place). [07b_uniform_model_tests, verbatim]"""
+    in place)."""
+    # [07b_uniform_model_tests, verbatim]  # PREPUB
     flt = TriangularPatches(name, lon0=frame_lon0, lat0=frame_lat0, verbose=False)
     flt.trace(trace_lonlat[:, 0], trace_lonlat[:, 1])
     flt.discretize2(every=0.02)
@@ -263,7 +304,9 @@ def wrap_fault(nodes, faces, dip_deg, name):
     flt.Vertices = vertices
     flt.Faces = faces_own
     flt.vertices2ll()
-    flt.patch = [np.array([vertices[i] for i in f]) for f in faces_own]
+    flt.patch = []
+    for face in faces_own:
+        flt.patch.append(vertices[face])               # the three corners of the triangle (x, y, z)
     flt.patch2ll()
     flt.setdepth()
     flt.vertical = abs(dip_deg - 90.0) <= 0.1
@@ -271,6 +314,7 @@ def wrap_fault(nodes, faces, dip_deg, name):
     flt.initializeslip()
     flt.mesh_sz = (nodes.copy(), faces_own, arc_total)
     return flt
+
 
 mesh_nodes, mesh_faces = build_unrolled(*mesh_params)
 fault = wrap_fault(mesh_nodes, mesh_faces, dip_deg, "mean event")
@@ -291,17 +335,19 @@ print(f"mesh smooth12: {len(mesh_nodes)} nodes, {len(mesh_faces)} triangles, "
 
 # %%
 ## [3]
-def dist_to_trace(sar, fault, signed=False):
-    """[csi_io, verbatim] + east of the trace when signed."""
-    tx, ty = fault.xf, fault.yf
-    d, i = cKDTree(np.c_[tx, ty]).query(np.c_[sar.x, sar.y])
-    return d * np.sign(sar.x - tx[i]) if signed else d
+def dist_to_trace(sar, fault):
+    """Horizontal distance (km) from each sample of `sar` to the nearest point of the
+    fault's discretised trace (fault.xf, fault.yf)."""
+    # [csi_io, verbatim]  # PREPUB
+    trace_tree = cKDTree(np.c_[fault.xf, fault.yf])
+    dist, _ = trace_tree.query(np.c_[sar.x, sar.y])
+    return dist
 
 
 def align_track(sar):
     """Far-field plane alignment: slip section +/- align_mask_km masked,
-    1,x,y fit to the rest, removed from the whole track in place.
-    [07b_uniform_model_tests, verbatim]"""
+    1,x,y fit to the rest, removed from the whole track in place."""
+    # [07b_uniform_model_tests, verbatim]  # PREPUB
     km_pp = lat_to_km_pp(sar.lat)
     far = (km_pp < creep_lo_km - align_mask_km) | (km_pp > creep_hi_km + align_mask_km)
     plane = np.c_[np.ones(sar.x.size), sar.x, sar.y]
@@ -328,57 +374,84 @@ print(f"fault-parallel field at strike {strike_bearing:.2f} deg: {sar.vel.size} 
 # %% [markdown]
 # ## [4] Noise model and quadtree
 #
-# Far-field semivariogram: nugget + short- and long-range exponentials.
-# Distance-based quadtree (`csi.imagedownsampling`) from 2 km blocks to one
-# 30 m pixel at the trace; the full data covariance of the samples.
+# Far-field semivariogram: nugget + short- and long-range exponentials
+# (`semivariogram_model`), fitted to pixel pairs beyond 1 km of the trace with a
+# plane removed. Check the printed fit: when the long-range sill comes out 0 (its
+# range then sits at a bound and means nothing) the noise model is a nugget plus
+# one exponential. Distance-based quadtree (`csi.imagedownsampling`) from 2 km
+# blocks to one 30 m pixel at the trace; the full data covariance of the samples.
 
 # %%
 ## [4]
+def semivariogram_model(distance_km, nugget2, sill_short, range_short_km, sill_long, range_long_km):
+    """Semivariance (mm^2) at a distance h (km): a nugget plus a short- and a long-range
+    exponential, gamma(h) = n2 + s1 (1 - exp(-h / l1)) + s2 (1 - exp(-h / l2))."""
+    short_term = sill_short * (1 - np.exp(-distance_km / range_short_km))
+    long_term = sill_long * (1 - np.exp(-distance_km / range_long_km))
+    return nugget2 + short_term + long_term
+
+
 def covariance(sar, fault, npairs=300000, seed=0):
-    """[m02, verbatim apart from @ -> np.dot]"""
-    from scipy.optimize import curve_fit
-    d = dist_to_trace(sar, fault)
-    keep = (d > min(cov_mask_km, 0.4 * swath_km)) & np.isfinite(sar.vel)
-    x, y, v = sar.x[keep], sar.y[keep], sar.vel[keep]
+    """Fit semivariogram_model to the far field: the pixels beyond min(cov_mask_km, 0.4 swath_km)
+    of the trace, a plane (1, x, y) removed; npairs random pixel pairs closer than
+    min(cov_distmax_km, 4 swath_km), binned every 0.1 km (bins with more than 50 pairs).
+    Returns (nugget2, sill_short, range_short_km, sill_long, range_long_km), in mm^2 and km."""
+    # [m02, verbatim apart from @ -> np.dot]  # PREPUB
+    dist = dist_to_trace(sar, fault)
+    keep = (dist > min(cov_mask_km, 0.4 * swath_km)) & np.isfinite(sar.vel)
+    x, y, values = sar.x[keep], sar.y[keep], sar.vel[keep]
     design = np.c_[np.ones_like(x), x, y]
-    v = v - np.dot(design, np.linalg.lstsq(design, v, rcond=None)[0])
+    values = values - np.dot(design, np.linalg.lstsq(design, values, rcond=None)[0])
     rng = np.random.default_rng(seed)
-    i = rng.integers(0, v.size, npairs); j = rng.integers(0, v.size, npairs)
-    h = np.hypot(x[i] - x[j], y[i] - y[j]); dv = v[i] - v[j]
-    hmax = min(cov_distmax_km, 4 * swath_km)
-    ok = (h > 0) & (h < hmax)
-    bins = np.arange(0, hmax + 0.1, 0.1)
-    idx = np.digitize(h[ok], bins) - 1
-    gam = np.array([0.5 * np.mean(dv[ok][idx == k] ** 2) if (idx == k).sum() > 50 else np.nan
-                    for k in range(len(bins) - 1)])
-    hb = 0.5 * (bins[1:] + bins[:-1])
-    fin = np.isfinite(gam)
-    model = lambda hh, n2, s1, l1, s2, l2: n2 + s1 * (1 - np.exp(-hh / l1)) + s2 * (1 - np.exp(-hh / l2))
-    sill = np.nanmean(gam[fin][-5:])
-    p, _ = curve_fit(model, hb[fin], gam[fin], p0=(0.4 * sill, 0.3 * sill, 0.7, 0.5 * sill, 5.0),
-                     bounds=([0, 0, 0.1, 0, 2.0], [2 * sill, 2 * sill, 2.0, 3 * sill, 50]), maxfev=20000)
-    return p
+    first = rng.integers(0, values.size, npairs)
+    second = rng.integers(0, values.size, npairs)
+    pair_dist = np.hypot(x[first] - x[second], y[first] - y[second])
+    pair_diff = values[first] - values[second]
+    max_dist_km = min(cov_distmax_km, 4 * swath_km)
+    in_range = (pair_dist > 0) & (pair_dist < max_dist_km)
+    bins = np.arange(0, max_dist_km + 0.1, 0.1)
+    bin_index = np.digitize(pair_dist[in_range], bins) - 1
+    diff_in_range = pair_diff[in_range]
+    gamma = np.full(len(bins) - 1, np.nan)
+    for k in range(len(bins) - 1):
+        in_bin = bin_index == k
+        if in_bin.sum() > 50:
+            gamma[k] = 0.5 * np.mean(diff_in_range[in_bin] ** 2)
+    bin_centres = 0.5 * (bins[1:] + bins[:-1])
+    fitted = np.isfinite(gamma)
+    sill = np.nanmean(gamma[fitted][-5:])
+    params, _ = curve_fit(semivariogram_model, bin_centres[fitted], gamma[fitted],
+                          p0=(0.4 * sill, 0.3 * sill, 0.7, 0.5 * sill, 5.0),
+                          bounds=([0, 0, 0.1, 0, 2.0], [2 * sill, 2 * sill, 2.0, 3 * sill, 50]), maxfev=20000)
+    return params
 
 
 def downsample(sar, fault, start_km, min_km):
-    """Distance-based quadtree (csi.imagedownsampling). [m02, verbatim]"""
-    ds = imdown(sar.name, sar, fault, verbose=False)
-    ds.initialstate(start_km, min_km, tolerance=0.1, plot=False)
+    """Distance-based quadtree (csi.imagedownsampling): start_km blocks cut down to min_km
+    toward the trace; a regular grid when start_km == min_km."""
+    # [m02, verbatim]  # PREPUB
+    sampler = imdown(sar.name, sar, fault, verbose=False)
+    sampler.initialstate(start_km, min_km, tolerance=0.1, plot=False)
     if start_km > min_km + 1e-9:
-        ds.distanceBased(chardist=0.0, expodist=1, plot=False)
-    return ds.newimage
+        sampler.distanceBased(chardist=0.0, expodist=1, plot=False)
+    return sampler.newimage
 
 
-def build_cd(ds, cov_p, asc_scale=1.0):
-    """Two exponentials + nugget/blocksize. [m02; 07b_uniform_model_tests, verbatim]"""
-    nug2, s1, l1, s2, l2 = cov_p
-    dx = ds.x[:, None] - ds.x[None, :]; dy = ds.y[:, None] - ds.y[None, :]
+def build_cd(ds, cov_p):
+    """The data covariance of the quadtree samples (mm^2), set on ds.Cd:
+    Cd_ij = s1 exp(-r_ij / l1) + s2 exp(-r_ij / l2), plus nugget2 / n_pixels**nug_power on the
+    diagonal (n_pixels = the pixels each block averages, CSI's `wgt`)."""
+    # [m02; 07b_uniform_model_tests, verbatim]  # PREPUB
+    nugget2, sill_short, range_short_km, sill_long, range_long_km = cov_p
+    dx = ds.x[:, None] - ds.x[None, :]
+    dy = ds.y[:, None] - ds.y[None, :]
     dist = np.sqrt(dx * dx + dy * dy)
-    cd = s1 * np.exp(-dist / l1) + s2 * np.exp(-dist / l2)
-    n_px = np.asarray(getattr(ds, "wgt", np.ones(ds.vel.size)), dtype=float)
-    n_px = np.where(np.isfinite(n_px) & (n_px > 0), n_px, 1.0)
-    cd[np.diag_indices_from(cd)] += nug2 / n_px ** nug_power
-    ds.Cd = cd * asc_scale ** 2
+    cd = sill_short * np.exp(-dist / range_short_km) + sill_long * np.exp(-dist / range_long_km)
+    n_px = np.asarray(ds.wgt, dtype=float)
+    assert n_px.shape == (ds.vel.size,) and np.all(np.isfinite(n_px) & (n_px > 0)), \
+        "the quadtree block pixel counts (wgt) are missing or not positive"
+    cd[np.diag_indices_from(cd)] += nugget2 / n_px ** nug_power
+    ds.Cd = cd
     return ds
 
 cov_p = covariance(sar, fault)
@@ -398,13 +471,16 @@ print(f"quadtree: {samples.vel.size} samples")
 # single nearest triangle (`Fault.surfaceGFs`), which reaches ~7% of the
 # creep-section surface row; here the profile is interpolated to the centre
 # of every surface triangle, errors scaled by sqrt(triangles per 0.2 km) so
-# the total weight is unchanged.
+# the total weight is unchanged. This running median is the uniform model's
+# surface constraint only: the 3D model (08a) ties each measured crossing
+# directly (`pylith_helpers/surface_crossings.py`), and uses `crossing_median`
+# (the creep-section median of this profile) as the denominator of its surface %.
 
 # %%
 ## [5]
 crossings_all = pd.read_csv(os.path.join(events_dir, "event_fraction_by_crossing.csv"))
 creep_events = pd.read_csv(os.path.join(events_dir, "creep_events.csv"))
-tulepond_onsets = creep_events[creep_events.segment == "TULEPOND"].onset_yr.values
+tulepond_onsets = creep_events[creep_events.segment == "TULEPOND"].onset_lo.values    # the step epoch (last pre-event acquisition)
 event_cols = [f"amp_{onset:.3f}" for onset in tulepond_onsets]    # 04's column naming
 print(f"mean event of {len(event_cols)} Tule Pond events: {', '.join(event_cols)}")
 crossings_all["mean_event_mm"] = crossings_all[event_cols].mean(axis=1)
@@ -412,7 +488,8 @@ trace_south_north = trace_lonlat[np.argsort(trace_lonlat[:, 1])]
 
 def make_surface(floor_mm):
     """csi.surfaceslip: running median of the 5-event crossing means,
-    error = 1.4826 MAD / sqrt(n) floored at floor_mm. [07b_uniform_model_tests, verbatim]"""
+    error = 1.4826 MAD / sqrt(n) floored at floor_mm."""
+    # [07b_uniform_model_tests, verbatim]  # PREPUB
     rows = []
     for k_centre in np.arange(np.ceil(crossings_all.km.min()),
                               crossings_all.km.max(), surf_step_km):
@@ -428,32 +505,39 @@ def make_surface(floor_mm):
         rows.append((lon_c, lat_c, k_centre, med, err))
     rows = np.array(rows)
     rows = rows[(rows[:, 2] >= km_window[0]) & (rows[:, 2] <= km_window[1])]
-    ss = surfaceslip(f"crossing stacks f{floor_mm:g}", lon0=frame_lon0,
-                     lat0=frame_lat0, verbose=False)
-    ss.read_from_binary(rows[:, 3], rows[:, 0], rows[:, 1], err=rows[:, 4])
-    ss.buildCd()
-    return ss
+    surface_data = surfaceslip(f"crossing stacks f{floor_mm:g}", lon0=frame_lon0,
+                               lat0=frame_lat0, verbose=False)
+    surface_data.read_from_binary(rows[:, 3], rows[:, 0], rows[:, 1], err=rows[:, 4])
+    surface_data.buildCd()
+    return surface_data
 
 def make_surface_interp(fault, floor_mm):
     """The running-median profile interpolated to the centre of EVERY
-    surface triangle of this fault. [07b_uniform_model_tests, verbatim]"""
+    surface triangle of this fault, each error scaled by sqrt(triangles within
+    +/- surf_step_km / 2) so the total weight per profile step is unchanged."""
+    # [07b_uniform_model_tests, verbatim]  # PREPUB
     base = make_surface(floor_mm)
     base_km = lat_to_km_pp(base.lat)
     order = np.argsort(base_km)
-    surf = np.where([0 in p[:, 2] for p in fault.patch])[0]
-    ll = np.array([fault.patchll[i].mean(0) for i in surf])
-    tri_km = lat_to_km_pp(ll[:, 1])
+    surface_tri = []
+    for index, patch in enumerate(fault.patch):
+        if 0 in patch[:, 2]:
+            surface_tri.append(index)
+    centre_ll = np.array([fault.patchll[index].mean(0) for index in surface_tri])
+    tri_km = lat_to_km_pp(centre_ll[:, 1])
     keep = (tri_km >= base_km.min()) & (tri_km <= base_km.max())
-    ll, tri_km = ll[keep], tri_km[keep]
+    centre_ll, tri_km = centre_ll[keep], tri_km[keep]
     vals = np.interp(tri_km, base_km[order], base.vel[order])
     errs = np.interp(tri_km, base_km[order], base.err[order])
-    per_step = np.array([np.sum(np.abs(tri_km - k) <= surf_step_km / 2 + 1e-6) for k in tri_km])
+    per_step = np.zeros(tri_km.size)
+    for k, km in enumerate(tri_km):
+        per_step[k] = np.sum(np.abs(tri_km - km) <= surf_step_km / 2 + 1e-6)
     errs = errs * np.sqrt(np.maximum(per_step, 1))
-    ss = surfaceslip(f"crossing interp f{floor_mm:g}", lon0=frame_lon0,
-                     lat0=frame_lat0, verbose=False)
-    ss.read_from_binary(vals, ll[:, 0], ll[:, 1], err=errs)
-    ss.buildCd()
-    return ss
+    surface_data = surfaceslip(f"crossing interp f{floor_mm:g}", lon0=frame_lon0,
+                               lat0=frame_lat0, verbose=False)
+    surface_data.read_from_binary(vals, centre_ll[:, 0], centre_ll[:, 1], err=errs)
+    surface_data.buildCd()
+    return surface_data
 
 crossing_profile = make_surface(surf_floor_mm)
 crossing_km = lat_to_km_pp(crossing_profile.lat)
@@ -468,73 +552,88 @@ print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-se
 # Meade triangular dislocations (right-lateral positive) for the samples;
 # for the surface data the Green's function is 1 on the triangle's own
 # slip. Per-dataset constant (`csi.transformation`), exponential prior
-# (`buildCmXY`), the top tie (every cell shallower than 0.2 km equal to the
-# shallowest cell of its 0.1 km along-strike column; after Jolivet et al.
-# 2023, who tie 0-1 km), NNLS (`multisourcesolve`).
-# [07b_uniform_model_tests, verbatim]
+# (`buildCmXY`), NNLS (`multisourcesolve`). The optional top tie (every cell
+# shallower than tie_depth_km equal to the shallowest cell of its 0.1 km
+# along-strike column; after Jolivet et al. 2023, who tie 0-1 km) is off in
+# the uniform model (tie_depth_km = 0) and used only by 07b's tie family.
+# PREPUB: [07b_uniform_model_tests, verbatim]
 
 # %%
 ## [6]
 def tie_rows(fault, n_params, tie_depth_km, tie_bin_km=0.1, tie_err_mm=0.01):
-    """Rows of [cell - reference] = 0 with a tiny error (near-hard constraint)."""
+    """The top tie as extra data rows: in every tie_bin_km along-strike column, each cell
+    shallower than tie_depth_km minus the column's shallowest cell = 0, with a tiny error
+    (a near-hard constraint). Returns the rows (n_ties x n_params) and their variances."""
     nodes, faces, _ = fault.mesh_sz
     centroid = nodes[faces].mean(1)
     shallow = np.nonzero(centroid[:, 1] < tie_depth_km)[0]
-    bins = np.floor(centroid[shallow, 0] / tie_bin_km).astype(int)
+    column_of = np.floor(centroid[shallow, 0] / tie_bin_km).astype(int)
     rows = []
-    for b in np.unique(bins):
-        members = shallow[bins == b]
+    for column in np.unique(column_of):
+        members = shallow[column_of == column]
         if members.size < 2:
             continue
-        ref = members[np.argmin(centroid[members, 1])]
-        for m in members[members != ref]:
-            r = np.zeros(n_params); r[m] = 1.0; r[ref] = -1.0
-            rows.append(r)
-    E = np.array(rows) if rows else np.zeros((0, n_params))
-    return E, np.full(E.shape[0], tie_err_mm ** 2)
+        reference = members[np.argmin(centroid[members, 1])]
+        for member in members[members != reference]:
+            row = np.zeros(n_params)
+            row[member] = 1.0
+            row[reference] = -1.0
+            rows.append(row)
+    if rows:
+        tie_matrix = np.array(rows)
+    else:
+        tie_matrix = np.zeros((0, n_params))
+    return tie_matrix, np.full(tie_matrix.shape[0], tie_err_mm ** 2)
 
 
-def invert(fault, insar_datas, sigma, lam=lam_xz, prior="xy", slipdir="s",
-           ramp_spec="1", surface=None, tie_depth_km=None):
-    solve_datas = list(insar_datas) + ([surface] if surface is not None else [])
+def invert(fault, insar_datas, sigma, lam=lam_xz, ramp_spec="1", surface=None, tie_depth_km=None):
+    """Right-lateral slip on `fault` from the InSAR samples (and the surface constraint when
+    given): Meade triangular dislocations, one transformation per dataset (ramp_spec for the
+    InSAR, a constant for the surface data), the exponential prior buildCmXY(sigma, lam), the
+    optional top tie, NNLS (slip >= 0, the transformation free). Fills fault.slip and each
+    dataset's synth, and removes the fitted transformation from each dataset's vel IN PLACE
+    (pass copies). Returns the CSI solver."""
+    solve_datas = list(insar_datas)
+    if surface is not None:
+        solve_datas.append(surface)
     for ds in insar_datas:
-        fault.buildGFs(ds, vertical=True, slipdir=slipdir, verbose=False)
+        fault.buildGFs(ds, vertical=True, slipdir="s", verbose=False)
         fault.G[ds.name]["strikeslip"] *= -1.0        # right-lateral positive
     if surface is not None:
-        fault.buildGFs(surface, slipdir=slipdir, verbose=False)   # NO flip
+        fault.buildGFs(surface, slipdir="s", verbose=False)   # NO flip
     trans = transform("ramps", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    specs = [ramp_spec] * len(insar_datas) + (["1"] if surface is not None else [])
+    specs = [ramp_spec] * len(insar_datas)
+    if surface is not None:
+        specs.append("1")
     trans.buildGFs(solve_datas, specs, verbose=False)
-    fault.assembleGFs(solve_datas, slipdir=slipdir); fault.assembled(solve_datas)
+    fault.assembleGFs(solve_datas, slipdir="s")
+    fault.assembled(solve_datas)
     fault.assembleCd(solve_datas)
-    trans.assembleGFs(solve_datas); trans.assembled(solve_datas)
+    trans.assembleGFs(solve_datas)
+    trans.assembled(solve_datas)
     trans.assembleCd(solve_datas)
-    if prior == "diag":
-        fault.buildCmGaussian([sigma ** 2] * (1 if slipdir == "s" else 2), verbose=False)
-    else:
-        fault.buildCmXY(sigma, lam, verbose=False)
+    fault.buildCmXY(sigma, lam, verbose=False)
     trans.buildCm(1e4, verbose=False)
     solver = multisrc("mean event", [fault, trans], verbose=False)
-    solver.assembleGFs(); solver.assembleCm()
+    solver.assembleGFs()
+    solver.assembleCm()
     if tie_depth_km:                                  # uniform slip over the top tie_depth_km
-        E, e_var = tie_rows(fault, solver.G.shape[1], tie_depth_km)
-        solver.G = np.vstack([solver.G, E])
-        solver.d = np.concatenate([solver.d, np.zeros(E.shape[0])])
-        n_d = solver.Cd.shape[0]
-        Cd_new = np.zeros((n_d + E.shape[0], n_d + E.shape[0]))
-        Cd_new[:n_d, :n_d] = solver.Cd
-        Cd_new[n_d:, n_d:] = np.diag(e_var)
-        solver.Cd = Cd_new
-    if slipdir == "s":
-        mprior = np.zeros(solver.Np)
-        ramp_idx = [i for i, t in enumerate(solver.paramTypes) if t[0] == trans.name]
-        mprior[ramp_idx] = -1e3                       # NNLS: ramps may be negative
-        solver.ConstrainedLeastSquareSoln(method="nnls", mprior=mprior)
-    else:
-        solver.GeneralizedLeastSquareSoln()           # rake free: sign unconstrained
+        tie_matrix, tie_var = tie_rows(fault, solver.G.shape[1], tie_depth_km)
+        solver.G = np.vstack([solver.G, tie_matrix])
+        solver.d = np.concatenate([solver.d, np.zeros(tie_matrix.shape[0])])
+        n_data = solver.Cd.shape[0]
+        cd_tied = np.zeros((n_data + tie_matrix.shape[0], n_data + tie_matrix.shape[0]))
+        cd_tied[:n_data, :n_data] = solver.Cd
+        cd_tied[n_data:, n_data:] = np.diag(tie_var)
+        solver.Cd = cd_tied
+    mprior = np.zeros(solver.Np)
+    for index, param_type in enumerate(solver.paramTypes):
+        if param_type[0] == trans.name:
+            mprior[index] = -1e3                      # NNLS: the transformation may be negative
+    solver.ConstrainedLeastSquareSoln(method="nnls", mprior=mprior)
     solver.distributem()
     for ds in solve_datas:
-        ds.buildsynth([fault], direction=slipdir)
+        ds.buildsynth([fault], direction="s")
         ds.removeTransformation(trans)                # residuals are ramp-removed
     return solver
 
@@ -547,10 +646,55 @@ def invert(fault, insar_datas, sigma, lam=lam_xz, prior="xy", slipdir="s",
 # rebuilt; the quadtree is computed once per geometry. `run_case` builds a
 # fresh fault and inverts once; `model_numbers` gives the numbers every row
 # carries. `lcurve` runs one case per sigma and finds the corner exactly as
-# `07a_uniform_model` [8] does.
+# `07a_uniform_model` [8] does (the same `lcurve_corner`). The science
+# formulas (Mw, potency, triangle area, the scan-window taper) are the small
+# functions at the top.
 
 # %%
 ## [7]
+def moment_magnitude(moment_nm):
+    """Moment magnitude from the seismic moment M0 in N m: Mw = 2/3 (log10 M0 - 9.1)."""
+    return (2.0 / 3.0) * (np.log10(moment_nm) - 9.1)
+
+
+def potency_from_slip(area_km2, slip_mm):
+    """Potency (m^3) = the sum over cells of area x slip (km^2 -> m^2, mm -> m)."""
+    return float(np.sum(area_km2 * 1e6 * slip_mm * 1e-3))
+
+
+def triangle_areas_km2(flt):
+    """Area (km^2) of every triangle of a CSI fault, from its 3D corners: |AB x AC| / 2."""
+    areas = []
+    for patch in flt.patch:
+        areas.append(0.5 * np.linalg.norm(np.cross(patch[1] - patch[0], patch[2] - patch[0])))
+    return np.array(areas)
+
+
+def section_taper(km_pp):
+    """Weight of uniform slip along strike: 1 inside scan_km, falling linearly to 0 over
+    scan_taper beyond each end (km from Point Pinole)."""
+    inside = np.minimum(km_pp - scan_km[0], scan_km[1] - km_pp)
+    return np.clip(inside / scan_taper + 1, 0, 1)
+
+
+def lcurve_corner(sigmas, chi2_total, roughness):
+    """The L-curve corner (Hansen 1992). x = log10 sqrt(chi2_total) and y = log10 roughness as
+    cubic splines of log10 sigma; curvature = |x' y'' - y' x''| / (x'^2 + y'^2)^1.5 on 400
+    points between the second and the second-last grid sigma (the spline end intervals are
+    excluded). Returns the sigma of maximum curvature, the 400 log10 sigmas and the curvature."""
+    log_sigma = np.log10(sigmas)
+    spline_misfit = CubicSpline(log_sigma, np.log10(np.sqrt(chi2_total)))
+    spline_rough = CubicSpline(log_sigma, np.log10(roughness))
+    fine_log_sigma = np.linspace(log_sigma[1], log_sigma[-2], 400)
+    d_misfit = spline_misfit(fine_log_sigma, 1)
+    dd_misfit = spline_misfit(fine_log_sigma, 2)
+    d_rough = spline_rough(fine_log_sigma, 1)
+    dd_rough = spline_rough(fine_log_sigma, 2)
+    curvature = np.abs(d_misfit * dd_rough - d_rough * dd_misfit) / (d_misfit ** 2 + d_rough ** 2) ** 1.5
+    corner = float(10 ** fine_log_sigma[np.argmax(curvature)])
+    return corner, fine_log_sigma, curvature
+
+
 def load_fp_field(levelled=True):
     """Cell [3]'s fault-parallel field, levelled (the baseline) or not."""
     field = insar("fault-parallel", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
@@ -588,9 +732,9 @@ assert np.array_equal(get_samples().vel, samples.vel), "get_samples does not rep
 
 def model_numbers(flt, ds, surface):
     """Misfit, surface fit, peak, potency and Mw of one solved fault."""
-    nodes_, faces_, _ = flt.mesh_sz
-    tri = nodes_[faces_]
-    area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in flt.patch])
+    flt_nodes, flt_faces, _ = flt.mesh_sz
+    tri = flt_nodes[flt_faces]
+    area_km2 = triangle_areas_km2(flt)
     slip = flt.slip[:, 0]
     z_top = tri[:, :, 1].min(1)
     z_c = tri[:, :, 1].mean(1)
@@ -598,14 +742,14 @@ def model_numbers(flt, ds, surface):
     surface_cells = (z_top <= 1e-6) & (cell_km >= creep_lo_km) & (cell_km <= creep_hi_km)
     resid = ds.vel - ds.synth
     near = dist_to_trace(ds, flt) <= near_field_km
-    potency = float(np.sum(area_km2 * 1e6 * slip * 1e-3))
+    potency = potency_from_slip(area_km2, slip)
     row = dict(chi2=float(np.dot(resid, np.linalg.solve(ds.Cd, resid))),
                rms_mm=float(np.sqrt(np.mean(resid ** 2))),
                rms_near_mm=float(np.sqrt(np.mean(resid[near] ** 2))),
                chi2_surf=np.nan, surf_rms_mm=np.nan,
                surface_pct=float(100 * np.median(slip[surface_cells]) / crossing_median),
                peak_slip_mm=float(slip.max()), peak_depth_m=float(1000 * z_c[np.argmax(slip)]),
-               potency_m3=potency, Mw=(2.0 / 3.0) * (np.log10(shear_modulus * max(potency, 1e-9)) - 9.1),
+               potency_m3=potency, Mw=moment_magnitude(shear_modulus * max(potency, 1e-9)),
                n_samples=int(ds.vel.size), n_cells=len(flt.patch))
     if surface is not None:
         surf_resid = surface.vel - surface.synth
@@ -615,8 +759,10 @@ def model_numbers(flt, ds, surface):
 
 
 def slip_table(flt):
-    nodes_, faces_, _ = flt.mesh_sz
-    tri = nodes_[faces_]
+    """One row per triangle of a solved fault: centre (s, z), top and bottom depth, km from
+    Point Pinole, slip."""
+    flt_nodes, flt_faces, _ = flt.mesh_sz
+    tri = flt_nodes[flt_faces]
     return pd.DataFrame(dict(s_km=tri[:, :, 0].mean(1), z_c=tri[:, :, 1].mean(1),
                              z_top=tri[:, :, 1].min(1), z_bot=tri[:, :, 1].max(1),
                              km_pp=lat_to_km_pp(np.array([pll.mean(0) for pll in flt.patchll])[:, 1]),
@@ -627,14 +773,22 @@ suite_rows = []
 def run_case(family, label, mesh_name="smooth12", dip=dip_deg, sigma=sigma_model, lam=lam_xz,
              tie=tie_depth_km, use_surface=True, floor=surf_floor_mm, min_km=min_block_km,
              start_km=start_block_km, levelled=True, ramp_spec="1", record=True):
+    """One inversion with ONE setting changed from the baseline (the keyword arguments):
+    a fresh fault and samples, the inversion, model_numbers plus the settings as one suite
+    row (appended to suite_rows when record). Returns the row, the fault, the samples and
+    the surface data."""
     flt = wrap_fault(*unrolled[mesh_name], dip, f"{family} {label}")
     ds = get_samples(mesh_name, dip, min_km, start_km, levelled)
-    surface = make_surface_interp(flt, floor) if use_surface else None
-    invert(flt, [ds], sigma, lam=lam, ramp_spec=ramp_spec, surface=surface,
-           tie_depth_km=tie if tie > 0 else None)
+    if use_surface:
+        surface = make_surface_interp(flt, floor)
+        floor_used = floor
+    else:
+        surface = None
+        floor_used = np.nan
+    invert(flt, [ds], sigma, lam=lam, ramp_spec=ramp_spec, surface=surface, tie_depth_km=tie)   # tie 0 = no tie
     row = model_numbers(flt, ds, surface)
     row.update(family=family, label=label, mesh=mesh_name, dip=dip, sigma=sigma, lam_s=lam[0],
-               lam_z=lam[1], tie_km=tie, use_surface=use_surface, floor=floor if use_surface else np.nan,
+               lam_z=lam[1], tie_km=tie, use_surface=use_surface, floor=floor_used,
                min_block_km=min_km, start_block_km=start_km, levelled=levelled, ramp=ramp_spec)
     if record:
         suite_rows.append(row)
@@ -650,9 +804,9 @@ def save_suite():
 
 lcurve_rows = []
 def lcurve(label, mesh_name="smooth12", lam=lam_xz, sigmas=sigma_grid_lc):
-    """One case per sigma; the corner and the grid sigma the rule picks
-    (07a_uniform_model [8], verbatim). Returns the L-curve table, the corner,
-    the pick, and the row at the pick."""
+    """One case per sigma; the corner (lcurve_corner) and the grid sigma the rule picks
+    (the smallest grid sigma at or above the corner, as 07a_uniform_model [8]). Returns the
+    L-curve table, the corner, the pick, and the row at the pick."""
     rows = []
     for sigma in sigmas:
         row, flt, ds, surface = run_case("lcurve", f"{label} sigma{sigma:g}", mesh_name=mesh_name,
@@ -663,27 +817,26 @@ def lcurve(label, mesh_name="smooth12", lam=lam_xz, sigmas=sigma_grid_lc):
         row["curve"] = label
         rows.append(row)
     table = pd.DataFrame(rows)
-    log_sigma = np.log10(table.sigma.values)
-    spline_misfit = CubicSpline(log_sigma, np.log10(np.sqrt(table.chi2_total.values)))
-    spline_rough = CubicSpline(log_sigma, np.log10(table.prior_norm.values))
-    fine_log_sigma = np.linspace(log_sigma[1], log_sigma[-2], 400)
-    d_misfit, dd_misfit = spline_misfit(fine_log_sigma, 1), spline_misfit(fine_log_sigma, 2)
-    d_rough, dd_rough = spline_rough(fine_log_sigma, 1), spline_rough(fine_log_sigma, 2)
-    curvature = np.abs(d_misfit * dd_rough - d_rough * dd_misfit) / (d_misfit ** 2 + d_rough ** 2) ** 1.5
-    corner = float(10 ** fine_log_sigma[np.argmax(curvature)])
+    corner, _, _ = lcurve_corner(table.sigma.values, table.chi2_total.values, table.prior_norm.values)
     pick = float(table.sigma[table.sigma >= corner].min())
-    table["corner"], table["pick"] = corner, pick
+    table["corner"] = corner
+    table["pick"] = pick
     lcurve_rows.extend(table.to_dict("records"))
     pd.DataFrame(lcurve_rows).to_csv(os.path.join(out_dir, "final_lcurves.csv"), index=False)
     print(f"L-curve {label}: corner sigma {corner:.1f}, rule picks {pick:g}")
+    if np.isclose(corner, sigmas[1]) or np.isclose(corner, sigmas[-2]):
+        print(f"WARNING: L-curve {label}: the corner sits at the edge of the searched range "
+              f"({sigmas[1]:g}-{sigmas[-2]:g}), so it is not a curvature maximum")
     return table, corner, pick, table[table.sigma == pick].iloc[0].to_dict()
 
 # %% [markdown]
 # ## [8] Family 1: the top tie at the model sigma
 #
 # Slip uniform from the surface to the tie depth in every 0.1 km column (the
-# baseline is 0.2 km, chosen on 2026-09-28 at sigma 24 on the 0.7 field). The
-# slip table of each is kept for the depth profiles.
+# baseline has no tie: dropped 2026-09-29, because at the L-curve smoothing the
+# untied model peaks at the surface). The slip table of each is kept for the
+# depth profiles.
+# PREPUB: The tie decision is in `drafts/07/tie_decision.py`; until 2026-09-29 the baseline tie was 0.2 km (chosen on 2026-09-28 at sigma 24 on the 0.7 field).
 
 # %%
 ## [8]
@@ -694,7 +847,12 @@ for tie in tie_depths:
     tie_tables[tie] = slip_table(flt)
     tie_tables[tie].to_csv(os.path.join(out_dir, f"final_tie_slip_{label}.csv"), index=False)
 save_suite()
-baseline_row = [r for r in suite_rows if r["family"] == "tie" and r["tie_km"] == tie_depth_km][0]
+baseline_matches = []
+for suite_row in suite_rows:
+    if suite_row["family"] == "tie" and suite_row["tie_km"] == tie_depth_km:
+        baseline_matches.append(suite_row)
+assert len(baseline_matches) == 1, f"expected one baseline row in the tie family, found {len(baseline_matches)}"
+baseline_row = baseline_matches[0]
 
 # %% [markdown]
 # ## [9] Family 2: the fixed-depth scan on the fault-parallel field
@@ -709,74 +867,82 @@ baseline_row = [r for r in suite_rows if r["family"] == "tie" and r["tie_km"] ==
 
 # %%
 ## [9]
-def depth_scan(mesh_name, tag, levelled=True, nodes_faces=None):
-    nodes_, faces_ = nodes_faces if nodes_faces is not None else unrolled[mesh_name]
-    flt = wrap_fault(nodes_, faces_, dip_deg, f"scan {tag}")
-    geometry_key = mesh_name if nodes_faces is None else tag
-    if nodes_faces is not None:
-        unrolled[tag] = nodes_faces
-    ds = get_samples(geometry_key, dip_deg, levelled=levelled)
+def depth_scan(mesh_name, tag, levelled=True):
+    """chi2(D) of uniform slip from the surface to D (section_taper along strike) plus one
+    constant, solved by whitened least squares with the full data covariance, for every
+    scan depth down to the mesh bottom. Writes final_depth_scan_<tag>.csv. Returns the scan
+    table, the predicted field per D, the samples and the fault."""
+    flt = wrap_fault(*unrolled[mesh_name], dip_deg, f"scan {tag}")
+    ds = get_samples(mesh_name, dip_deg, levelled=levelled)
     flt.buildGFs(ds, vertical=True, slipdir="s", verbose=False)
     gmat = -flt.G[ds.name]["strikeslip"]                       # right-lateral positive
     table = slip_table(flt)
-    area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in flt.patch])
-    in_window = np.clip(np.minimum(table.km_pp - scan_km[0], scan_km[1] - table.km_pp) / scan_taper + 1, 0, 1).values
+    area_km2 = triangle_areas_km2(flt)
+    in_window = section_taper(table.km_pp.values)
     chol = np.linalg.cholesky(ds.Cd + 1e-9 * np.eye(ds.Cd.shape[0]))
     data_w = np.linalg.solve(chol, ds.vel)
-    rows, predictions = [], {}
-    for depth_bottom in [d for d in scan_depths if d <= table.z_bot.max() + 1e-6]:
+    rows = []
+    predictions = {}
+    for depth_bottom in scan_depths:
+        if depth_bottom > table.z_bot.max() + 1e-6:            # below the mesh bottom
+            continue
         shape = in_window * (table.z_c.values < depth_bottom)
         design = np.c_[np.dot(gmat, shape), np.ones(ds.vel.size)]
-        coef, *_ = np.linalg.lstsq(np.linalg.solve(chol, design), data_w, rcond=None)
+        coef = np.linalg.lstsq(np.linalg.solve(chol, design), data_w, rcond=None)[0]
         resid_w = data_w - np.dot(np.linalg.solve(chol, design), coef)
-        potency = float(np.sum(area_km2 * 1e6 * shape * coef[0] * 1e-3))
+        potency = potency_from_slip(area_km2, shape * coef[0])
         rows.append(dict(D_km=depth_bottom, slip_mm=coef[0], constant_mm=coef[1],
                          chi2=float(np.dot(resid_w, resid_w)), potency_m3=potency,
-                         Mw=(2.0 / 3.0) * (np.log10(shear_modulus * max(potency, 1e-9)) - 9.1)))
+                         Mw=moment_magnitude(shear_modulus * max(potency, 1e-9))))
         predictions[depth_bottom] = np.dot(design, coef)
     scan = pd.DataFrame(rows)
     scan["dchi2"] = scan.chi2 - scan.chi2.min()
     scan.to_csv(os.path.join(out_dir, f"final_depth_scan_{tag}.csv"), index=False)
-    best, bracket = scan.loc[scan.chi2.idxmin()], scan[scan.dchi2 <= 4]
+    best = scan.loc[scan.chi2.idxmin()]
+    accepted = scan[scan.dchi2 <= 4]
     print(f"depth scan {tag}: best D {best.D_km:g} km ({best.slip_mm:.1f} mm, Mw {best.Mw:.2f}); "
-          f"delta chi2 <= 4: {bracket.D_km.min():g}-{bracket.D_km.max():g} km, "
-          f"Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f}")
+          f"delta chi2 <= 4: {accepted.D_km.min():g}-{accepted.D_km.max():g} km, "
+          f"Mw {accepted.Mw.min():.2f}-{accepted.Mw.max():.2f}")
     return scan, predictions, ds, flt
 
+unrolled["plateau100_z5"] = build_unrolled(*mesh_variants["plateau100"], z_max=5.0)   # plateau100 to 5 km
 scans = {}
 scans["smooth12"], predictions, scan_samples, scan_fault = depth_scan("smooth12", "smooth12")
 scans["plateau100"], _, _, _ = depth_scan("plateau100", "plateau100")
-scans["plateau100_z5"], _, _, _ = depth_scan("plateau100", "plateau100_z5",
-                                              nodes_faces=build_unrolled(0.10, 0.5, 1.6, 1.5, z_max=5.0))
+scans["plateau100_z5"], _, _, _ = depth_scan("plateau100_z5", "plateau100_z5")
 scans["unlevelled"], _, _, _ = depth_scan("smooth12", "unlevelled", levelled=False)
 
 # %% [markdown]
-# ### The two ends of the bracket against the noise
+# ## [10] The two ends of the bracket against the noise
 #
 # The fault-parallel displacement the shallowest and the deepest accepted
 # models predict at the samples (model mesh), their difference binned by
 # distance from the trace, against the noise model: the standard deviation
 # of one sample (nugget + both exponentials) and the rms difference between
-# two samples that far apart, sqrt(2 gamma(h)). Numbers only; delta chi2
-# above is the full-covariance version of the same question.
+# two samples that far apart, sqrt(2 gamma(h)) (`semivariogram_model`, [4]).
+# Numbers only; delta chi2 above is the full-covariance version of the same question.
 
 # %%
 ## [10]
-record_scan = scans["smooth12"]
-bracket = record_scan[record_scan.dchi2 <= 4]
-d_shallow, d_deep = float(bracket.D_km.min()), float(bracket.D_km.max())
+model_mesh_scan = scans["smooth12"]
+bracket = model_mesh_scan[model_mesh_scan.dchi2 <= 4]
+d_shallow = float(bracket.D_km.min())
+d_deep = float(bracket.D_km.max())
 model_diff = predictions[d_deep] - predictions[d_shallow]
 sample_dist = dist_to_trace(scan_samples, scan_fault)
-nug2, s1, l1, s2, l2 = cov_p
-gamma = lambda h: nug2 + s1 * (1 - np.exp(-h / l1)) + s2 * (1 - np.exp(-h / l2))
+noise_sd_mm = float(np.sqrt(cov_p[0] + cov_p[1] + cov_p[3]))   # one sample: nugget + both sills
 noise_rows = []
 for lo, hi in zip(noise_bins_km[:-1], noise_bins_km[1:]):
     in_bin = (sample_dist >= lo) & (sample_dist < hi)
     h_mid = 0.5 * (lo + hi)
+    if in_bin.any():
+        median_abs_diff_mm = float(np.median(np.abs(model_diff[in_bin])))
+    else:
+        median_abs_diff_mm = np.nan
     noise_rows.append(dict(dist_lo_km=lo, dist_hi_km=hi, n_samples=int(in_bin.sum()),
-                           median_abs_diff_mm=float(np.median(np.abs(model_diff[in_bin]))) if in_bin.any() else np.nan,
-                           noise_sd_mm=float(np.sqrt(nug2 + s1 + s2)),
-                           noise_pair_rms_mm=float(np.sqrt(2 * gamma(h_mid)))))
+                           median_abs_diff_mm=median_abs_diff_mm,
+                           noise_sd_mm=noise_sd_mm,
+                           noise_pair_rms_mm=float(np.sqrt(2 * semivariogram_model(h_mid, *cov_p)))))
 depth_vs_noise = pd.DataFrame(noise_rows)
 depth_vs_noise.to_csv(os.path.join(out_dir, "final_depth_vs_noise.csv"), index=False)
 print(f"model difference, D {d_deep:g} km minus D {d_shallow:g} km (fault-parallel):")
@@ -788,17 +954,17 @@ print(depth_vs_noise.round(3).to_string(index=False))
 # 10 mm of uniform slip from the surface to D over the scan window, forward
 # through the model mesh to the samples (noise drawn from the full data
 # covariance) and to the surface constraint (noise from its errors), then
-# inverted exactly as the baseline (model sigma, tie 0.2 km, surface constraint).
+# inverted exactly as the baseline (model sigma, no tie, surface constraint).
 
 # %%
 ## [11]
 recovery_rng = np.random.default_rng(7)
-recovery_rows, recovery_profiles = [], []
+recovery_rows = []
+recovery_profiles = []
 for depth_bottom in recovery_depths:
     rec_fault = wrap_fault(*unrolled["smooth12"], dip_deg, f"recovery {depth_bottom:g}")
     rec_table = slip_table(rec_fault)
-    in_window = np.clip(np.minimum(rec_table.km_pp - scan_km[0], scan_km[1] - rec_table.km_pp)
-                        / scan_taper + 1, 0, 1).values
+    in_window = section_taper(rec_table.km_pp.values)
     slip_input = 10.0 * in_window * (rec_table.z_c.values < depth_bottom)
     rec_ds = get_samples()
     rec_fault.buildGFs(rec_ds, vertical=True, slipdir="s", verbose=False)
@@ -810,15 +976,16 @@ for depth_bottom in recovery_depths:
     rec_surface.vel[:] = (np.dot(rec_fault.G[rec_surface.name]["strikeslip"], slip_input)
                           + np.sqrt(np.diag(rec_surface.Cd)) * recovery_rng.standard_normal(rec_surface.vel.size))
     invert(rec_fault, [rec_ds], sigma_model, surface=rec_surface, tie_depth_km=tie_depth_km)
-    area_km2 = np.array([0.5 * np.linalg.norm(np.cross(p[1] - p[0], p[2] - p[0])) for p in rec_fault.patch])
-    input_potency = float(np.sum(area_km2 * 1e6 * slip_input * 1e-3))
+    area_km2 = triangle_areas_km2(rec_fault)
+    input_potency = potency_from_slip(area_km2, slip_input)
     row = model_numbers(rec_fault, rec_ds, rec_surface)
     recovery_rows.append(dict(D_km=depth_bottom, moment_recovery=row["potency_m3"] / input_potency,
-                              mw_input=(2.0 / 3.0) * (np.log10(shear_modulus * input_potency) - 9.1),
+                              mw_input=moment_magnitude(shear_modulus * input_potency),
                               mw_recovered=row["Mw"], peak_recovered_mm=row["peak_slip_mm"],
                               peak_depth_m=row["peak_depth_m"], surface_pct=row["surface_pct"]))
     out_table = slip_table(rec_fault)
-    out_table["input_mm"], out_table["D_km"] = slip_input, depth_bottom
+    out_table["input_mm"] = slip_input
+    out_table["D_km"] = depth_bottom
     recovery_profiles.append(out_table)
     print(f"input 10 mm to {depth_bottom:g} km: peak {row['peak_slip_mm']:.1f} mm at {row['peak_depth_m']:.0f} m, "
           f"moment recovered {row['potency_m3'] / input_potency:.2f}")
@@ -862,8 +1029,10 @@ save_suite()
 # In CSI (`Fault.buildCmXY`) Cm = sigma^2 (lam0^2 / (lamx lamz))
 # exp(-0.5 dx/lamx) exp(-0.5 dz/lamz): lambda sets the shape AND enters the
 # amplitude, so the model sigma is the corner only for the model's pair. Each pair
-# gets its own L-curve; the suite row is the model at its own pick (and the
-# baseline pair's curve, on a coarser grid, is a check on 07a_uniform_model's corner).
+# gets its own L-curve; the suite row is the model at its own pick. The
+# baseline pair's curve (on a coarser grid than 07a's) is printed next to
+# 07a_uniform_model's pick for comparison; it is not asserted, because the
+# coarser grid can legitimately pick a different grid sigma.
 
 # %%
 ## [14]
@@ -877,6 +1046,7 @@ for lam in lam_grid:
 save_suite()
 lambda_corners = pd.DataFrame(lambda_corners)
 print(lambda_corners.round(3).to_string(index=False))
+print(f"baseline pair {lam_xz}: pick {lambda_corners.pick.iloc[0]:g} here, {sigma_model:g} in 07a_uniform_model")
 
 # %% [markdown]
 # ## [15] Family 8: mesh, each at its own L-curve corner
@@ -900,10 +1070,10 @@ mesh_corners = pd.DataFrame(mesh_corners)
 print(mesh_corners.round(3).to_string(index=False))
 
 # %% [markdown]
-# ### CHECK -- repeatable, and the same model as 07a_uniform_model
+# ## [16] CHECK -- repeatable, and the same model as 07a_uniform_model
 #
-# The baseline case run again must reproduce the tie family's 0.2 km row
-# exactly; and where `07a_uniform_model` has run on the same inputs, its slip
+# The baseline case run again must reproduce the tie family's no-tie
+# (baseline) row exactly; and where `07a_uniform_model` has run on the same inputs, its slip
 # table must equal this notebook's baseline to round-off (same machinery,
 # same data, same sigma).
 
@@ -939,95 +1109,117 @@ suite = pd.read_csv(os.path.join(out_dir, "final_suite.csv"))
 suite = suite[suite.family != "gate"]
 fig = plt.figure(figsize=(7.25, 6.6), constrained_layout=True)
 grid = fig.add_gridspec(3, 3)
-family_colors = {"tie": "#000000", "isolation": "#D55E00", "sampling": "#56B4E9", "dip": "#0072B2",
-                 "lam": "#CC79A7", "mesh": "#E69F00"}
+# every line takes the next Okabe-Ito colour of utils.okabe_ito (blue, orange, vermillion,
+# reddish purple, black, sky blue, yellow): no green, and the two blues are never neighbours
+family_colors = {}
+for index, family in enumerate(["tie", "isolation", "sampling", "dip", "lam", "mesh"]):
+    family_colors[family] = utils.okabe_ito[index]
 
 ax = fig.add_subplot(grid[0, :])
-x_pos, ticks, tick_labels = 0, [], []
+x_pos = 0
+ticks = []
+tick_labels = []
 for family, color in family_colors.items():
     group = suite[suite.family == family]
     xs = np.arange(x_pos, x_pos + len(group))
     ax.plot(xs, group.Mw, "o", ms=4, color=color)
-    ticks += list(xs); tick_labels += list(group.label)
+    ticks += list(xs)
+    tick_labels += list(group.label)
     if len(group):
         ax.text(xs.mean(), 1.02, family, transform=ax.get_xaxis_transform(), ha="center", fontsize=6)
         ax.axvline(x_pos + len(group) - 0.5, color="0.85", lw=0.6)
     x_pos += len(group)
 ax.axhline(baseline_row["Mw"], color="0.4", ls="--", lw=0.7)
-ax.set_xticks(ticks); ax.set_xticklabels(tick_labels, rotation=60, ha="right", fontsize=5)
+ax.set_xticks(ticks)
+ax.set_xticklabels(tick_labels, rotation=60, ha="right", fontsize=6)
 ax.set_ylabel(r"$M_W$ (30 GPa)")
 ax.set_title(r"$\bf{A}$  Moment across the tests", loc="left", fontsize=7, pad=12)
 
 ax = fig.add_subplot(grid[1, 0])
-for tie, table in tie_tables.items():
+for index, (tie, table) in enumerate(tie_tables.items()):
     peak_s = table.loc[table.slip_mm.idxmax(), "s_km"]
     column = table[(table.s_km - peak_s).abs() < 0.3]
     by_depth = column.groupby(np.round(column.z_c, 3)).slip_mm.max()
-    ax.plot(by_depth.values, by_depth.index, "o-", ms=2, label=f"tie {tie * 1000:.0f} m")
-ax.set_ylim(1.5, 0); ax.set_xlabel("Slip (mm)"); ax.set_ylabel("Depth (km)")
-ax.legend(fontsize=5)
+    ax.plot(by_depth.values, by_depth.index, "o-", ms=2, color=utils.okabe_ito[index], label=f"tie {tie * 1000:.0f} m")
+ax.set_ylim(1.5, 0)
+ax.set_xlabel("Slip (mm)")
+ax.set_ylabel("Depth (km)")
+ax.legend(fontsize=6)
 ax.set_title(r"$\bf{B}$  Top tie, sigma " + f"{sigma_model:g}", loc="left", fontsize=7)
 
 ax = fig.add_subplot(grid[1, 1])
-for tag, color in (("smooth12", "#000000"), ("plateau100", "#0072B2"), ("plateau100_z5", "#56B4E9"),
-                   ("unlevelled", "0.6")):
-    ax.plot(scans[tag].D_km, scans[tag].dchi2, "o-", ms=2, color=color, label=tag)
+for index, tag in enumerate(["smooth12", "plateau100", "plateau100_z5", "unlevelled"]):
+    ax.plot(scans[tag].D_km, scans[tag].dchi2, "o-", ms=2, color=utils.okabe_ito[index], label=tag)
 ax.axhline(4, color="0.5", ls=":", lw=0.7)
-ax.set_xscale("log"); ax.set_ylim(-2, min(100, scans["smooth12"].dchi2.max() * 1.05))
-ax.set_xlabel("Bottom depth D (km)"); ax.set_ylabel(r"$\Delta\chi^2$")
-ax.legend(fontsize=5)
+ax.set_xscale("log")
+ax.set_ylim(-2, min(100, scans["smooth12"].dchi2.max() * 1.05))
+ax.set_xlabel("Bottom depth D (km)")
+ax.set_ylabel(r"$\Delta\chi^2$")
+ax.legend(fontsize=6)
 ax.set_title(r"$\bf{C}$  Fixed-depth scan", loc="left", fontsize=7)
 
 ax = fig.add_subplot(grid[1, 2])
 profiles_all = pd.concat(recovery_profiles)
-for depth_bottom, group in profiles_all.groupby("D_km"):
+for index, (depth_bottom, group) in enumerate(profiles_all.groupby("D_km")):
     peak_s = group.loc[group.slip_mm.idxmax(), "s_km"]
     column = group[(group.s_km - peak_s).abs() < 0.3]
     by_depth = column.groupby(np.round(column.z_c, 3)).slip_mm.max()
-    ax.plot(by_depth.values, by_depth.index, "o-", ms=2, label=f"to {depth_bottom:g} km")
+    ax.plot(by_depth.values, by_depth.index, "o-", ms=2, color=utils.okabe_ito[index], label=f"to {depth_bottom:g} km")
 ax.axvline(10, color="0.6", ls="--", lw=0.6)
-ax.set_ylim(3, 0); ax.set_xlabel("Recovered slip (mm)"); ax.set_ylabel("Depth (km)")
-ax.legend(fontsize=4.5, ncols=2)
+ax.set_ylim(3, 0)
+ax.set_xlabel("Recovered slip (mm)")
+ax.set_ylabel("Depth (km)")
+ax.legend(fontsize=6, ncols=2)
 ax.set_title(r"$\bf{D}$  Recovery of 10 mm", loc="left", fontsize=7)
 
 ax = fig.add_subplot(grid[2, 0:2])
 curves = pd.DataFrame(lcurve_rows)
-for label, group in curves[curves.curve.str.startswith("lam")].groupby("curve", sort=False):
-    ax.plot(np.sqrt(group.chi2_total), group.prior_norm, "o-", ms=2, lw=0.8, label=label)
+lambda_curves = curves[curves.curve.str.startswith("lam")]
+for index, (label, group) in enumerate(lambda_curves.groupby("curve", sort=False)):
+    ax.plot(np.sqrt(group.chi2_total), group.prior_norm, "o-", ms=2, lw=0.8, color=utils.okabe_ito[index], label=label)
     pick = group[group.sigma == group.pick.iloc[0]]
     ax.plot(np.sqrt(pick.chi2_total), pick.prior_norm, "k*", ms=6)
-ax.set_xscale("log"); ax.set_yscale("log")
-ax.set_xlabel(r"Weighted misfit $\sqrt{\chi^2}$"); ax.set_ylabel(r"Roughness $\sqrt{m^T C^{-1} m}$")
-ax.legend(fontsize=5)
+ax.set_xscale("log")
+ax.set_yscale("log")
+ax.set_xlabel(r"Weighted misfit $\sqrt{\chi^2}$")
+ax.set_ylabel(r"Roughness $\sqrt{m^T C^{-1} m}$")
+ax.legend(fontsize=6)
 ax.set_title(r"$\bf{E}$  L-curves of the correlation lengths (star: pick)", loc="left", fontsize=7)
 
 ax = fig.add_subplot(grid[2, 2])
 dips = suite[suite.family == "dip"].sort_values("dip")
 ax.plot(dips.dip, dips.rms_mm, "o-", ms=3, color="#0072B2", label="rms")
 ax.plot(dips.dip, dips.rms_near_mm, "o--", ms=3, color="#0072B2", label="rms < 200 m")
-ax.set_xlabel("Dip (deg E)"); ax.set_ylabel("rms (mm)")
-ax2 = ax.twinx(); ax2.plot(dips.dip, dips.Mw, "s-", ms=3, color="#D55E00"); ax2.set_ylabel(r"$M_W$", color="#D55E00")
-ax.legend(fontsize=5)
+ax.set_xlabel("Dip (deg E)")
+ax.set_ylabel("rms (mm)")
+ax2 = ax.twinx()
+ax2.plot(dips.dip, dips.Mw, "s-", ms=3, color="#D55E00")
+ax2.set_ylabel(r"$M_W$", color="#D55E00")
+ax.legend(fontsize=6)
 ax.set_title(r"$\bf{F}$  Dip", loc="left", fontsize=7)
 
 fig_file = os.path.join(fig_dir, "fig07_sensitivity_final.png")
-fig.savefig(fig_file, dpi=300); fig.savefig(fig_file.replace(".png", ".pdf"))
+fig.savefig(fig_file, dpi=300)
+fig.savefig(fig_file.replace(".png", ".pdf"))
 print("wrote", fig_file)
 
 # %% [markdown]
 # ## [17b] Inputs for a stress-drop estimate (saved, not reported)
 #
-# Depth is not constrained, so no stress drop is reported (Dani 2026-09-29);
-# a ballpark is quoted as a range. Following Materna et al. (2024, Text S3),
-# stress drop = mu d / x with d the slip and x half the depth extent. For the
-# distributed model (x = half the depth holding 95% of its potency) and for
-# every uniform-slip depth D (x = D / 2), mu is the SFCVM v26.0 rigidity
-# weighted by that model's own potency (as 07a_uniform_model), and d is the mean
-# band-stack event slip of notebook 04. Written to
-# `stress_drop_inputs.csv`; no registry rows.
+# PREPUB: This whole cell is to be removed before publication: superseded by the PyLith traction-change stress drop of `08a_3d_model` [15b] (Dani 2026-10-03).
+# PREPUB: Its weighting is also inconsistent: `mu_weighted` and the 95% depth weight by slip only, not by area x slip (potency) as 07a's mu_effective does.
+# PREPUB: Depth is not constrained, so no stress drop is reported (Dani 2026-09-29);
+# PREPUB: a ballpark is quoted as a range. Following Materna et al. (2024, Text S3),
+# PREPUB: stress drop = mu d / x with d the slip and x half the depth extent. For the
+# PREPUB: distributed model (x = half the depth holding 95% of its potency) and for
+# PREPUB: every uniform-slip depth D (x = D / 2), mu is the SFCVM v26.0 rigidity
+# PREPUB: weighted by that model's own potency (as 07a_uniform_model), and d is the mean
+# PREPUB: band-stack event slip of notebook 04. Written to
+# PREPUB: `stress_drop_inputs.csv`; no registry rows.
 
 # %%
 ## [17b]
+# PREPUB-START: superseded Materna-style stress drop (the paper uses 08a [15b]); remove the whole cell
 sfcvm = pd.read_csv(os.path.join(out_dir, "sfcvm_creep_section_profiles_v26-0.csv"))
 mu_by_depth = sfcvm.groupby("depth_m").mu_gpa.median()
 registry = pd.read_csv(common_paths["registry_csv"], dtype=str).groupby("key").last()
@@ -1046,7 +1238,7 @@ stress_rows.append(dict(model="distributed (the model)", depth_extent_km=depth95
                         stress_drop_kpa=mu_dist * 1e9 * d_band_mm * 1e-3 / (depth95_km * 500) / 1e3, dchi2=np.nan))
 scan_table = slip_table(scan_fault)
 in_window_scan = np.clip(np.minimum(scan_table.km_pp - scan_km[0], scan_km[1] - scan_table.km_pp) / scan_taper + 1, 0, 1).values
-for r in record_scan.itertuples():
+for r in model_mesh_scan.itertuples():
     shape = in_window_scan * (scan_table.z_c.values < r.D_km)
     if shape.sum() == 0:
         continue
@@ -1059,20 +1251,25 @@ accepted = stress_inputs[(stress_inputs.dchi2 <= 4) | stress_inputs.dchi2.isna()
 print(accepted.round(2).to_string(index=False))
 print(f"ballpark (distributed model and the accepted uniform-slip depths): "
       f"{accepted.stress_drop_kpa.min():.0f}-{accepted.stress_drop_kpa.max():.0f} kPa")
+# PREPUB-END
 
 # %% [markdown]
 # ## [18] Registry -- the sensitivity numbers
+#
+# The stats sidecar `07_tests_final_stats.txt` and the `07b_*` registry keys.
 
 # %%
 ## [18]
-by_family = {family: group for family, group in suite.groupby("family")}
-tie_rows = by_family["tie"].set_index("tie_km")
+by_family = {}
+for family, group in suite.groupby("family"):
+    by_family[family] = group
+tie_family = by_family["tie"].set_index("tie_km")
 sidecar = REG.sidecar("07_tests_final", [
     f"baseline: fault-parallel, smooth12, dip {dip_deg}, sigma {sigma_model}, lambda {lam_xz}, tie {tie_depth_km} km: "
     f"Mw {baseline_row['Mw']:.3f}, rms {baseline_row['rms_mm']:.3f} mm, surface {baseline_row['surface_pct']:.0f}%",
     "tie depth: " + "; ".join(f"{t * 1000:.0f} m Mw {r.Mw:.3f} peak {r.peak_slip_mm:.1f} mm at {r.peak_depth_m:.0f} m "
-                              f"surface {r.surface_pct:.0f}%" for t, r in tie_rows.iterrows()),
-    f"depth scan (smooth12): best {record_scan.loc[record_scan.chi2.idxmin(), 'D_km']:g} km, "
+                              f"surface {r.surface_pct:.0f}%" for t, r in tie_family.iterrows()),
+    f"depth scan (smooth12): best {model_mesh_scan.loc[model_mesh_scan.chi2.idxmin(), 'D_km']:g} km, "
     f"bracket {d_shallow:g}-{d_deep:g} km, Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f}",
     "depth scan variants: " + "; ".join(
         f"{tag} {scan[scan.dchi2 <= 4].D_km.min():g}-{scan[scan.dchi2 <= 4].D_km.max():g} km" for tag, scan in scans.items()),
@@ -1084,10 +1281,10 @@ sidecar = REG.sidecar("07_tests_final", [
                                         for r in mesh_corners.itertuples()),
 ])
 REG.register("07b_n_samples", baseline_row["n_samples"], "count", 0, where="M7", cell="baseline", sidecar=sidecar)
-for tie, r in tie_rows.iterrows():
+for tie, r in tie_family.iterrows():
     REG.register(f"07b_tie{tie * 1000:.0f}m_mw", r.Mw, "Mw", 2, where="M7", cell="tie", sidecar=sidecar)
     REG.register(f"07b_tie{tie * 1000:.0f}m_surface_pct", r.surface_pct, "%", 0, where="M7", cell="tie", sidecar=sidecar)
-REG.register("07b_depth_best_km", record_scan.loc[record_scan.chi2.idxmin(), "D_km"], "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
+REG.register("07b_depth_best_km", model_mesh_scan.loc[model_mesh_scan.chi2.idxmin(), "D_km"], "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
 REG.register("07b_depth_lo_km", d_shallow, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
 REG.register("07b_depth_hi_km", d_deep, "km", 2, where="M7", cell="depth-scan", sidecar=sidecar)
 REG.register("07b_depth_mw_lo", bracket.Mw.min(), "Mw", 2, where="M7", cell="depth-scan", sidecar=sidecar)

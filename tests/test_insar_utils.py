@@ -337,3 +337,75 @@ def test_gaussian_smooth_km_constant_gaps_and_width():
     spike = np.zeros(200); spike[100] = 1.0
     w = utils.gaussian_smooth_km(spike, lats, 0.15)
     assert np.isclose(w.sum(), 1.0, atol=1e-6) and np.isclose(np.sqrt(np.sum(w * (np.arange(200) - 100) ** 2)) * 0.1, 0.15, atol=0.01)
+
+
+def test_daily_creepmeter_drops_listed_glitches_and_zeroes():
+    """The shared daily reader of notebooks 04 and 05: starts at zero, drops exactly the listed glitch days
+    (no automatic filter), keeps a creep step, and fails on a listed day that is not in the record."""
+    import os
+    import tempfile
+    rows = []
+    for day in range(1, 61):                                   # 60 days of 10-minute samples, 0.1 mm/day creep
+        for sample in range(144):
+            doy = day + sample / 144.0
+            slip = 100.0 + 0.1 * doy + 4.0 * (doy >= 40.5)        # and a 4 mm creep step half way through day 40
+            rows.append((2018, doy, slip))
+    rows[144 * 30] = (2018, 31.0, -338.0)                      # a CPP1-style spike on record day 31
+    day_31 = "2018-02-01"                                      # record day 31 in the reader's convention: 1 January + 31 days
+    with tempfile.TemporaryDirectory() as folder:
+        with open(os.path.join(folder, "test.10min"), "w") as f:
+            for year, doy, slip in rows:
+                f.write(f"{year} {doy:.6f} {slip:.3f}\n")
+        dates, slip = utils.daily_creepmeter(folder, "TEST", 2018.0, 2019.0, [("TEST", day_31, day_31, "spike")])
+        assert slip[0] == 0.0
+        assert len(dates) == 59                                # only the listed day is dropped
+        assert not np.any(np.isclose(dates * 365, 31.0, atol=0.5))
+        assert np.all(np.diff(dates) > 0)
+        assert np.isclose(slip[-1], 0.1 * 59 + 4.0, atol=0.01)    # the creep and the whole step are kept
+        unlisted_dates, _ = utils.daily_creepmeter(folder, "TEST", 2018.0, 2019.0, [("OTHER", day_31, day_31, "spike")])
+        assert len(unlisted_dates) == 60                       # another instrument's glitch does not touch this one
+        with pytest.raises(AssertionError):                    # a listed day missing from the record fails loud
+            utils.daily_creepmeter(folder, "TEST", 2018.0, 2019.0, [("TEST", "2018-06-01", "2018-06-01", "gap")])
+
+
+def test_strike_frame_origin_axes_and_roundtrip():
+    """u = 0 at the northern end of the trace (Point Pinole), u grows along the strike bearing, v toward
+    the north-east; to_uv and uv_to_lonlat invert each other."""
+    strike_deg = 144.0
+    trace_lat = np.array([37.50, 37.60, 37.70, 37.80])          # a short trace running NW to SE, listed south to north
+    trace_lon = np.array([-121.95, -122.02, -122.10, -122.17])
+    frame = utils.strike_frame(32610, strike_deg, trace_lon, trace_lat)
+    u0, v0 = utils.to_uv(frame, trace_lon[-1], trace_lat[-1])
+    assert abs(float(u0)) < 1e-9                                # the northern end is the origin of u
+    u_south, _ = utils.to_uv(frame, trace_lon[0], trace_lat[0])
+    assert float(u_south) > 0                                   # u increases to the south-east
+    lon_1, lat_1 = utils.uv_to_lonlat(frame, 10.0, 0.0)         # 10 km along strike
+    lon_e, lat_e = utils.uv_to_lonlat(frame, 10.0, 2.0)         # then 2 km across: north-east, the east side
+    assert lat_e > lat_1 and lon_e > lon_1
+    u_list = np.array([0.0, 5.0, 33.3, -3.0])
+    v_list = np.array([0.0, -2.0, 7.5, 10.9])
+    lon_r, lat_r = utils.uv_to_lonlat(frame, u_list, v_list)
+    u_back, v_back = utils.to_uv(frame, lon_r, lat_r)
+    assert np.allclose(u_back, u_list, atol=1e-6) and np.allclose(v_back, v_list, atol=1e-6)
+
+
+def test_strike_frame_matches_the_notebook_construction():
+    """The shared frame gives the same numbers as the construction 04 and 05 used to write out inline."""
+    import pyproj
+    strike_deg = 144.0
+    trace_lat = np.array([37.50, 37.60, 37.70, 37.80])
+    trace_lon = np.array([-121.95, -122.02, -122.10, -122.17])
+    utm = pyproj.Transformer.from_crs(4326, 32610, always_xy=True)
+    strike_rad = np.deg2rad(strike_deg)
+    along_e, along_n = np.sin(strike_rad), np.cos(strike_rad)
+    cross_e, cross_n = -np.cos(strike_rad), np.sin(strike_rad)
+    trace_e, trace_n = utm.transform(trace_lon, trace_lat)
+    u_origin = float((trace_e * along_e + trace_n * along_n)[int(np.argmax(trace_lat))])
+    v_origin = float(np.median(trace_e * cross_e + trace_n * cross_n))
+    lon, lat = np.array([-122.05, -121.99]), np.array([37.65, 37.55])
+    easting, northing = utm.transform(lon, lat)
+    u_inline = ((easting * along_e + northing * along_n) - u_origin) / 1e3
+    v_inline = ((easting * cross_e + northing * cross_n) - v_origin) / 1e3
+    frame = utils.strike_frame(32610, strike_deg, trace_lon, trace_lat)
+    u_shared, v_shared = utils.to_uv(frame, lon, lat)
+    assert np.allclose(u_shared, u_inline, atol=1e-12) and np.allclose(v_shared, v_inline, atol=1e-12)

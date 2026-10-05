@@ -11,7 +11,7 @@
 # ---
 
 # %% [markdown]
-# # 06 The event field: per-pixel step maps, the mean event and its cross-fault shape
+# # [1] 06 The event field: per-pixel step maps, the mean event and its cross-fault shape
 #
 # ```
 # Created on Mon Sep 21 2026
@@ -22,52 +22,66 @@
 # **What this notebook does.** Notebook 04 measured the events on cross-fault
 # differences (east minus west medians). Here we map them: every pixel in a box
 # around Tule Pond gets its own time-function fit, so we see the SHAPE of each
-# event across the fault, not just its size. Notebook 07 inverts the mean event
-# for slip at depth; `07c_fig2` draws Fig 2 from both.
+# event across the fault, not just its size. Notebooks `07a_uniform_model` and
+# `08a_3d_model` invert the mean event for slip at depth; `07c_fig2` draws Fig 2
+# from this notebook's maps and profiles and the slip model. Each event's step is
+# placed at 04's step epoch, the start of its onset window (`onset_lo`).
 #
 # 1. **Per-pixel model** on each track: MintPy's `timeseries2velocity` model
 #    (intercept + linear rate + annual cycle + one Heaviside step per event, step
 #    dates from `creep_events.csv`), solved per pixel with NaN-aware least
 #    squares because `timeseries2velocity.py` refuses records with gaps.
-# 2. **One data correction**, an explicit literal below: the descending
-#    burst-boundary offsets (measured per event and removed). The old chain also
-#    left the 2023 event out of the mean; here every event is kept (Dani,
-#    2026-09-21: five events unless it is much noisier, and it is not).
+# 2. **One data correction**: the burst-boundary offset (measured per event
+#    and removed) across the one burst seam each track has in the box, placed
+#    from the OPERA CSLC static bounding polygons (cell [4]); both tracks are
+#    corrected the same way (author, 2026-10-05). Every event is
+#    kept in the mean (Dani, 2026-09-21: five events unless it is much noisier,
+#    and it is not).
+# PREPUB: The old chain also left the 2023 event out of the mean.
 # 3. **Mean event** = mean of the five step maps per track; written in the
-#    layout notebook 07 (CSI) reads.
+#    layout `07a_uniform_model` (CSI) reads.
 # 4. **Decomposition** of the inter-event rate and the mean event into
 #    fault-parallel and vertical with MintPy's `asc_desc2horz_vert`, exactly as
-#    notebook 02 did for the whole fault, here with the local strike of the box.
+#    notebook 02 did for the whole fault, here with the local strike of the
+#    creep-event section.
 # 5. **Profiles** X-X' (the Tule Pond peak) and Y-Y' (CFW1) across the
 #    fault-parallel maps (the numbers the text quotes) and across each track's
-#    LOS maps: the pixels and the model-free near-fault step (east band minus
-#    west band, the aperture of notebook 04). No fit here: the model is
-#    notebook 07.
+#    LOS maps: the pixels, the model-free near-fault step (east band minus
+#    west band, the aperture of notebook 04) and the near-fault amplitude of
+#    each block against its own far field. No fit here: the models are
+#    `07a_uniform_model` and `08a_3d_model`.
 # 6. **Hand-off to Fig 2**: the maps and profiles, one file, drawn by
 #    `07c_fig2` after the slip model.
 #
-# Ported from `Hayward_DISP-S1/modelling/m01_step_maps.py` (steps 1 to 4),
-# `hayward_creep/analysis/event_map_profiles.py` (decomposition, profiles) and
-# `hayward_creep/plotting/plot_tulepond_secular_profiles.py` (fits, Fig 2).
+# PREPUB: Ported from `Hayward_DISP-S1/modelling/m01_step_maps.py` (steps 1 to 4),
+# PREPUB: `hayward_creep/analysis/event_map_profiles.py` (decomposition, profiles) and
+# PREPUB: `hayward_creep/plotting/plot_tulepond_secular_profiles.py` (profile machinery; Fig 2 itself is now in `07c_fig2`).
 #
-# **Inputs**: `timeseries_tropo.h5`, `maskTempCoh_07.h5`, `geometryGeo.h5` per
-# track; `04_event_detection/creep_events.csv` and `section_lengths.csv`;
-# `hayward_fault_profiles.csv`.
+# **Inputs**: `timeseries_tropo.h5`, `geometryGeo.h5`, `maskTempCoh_07.h5` (the
+# fit mask, `coh_timeseries`) and `maskTempCoh_09.h5` (the map mask,
+# `coh_maps`) per track; `04_event_detection/creep_events.csv` and
+# `section_lengths.csv`; `hayward_fault_profiles.csv`; the OPERA
+# `CSLC-S1-STATIC` files of the bursts covering the box (`static_dir` per track,
+# their bounding polygons place the burst seams).
 #
 # **Outputs** (`outputs/06_event_field_geometry/`): `tulepond_steps_<track>.h5`
-# (every per-event LOS step map, raw and burst-fixed, mean, scatter, rate,
-# geometry), `csi_mean_event_<track>.npz` (07's input), `fp_maps.npz`
-# (fault-parallel and vertical rate and mean event), `profile_<XX|YY>_<field>[_<track>].csv`,
-# `fig2_inputs.npz` (for `07c_fig2`), `06_event_field_stats.txt`,
+# (every per-event LOS step map, raw and burst-fixed, each tagged with its track
+# `step_date` and 04's `step_epoch`; mean, scatter, rate, geometry), `csi_mean_event_<track>.npz` (07a's input), `fp_maps.npz`
+# (fault-parallel and vertical rate and mean event; read by 07a, 07b, 08a),
+# `profile_<XX|YY>_<field>[_<track>].csv`, `burst_offsets.csv`,
+# `fig2_inputs.npz` (for `07c_fig2`, also read by 07a and 08a),
+# `timefunc_fit_<track>.npz` (the cached per-pixel fit), `06_event_field_stats.txt`,
 # registry rows `06_*`.
 #
-# **Figures**: the step-map grid (supplement).
+# **Figures**: `figS_event_step_maps_coh0.9` (.png and .pdf, the step-map grid, supplement).
 #
 # **What to check.** Near-fault LOS steps of opposite sign on the two tracks
-# (ascending negative, descending positive, ratio near the geometric -0.6);
-# burst offsets under 1 mm; the mean event's fault-parallel profile an arctangent that decays
-# within a few hundred metres at X-X' and nothing at Y-Y'; the vertical
-# component near zero.
+# (ascending negative, descending positive); the per-event asc/desc ratio is
+# printed against the geometric -0.56 and ranges about -0.2 to -0.65 (three
+# events are pulled toward zero by an east-block signal on ascending); burst
+# offsets well under 1 mm on both tracks (the assert stops at 2 mm);
+# the mean event's fault-parallel profile an arctangent that decays within a
+# few hundred metres at X-X' and ~1 mm at Y-Y'; the vertical component near zero.
 #
 # **Apertures.** Every near-fault step here is median(east band) minus
 # median(west band) with the SAME band as notebook 04 (`dist_min` to
@@ -77,8 +91,10 @@
 # step at the trace is normal.
 
 # %%
+# [2]
+import glob
 import os
-import warnings
+import re
 
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, insar_dic_list, box_lonlat,
@@ -89,17 +105,23 @@ import pandas as pd
 import pyproj
 import h5py
 import pygmt
+import shapely
 from scipy.spatial import cKDTree
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
-utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 from mintpy.utils import time_func                                    # the design matrix timeseries2velocity uses
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert              # THE decomposition, MintPy's own
 
 # %% [markdown]
-# ## Constants
+# ## [3] Paths and parameters
+#
+# Every number the notebook uses, with what it is; and the switch for running
+# from the saved per-track products on a machine without the MintPy stacks.
 
 # %%
+# [4]
+# Burst seams: until 2026-10-05 two descending lines picked by eye on the per-date increment maps (2026-08-19)
+# were typed here; the second, at 37.502 N, was an empirical discontinuity with no burst edge under it (the next
+# edge south is at 37.37 N) and was dropped (author decision 2026-10-05). The seams are now derived from the
+# CSLC static bounding polygons (burst_seams below), one per track, and both are corrected (author, 2026-10-05).
 notebook = "06_event_field_geometry"
 out_dir = paths_out[notebook]
 fig_dir = common_paths["fig_dir"]
@@ -111,249 +133,423 @@ periodic = [1.0]                # annual cycle in the per-pixel model (years)
 min_obs = 60                    # a pixel needs this many finite epochs to be fitted
 geom_step = 20                  # MintPy's decomposition window (pixels), as notebook 02
 
-# Descending burst boundaries in the box (found on the per-date increment maps,
-# 2026-08-19; RESULTS.md section 2): lat = b + s * (lon + 122), s = -0.14 deg/deg,
-# perpendicular to the descending track as burst boundaries are. The offset
-# across each is measured per event in +/- burst_band_deg bands (excluding
-# +/- burst_far_m around the trace) and removed as a step, holding the north
-# side (which contains the reference pixel ZOA1) fixed. Ascending has none.
-burst_lines = {"descending": [(-0.14, 37.536), (-0.14, 37.502)]}
+# Burst seams in the box, from the product geometry: the OPERA CSLC-S1-STATIC bounding polygon
+# ('identification/bounding_polygon', WKT lon/lat) of every burst covering the box (`static_dir` per track).
+# A seam is the shared edge of two consecutive bursts of one subswath (the polygons tile the frame without
+# overlap, asserted), kept as the straight line through its latitudes at the box's west and east longitudes,
+# lat = b + s * (lon + 122) (the edge departs from that line by less than burst_line_tol_deg, asserted).
+# Every burst seam in the box is corrected on both tracks (author decision 2026-10-05): the offset across it
+# is measured per event in +/- burst_band_deg bands (excluding +/- burst_far_m around the trace) and removed
+# as a step. The side held fixed is the one holding most of the track's valid (fit-mask) pixels in the box,
+# so the smaller side is the one that moves (cell [14]; the datum of these maps is the box median, not ZOA1).
 burst_band_deg = 0.0015
 burst_far_m = 400.0
+burst_line_tol_deg = 0.0003     # ~30 m, one pixel: the seam's polygon edge must be this close to the straight line
+burst_min_pixels = 200          # finite pixels each band needs, every event: a median of fewer is not an offset
+                                # (the ascending seam runs along the box's northern edge, so its north band is clipped)
+burst_corrected = ("ascending", "descending")
 
-# Events left out of the mean (onset years, matched to 0.02 yr). The old chain
-# excluded 2023.08 (RESULTS.md section 2); with the five-event mean no noisier
-# than four (scatter 0.89 vs 0.95 mm about the running median at X-X'), all five
-# are kept. Set [2023.08] to reproduce the old product; the checks adapt.
+
+def burst_seams(static_dir, box):
+    """Seams between consecutive bursts of one subswath crossing `box` (W, S, E, N), from the CSLC-S1-STATIC
+    bounding polygons in `static_dir`. Returns the seams (burst ids north / south, slope and intercept of
+    lat = intercept + slope * (lon + 122), latitude at the box's west and east longitudes) and the static
+    files of the bursts covering the box."""
+    static_files = sorted(glob.glob(os.path.join(static_dir, "OPERA_L2_CSLC-S1-STATIC_*.h5")))
+    assert static_files, f"no CSLC-S1-STATIC files in {static_dir} (see 'static_dir' in TulePond_filepaths)"
+    box_polygon = shapely.box(*box)
+    polygons = {}
+    box_files = []
+    for static_file in static_files:
+        burst_id = re.search(r"STATIC_(T\d{3}-\d{6}-IW[1-3])_", os.path.basename(static_file)).group(1)
+        assert burst_id not in polygons, f"two static files for burst {burst_id} in {static_dir}"
+        with h5py.File(static_file, "r") as static_h5:
+            polygon = shapely.from_wkt(static_h5["identification/bounding_polygon"][()].decode())
+        if polygon.intersects(box_polygon):
+            polygons[burst_id] = polygon
+            box_files.append(static_file)
+    assert polygons, f"no burst in {static_dir} covers the box {box}"
+    seams = []
+    for burst_id in sorted(polygons):
+        track, burst_number, subswath = burst_id.split("-")
+        next_id = f"{track}-{int(burst_number) + 1:06d}-{subswath}"
+        if next_id not in polygons:
+            continue
+        pair = (burst_id, next_id)
+        assert polygons[burst_id].intersection(polygons[next_id]).area < 1e-10, f"bursts {pair} overlap"
+        shared_edge = shapely.line_merge(polygons[burst_id].boundary.intersection(polygons[next_id].boundary))
+        assert shared_edge.geom_type == "LineString" and shared_edge.length > 0, f"bursts {pair} share no single edge"
+        if not shared_edge.intersects(box_polygon):
+            continue
+        edge_lon, edge_lat = np.array(shared_edge.coords).T
+        order = np.argsort(edge_lon)
+        edge_lon = edge_lon[order]
+        edge_lat = edge_lat[order]
+        assert edge_lon[0] < box[0] and edge_lon[-1] > box[2], f"the {pair} seam does not span the box west to east"
+        lat_west, lat_east = np.interp([box[0], box[2]], edge_lon, edge_lat)
+        slope = (lat_east - lat_west) / (box[2] - box[0])
+        intercept = lat_west - slope * (box[0] + 122.0)
+        in_box = (edge_lon > box[0]) & (edge_lon < box[2])
+        departure = np.abs(edge_lat[in_box] - (intercept + slope * (edge_lon[in_box] + 122.0))).max(initial=0.0)
+        assert departure < burst_line_tol_deg, f"the {pair} seam is not straight across the box ({departure:.5f} deg)"
+        north_id = max(pair, key=lambda b: polygons[b].centroid.y)
+        south_id = min(pair, key=lambda b: polygons[b].centroid.y)
+        seams.append(dict(north=north_id, south=south_id, slope=float(slope), intercept=float(intercept),
+                          lat_west=float(lat_west), lat_east=float(lat_east), departure_deg=float(departure)))
+    return seams, box_files
+
+
+burst_seam_list = {}
+burst_static_files = []
+for dic in insar_dic_list:
+    orbit = dic["ORBIT_DIRECTION"]
+    burst_seam_list[orbit], seam_files = burst_seams(dic["static_dir"], box_lonlat)
+    burst_static_files += seam_files
+    for seam in burst_seam_list[orbit]:
+        print(f"[{orbit}] burst seam {seam['north']} / {seam['south']}: lat {seam['lat_west']:.4f} at {box_lonlat[0]} E, "
+              f"{seam['lat_east']:.4f} at {box_lonlat[2]} E (slope {seam['slope']:+.4f} deg/deg); "
+              f"corrected: {orbit in burst_corrected}")
+for orbit in ("ascending", "descending"):
+    assert len(burst_seam_list[orbit]) == 1, f"expected one {orbit} burst seam in the box, found {burst_seam_list[orbit]}"
+des_seam = burst_seam_list["descending"][0]
+asc_seam = burst_seam_list["ascending"][0]
+# sanity checks against the 2026-10-05 checks of the polygons by hand: descending 37.5384 N at -121.97 E;
+# ascending T035-073249-IW2 / T035-073250-IW2, 37.6149 N at -122.10 E to 37.6504 N at -121.84 E (along the box's
+# northern edge, leaving through it at ~-121.84 E)
+assert abs(des_seam["intercept"] + des_seam["slope"] * (-121.97 + 122.0) - 37.54) < 0.01, f"descending seam moved: {des_seam}"
+assert abs(asc_seam["lat_west"] - 37.6149) < 0.01 and abs(asc_seam["lat_east"] - 37.6504) < 0.01, f"ascending seam moved: {asc_seam}"
+zoa1_seam_lat = des_seam["intercept"] + des_seam["slope"] * (common_paths["ref_lon"] + 122.0)
+print(f"ZOA1 ({common_paths['ref_lat']} N) is {abs(common_paths['ref_lat'] - zoa1_seam_lat) * 111.2e3:.0f} m "
+      f"{'north' if common_paths['ref_lat'] > zoa1_seam_lat else 'south'} of the descending seam")
+burst_lines = {}                # (slope, intercept) of each corrected seam, the form cells [14] and [26] read
+for orbit in burst_corrected:
+    burst_lines[orbit] = [(seam["slope"], seam["intercept"]) for seam in burst_seam_list[orbit]]
+
+# Events left out of the mean (step epochs, 04's onset_lo, matched to 0.02 yr). With the
+# five-event mean no noisier than four (scatter 0.89 vs 0.95 mm about the
+# running median at X-X'), all five are kept; the checks adapt to a non-empty list.
+# PREPUB-START: history of the old chain
+# The old chain excluded 2023.08 (RESULTS.md section 2); set [2023.08] to reproduce the old product.
+# PREPUB-END
 exclude_events = []
+exclude_match_yr = 0.02         # an event is excluded if its step epoch is within this of a listed year
 
 # profiles across the fault-parallel maps, perpendicular to the local strike
 profile_pts = {"X": (-121.97816, 37.56270),      # X-X': the trace point 58.5 km from Point Pinole (Dani, 2026-09-23, from a 200 m sweep of the event profiles: clean in both tracks, inside the 90% band)
                "Y": (-121.95233, 37.53214)}      # Y-Y': CFW1
 cross_m = 2000.0                # +/- profile length (2 km: beyond that the east block is noisy)
 swath_m = 150.0                 # +/- along-strike half-width
-median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
 coh_maps = 0.9                  # temporal-coherence mask for the per-pixel maps and the decomposed field the slip model inverts
                                 # (Dani 2026-09-28: the 0.7 maps are too noisy); the crossings and the LOS checks stay at coh_timeseries
 far_m = (1500.0, 2000.0)        # same-block far field the near-fault amplitude of each block is measured against
-median_col, grey, ann_col = "#A50F15", "gray55", "black"       # per-side running median (dark red); pixels; block annotation
-rng_blk = np.random.default_rng(20260923)
+block_seed = 20260923           # each block-amplitude bootstrap starts its own generator from this seed
+n_boot_blocks = 2000            # bootstrap resamples for the block amplitudes
 event_far_m = 1500.0            # the event profile is zeroed on |x| >= this (far field, both blocks)
+rate_zero_m = 1000.0            # the rate profile is zeroed on the mid-point of the two block medians within this of the trace
+min_far_pixels = 20             # the event profile needs this many far-field pixels to be zeroed
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault step band, the aperture of notebook 04 (m)
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
 
-# saved-products mode (2026-09-28): on a machine without the MintPy stacks,
+# Saved-products mode (2026-09-28): on a machine without the MintPy stacks,
 # the per-track products this notebook wrote (`tulepond_steps_<track>.h5`:
 # every step map, the rate, the geometry, the mask) and `burst_offsets.csv`
 # stand in for the MintPy files; the time-function fit and the burst fix
-# are not redone. (The check that this path reproduces the MintPy-mode
-# `fp_maps.npz` exactly is kept in drafts/06/strike143_reference_check.py.)
-saved_steps = {o: os.path.join(out_dir, f"tulepond_steps_{o}.h5") for o in ("ascending", "descending")}
-from_saved_steps = not all(os.path.exists(dic["ts_file"]) for dic in insar_dic_list)
+# are not redone. Normal runs use the stacks: set True only on such a machine.
+# PREPUB-START: a check kept outside the notebook
+# (The check that this path reproduces the MintPy-mode `fp_maps.npz` exactly is kept in drafts/06/strike143_reference_check.py.)
+# PREPUB-END
+from_saved_steps = False
+saved_steps = {}
+for orbit in ("ascending", "descending"):
+    saved_steps[orbit] = os.path.join(out_dir, f"tulepond_steps_{orbit}.h5")
 if from_saved_steps:
-    assert all(os.path.exists(f) for f in saved_steps.values()), "no MintPy stacks and no saved step products"
-    print("saved-products mode: reading tulepond_steps_<track>.h5 (MintPy stacks not on this machine)")
+    for orbit, saved_file in saved_steps.items():
+        assert os.path.exists(saved_file), f"saved-products mode, but {saved_file} is missing"
+    print("saved-products mode: reading tulepond_steps_<track>.h5 (MintPy stacks not used)")
+else:
+    for dic in insar_dic_list:
+        assert os.path.exists(dic["ts_file"]), (f"MintPy stack missing: {dic['ts_file']}; "
+                                                f"set from_saved_steps = True on a machine without the stacks")
 
+map_mask_files = []
+for dic in insar_dic_list:
+    map_mask_files.append(dic["mask_file"][coh_maps])
 REG = utils.Registry(notebook, common_paths, repo_dir)
 if from_saved_steps:
     REG.inputs(events_file, lengths_file, common_paths["fault_profiles"],
-               *saved_steps.values(), os.path.join(out_dir, "burst_offsets.csv"))
+               *saved_steps.values(), os.path.join(out_dir, "burst_offsets.csv"), *map_mask_files, *burst_static_files)
 else:
-    REG.inputs(events_file, lengths_file, common_paths["fault_profiles"],
-               *[dic[k] for dic in insar_dic_list for k in ("ts_file", "geo_file")],
-               *[dic["mask_file"][coh_timeseries] for dic in insar_dic_list])
+    stack_files = []
+    for dic in insar_dic_list:
+        stack_files.append(dic["ts_file"])
+        stack_files.append(dic["geo_file"])
+        stack_files.append(dic["mask_file"][coh_timeseries])
+    REG.inputs(events_file, lengths_file, common_paths["fault_profiles"], *stack_files, *map_mask_files, *burst_static_files)
+
+
+def is_excluded(step_epoch):
+    """True if this event's step epoch is within exclude_match_yr of a year listed in exclude_events."""
+    for excluded_yr in exclude_events:
+        if abs(step_epoch - excluded_yr) < exclude_match_yr:
+            return True
+    return False
 
 # %% [markdown]
-# ## LOAD: the events, the trace and the box
+# ## [5] LOAD: the events, the trace and the box
 #
 # The box is `box_lonlat` (W, S, E, N) converted to a row/column slice of the
 # product grid. Both tracks are on the SAME grid (asserted), so one slice
-# serves both and the two LOS maps line up pixel for pixel.
+# serves both and the two LOS maps line up pixel for pixel. The decomposition
+# strike is the mean local strike of the creep-event section of notebook 04.
 
 # %%
-ev = pd.read_csv(events_file)
-tp = ev[ev.segment == "TULEPOND"].sort_values("onset_yr").reset_index(drop=True)
-onsets = tp.onset_yr.to_numpy(float)
-print(f"{len(tp)} Tule Pond events: {onsets}")
+# [6]
+events = pd.read_csv(events_file)
+tulepond_events = events[events.segment == "TULEPOND"].sort_values("onset_lo").reset_index(drop=True)
+# 04's step is H(t > step epoch), the step epoch being the last acquisition before the event, which is the
+# start of the onset window: onset_lo
+step_epochs = tulepond_events.onset_lo.to_numpy(float)
+print(f"{len(tulepond_events)} Tule Pond events, step epochs (onset_lo): {step_epochs}")
 
-prof = pd.read_csv(common_paths["fault_profiles"])
-prof["az_smooth"] = prof["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()
+x_fault = pd.read_csv(common_paths["fault_profiles"])
+x_fault["az_smooth"] = x_fault["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()
 lengths = pd.read_csv(lengths_file).set_index("name")
 band = lengths.loc["tulepond_band90"]          # the band Fig 1 stacks (Dani, 2026-09-21: the 90% band)
-in_box = (prof.ft_lat >= box_lonlat[1]) & (prof.ft_lat <= box_lonlat[3])
-strike_box = float(np.nanmean(prof.loc[in_box, "az_smooth"] + 90.0))  # mean strike of the whole map box (used until 2026-09-28)
+in_box = (x_fault.ft_lat >= box_lonlat[1]) & (x_fault.ft_lat <= box_lonlat[3])
+strike_box = float(np.nanmean(x_fault.loc[in_box, "az_smooth"] + 90.0))  # mean strike of the whole map box, printed for comparison
 # the decomposition strike is the mean local strike of the SSE section (the
 # creep-event section from 04, Dani 2026-09-28): the fault-parallel direction
 # of the slipping patch, not of the whole 20 km map box
 section = lengths.loc["tulepond_creep_length"]
-in_section = (prof.ft_lat >= section.lat_lo) & (prof.ft_lat <= section.lat_hi)
-strike = float(np.nanmean(prof.loc[in_section, "az_smooth"] + 90.0))
+in_section = (x_fault.ft_lat >= section.lat_lo) & (x_fault.ft_lat <= section.lat_hi)
+strike = float(np.nanmean(x_fault.loc[in_section, "az_smooth"] + 90.0))
 print(f"strike: SSE section (km {section.km_lo:.1f}-{section.km_hi:.1f}, {in_section.sum()} crossings) {strike:.2f} deg; "
       f"whole box {strike_box:.2f} deg (whole-fault mean in notebook 02: ~144)")
 assert 130 < strike < 160
 
-grid_files = list(saved_steps.values()) if from_saved_steps else [dic["ts_file"] for dic in insar_dic_list]
+if from_saved_steps:
+    grid_files = list(saved_steps.values())
+else:
+    grid_files = []
+    for dic in insar_dic_list:
+        grid_files.append(dic["ts_file"])
 attrs = utils.load_h5_attrs(grid_files[0])     # saved products carry the box grid: offsets 0, full width
-for f_grid_ in grid_files[1:]:
-    a2 = utils.load_h5_attrs(f_grid_)
-    for k in ("X_FIRST", "Y_FIRST", "X_STEP", "Y_STEP", "EPSG", "WIDTH", "LENGTH"):
-        assert attrs[k] == a2[k], f"tracks are on different grids ({k}): {attrs[k]} vs {a2[k]}"
+for grid_file in grid_files[1:]:
+    other_attrs = utils.load_h5_attrs(grid_file)
+    for attr_name in ("X_FIRST", "Y_FIRST", "X_STEP", "Y_STEP", "EPSG", "WIDTH", "LENGTH"):
+        assert attrs[attr_name] == other_attrs[attr_name], f"tracks are on different grids ({attr_name}): {attrs[attr_name]} vs {other_attrs[attr_name]}"
 epsg = int(attrs["EPSG"])
 to_utm = pyproj.Transformer.from_crs(4326, epsg, always_xy=True)
 to_ll = pyproj.Transformer.from_crs(epsg, 4326, always_xy=True)
 
-W_, S_, E_, N_ = box_lonlat
-xs_, ys_ = to_utm.transform([W_, W_, E_, E_], [S_, N_, S_, N_])
-x0, dx, y0, dy = (float(attrs[k]) for k in ("X_FIRST", "X_STEP", "Y_FIRST", "Y_STEP"))
-c0, c1 = max(int(np.floor((min(xs_) - x0) / dx)), 0), min(int(np.ceil((max(xs_) - x0) / dx)), int(attrs["WIDTH"]))
-r0, r1 = max(int(np.floor((max(ys_) - y0) / dy)), 0), min(int(np.ceil((min(ys_) - y0) / dy)), int(attrs["LENGTH"]))
-nr, nc = r1 - r0, c1 - c0
+# the box as a row/column slice of the product grid
+box_west, box_south, box_east, box_north = box_lonlat
+box_x, box_y = to_utm.transform([box_west, box_west, box_east, box_east], [box_south, box_north, box_south, box_north])
+x0 = float(attrs["X_FIRST"])
+dx = float(attrs["X_STEP"])
+y0 = float(attrs["Y_FIRST"])
+dy = float(attrs["Y_STEP"])
+c0 = max(int(np.floor((min(box_x) - x0) / dx)), 0)
+c1 = min(int(np.ceil((max(box_x) - x0) / dx)), int(attrs["WIDTH"]))
+r0 = max(int(np.floor((max(box_y) - y0) / dy)), 0)                  # dy < 0: the northern edge is the first row
+r1 = min(int(np.ceil((min(box_y) - y0) / dy)), int(attrs["LENGTH"]))
+nr = r1 - r0
+nc = c1 - c0
 print(f"box rows {r0}:{r1} cols {c0}:{c1} = {nr} x {nc} pixels of {abs(dx):.0f} m")
 
 # pixel-centre coordinates of the box
 Xg, Yg = np.meshgrid(x0 + (np.arange(c0, c1) + 0.5) * dx, y0 + (np.arange(r0, r1) + 0.5) * dy)
 lon_g, lat_g = to_ll.transform(Xg, Yg)
 # trace in UTM and the signed cross-fault distance of every pixel (+ = east / north-east side)
-fx, fy = to_utm.transform(prof.ft_lon.values, prof.ft_lat.values)
-tree = cKDTree(np.c_[fx, fy])
-d_trace, j_near = tree.query(np.c_[Xg.ravel(), Yg.ravel()])
-nrm = np.array([np.sin(np.deg2rad(strike - 90)), np.cos(np.deg2rad(strike - 90))])   # unit normal: strike - 90 is the NE side (+ east); strike + 90 would be SW
-d_signed = ((np.c_[Xg.ravel(), Yg.ravel()] - np.c_[fx, fy][j_near]) @ nrm).reshape(nr, nc)
+trace_x, trace_y = to_utm.transform(x_fault.ft_lon.values, x_fault.ft_lat.values)
+tree = cKDTree(np.c_[trace_x, trace_y])
+d_trace, nearest_vertex = tree.query(np.c_[Xg.ravel(), Yg.ravel()])
+normal = np.array([np.sin(np.deg2rad(strike - 90)), np.cos(np.deg2rad(strike - 90))])   # unit normal: strike - 90 is the NE side (+ east)
+d_signed = ((np.c_[Xg.ravel(), Yg.ravel()] - np.c_[trace_x, trace_y][nearest_vertex]) @ normal).reshape(nr, nc)
 d_trace = d_trace.reshape(nr, nc)
 
 # %% [markdown]
-# ## RUN: the per-pixel time-function model on each track
+# ## [7] The per-pixel time-function model
 #
-# MintPy's Heaviside is $H(t > t_{step})$, so the step date is set one day
-# BEFORE the acquisition nearest the onset: that acquisition is the first
-# post-event sample, as in notebook 04. The design matrix comes from
+# MintPy's Heaviside is $H(t > t_{step})$, the same step as notebook 04's
+# `(dates > step epoch)`. 04's step epoch (`onset_lo`, the start of the onset
+# window) is the last date BEFORE the event on the two-track grid, so on each
+# track the step date is the last acquisition on or before it: it counts as
+# pre-event and the next acquisition is the first post-event sample. The onset
+# window runs from the last acquisition before the step to the first
+# acquisition after it. The design matrix comes from
 # `mintpy.utils.time_func` (so it IS `timeseries2velocity`'s model); we only
 # replace its batch solver with a per-pixel one that skips missing epochs.
 # Pixels with complete records are solved in one matrix operation; the rest
 # one by one.
 
 # %%
-def step_dates_for(dates_yyyymmdd, onsets_yr):
-    """(step_date, onset_epoch, onset_yr) per event: the acquisition nearest the onset, step the day before."""
+# [8]
+def step_dates_for(dates_yyyymmdd, step_epochs_yr):
+    """(step_date, step_epoch) per event: step_epoch is 04's step epoch (decimal year, onset_lo), the last
+    pre-event date on the common (two-track) grid; step_date (YYYYMMDD) is the last acquisition on this track
+    on or before it, so with MintPy's H(t > t_step) that acquisition stays pre-event and the next one is the
+    first post-event sample."""
     dts = pd.to_datetime(dates_yyyymmdd, format="%Y%m%d")
     yrs = np.array([utils.date_to_decimal_year(d) for d in dates_yyyymmdd])
     out = []
-    for oy in onsets_yr:
-        i = int(np.argmin(np.abs(yrs - oy)))
-        out.append(((dts[i] - pd.Timedelta(days=1)).strftime("%Y%m%d"), dts[i].strftime("%Y%m%d"), float(oy)))
+    for step_epoch in step_epochs_yr:
+        on_or_before = np.nonzero(yrs <= step_epoch + 1e-4)[0]
+        assert len(on_or_before) > 0, f"no acquisition on or before the step epoch {step_epoch:.4f}"
+        i = int(on_or_before[-1])
+        assert step_epoch - yrs[i] < 0.05, \
+            f"the last acquisition before the step epoch {step_epoch:.4f} is {365.25 * (step_epoch - yrs[i]):.0f} d earlier"
+        out.append((dts[i].strftime("%Y%m%d"), float(step_epoch)))
     return out
 
 
 def fit_time_func(cube, dates, keep, step_dates):
     """Per-pixel least squares of MintPy's model (polynomial 1 + periodic + steps).
-    cube (nt, nr, nc) in mm with NaN gaps; keep (nr, nc) bool. Returns dict of
-    coefficient maps (mm, mm/yr), their formal errors and the residual RMS."""
+    cube (nt, nr, nc) in mm with NaN gaps; keep (nr, nc) bool. Returns (dict of coefficient maps (mm, mm/yr),
+    their formal errors ("<name>Std") and the residual RMS; the design matrix; the coefficient names)."""
     model = dict(polynomial=1, periodic=periodic, stepDate=list(step_dates), polyline=[], exp={}, log={})
     G = time_func.get_design_matrix4time_func(dates, model).astype(float)
-    names = ["intercept", "velocity"] + [f"period{p}{c}" for p in periodic for c in ("Cos", "Sin")] + [f"step{d}" for d in step_dates]
+    names = ["intercept", "velocity"]
+    for period in periodic:
+        names.append(f"period{period}Cos")
+        names.append(f"period{period}Sin")
+    for step_date in step_dates:
+        names.append(f"step{step_date}")
     assert G.shape[1] == len(names)
-    nt, nr_, nc_ = cube.shape
-    Y = cube.reshape(nt, -1)
-    npar = G.shape[1]
-    m = np.full((npar, nr_ * nc_), np.nan, np.float32)
-    ms = np.full((npar, nr_ * nc_), np.nan, np.float32)
-    rms = np.full(nr_ * nc_, np.nan, np.float32)
-    idx = np.nonzero(keep.reshape(-1))[0]
-    fin = np.isfinite(Y[:, idx])
-    full = fin.all(0)
-    print(f"  fitting {len(idx)} pixels x {nt} dates, {npar} parameters: {full.sum()} complete records, {(~full).sum()} with gaps")
-    if full.any():                                              # complete records: one solve
-        c = np.linalg.lstsq(G, Y[:, idx[full]], rcond=None)[0]
-        r = Y[:, idx[full]] - G @ c
-        s2 = (r ** 2).sum(0) / (nt - npar)
-        cov = np.linalg.inv(G.T @ G)
-        m[:, idx[full]] = c
-        ms[:, idx[full]] = np.sqrt(np.outer(np.diag(cov), s2))
-        rms[idx[full]] = np.sqrt((r ** 2).mean(0))
-    for j in idx[~full]:                                        # records with gaps: one at a time
-        y = Y[:, j]; f = np.isfinite(y)
-        if f.sum() < min_obs:
+    n_dates, n_rows, n_cols = cube.shape
+    series = cube.reshape(n_dates, -1)                          # one column per pixel
+    n_par = G.shape[1]
+    coef_maps = np.full((n_par, n_rows * n_cols), np.nan, np.float32)
+    coef_std = np.full((n_par, n_rows * n_cols), np.nan, np.float32)
+    rms = np.full(n_rows * n_cols, np.nan, np.float32)
+    fitted_pixels = np.nonzero(keep.reshape(-1))[0]
+    complete = np.isfinite(series[:, fitted_pixels]).all(0)
+    print(f"  fitting {len(fitted_pixels)} pixels x {n_dates} dates, {n_par} parameters: {complete.sum()} complete records, "
+          f"{(~complete).sum()} with gaps")
+    if complete.any():                                          # complete records: one solve
+        coef = np.linalg.lstsq(G, series[:, fitted_pixels[complete]], rcond=None)[0]
+        residual = series[:, fitted_pixels[complete]] - G @ coef
+        variance = (residual ** 2).sum(0) / (n_dates - n_par)
+        covariance = np.linalg.inv(G.T @ G)
+        coef_maps[:, fitted_pixels[complete]] = coef
+        coef_std[:, fitted_pixels[complete]] = np.sqrt(np.outer(np.diag(covariance), variance))
+        rms[fitted_pixels[complete]] = np.sqrt((residual ** 2).mean(0))
+    for pixel in fitted_pixels[~complete]:                      # records with gaps: one at a time
+        pixel_series = series[:, pixel]
+        finite = np.isfinite(pixel_series)
+        if finite.sum() < min_obs:
             continue
-        Gj = G[f]
-        c = np.linalg.lstsq(Gj, y[f], rcond=None)[0]
-        r = y[f] - Gj @ c
-        s2 = (r ** 2).sum() / max(f.sum() - npar, 1)
-        m[:, j] = c
-        ms[:, j] = np.sqrt(np.diag(np.linalg.inv(Gj.T @ Gj)) * s2)
-        rms[j] = np.sqrt((r ** 2).mean())
-    out = {n: m[i].reshape(nr_, nc_) for i, n in enumerate(names)}
-    out.update({n + "Std": ms[i].reshape(nr_, nc_) for i, n in enumerate(names)})
-    out["residualRMS"] = rms.reshape(nr_, nc_)
+        G_pixel = G[finite]
+        coef = np.linalg.lstsq(G_pixel, pixel_series[finite], rcond=None)[0]
+        residual = pixel_series[finite] - G_pixel @ coef
+        variance = (residual ** 2).sum() / max(finite.sum() - n_par, 1)
+        coef_maps[:, pixel] = coef
+        coef_std[:, pixel] = np.sqrt(np.diag(np.linalg.inv(G_pixel.T @ G_pixel)) * variance)
+        rms[pixel] = np.sqrt((residual ** 2).mean())
+    out = {}
+    for i, name in enumerate(names):
+        out[name] = coef_maps[i].reshape(n_rows, n_cols)
+        out[name + "Std"] = coef_std[i].reshape(n_rows, n_cols)
+    out["residualRMS"] = rms.reshape(n_rows, n_cols)
     return out, G, names
 
+# %% [markdown]
+# ## [9] RUN: fit each track, or read the cached fit
+#
+# The per-pixel fit is the slow step, so it is cached in
+# `timefunc_fit_<track>.npz`. The cache is reused only if it was made from the
+# SAME step dates, the same input dates, the same box, the same fit mask and
+# the same model settings (`periodic`, `min_obs`); otherwise it is refitted
+# and the reason printed. In saved-products mode the step dates, the mask and
+# the geometry come from `tulepond_steps_<track>.h5` instead.
 
 # %%
+# [10]
+cache_meta_keys = ("step_dates", "names", "input_dates", "box_rows_cols", "periodic", "min_obs", "fit_mask")
 fits = {}           # per track: the coefficient maps, the geometry, the step dates
 for dic in insar_dic_list:
     orbit = dic["ORBIT_DIRECTION"]
     if from_saved_steps:
-        with h5py.File(saved_steps[orbit], "r") as h:
-            n_ev = len([k for k in h.keys() if k.startswith("event") and k[5:].isdigit()])
-            steps = [(h[f"event{i}"].attrs["step_date"], h[f"event{i}"].attrs["onset_epoch"],
-                      float(h[f"event{i}"].attrs["onset_yr"])) for i in range(n_ev)]
-            fits[orbit] = dict(coef=None, keep=h["coh_mask"][:].astype(bool), inc=h["incidenceAngle"][:],
-                               azi=h["azimuthAngle"][:], steps=steps, dates=None)
-        print(f"  {orbit}: steps at {[s0 for s0, _, _ in steps]} (saved products)")
+        with h5py.File(saved_steps[orbit], "r") as saved_h5:
+            n_events_saved = 0
+            for dataset_name in saved_h5.keys():
+                if dataset_name.startswith("event") and dataset_name[5:].isdigit():
+                    n_events_saved += 1
+            steps = []
+            for i in range(n_events_saved):
+                event_attrs = saved_h5[f"event{i}"].attrs
+                steps.append((event_attrs["step_date"], float(event_attrs["step_epoch"])))
+            fits[orbit] = dict(coef=None, keep=saved_h5["coh_mask"][:].astype(bool), inc=saved_h5["incidenceAngle"][:],
+                               azi=saved_h5["azimuthAngle"][:], steps=steps, dates=None)
+        print(f"  {orbit}: steps at {[step_date for step_date, _ in steps]} (saved products)")
         continue
     f_fit = os.path.join(out_dir, f"timefunc_fit_{orbit}.npz")
-    with h5py.File(dic["ts_file"], "r") as h:
-        dates = [d.decode() for d in h["date"][:]]
-    steps = step_dates_for(dates, onsets)
-    with h5py.File(dic["mask_file"][coh_timeseries], "r") as h:
-        keep = h[[k for k in h.keys() if k != "date"][0]][r0:r1, c0:c1].astype(bool)
-    with h5py.File(dic["geo_file"], "r") as h:                  # loaded as notebook 02 does (float32, as MintPy wrote it)
-        inc = h["incidenceAngle"][r0:r1, c0:c1].astype(np.float32)
-        azi = h["azimuthAngle"][r0:r1, c0:c1].astype(np.float32)
-    # The fit is the slow step, so it is cached -- but the cache is only reusable
-    # if it was made from the SAME step dates AND the same input record. The step
-    # dates sit in 2017-2024, so a data refresh that appends epochs leaves them
-    # unchanged; keying on them alone reused a stale fit (2026-09-28). A cache
-    # that does not match is recomputed, not an error.
+    with h5py.File(dic["ts_file"], "r") as ts_h5:
+        dates = [date.decode() for date in ts_h5["date"][:]]
+    steps = step_dates_for(dates, step_epochs)
+    step_dates = [step_date for step_date, _ in steps]
+    with h5py.File(dic["mask_file"][coh_timeseries], "r") as mask_h5:
+        mask_name = [name for name in mask_h5.keys() if name != "date"][0]
+        keep = mask_h5[mask_name][r0:r1, c0:c1].astype(bool)
+    with h5py.File(dic["geo_file"], "r") as geo_h5:              # loaded as notebook 02 does (float32, as MintPy wrote it)
+        inc = geo_h5["incidenceAngle"][r0:r1, c0:c1].astype(np.float32)
+        azi = geo_h5["azimuthAngle"][r0:r1, c0:c1].astype(np.float32)
+    # The cache is keyed on everything the fit depends on. The step dates sit in 2017-2024, so a data
+    # refresh that appends epochs leaves them unchanged; keying on them alone reused a stale fit (2026-09-28).
+    # A cache that does not match is recomputed, not an error.
+    box_rows_cols = np.array([r0, r1, c0, c1])
     cache_ok = False
     if os.path.exists(f_fit):
-        z = np.load(f_fit)
-        same_steps = list(z["step_dates"]) == [s0 for s0, _, _ in steps]
-        same_input = "input_dates" in z.files and list(z["input_dates"]) == dates
-        cache_ok = same_steps and same_input
+        cached = np.load(f_fit)
+        mismatches = []
+        if list(cached["step_dates"]) != step_dates:
+            mismatches.append("step dates differ")
+        if "input_dates" not in cached.files or list(cached["input_dates"]) != dates:
+            mismatches.append(f"input dates differ (now {len(dates)})")
+        if "box_rows_cols" not in cached.files or not np.array_equal(cached["box_rows_cols"], box_rows_cols):
+            mismatches.append("box differs")
+        if "fit_mask" not in cached.files or not np.array_equal(cached["fit_mask"], keep):
+            mismatches.append("fit mask differs")
+        if "periodic" not in cached.files or list(cached["periodic"]) != list(periodic):
+            mismatches.append("periodic terms differ")
+        if "min_obs" not in cached.files or int(cached["min_obs"]) != min_obs:
+            mismatches.append("min_obs differs")
+        cache_ok = len(mismatches) == 0
         if not cache_ok:
-            why = "step dates differ" if not same_steps else (
-                f"made from {len(z['input_dates']) if 'input_dates' in z.files else 'unknown'} "
-                f"input dates, now {len(dates)}")
-            print(f"[{orbit}] cached fit unusable ({why}); refitting")
+            print(f"[{orbit}] cached fit unusable ({'; '.join(mismatches)}); refitting")
     if cache_ok:
-        coef = {k: z[k] for k in z.files if k not in ("step_dates", "names", "input_dates")}
+        coef = {}
+        for name in cached.files:
+            if name not in cache_meta_keys:
+                coef[name] = cached[name]
         print(f"[{orbit}] per-pixel fit loaded from {os.path.basename(f_fit)}")
     else:
-        with h5py.File(dic["ts_file"], "r") as h:
-            cube = h["timeseries"][:, r0:r1, c0:c1].astype(np.float32) * unit     # m -> mm
+        with h5py.File(dic["ts_file"], "r") as ts_h5:
+            cube = ts_h5["timeseries"][:, r0:r1, c0:c1].astype(np.float32) * unit     # m -> mm
         cube[cube == 0] = np.nan                                # MintPy no-data
         print(f"[{orbit}] {len(dates)} dates, coherent pixels {keep.mean():.0%} of the box")
-        coef, G, names = fit_time_func(cube, dates, keep, [s0 for s0, _, _ in steps])
-        np.savez(f_fit, step_dates=np.array([s0 for s0, _, _ in steps]), names=np.array(names),
-                 input_dates=np.array(dates), **coef)
+        coef, _, names = fit_time_func(cube, dates, keep, step_dates)
+        np.savez(f_fit, step_dates=np.array(step_dates), names=np.array(names), input_dates=np.array(dates),
+                 box_rows_cols=box_rows_cols, periodic=np.array(periodic), min_obs=min_obs, fit_mask=keep, **coef)
         del cube
     fits[orbit] = dict(coef=coef, keep=keep, inc=inc, azi=azi, steps=steps, dates=dates)
-    print(f"  {orbit}: steps at {[s0 for s0, _, _ in steps]} (onset epochs {[o for _, o, _ in steps]})")
+    print(f"  {orbit}: steps at {step_dates} (04's step epochs {[round(step_epoch, 4) for _, step_epoch in steps]})")
 
 # %% [markdown]
-# ## CHECK 1: MintPy's design matrix is the one we think it is
+# ## [11] CHECK 1: MintPy's design matrix is the one we think it is
 #
 # Build the same matrix by hand (1, t, cos 2πt, sin 2πt, H(t > t_step)) on
 # MintPy's own time axis and fit a synthetic series with a known 10 mm step
-# through both. The step estimates must agree to 1e-6 mm (measured 1.5e-8 mm on
-# the March-2026 record; it was under 1e-9 on the shorter one): the two matrices
-# span the same model. MintPy's decimal year (`ptime.yyyymmdd2years`) differs
-# from our exact-seconds one by up to a few hours; the effect on a step is
-# printed and is far below the noise.
+# through both. The step estimates must agree to 1e-6 mm (the difference is
+# printed): the two matrices span the same model. MintPy's decimal year
+# (`ptime.yyyymmdd2years`) differs from our exact-seconds one by up to a few
+# hours; the effect on a step is printed and is far below the noise.
+# PREPUB: Measured 1.5e-8 mm on the March-2026 record; it was under 1e-9 on the shorter one.
 
 # %%
+# [12]
 from mintpy.utils import ptime
 
 # saved-products mode: the MintPy date axis is not on this machine; the
@@ -362,183 +558,255 @@ from mintpy.utils import ptime
 if from_saved_steps:
     print("CHECK 1 skipped in saved-products mode (needs the MintPy date axis)")
 else:
-
     dates = fits["descending"]["dates"]
-    step_dates = [s0 for s0, _, _ in fits["descending"]["steps"]]
+    step_dates = [step_date for step_date, _ in fits["descending"]["steps"]]
     model = dict(polynomial=1, periodic=periodic, stepDate=step_dates, polyline=[], exp={}, log={})
-    G_mp = time_func.get_design_matrix4time_func(dates, model).astype(float)
+    G_mintpy = time_func.get_design_matrix4time_func(dates, model).astype(float)
     t = np.array(ptime.yyyymmdd2years(dates), float)
     t_step = np.array(ptime.yyyymmdd2years(step_dates), float)
     # time from the first epoch, as MintPy does (absolute years make the matrix
     # ill-conditioned, cond ~1e7 against 62)
-    G_hand = np.column_stack([np.ones_like(t), t - t[0], np.cos(2 * np.pi * t), np.sin(2 * np.pi * t)] + [(t > ts).astype(float) for ts in t_step])
-    rng = np.random.default_rng(0)
-    y = 2.0 * (t - t[0]) + 1.5 * np.sin(2 * np.pi * t) + 10.0 * (t > t_step[1]) + rng.normal(0, 0.5, t.size)
-    c_mp = np.linalg.lstsq(G_mp, y, rcond=None)[0]
-    c_hand = np.linalg.lstsq(G_hand, y, rcond=None)[0]
-    print("step coefficients, MintPy design:", c_mp[4:].round(6))
-    print("step coefficients, hand design:  ", c_hand[4:].round(6))
-    assert np.allclose(c_mp[4:], c_hand[4:], rtol=0, atol=1e-6) and abs(c_mp[1] - c_hand[1]) < 1e-6
+    hand_columns = [np.ones_like(t), t - t[0], np.cos(2 * np.pi * t), np.sin(2 * np.pi * t)]
+    for one_step in t_step:
+        hand_columns.append((t > one_step).astype(float))
+    G_hand = np.column_stack(hand_columns)
+    synthetic_rng = np.random.default_rng(0)
+    y = 2.0 * (t - t[0]) + 1.5 * np.sin(2 * np.pi * t) + 10.0 * (t > t_step[1]) + synthetic_rng.normal(0, 0.5, t.size)
+    coef_mintpy = np.linalg.lstsq(G_mintpy, y, rcond=None)[0]
+    coef_hand = np.linalg.lstsq(G_hand, y, rcond=None)[0]
+    print("step coefficients, MintPy design:", coef_mintpy[4:].round(6))
+    print("step coefficients, hand design:  ", coef_hand[4:].round(6))
+    print(f"largest step difference {np.abs(coef_mintpy[4:] - coef_hand[4:]).max():.1e} mm")
+    assert np.allclose(coef_mintpy[4:], coef_hand[4:], rtol=0, atol=1e-6)
+    assert abs(coef_mintpy[1] - coef_hand[1]) < 1e-6
     print("PASS: MintPy's time-function design is intercept + rate + annual + Heaviside(t > step date)")
     # the year convention: ours (exact seconds) against MintPy's
-    t_ours = np.array([utils.date_to_decimal_year(d) for d in dates])
-    G_ours = np.column_stack([np.ones_like(t), t_ours - t_ours[0], np.cos(2 * np.pi * t_ours), np.sin(2 * np.pi * t_ours)] + [(t > ts).astype(float) for ts in t_step])
-    c_ours = np.linalg.lstsq(G_ours, y, rcond=None)[0]
+    t_ours = np.array([utils.date_to_decimal_year(date) for date in dates])
+    ours_columns = [np.ones_like(t), t_ours - t_ours[0], np.cos(2 * np.pi * t_ours), np.sin(2 * np.pi * t_ours)]
+    for one_step in t_step:
+        ours_columns.append((t > one_step).astype(float))
+    G_ours = np.column_stack(ours_columns)
+    coef_ours = np.linalg.lstsq(G_ours, y, rcond=None)[0]
     print(f"note: MintPy's decimal years differ from ours by up to {24 * 365.25 * np.abs(t - t_ours).max():.1f} h; "
-          f"the steps move by at most {np.abs(c_ours[4:] - c_mp[4:]).max():.3f} mm (the fit uses MintPy's)")
+          f"the steps move by at most {np.abs(coef_ours[4:] - coef_mintpy[4:]).max():.3f} mm (the fit uses MintPy's)")
 
 # %% [markdown]
-# ## RUN: read the step maps, mask, remove the box median, fix the descending bursts
+# ## [13] RUN: read the step maps, mask, remove the box median, fix the bursts
 #
 # The box median of each step map is removed (the InSAR datum is ZOA1, an
-# arbitrary constant here). The burst correction measures, per event, the
-# median offset between two thin bands either side of each burst line, away
-# from the fault, and shifts the south side onto the north side.
+# arbitrary constant here). The burst correction then measures, per event, the
+# median offset between two thin bands either side of each track's burst seam
+# (cell [4], from the CSLC static bounding polygons), away from the fault, and
+# shifts the side with fewer valid pixels onto the side with more (ascending:
+# the seam runs along the box's northern edge, so the north side moves;
+# descending: printed). The box median is removed BEFORE the fix and not again
+# after it, so which side is held fixed shifts a whole map by a constant
+# (that event's offset); every number taken from these maps is a difference
+# (east band minus west band, a profile zeroed on its far field) and the slip
+# models fit a constant per dataset, so a constant does not change them.
 
 # %%
+# [14]
 event_maps = {}
 burst_log = []
 for dic in insar_dic_list:
     orbit = dic["ORBIT_DIRECTION"]
-    F = fits[orbit]
+    fit = fits[orbit]
     if from_saved_steps:
-        with h5py.File(saved_steps[orbit], "r") as h:
-            n_ev = len(F["steps"])
-            event_maps[orbit] = dict(ev=np.stack([h[f"event{i}"][:] for i in range(n_ev)]),
-                                     ev_raw=np.stack([h[f"event{i}_raw"][:] for i in range(n_ev)]),
-                                     ev_std=np.stack([h[f"event{i}Std"][:] for i in range(n_ev)]),
-                                     rate=h["rate"][:])
+        with h5py.File(saved_steps[orbit], "r") as saved_h5:
+            n_events_saved = len(fit["steps"])
+            step_maps = []
+            step_maps_raw = []
+            step_maps_std = []
+            for i in range(n_events_saved):
+                step_maps.append(saved_h5[f"event{i}"][:])
+                step_maps_raw.append(saved_h5[f"event{i}_raw"][:])
+                step_maps_std.append(saved_h5[f"event{i}Std"][:])
+            event_maps[orbit] = dict(ev=np.stack(step_maps), ev_raw=np.stack(step_maps_raw), ev_std=np.stack(step_maps_std),
+                                     rate=saved_h5["rate"][:])
         continue
-    keys = [f"step{s0}" for s0, _, _ in F["steps"]]
-    evm = np.stack([F["coef"][k] for k in keys]).astype(float)              # (n_ev, nr, nc), mm
-    evs = np.stack([F["coef"][k + "Std"] for k in keys]).astype(float)
-    rate = F["coef"]["velocity"].astype(float)                              # mm/yr
-    evm[:, ~F["keep"]] = np.nan; rate[~F["keep"]] = np.nan
-    evm -= np.nanmedian(evm, axis=(1, 2))[:, None, None]                    # box median per event
-    evm_raw = evm.copy()
+    step_keys = [f"step{step_date}" for step_date, _ in fit["steps"]]
+    step_maps = np.stack([fit["coef"][step_key] for step_key in step_keys]).astype(float)            # (n_events, nr, nc), mm
+    step_maps_std = np.stack([fit["coef"][step_key + "Std"] for step_key in step_keys]).astype(float)
+    rate = fit["coef"]["velocity"].astype(float)                                                      # mm/yr
+    step_maps[:, ~fit["keep"]] = np.nan
+    rate[~fit["keep"]] = np.nan
+    step_maps -= np.nanmedian(step_maps, axis=(1, 2))[:, None, None]                                  # box median per event
+    step_maps_raw = step_maps.copy()
     if orbit in burst_lines:
-        far = d_trace > burst_far_m
-        for (sl, b) in burst_lines[orbit]:
-            dl = lat_g - sl * (lon_g + 122.0)
-            nb = (dl > b) & (dl < b + burst_band_deg) & far
-            sb = (dl < b) & (dl > b - burst_band_deg) & far
-            south = dl < b
-            for i, (_, _, oy) in enumerate(F["steps"]):
-                off = np.nanmedian(evm[i][nb]) - np.nanmedian(evm[i][sb])
-                evm[i][south] += off
-                burst_log.append(dict(track=orbit, line_lat=b, onset_yr=oy, offset_mm=off, n_north=int(nb.sum()), n_south=int(sb.sum())))
-                print(f"  [{orbit}] event {oy:.2f}: offset across the lat {b:.3f} burst line {off:+.2f} mm removed")
-    event_maps[orbit] = dict(ev=evm, ev_raw=evm_raw, ev_std=evs, rate=rate)
+        far_from_trace = d_trace > burst_far_m
+        for line_slope, line_lat in burst_lines[orbit]:
+            above_line = lat_g - line_slope * (lon_g + 122.0)                    # > line_lat north of the burst line
+            north_band = (above_line > line_lat) & (above_line < line_lat + burst_band_deg) & far_from_trace
+            south_band = (above_line < line_lat) & (above_line > line_lat - burst_band_deg) & far_from_trace
+            north_side = above_line > line_lat
+            south_side = above_line < line_lat
+            # hold fixed the side with most of the track's valid (fit-mask) pixels in the box; the other side moves
+            n_valid_north = int((fit["keep"] & north_side).sum())
+            n_valid_south = int((fit["keep"] & south_side).sum())
+            if n_valid_north >= n_valid_south:
+                fixed_side = "north"
+            else:
+                fixed_side = "south"
+            print(f"  [{orbit}] lat {line_lat:.3f} burst line: valid pixels north {n_valid_north}, south {n_valid_south}; "
+                  f"{fixed_side} side held fixed")
+            for i, (_, step_epoch) in enumerate(fit["steps"]):
+                n_north = int(np.isfinite(step_maps[i][north_band]).sum())
+                n_south = int(np.isfinite(step_maps[i][south_band]).sum())
+                assert min(n_north, n_south) >= burst_min_pixels, \
+                    f"[{orbit}] event {step_epoch:.2f}: only {n_north} north / {n_south} south pixels in the burst bands"
+                burst_offset = np.nanmedian(step_maps[i][north_band]) - np.nanmedian(step_maps[i][south_band])   # north minus south
+                if fixed_side == "north":
+                    step_maps[i][south_side] += burst_offset
+                else:
+                    step_maps[i][north_side] -= burst_offset
+                burst_log.append(dict(track=orbit, line_lat=line_lat, step_epoch=step_epoch, offset_mm=burst_offset,
+                                      n_north=n_north, n_south=n_south, fixed_side=fixed_side))
+                print(f"  [{orbit}] event {step_epoch:.2f}: offset (north - south) across the lat {line_lat:.3f} burst line "
+                      f"{burst_offset:+.2f} mm removed ({n_north} / {n_south} pixels)")
+    event_maps[orbit] = dict(ev=step_maps, ev_raw=step_maps_raw, ev_std=step_maps_std, rate=rate)
 if from_saved_steps:
     burst_df = pd.read_csv(os.path.join(out_dir, "burst_offsets.csv"))
 else:
     burst_df = pd.DataFrame(burst_log)
     burst_df.to_csv(os.path.join(out_dir, "burst_offsets.csv"), index=False)
 assert (burst_df.offset_mm.abs() < 2.0).all(), "a burst offset above 2 mm is not the +/-1 mm scatter described; look at the maps"
+assert sorted(set(burst_df.track)) == sorted(burst_corrected), f"burst fix ran on {sorted(set(burst_df.track))}, not on {burst_corrected}"
 
 # %% [markdown]
-# ## CHECK 2: the near-fault LOS step of every event, both tracks
+# ## [15] CHECK 2: the near-fault LOS step of every event, both tracks
 #
 # Model-free: median of the east band minus median of the west band
-# (30 to 150 m from the trace, notebook 04's aperture) within the stacked section. Fault-parallel
-# creep projects with OPPOSITE signs into the two geometries (ascending looks
-# west, descending east), so the ascending step must be negative, the descending
-# positive, and their ratio near the geometric value from the two LOS vectors.
+# (30 to 150 m from the trace, notebook 04's aperture) within the 90% band
+# that Fig 1 stacks. Fault-parallel creep projects with OPPOSITE signs into the
+# two geometries (ascending looks west, descending east), so the ascending
+# step must be negative and the descending positive; those signs are asserted.
+# The asc/desc ratio is printed against the geometric value from the two LOS
+# vectors but not asserted: three events sit at -0.2 to -0.4 because an
+# east-block signal on ascending pulls their ascending step toward zero.
 
 # %%
+# [16]
 in_band = (lat_g >= band.lat_lo) & (lat_g <= band.lat_hi)
 east = in_band & (d_signed > xfault_step_m[0]) & (d_signed < xfault_step_m[1])
 west = in_band & (d_signed < -xfault_step_m[0]) & (d_signed > -xfault_step_m[1])
-L = {o: utils.los_unit_vector(np.nanmedian(fits[o]["inc"][in_band]), np.nanmedian(fits[o]["azi"][in_band])) for o in event_maps}
-s_hat = utils.horizontal_unit_vector(strike)
-geom_ratio = float((L["ascending"] @ s_hat) / (L["descending"] @ s_hat))
-print(f"LOS . strike: asc {L['ascending'] @ s_hat:+.3f}, desc {L['descending'] @ s_hat:+.3f}; geometric asc/desc ratio {geom_ratio:+.2f}")
+los_vector = {}
+for orbit in event_maps:
+    los_vector[orbit] = utils.los_unit_vector(np.nanmedian(fits[orbit]["inc"][in_band]), np.nanmedian(fits[orbit]["azi"][in_band]))
+strike_vector = utils.horizontal_unit_vector(strike)
+los_dot_strike_asc = float(los_vector["ascending"] @ strike_vector)
+los_dot_strike_desc = float(los_vector["descending"] @ strike_vector)
+geom_ratio = los_dot_strike_asc / los_dot_strike_desc
+print(f"LOS . strike: asc {los_dot_strike_asc:+.3f}, desc {los_dot_strike_desc:+.3f}; geometric asc/desc ratio {geom_ratio:+.2f}")
+
+
+def block_step(field_map):
+    """Model-free near-fault step of a map: median of the east band minus median of the west band
+    (xfault_step_m from the trace, inside the 90% band)."""
+    return float(np.nanmedian(field_map[east]) - np.nanmedian(field_map[west]))
+
 
 step_rows = []
-for i, (_, _, oy) in enumerate(fits["ascending"]["steps"]):
-    row = dict(onset_yr=oy)
-    for o in event_maps:
-        m_ = event_maps[o]["ev"][i]
-        row[f"{o}_step_mm"] = float(np.nanmedian(m_[east]) - np.nanmedian(m_[west]))
+for i, (_, step_epoch) in enumerate(fits["ascending"]["steps"]):
+    row = dict(step_epoch=step_epoch)
+    for orbit in event_maps:
+        row[f"{orbit}_step_mm"] = block_step(event_maps[orbit]["ev"][i])
     row["ratio_asc_desc"] = row["ascending_step_mm"] / row["descending_step_mm"]
     step_rows.append(row)
 steps_df = pd.DataFrame(step_rows)
 print(steps_df.round(2).to_string(index=False))
-kept = ~steps_df.onset_yr.apply(lambda oy: any(abs(oy - x) < 0.02 for x in exclude_events))
-m_asc, m_desc = steps_df.ascending_step_mm[kept].mean(), steps_df.descending_step_mm[kept].mean()
-print(f"mean of the {kept.sum()} kept events: asc {m_asc:+.2f} mm, desc {m_desc:+.2f} mm, ratio {m_asc / m_desc:+.2f} (geometric {geom_ratio:+.2f})")
-assert m_asc < 0 < m_desc, "the mean event has the wrong LOS sign: the geometry or the fault side is wrong"
+kept = np.array([not is_excluded(step_epoch) for step_epoch in steps_df.step_epoch])
+mean_asc = steps_df.ascending_step_mm[kept].mean()
+mean_desc = steps_df.descending_step_mm[kept].mean()
+print(f"mean of the {kept.sum()} kept events: asc {mean_asc:+.2f} mm, desc {mean_desc:+.2f} mm, ratio {mean_asc / mean_desc:+.2f} "
+      f"(geometric {geom_ratio:+.2f})")
+assert mean_asc < 0 < mean_desc, "the mean event has the wrong LOS sign: the geometry or the fault side is wrong"
 assert (steps_df.descending_step_mm > 0).all(), "a descending step with the wrong sign"
-off = steps_df[steps_df.ascending_step_mm >= 0]
-for _, r_ in off.iterrows():
-    print(f"NOTE {r_.onset_yr:.2f}: ascending step {r_.ascending_step_mm:+.2f} mm, ratio {r_.ratio_asc_desc:+.2f}: its ascending step is cancelled by an east-block signal")
+ascending_not_negative = steps_df[steps_df.ascending_step_mm >= 0]
+for _, step_row in ascending_not_negative.iterrows():
+    print(f"NOTE {step_row.step_epoch:.2f}: ascending step {step_row.ascending_step_mm:+.2f} mm, ratio {step_row.ratio_asc_desc:+.2f}: "
+          f"its ascending step is cancelled by an east-block signal")
 print("PASS: the mean event steps negative on ascending and positive on descending; every descending step is positive")
 
 # %% [markdown]
-# ## RUN: the mean event per track, written for the slip model
+# ## [17] RUN: the mean event per track, written for the slip model
 #
 # Mean of the kept events per pixel (only where all of them are valid), the
 # per-pixel scatter across events, and the formal error of the mean. Written
 # to `tulepond_steps_<track>.h5` (everything) and `csi_mean_event_<track>.npz`
-# (the flat table notebook 07 reads: lon, lat, LOS mm, error, incidence, azimuth).
+# (the flat table `07a_uniform_model` reads: lon, lat, LOS mm, error, incidence, azimuth).
 
 # %%
+# [18]
+def mean_event_error(step_std_maps, n_events):
+    """Formal 1-sigma error of the mean of n_events step maps: the rms of their per-pixel formal errors
+    divided by sqrt(n_events)."""
+    return np.sqrt(np.nanmean(step_std_maps ** 2, 0)) / np.sqrt(n_events)
+
+
 mean_event = {}
 for dic in insar_dic_list:
     orbit = dic["ORBIT_DIRECTION"]
-    F, M = fits[orbit], event_maps[orbit]
+    fit = fits[orbit]
+    maps = event_maps[orbit]
     if from_saved_steps:
-        with h5py.File(saved_steps[orbit], "r") as h:
-            mean_event[orbit] = dict(mean=h["mean_event"][:], scatter=h["event_scatter"][:],
-                                     err=h["mean_event_err"][:], n=int(h.attrs["n_events"]))
+        with h5py.File(saved_steps[orbit], "r") as saved_h5:
+            mean_event[orbit] = dict(mean=saved_h5["mean_event"][:], scatter=saved_h5["event_scatter"][:],
+                                     err=saved_h5["mean_event_err"][:], n=int(saved_h5.attrs["n_events"]))
         print(f"[{orbit}] mean event read from {os.path.basename(saved_steps[orbit])} (not rewritten)")
         continue
-    keep_ev = np.array([not any(abs(oy - x) < 0.02 for x in exclude_events) for _, _, oy in F["steps"]])
-    ev, ev_std = M["ev"][keep_ev], M["ev_std"][keep_ev]
-    n_ok = np.isfinite(ev).sum(0)
-    mean = np.where(n_ok == keep_ev.sum(), np.nanmean(ev, 0), np.nan)
-    scatter = np.where(n_ok == keep_ev.sum(), np.nanstd(ev, 0, ddof=1), np.nan)
-    err_mean = np.sqrt(np.nanmean(ev_std ** 2, 0)) / np.sqrt(keep_ev.sum())
+    keep_event = np.array([not is_excluded(step_epoch) for _, step_epoch in fit["steps"]])
+    n_kept = int(keep_event.sum())
+    kept_maps = maps["ev"][keep_event]
+    kept_std = maps["ev_std"][keep_event]
+    n_valid = np.isfinite(kept_maps).sum(0)
+    mean = np.where(n_valid == n_kept, np.nanmean(kept_maps, 0), np.nan)
+    scatter = np.where(n_valid == n_kept, np.nanstd(kept_maps, 0, ddof=1), np.nan)
+    err_mean = mean_event_error(kept_std, n_kept)
     good = np.isfinite(mean)
-    mean_event[orbit] = dict(mean=mean, scatter=scatter, err=err_mean, n=int(keep_ev.sum()))
+    mean_event[orbit] = dict(mean=mean, scatter=scatter, err=err_mean, n=n_kept)
     f_h5 = os.path.join(out_dir, f"tulepond_steps_{orbit}.h5")
-    with h5py.File(f_h5, "w") as h:
-        for i, (sd, od, oy) in enumerate(F["steps"]):
-            g = h.create_dataset(f"event{i}", data=M["ev"][i].astype(np.float32))
-            g.attrs.update(dict(step_date=sd, onset_epoch=od, onset_yr=oy, in_mean=bool(keep_ev[i])))
-            h.create_dataset(f"event{i}Std", data=M["ev_std"][i].astype(np.float32))
-            h.create_dataset(f"event{i}_raw", data=M["ev_raw"][i].astype(np.float32))
-        for k2, v in dict(mean_event=mean, event_scatter=scatter, mean_event_err=err_mean, rate=M["rate"],
-                          incidenceAngle=F["inc"], azimuthAngle=F["azi"], lon=lon_g, lat=lat_g, coh_mask=F["keep"]).items():
-            h.create_dataset(k2, data=np.asarray(v, dtype=np.float32))
-        h.attrs.update({k: str(v) for k, v in attrs.items()})
-        h.attrs.update(dict(X_FIRST=str(x0 + c0 * dx), Y_FIRST=str(y0 + r0 * dy), WIDTH=str(nc), LENGTH=str(nr), UNIT="mm",
-                            n_events=int(keep_ev.sum()), excluded=str(exclude_events), coherence=str(coh_timeseries),
-                            note="LOS + toward satellite; box median removed per event; azimuthAngle = LOS ground->sat, anticlockwise from N",
-                            provenance=utils.provenance_stamp(notebook, repo_dir)))
+    with h5py.File(f_h5, "w") as out_h5:
+        for i, (step_date, step_epoch) in enumerate(fit["steps"]):
+            event_dataset = out_h5.create_dataset(f"event{i}", data=maps["ev"][i].astype(np.float32))
+            event_dataset.attrs.update(dict(step_date=step_date, step_epoch=step_epoch, in_mean=bool(keep_event[i])))
+            out_h5.create_dataset(f"event{i}Std", data=maps["ev_std"][i].astype(np.float32))
+            out_h5.create_dataset(f"event{i}_raw", data=maps["ev_raw"][i].astype(np.float32))
+        box_datasets = dict(mean_event=mean, event_scatter=scatter, mean_event_err=err_mean, rate=maps["rate"],
+                            incidenceAngle=fit["inc"], azimuthAngle=fit["azi"], lon=lon_g, lat=lat_g, coh_mask=fit["keep"])
+        for dataset_name, values in box_datasets.items():
+            out_h5.create_dataset(dataset_name, data=np.asarray(values, dtype=np.float32))
+        for attr_name, attr_value in attrs.items():
+            out_h5.attrs[attr_name] = str(attr_value)
+        out_h5.attrs.update(dict(X_FIRST=str(x0 + c0 * dx), Y_FIRST=str(y0 + r0 * dy), WIDTH=str(nc), LENGTH=str(nr), UNIT="mm",
+                                 n_events=n_kept, excluded=str(exclude_events), coherence=str(coh_timeseries),
+                                 note="LOS + toward satellite; box median removed per event; azimuthAngle = LOS ground->sat, anticlockwise from N",
+                                 provenance=utils.provenance_stamp(notebook, repo_dir)))
     np.savez(os.path.join(out_dir, f"csi_mean_event_{orbit}.npz"), lon=lon_g[good], lat=lat_g[good], vel_mm=mean[good],
-             err_mm=err_mean[good], incidence=F["inc"][good], azimuth=F["azi"][good], scatter_mm=scatter[good])
-    print(f"[{orbit}] mean of {keep_ev.sum()} events: {good.sum()} pixels, 2-98% {np.nanpercentile(mean, 2):+.1f} to {np.nanpercentile(mean, 98):+.1f} mm, "
+             err_mm=err_mean[good], incidence=fit["inc"][good], azimuth=fit["azi"][good], scatter_mm=scatter[good])
+    print(f"[{orbit}] mean of {n_kept} events: {good.sum()} pixels, 2-98% {np.nanpercentile(mean, 2):+.1f} to {np.nanpercentile(mean, 98):+.1f} mm, "
           f"median scatter {np.nanmedian(scatter):.2f} mm; wrote {os.path.basename(f_h5)} and csi_mean_event_{orbit}.npz")
 
 # %% [markdown]
-# ## RUN: fault-parallel and vertical maps
+# ## [19] RUN: fault-parallel and vertical maps
 #
 # `asc_desc2horz_vert` (MintPy) on the inter-event rate and on the mean event,
 # with each track's own incidence and azimuth and `horz_az_angle = -strike`
 # (MintPy counts anticlockwise), as notebook 02. The vertical component of
 # creep is ~0, so the Up maps are the QC: they should be flat across the
-# trace.
+# trace. From here on the maps are masked at the stricter `coh_maps`.
 
 # %%
-def decompose(v_asc, v_des, strike_deg=None):
-    strike_deg = strike if strike_deg is None else strike_deg
-    both_ = np.isfinite(v_asc) & np.isfinite(v_des)
-    dlos = np.stack([v_asc, v_des]).astype(np.float32); dlos[:, ~both_] = np.nan
-    los_inc = np.stack([fits["ascending"]["inc"], fits["descending"]["inc"]]).astype(np.float32)
-    los_azi = np.stack([fits["ascending"]["azi"], fits["descending"]["azi"]]).astype(np.float32)
-    fp_, up_ = asc_desc2horz_vert(dlos, los_inc, los_azi, horz_az_angle=-strike_deg, step=geom_step)
-    return fp_.astype(float), up_.astype(float)
+# [20]
+def decompose(los_asc, los_desc, inc_both, azi_both):
+    """Fault-parallel and vertical maps from the two LOS maps (MintPy's asc_desc2horz_vert, horizontal
+    direction = the decomposition strike; only pixels valid on both tracks). inc_both / azi_both are the
+    (2, nr, nc) incidence and azimuth stacks, ascending first. Returns (fault-parallel, up)."""
+    valid_both = np.isfinite(los_asc) & np.isfinite(los_desc)
+    los_stack = np.stack([los_asc, los_desc]).astype(np.float32)
+    los_stack[:, ~valid_both] = np.nan
+    fault_parallel, up = asc_desc2horz_vert(los_stack, inc_both, azi_both, horz_az_angle=-strike, step=geom_step)
+    return fault_parallel.astype(float), up.astype(float)
 
 
 # the per-pixel maps from here on (decomposition, profiles, Fig 2) use the
@@ -547,299 +815,416 @@ def decompose(v_asc, v_des, strike_deg=None):
 if coh_maps != coh_timeseries:
     for dic in insar_dic_list:
         orbit = dic["ORBIT_DIRECTION"]
-        with h5py.File(dic["mask_file"][coh_maps], "r") as h:
-            mx0, my0 = float(h.attrs["X_FIRST"]), float(h.attrs["Y_FIRST"])
-            col0 = int(round((x0 + c0 * dx - mx0) / dx)); row0 = int(round((y0 + r0 * dy - my0) / dy))
-            mask_maps = h[[k for k in h.keys() if k != "date"][0]][row0:row0 + nr, col0:col0 + nc].astype(bool)
+        with h5py.File(dic["mask_file"][coh_maps], "r") as mask_h5:
+            mask_x_first = float(mask_h5.attrs["X_FIRST"])
+            mask_y_first = float(mask_h5.attrs["Y_FIRST"])
+            col_start = int(round((x0 + c0 * dx - mask_x_first) / dx))
+            row_start = int(round((y0 + r0 * dy - mask_y_first) / dy))
+            mask_name = [name for name in mask_h5.keys() if name != "date"][0]
+            mask_maps = mask_h5[mask_name][row_start:row_start + nr, col_start:col_start + nc].astype(bool)
         assert not (mask_maps & ~fits[orbit]["keep"]).any(), f"{orbit}: coh_maps mask not inside the fit mask"
-        for key_ in ("mean", "scatter", "err"):
-            mean_event[orbit][key_] = np.where(mask_maps, mean_event[orbit][key_], np.nan)
+        for field in ("mean", "scatter", "err"):
+            mean_event[orbit][field] = np.where(mask_maps, mean_event[orbit][field], np.nan)
         event_maps[orbit]["rate"] = np.where(mask_maps, event_maps[orbit]["rate"], np.nan)
         event_maps[orbit]["ev"] = np.where(mask_maps[None], event_maps[orbit]["ev"], np.nan)
+        event_maps[orbit]["ev_raw"] = np.where(mask_maps[None], event_maps[orbit]["ev_raw"], np.nan)   # only the supplement grid reads it after here
         print(f"[{orbit}] maps masked at temporal coherence {coh_maps}: {mask_maps.mean():.0%} of the box "
               f"(fit mask {coh_timeseries}: {fits[orbit]['keep'].mean():.0%})")
 
-fp_rate, up_rate = decompose(event_maps["ascending"]["rate"], event_maps["descending"]["rate"])
-fp_evt, up_evt = decompose(mean_event["ascending"]["mean"], mean_event["descending"]["mean"])
+inc_both = np.stack([fits["ascending"]["inc"], fits["descending"]["inc"]]).astype(np.float32)
+azi_both = np.stack([fits["ascending"]["azi"], fits["descending"]["azi"]]).astype(np.float32)
+fp_rate, up_rate = decompose(event_maps["ascending"]["rate"], event_maps["descending"]["rate"], inc_both, azi_both)
+fp_evt, up_evt = decompose(mean_event["ascending"]["mean"], mean_event["descending"]["mean"], inc_both, azi_both)
 fp_events = {}
-for i, (_, _, oy) in enumerate(fits["ascending"]["steps"]):
-    fp_events[oy], _ = decompose(event_maps["ascending"]["ev"][i], event_maps["descending"]["ev"][i])
+for i, (_, step_epoch) in enumerate(fits["ascending"]["steps"]):
+    fp_events[step_epoch], _ = decompose(event_maps["ascending"]["ev"][i], event_maps["descending"]["ev"][i], inc_both, azi_both)
 
-def block_step(m_):
-    return float(np.nanmedian(m_[east]) - np.nanmedian(m_[west]))
-
-print(f"inter-event FP rate step east - west (100-500 m, stacked band): {block_step(fp_rate):+.2f} mm/yr; Up {block_step(up_rate):+.2f} mm/yr")
+print(f"inter-event FP rate step east - west ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m, 90% band): "
+      f"{block_step(fp_rate):+.2f} mm/yr; Up {block_step(up_rate):+.2f} mm/yr")
 print(f"mean event FP step: {block_step(fp_evt):+.2f} mm; Up {block_step(up_evt):+.2f} mm (should be ~0: creep has no vertical part)")
-for oy, m_ in fp_events.items():
-    print(f"  event {oy:.2f}: FP step {block_step(m_):+.2f} mm")
-np.savez(os.path.join(out_dir, "fp_maps.npz"), fp_rate=fp_rate, up_rate=up_rate, fp_event=fp_evt, up_event=up_evt,
-         lon=lon_g, lat=lat_g, X=Xg, Y=Yg, strike=strike, n_events=mean_event["ascending"]["n"],
-         **{f"fp_event_{oy:.2f}": m_ for oy, m_ in fp_events.items()})
+for step_epoch, fp_event_map in fp_events.items():
+    print(f"  event {step_epoch:.2f}: FP step {block_step(fp_event_map):+.2f} mm")
+fp_maps = dict(fp_rate=fp_rate, up_rate=up_rate, fp_event=fp_evt, up_event=up_evt,
+               lon=lon_g, lat=lat_g, X=Xg, Y=Yg, strike=strike, n_events=mean_event["ascending"]["n"])
+for step_epoch, fp_event_map in fp_events.items():
+    fp_maps[f"fp_event_{step_epoch:.2f}"] = fp_event_map                      # named by the event's step epoch
+np.savez(os.path.join(out_dir, "fp_maps.npz"), **fp_maps)
 
 # %% [markdown]
-# ## RUN: the cross-fault profiles X-X' and Y-Y'
+# ## [21] RUN: the cross-fault profiles X-X' and Y-Y'
 #
 # Perpendicular to the LOCAL strike at each point (the smoothed strike of the
 # mapped trace there, not the box mean), +/- `cross_m`, all pixels within
-# +/- `swath_m` along strike, plus a per-side running median.
-# The inter-event profile is zeroed at the fault (mid-point of the two block
-# medians within 1 km); the event profile on its far field. The same machinery
-# runs on the fault-parallel maps (the numbers the text quotes) and on each
-# track's LOS maps (what Fig 2 shows).
+# +/- `swath_m` along strike. The inter-event profile is zeroed at the fault
+# (mid-point of the two block medians within 1 km); the event profile on its
+# far field. The same machinery runs on the fault-parallel maps (the numbers
+# the text quotes) and on each track's LOS maps (what Fig 2 shows). For each
+# LOS profile the near-fault amplitude of each block is measured against that
+# block's own far field, with a bootstrap standard error.
 
 # %%
+# [22]
 def local_strike(lonlat):
     """Smoothed local strike of the mapped trace (compass bearing) at the trace point nearest lonlat."""
-    cx, cy = (float(t_) for t_ in to_utm.transform(*lonlat))
-    j = int(tree.query([cx, cy])[1])
-    return float(prof.az_smooth.iloc[j] + 90.0)
+    point_x, point_y = to_utm.transform(*lonlat)
+    vertex = int(tree.query([float(point_x), float(point_y)])[1])
+    return float(x_fault.az_smooth.iloc[vertex] + 90.0)
 
 
-def profile(m_, lonlat, strike_deg=None):
-    """Cross-fault profile of map m_ through lonlat, perpendicular to the LOCAL strike
-    there (or to strike_deg): d (m, + east), v, the line's end points (UTM), the strike used."""
-    cx, cy = (float(t_) for t_ in to_utm.transform(*lonlat))
+def profile(field_map, lonlat, strike_deg=None):
+    """Cross-fault profile of field_map through lonlat, perpendicular to the LOCAL strike there (or to
+    strike_deg). Returns (distance m, + east; values; the line's end points in UTM; the strike used)."""
+    point_x, point_y = to_utm.transform(*lonlat)
+    point_x = float(point_x)
+    point_y = float(point_y)
     if strike_deg is None:
         strike_deg = local_strike(lonlat)
-    pe, pn = np.sin(np.deg2rad(strike_deg - 90.0)), np.cos(np.deg2rad(strike_deg - 90.0))   # cross-fault unit vector (+ east)
-    se, sn = -pn, pe                                            # along-strike
-    dc = (Xg - cx) * pe + (Yg - cy) * pn; da = (Xg - cx) * se + (Yg - cy) * sn
-    sel = (np.abs(da) <= swath_m) & (np.abs(dc) <= cross_m) & np.isfinite(m_)
-    d, v = dc[sel], m_[sel]
-    o = np.argsort(d)
-    ends = (cx - cross_m * pe, cy - cross_m * pn, cx + cross_m * pe, cy + cross_m * pn)
-    return d[o], v[o], ends, strike_deg
+    cross_e = np.sin(np.deg2rad(strike_deg - 90.0))             # cross-fault unit vector (+ east)
+    cross_n = np.cos(np.deg2rad(strike_deg - 90.0))
+    along_e = -cross_n                                          # along-strike unit vector
+    along_n = cross_e
+    dist_across = (Xg - point_x) * cross_e + (Yg - point_y) * cross_n
+    dist_along = (Xg - point_x) * along_e + (Yg - point_y) * along_n
+    in_swath = (np.abs(dist_along) <= swath_m) & (np.abs(dist_across) <= cross_m) & np.isfinite(field_map)
+    distance = dist_across[in_swath]
+    values = field_map[in_swath]
+    order = np.argsort(distance)
+    ends = (point_x - cross_m * cross_e, point_y - cross_m * cross_n, point_x + cross_m * cross_e, point_y + cross_m * cross_n)
+    return distance[order], values[order], ends, strike_deg
 
 
-def running_median(d, v, bin_m=median_bin_m):
-    """Binned median on each side of the fault separately: the bin edges start at
-    the trace and run outward, so no bin (and no drawn segment) straddles the
-    fault. Returns a list of (x, median) arrays, one per side (west, east)."""
-    out = []
-    for sgn in (-1, 1):
-        edges = np.sort(sgn * np.arange(0.0, cross_m + bin_m, bin_m))
-        idx = np.digitize(d, edges)
-        xc, med = [], []
-        for i in range(1, len(edges)):
-            m_ = (idx == i) & (sgn * d > 0)
-            if m_.sum() >= 3:
-                xc.append(0.5 * (edges[i - 1] + edges[i])); med.append(np.median(v[m_]))
-        out.append((np.array(xc), np.array(med)))
-    return out
-
-
-def block_amplitudes(d, v, n_boot=2000):
-    """Per-block near-fault amplitude of a profile: median of the near band
-    (`xfault_step_m`, 30 to 150 m) minus the median of the SAME block's far field
-    (`far_m`), with a bootstrap standard error over the pixels. Reads the peak
-    value of each block off the profile without any model."""
+def block_amplitudes(distance, values):
+    """Per-block near-fault amplitude of a profile: median of the near band (`xfault_step_m`, 30 to
+    150 m) minus the median of the SAME block's far field (`far_m`), with a bootstrap standard error over
+    the pixels (n_boot_blocks resamples, its own generator seeded with block_seed, so the result does not
+    depend on what was bootstrapped before). Reads the peak value of each block off the profile without
+    any model."""
+    rng = np.random.default_rng(block_seed)
     out = {}
-    for blk, sgn in (("W", -1), ("E", 1)):
-        near = (sgn * d >= xfault_step_m[0]) & (sgn * d < xfault_step_m[1])
-        far = (sgn * d >= far_m[0]) & (sgn * d < far_m[1])
-        assert near.sum() >= 10 and far.sum() >= 50, (blk, near.sum(), far.sum())
-        vn, vf = v[near], v[far]
-        boot = np.array([np.median(rng_blk.choice(vn, vn.size)) - np.median(rng_blk.choice(vf, vf.size)) for _ in range(n_boot)])
-        out[blk] = dict(amp=float(np.median(vn) - np.median(vf)), se=float(boot.std()), far=float(np.median(vf)),
-                        n_near=int(near.sum()), n_far=int(far.sum()))
+    for block_name, side in (("W", -1), ("E", 1)):
+        near = (side * distance >= xfault_step_m[0]) & (side * distance < xfault_step_m[1])
+        far = (side * distance >= far_m[0]) & (side * distance < far_m[1])
+        assert near.sum() >= 10 and far.sum() >= 50, (block_name, near.sum(), far.sum())
+        near_values = values[near]
+        far_values = values[far]
+        boot = np.empty(n_boot_blocks)
+        for draw in range(n_boot_blocks):
+            near_resampled = rng.choice(near_values, near_values.size)
+            far_resampled = rng.choice(far_values, far_values.size)
+            boot[draw] = np.median(near_resampled) - np.median(far_resampled)
+        out[block_name] = dict(amp=float(np.median(near_values) - np.median(far_values)), se=float(boot.std()),
+                               far=float(np.median(far_values)), n_near=int(near.sum()), n_far=int(far.sum()))
     return out
 
 
-def zeroed_profiles(m_rate, m_evt, lonlat):
-    """The rate and event profiles through lonlat, zeroed (rate: mid-point of the
-    block medians within 1 km; event: its far field), and their near-fault steps
-    (east minus west medians, the 30 to 150 m aperture of notebook 04)."""
-    d, v, ends, st = profile(m_rate, lonlat)
-    near = np.abs(d) <= 1000
-    v = v - 0.5 * (np.median(v[near & (d < 0)]) + np.median(v[near & (d > 0)]))
-    de, ve, _, _ = profile(m_evt, lonlat, st)
-    far = np.abs(de) >= event_far_m
-    ve = ve - (np.median(ve[far]) if far.sum() >= 20 else np.median(ve))
-    lo_, hi_ = xfault_step_m
-    r_step = float(np.median(v[(d > lo_) & (d < hi_)]) - np.median(v[(d < -lo_) & (d > -hi_)]))
-    e_step = float(np.median(ve[(de > lo_) & (de < hi_)]) - np.median(ve[(de < -lo_) & (de > -hi_)]))
-    return dict(d=d, v=v, de=de, ve=ve, ends=ends, lonlat=lonlat, strike=st, rate_step=r_step, event_step=e_step)
+def near_fault_step(distance, values):
+    """Median of the east band minus median of the west band (xfault_step_m from the trace) of a profile."""
+    band_lo, band_hi = xfault_step_m
+    east_values = values[(distance > band_lo) & (distance < band_hi)]
+    west_values = values[(distance < -band_lo) & (distance > -band_hi)]
+    return float(np.median(east_values) - np.median(west_values))
+
+
+def zeroed_profiles(rate_map, event_map, lonlat):
+    """The rate and event profiles through lonlat, zeroed (rate: mid-point of the block medians within
+    rate_zero_m; event: its far field beyond event_far_m), and their near-fault steps (east minus west
+    medians, the 30 to 150 m aperture of notebook 04)."""
+    rate_dist, rate_values, ends, strike_used = profile(rate_map, lonlat)
+    near_trace = np.abs(rate_dist) <= rate_zero_m
+    rate_values = rate_values - 0.5 * (np.median(rate_values[near_trace & (rate_dist < 0)]) + np.median(rate_values[near_trace & (rate_dist > 0)]))
+    event_dist, event_values, _, _ = profile(event_map, lonlat, strike_used)
+    far_field = np.abs(event_dist) >= event_far_m
+    assert far_field.sum() >= min_far_pixels, f"only {far_field.sum()} far-field pixels to zero the event profile at {lonlat}"
+    event_values = event_values - np.median(event_values[far_field])
+    return dict(d=rate_dist, v=rate_values, de=event_dist, ve=event_values, ends=ends, lonlat=lonlat, strike=strike_used,
+                rate_step=near_fault_step(rate_dist, rate_values), event_step=near_fault_step(event_dist, event_values))
 
 
 # fault-parallel: the numbers the text quotes
+profile_names = list(profile_pts)
 profiles = {}
 for name, lonlat in profile_pts.items():
-    p = zeroed_profiles(fp_rate, fp_evt, lonlat)
-    profiles[name] = p
-    pd.DataFrame(dict(d_m=p["d"], fp_rate_mm_yr=p["v"])).to_csv(os.path.join(out_dir, f"profile_{name}{name}_rate.csv"), index=False)
-    pd.DataFrame(dict(d_m=p["de"], fp_event_mm=p["ve"])).to_csv(os.path.join(out_dir, f"profile_{name}{name}_event.csv"), index=False)
-    print(f"{name}-{name}' FP (local strike {p['strike']:.1f} deg): {p['d'].size} rate pixels, {p['de'].size} event pixels; near-fault steps ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m): "
-          f"rate {p['rate_step']:+.2f} mm/yr, event {p['event_step']:+.2f} mm")
+    fp_profile = zeroed_profiles(fp_rate, fp_evt, lonlat)
+    profiles[name] = fp_profile
+    pd.DataFrame(dict(d_m=fp_profile["d"], fp_rate_mm_yr=fp_profile["v"])).to_csv(os.path.join(out_dir, f"profile_{name}{name}_rate.csv"), index=False)
+    pd.DataFrame(dict(d_m=fp_profile["de"], fp_event_mm=fp_profile["ve"])).to_csv(os.path.join(out_dir, f"profile_{name}{name}_event.csv"), index=False)
+    print(f"{name}-{name}' FP (local strike {fp_profile['strike']:.1f} deg): {fp_profile['d'].size} rate pixels, {fp_profile['de'].size} event pixels; "
+          f"near-fault steps ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m): "
+          f"rate {fp_profile['rate_step']:+.2f} mm/yr, event {fp_profile['event_step']:+.2f} mm")
 
 # line of sight, per track: what Fig 2 shows (LOS positive toward the satellite, so
 # right-lateral slip steps NEGATIVE on ascending and POSITIVE on descending)
 tracks = ["ascending", "descending"]
-los_profiles = {o: {n_: zeroed_profiles(event_maps[o]["rate"], mean_event[o]["mean"], ll) for n_, ll in profile_pts.items()} for o in tracks}
-for o in tracks:
-    for n_, p in los_profiles[o].items():
-        pd.DataFrame(dict(d_m=p["d"], los_rate_mm_yr=p["v"])).to_csv(os.path.join(out_dir, f"profile_{n_}{n_}_rate_{o}.csv"), index=False)
-        pd.DataFrame(dict(d_m=p["de"], los_event_mm=p["ve"])).to_csv(os.path.join(out_dir, f"profile_{n_}{n_}_event_{o}.csv"), index=False)
-        p["blocks"] = block_amplitudes(p["de"], p["ve"])
-        blk = p["blocks"]
-        print(f"[{o[:3]}] {n_}-{n_}' LOS: rate step {p['rate_step']:+.2f} mm/yr, event step {p['event_step']:+.2f} mm; "
-              f"event per block W {blk['W']['amp']:+.2f} +/- {blk['W']['se']:.2f}, E {blk['E']['amp']:+.2f} +/- {blk['E']['se']:.2f} mm")
+los_profiles = {}
+for orbit in tracks:
+    los_profiles[orbit] = {}
+    for name, lonlat in profile_pts.items():
+        los_profile = zeroed_profiles(event_maps[orbit]["rate"], mean_event[orbit]["mean"], lonlat)
+        pd.DataFrame(dict(d_m=los_profile["d"], los_rate_mm_yr=los_profile["v"])).to_csv(
+            os.path.join(out_dir, f"profile_{name}{name}_rate_{orbit}.csv"), index=False)
+        pd.DataFrame(dict(d_m=los_profile["de"], los_event_mm=los_profile["ve"])).to_csv(
+            os.path.join(out_dir, f"profile_{name}{name}_event_{orbit}.csv"), index=False)
+        los_profile["blocks"] = block_amplitudes(los_profile["de"], los_profile["ve"])
+        west_block = los_profile["blocks"]["W"]
+        east_block = los_profile["blocks"]["E"]
+        print(f"[{orbit[:3]}] {name}-{name}' LOS: rate step {los_profile['rate_step']:+.2f} mm/yr, event step {los_profile['event_step']:+.2f} mm; "
+              f"event per block W {west_block['amp']:+.2f} +/- {west_block['se']:.2f}, E {east_block['amp']:+.2f} +/- {east_block['se']:.2f} mm")
+        los_profiles[orbit][name] = los_profile
 xx_ratio = los_profiles["ascending"]["X"]["event_step"] / los_profiles["descending"]["X"]["event_step"]
 print(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric, pure strike-slip: {geom_ratio:+.2f})")
 assert los_profiles["ascending"]["X"]["event_step"] < 0 < los_profiles["descending"]["X"]["event_step"], "the X-X' LOS event steps have the wrong signs"
 
 # %% [markdown]
-# ## RUN: write the maps and profiles Fig 2 draws
+# ## [23] RUN: write the maps and profiles Fig 2 draws
 #
 # Fig 2 is drawn in its own notebook (`07c_fig2`) after the slip model,
 # so its model row is the real model. It needs the per-track LOS maps (masked
 # at `coh_maps`), the fault-parallel maps and the profiles; they go into one
 # file. The fault-parallel and vertical profiles get their block amplitudes
-# here too (after the LOS ones, so the LOS bootstrap draws are unchanged).
+# here too.
 
 # %%
-names = list(profile_pts)
-for n_ in names:
-    profiles[n_]["blocks"] = block_amplitudes(profiles[n_]["de"], profiles[n_]["ve"])
+# [24]
+for name in profile_names:
+    profiles[name]["blocks"] = block_amplitudes(profiles[name]["de"], profiles[name]["ve"])
 # the vertical field through the same lines (Fig 2's second column)
-up_profiles = {n_: zeroed_profiles(up_rate, up_evt, ll) for n_, ll in profile_pts.items()}
-for n_ in names:
-    up_profiles[n_]["blocks"] = block_amplitudes(up_profiles[n_]["de"], up_profiles[n_]["ve"])
+up_profiles = {}
+for name, lonlat in profile_pts.items():
+    up_profiles[name] = zeroed_profiles(up_rate, up_evt, lonlat)
+    up_profiles[name]["blocks"] = block_amplitudes(up_profiles[name]["de"], up_profiles[name]["ve"])
 
 fig2_in = dict(lon=lon_g, lat=lat_g, X=Xg, Y=Yg, epsg=epsg, strike=strike, coh_maps=coh_maps,
-               n_events=mean_event["ascending"]["n"], cross_m=cross_m, names=np.array(names),
+               n_events=mean_event["ascending"]["n"], cross_m=cross_m, names=np.array(profile_names),
                fp_rate=fp_rate, fp_event=fp_evt, up_rate=up_rate, up_event=up_evt)
-for o in tracks:
-    fig2_in[f"rate_{o}"] = event_maps[o]["rate"]
-    fig2_in[f"event_{o}"] = mean_event[o]["mean"]
-for field, pset in [("fp", profiles), ("up", up_profiles)] + [(o, los_profiles[o]) for o in tracks]:
-    for n_ in names:
-        p = pset[n_]
-        for k in ("d", "v", "de", "ve", "ends"):
-            fig2_in[f"prof_{field}_{n_}_{k}"] = np.asarray(p[k])
-        for blk in ("W", "E"):
-            fig2_in[f"prof_{field}_{n_}_{blk}_amp"] = p["blocks"][blk]["amp"]
-            fig2_in[f"prof_{field}_{n_}_{blk}_se"] = p["blocks"][blk]["se"]
+for orbit in tracks:
+    fig2_in[f"rate_{orbit}"] = event_maps[orbit]["rate"]
+    fig2_in[f"event_{orbit}"] = mean_event[orbit]["mean"]
+profile_sets = {"fp": profiles, "up": up_profiles}            # the field name in the npz key -> its profiles
+for orbit in tracks:
+    profile_sets[orbit] = los_profiles[orbit]
+for field, profile_set in profile_sets.items():
+    for name in profile_names:
+        one_profile = profile_set[name]
+        for array_name in ("d", "v", "de", "ve", "ends"):
+            fig2_in[f"prof_{field}_{name}_{array_name}"] = np.asarray(one_profile[array_name])
+        for block_name in ("W", "E"):
+            fig2_in[f"prof_{field}_{name}_{block_name}_amp"] = one_profile["blocks"][block_name]["amp"]
+            fig2_in[f"prof_{field}_{name}_{block_name}_se"] = one_profile["blocks"][block_name]["se"]
 f_fig2_in = os.path.join(out_dir, "fig2_inputs.npz")
 np.savez(f_fig2_in, provenance=utils.provenance_stamp(notebook, repo_dir), **fig2_in)
 print("wrote", f_fig2_in)
 
 # %% [markdown]
-# ## Supplement: the step maps, every event and track
+# ## [25] Supplement: the step maps, every event and track
 #
-# Rows ascending / descending; columns the five events (burst-fixed), the mean
-# of the kept events, and the per-pixel scatter across them. LOS mm, positive
-# toward the satellite, so the two rows have opposite colours across the fault.
-
-# %%
-clim = 4.0
-scatter_lim = 2.0          # the scatter is ~0.5-1.5 mm near the fault; 2 mm keeps it readable
-n_ev = len(onsets)
-n_col = n_ev + 2
+# Three rows (Dani 2026-10-05, the original layout): ascending after removal of
+# its burst offset (what the slip model inverts; the ascending offsets are a
+# few tenths of a mm, invisible at this colour scale, so no separate
+# uncorrected ascending row); descending as observed, before the burst offset
+# is removed; and descending after its removal (what the slip model inverts).
+# Each track's burst seam (cell [4]) is drawn dashed on its rows, so the reader
+# sees where the correction was made. Columns the five events (titled by 04's
+# onset_lo as a date), the mean of the kept events, and the per-pixel scatter
+# across them, computed the same way for every row (asserted against the mean
+# event of cell [18] for the rows it covers). LOS mm, positive toward the
+# satellite, so ascending and descending have opposite colours across the fault.
 # pygmt, north up in lon/lat (Dani 2026-09-29: pygmt for anything with a map).
 # 18.3 cm wide: seven maps with small gaps, lon annotated on the bottom row and
-# lat on the left column only; two colour bars of the same height and font
-# under the bottom row (step bar under the event + mean columns, scatter bar
-# under the scatter column).
+# lat on the left column only, the row label left of each row; two colour bars
+# of the same height and font under the bottom row (step bar under the event +
+# mean columns, scatter bar under the scatter column). Diverging red-blue for
+# the steps, magma for the scatter (no blue/green).
+
+# %%
+# [26]
+clim = 4.0                 # step colour range +/- this (mm)
+scatter_lim = 2.0          # the scatter is ~0.5-1.5 mm near the fault; 2 mm keeps it readable
+map_w_cm = 2.3             # each map's width
+gap_x_cm = 0.15            # between maps in a row
+gap_y_cm = 0.55            # between rows
+row_label_cm = 0.75        # the row label sits this far left of the left column, clear of the lat annotations
+n_events_fig = len(step_epochs)
+n_col = n_events_fig + 2
+
+
+def mean_and_scatter(step_stack, keep_event):
+    """Mean and 1-sd scatter of the kept step maps per pixel, only where all of them are valid
+    (as the mean event of cell [18])."""
+    kept_maps = step_stack[keep_event]
+    n_valid = np.isfinite(kept_maps).sum(0)
+    mean = np.where(n_valid == len(kept_maps), np.nanmean(kept_maps, 0), np.nan)
+    scatter = np.where(n_valid == len(kept_maps), np.nanstd(kept_maps, 0, ddof=1), np.nan)
+    return mean, scatter
+
+
+# the rows: (label, track, step-map stack); mean and scatter per row computed the same way
+grid_rows = [("Ascending", "ascending", event_maps["ascending"]["ev"]),            # burst-fixed, as the bottom row
+             ("Descending", "descending", event_maps["descending"]["ev_raw"]),
+             ("Des, Corrected", "descending", event_maps["descending"]["ev"])]
+grid_stats = []
+for row_label, orbit, step_stack in grid_rows:
+    keep_event = np.array([not is_excluded(step_epoch) for _, step_epoch in fits[orbit]["steps"]])
+    row_mean, row_scatter = mean_and_scatter(step_stack, keep_event)
+    assert int(keep_event.sum()) == mean_event[orbit]["n"]
+    if step_stack is event_maps[orbit]["ev"]:                   # burst-fixed rows: must be the mean event the slip model reads
+        assert np.allclose(row_mean, mean_event[orbit]["mean"], rtol=0, atol=1e-5, equal_nan=True), f"{row_label}: grid mean is not the mean event"
+        assert np.allclose(row_scatter, mean_event[orbit]["scatter"], rtol=0, atol=1e-5, equal_nan=True), f"{row_label}: grid scatter differs"
+    grid_stats.append((row_mean, row_scatter, int(keep_event.sum())))
+
+# each event's title: 04's onset_lo (its step epoch) as a calendar date
+onset_dates = []
+for i, step_epoch in enumerate(step_epochs):
+    for orbit in fits:
+        assert abs(fits[orbit]["steps"][i][1] - step_epoch) < 1e-9, f"{orbit} event {i} is not 04's event {i}"
+    onset_dates.append(utils.decimal_year_to_day(step_epoch).strftime("%Y-%m-%d"))
+print("event titles (onset_lo):", onset_dates)
 region_box = [box_lonlat[0], box_lonlat[2], box_lonlat[1], box_lonlat[3]]
-x_corner, y_corner = x0 + c0 * dx, y0 + r0 * dy                 # corner of the box's first pixel
-Wm, gap_x, gap_y = 2.3, 0.15, 0.55
-w_, h_ = utils.gmt_map_size(region_box, f"M{Wm}c")
-Hm = h_
-proj_box = f"M{Wm}c"
-cpt_dir = os.path.join(out_dir, "cpt"); os.makedirs(cpt_dir, exist_ok=True)
+x_corner = x0 + c0 * dx                                         # corner of the box's first pixel
+y_corner = y0 + r0 * dy
+_, map_h_cm = utils.gmt_map_size(region_box, f"M{map_w_cm}c")
+proj_box = f"M{map_w_cm}c"
+cpt_dir = os.path.join(out_dir, "cpt")
+os.makedirs(cpt_dir, exist_ok=True)
 cpt_step = utils.write_cpt(os.path.join(cpt_dir, "step_maps.cpt"), "RdBu_r", -clim, clim)
 cpt_scatter = utils.write_cpt(os.path.join(cpt_dir, "step_scatter.cpt"), "magma", 0, scatter_lim)   # magma, not viridis: no blue/green
 pygmt.config(FONT="7p,Helvetica", FONT_ANNOT_PRIMARY="6p,Helvetica", FONT_LABEL="6p,Helvetica", MAP_FRAME_TYPE="plain",
              MAP_FRAME_PEN="0.5p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_ANNOT_OFFSET="2p", MAP_LABEL_OFFSET="2p", FORMAT_GEO_MAP="D")
 fig = pygmt.Figure()
-letters = iter("ABCDEFGHIJKLMNOP")
-for r_, orbit in enumerate(event_maps):
-    panels = [(event_maps[orbit]["ev"][i], f"{oy:.2f}" + (" (excluded)" if any(abs(oy - x) < 0.02 for x in exclude_events) else ""), cpt_step)
-              for i, (_, _, oy) in enumerate(fits[orbit]["steps"])]
-    panels += [(mean_event[orbit]["mean"], f"Mean of {mean_event[orbit]['n']}", cpt_step),
-               (mean_event[orbit]["scatter"], "Scatter", cpt_scatter)]
-    if r_:
-        fig.shift_origin(xshift=f"-{(n_col - 1) * (Wm + gap_x)}c", yshift=f"-{Hm + gap_y}c")
-    for c_, (m_, ttl, cpt) in enumerate(panels):
-        if c_:
-            fig.shift_origin(xshift=f"{Wm + gap_x}c")
-        grid = utils.utm_to_lonlat_grid(m_, x_corner, y_corner, dx, dy, epsg, region_box, 0.00015, 0.00012)   # ~13 m, half the 30 m pixel, so no pixel is dropped or doubled
-        sides = ("W" if c_ == 0 else "w") + ("S" if r_ == 1 else "s") + "nr"
+panel_letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+assert len(grid_rows) * n_col <= len(panel_letters)
+burst_lon = np.array([region_box[0], region_box[1]])
+panel_number = 0
+for row_number, (row_label, orbit, step_stack) in enumerate(grid_rows):
+    row_mean, row_scatter, n_row_mean = grid_stats[row_number]
+    panels = []                                                 # (map, title, colour table) for each column
+    for i, (_, step_epoch) in enumerate(fits[orbit]["steps"]):
+        panel_title = onset_dates[i]                            # each event titled by its onset date (04's onset_lo)
+        if is_excluded(step_epoch):
+            panel_title += " (excluded)"
+        panels.append((step_stack[i], panel_title, cpt_step))
+    panels.append((row_mean, f"Mean of {n_row_mean}", cpt_step))
+    panels.append((row_scatter, "Scatter", cpt_scatter))
+    if row_number > 0:
+        fig.shift_origin(xshift=f"-{(n_col - 1) * (map_w_cm + gap_x_cm)}c", yshift=f"-{map_h_cm + gap_y_cm}c")
+    for col_number, (panel_map, panel_title, cpt) in enumerate(panels):
+        if col_number > 0:
+            fig.shift_origin(xshift=f"{map_w_cm + gap_x_cm}c")
+        grid = utils.utm_to_lonlat_grid(panel_map, x_corner, y_corner, dx, dy, epsg, region_box, 0.00015, 0.00012)   # ~13 m, half the 30 m pixel, so no pixel is dropped or doubled
+        if col_number == 0:
+            sides = "W"
+        else:
+            sides = "w"
+        if row_number == len(grid_rows) - 1:
+            sides += "S"
+        else:
+            sides += "s"
+        sides += "nr"
         fig.basemap(region=region_box, projection=proj_box, frame=[sides, "xa0.15f0.05", "ya0.05f0.025"])
         fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True)
-        fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.5p," + ("black" if cpt == cpt_step else "white"))   # white on the dark scatter map
+        if cpt == cpt_step:
+            line_colour = "black"
+        else:
+            line_colour = "white"                               # white on the dark scatter map
+        fig.plot(x=x_fault.ft_lon.values, y=x_fault.ft_lat.values, pen=f"0.5p,{line_colour}")
+        for line_slope, line_lat in burst_lines.get(orbit, []):    # the burst seam, thin dashed, on every row of its track
+            fig.plot(x=burst_lon, y=line_lat + line_slope * (burst_lon + 122.0), pen=f"0.35p,{line_colour},2p_1.5p")
         fig.basemap(region=region_box, projection=proj_box, frame=[sides, "xa0.15f0.05", "ya0.05f0.025"])
-        fig.text(position="TL", text=f"@%Helvetica-Bold%{next(letters)}@%%  {orbit[:3].capitalize()} {ttl}", justify="BL",
+        fig.text(position="TL", text=f"@%Helvetica-Bold%{panel_letters[panel_number]}@%%  {panel_title}", justify="BL",
                  offset="0c/0.12c", font="6.5p,Helvetica", no_clip=True)
-# colour bars, 0.25 cm tall, 0.7 cm under the bottom row
-fig.shift_origin(xshift=f"-{(n_col - 1) * (Wm + gap_x)}c")
-span_step = n_ev * (Wm + gap_x) + Wm                 # the event + mean columns
-w_step = 2 * Wm + gap_x                              # bar two maps wide (Dani 2026-09-29), centred under those columns
-cb_pt = 6.0 / min(1.0, np.sqrt(w_step / 9.0))        # GMT shrinks a short bar's fonts by ~sqrt(length / 9 cm): this prints ~6p
+        if col_number == 0:                                     # the row label, rotated, left of the lat annotations
+            fig.text(position="LM", text=row_label, angle=90, justify="BC", offset=f"-{row_label_cm}c/0c",
+                     font="6.5p,Helvetica-Bold", no_clip=True)
+        panel_number += 1
+# colour bars, 0.22 cm tall, 0.75 cm under the bottom row
+fig.shift_origin(xshift=f"-{(n_col - 1) * (map_w_cm + gap_x_cm)}c")
+span_step = n_events_fig * (map_w_cm + gap_x_cm) + map_w_cm   # the event + mean columns
+w_step = 2 * map_w_cm + gap_x_cm                               # bar two maps wide (Dani 2026-09-29), centred under those columns
+cb_pt = 6.0 / min(1.0, np.sqrt(w_step / 9.0))                  # GMT shrinks a short bar's fonts by ~sqrt(length / 9 cm): this prints ~6p
 with pygmt.config(FONT_ANNOT_PRIMARY=f"{cb_pt:.1f}p,Helvetica", FONT_LABEL=f"{cb_pt:.1f}p,Helvetica"):
     fig.colorbar(cmap=cpt_step, position=f"x{0.5 * (span_step - w_step)}c/-0.75c+w{w_step}c/0.22c+h+jTL+e",
                  frame=["xa2f1+lLOS step (mm), positive toward the satellite"])
 with pygmt.config(FONT_ANNOT_PRIMARY="12p,Helvetica", FONT_LABEL="12p,Helvetica"):    # GMT halves the fonts of a bar this short: 12p prints as ~6p
-    fig.colorbar(cmap=cpt_scatter, position=f"x{(n_col - 1) * (Wm + gap_x)}c/-0.75c+w{Wm}c/0.22c+h+jTL+ef",
+    fig.colorbar(cmap=cpt_scatter, position=f"x{(n_col - 1) * (map_w_cm + gap_x_cm)}c/-0.75c+w{map_w_cm}c/0.22c+h+jTL+ef",
                  frame=["xa1f0.5+lScatter, 1 sd (mm)"])
-# the caption carries what the old title said: per-pixel steps, box median removed, descending burst offsets removed, coherence coh_maps
+# the caption carries what the old title said: per-pixel steps, box median removed, burst offsets removed in the top (ascending) and bottom rows, coherence coh_maps
 f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_maps}")
 fig.savefig(f_grid + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)
 fig.savefig(f_grid + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved figure to:", f_grid + ".png")
 
 # %% [markdown]
-# ## REGISTER
+# ## [27] REGISTER
+#
+# The stats file `06_event_field_stats.txt` (every number above, in words) and
+# the registry rows `06_*` the paper quotes.
 
 # %%
-L_ = [f"06 EVENT FIELD GEOMETRY  (coherence {coh_timeseries}, box {box_lonlat}, {nr} x {nc} px)",
-      f"local strike {strike:.2f} deg; LOS.strike asc {L['ascending'] @ s_hat:+.3f} desc {L['descending'] @ s_hat:+.3f}, geometric asc/desc ratio {geom_ratio:+.2f}",
-      f"per-event near-fault LOS steps (east - west, {xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m, stacked band):"]
-for _, r_ in steps_df.iterrows():
-    L_.append(f"   {r_.onset_yr:.2f}: asc {r_.ascending_step_mm:+.2f} mm, desc {r_.descending_step_mm:+.2f} mm, ratio {r_.ratio_asc_desc:+.2f}")
-L_.append(f"excluded from the mean: {exclude_events}; mean event = {mean_event['ascending']['n']} events")
-for _, r_ in burst_df.iterrows():
-    L_.append(f"   burst fix {r_.track} lat {r_.line_lat:.3f} event {r_.onset_yr:.2f}: {r_.offset_mm:+.2f} mm")
-L_.append(f"FP inter-event step (stacked band) {block_step(fp_rate):+.2f} mm/yr, Up {block_step(up_rate):+.2f}; FP mean event {block_step(fp_evt):+.2f} mm, Up {block_step(up_evt):+.2f}")
-L_.append(f"profiles, near-fault steps east - west ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m), +/-{cross_m / 1e3:g} km, swath +/-{swath_m:.0f} m:")
-for n_ in names:
-    L_.append(f"   {n_}-{n_}' ({profiles[n_]['lonlat'][1]:.4f} N, local strike {profiles[n_]['strike']:.1f} deg): inter-event {profiles[n_]['rate_step']:+.2f} mm/yr, event {profiles[n_]['event_step']:+.2f} mm (n {profiles[n_]['d'].size})")
-L_.append("LOS profiles per track (Fig 2), near-fault steps east - west, LOS positive toward the satellite:")
-for o in tracks:
-    for n_ in names:
-        b_ = los_profiles[o][n_]["blocks"]
-        L_.append(f"   {o[:3]} {n_}-{n_}': inter-event {los_profiles[o][n_]['rate_step']:+.2f} mm/yr, event {los_profiles[o][n_]['event_step']:+.2f} mm; "
-                  f"event per block (near {xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m over far {far_m[0]:.0f}-{far_m[1]:.0f} m) "
-                  f"W {b_['W']['amp']:+.2f} +/- {b_['W']['se']:.2f}, E {b_['E']['amp']:+.2f} +/- {b_['E']['se']:.2f} mm")
-L_.append(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric {geom_ratio:+.2f})")
-print("\n".join(L_))
-sidecar = REG.sidecar("06_event_field", L_)
+# [28]
+stats_lines = [f"06 EVENT FIELD GEOMETRY  (coherence {coh_timeseries}, box {box_lonlat}, {nr} x {nc} px)",
+               f"local strike {strike:.2f} deg; LOS.strike asc {los_dot_strike_asc:+.3f} desc {los_dot_strike_desc:+.3f}, "
+               f"geometric asc/desc ratio {geom_ratio:+.2f}",
+               f"per-event near-fault LOS steps (east - west, {xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m, stacked band):"]
+for _, step_row in steps_df.iterrows():
+    stats_lines.append(f"   {step_row.step_epoch:.2f}: asc {step_row.ascending_step_mm:+.2f} mm, desc {step_row.descending_step_mm:+.2f} mm, "
+                       f"ratio {step_row.ratio_asc_desc:+.2f}")
+stats_lines.append(f"excluded from the mean: {exclude_events}; mean event = {mean_event['ascending']['n']} events")
+stats_lines.append("burst seams in the box (CSLC-S1-STATIC bounding polygons, " + ", ".join(os.path.basename(f) for f in burst_static_files) + "):")
+for orbit, seams in burst_seam_list.items():
+    for seam in seams:
+        stats_lines.append(f"   {orbit} {seam['north']} / {seam['south']}: lat {seam['lat_west']:.4f} at {box_lonlat[0]} E, "
+                           f"{seam['lat_east']:.4f} at {box_lonlat[2]} E; corrected: {orbit in burst_corrected}")
+for _, burst_row in burst_df.iterrows():
+    stats_lines.append(f"   burst fix {burst_row.track} lat {burst_row.line_lat:.3f} event {burst_row.step_epoch:.2f}: {burst_row.offset_mm:+.2f} mm "
+                       f"(north - south; {burst_row.n_north} / {burst_row.n_south} band pixels; {burst_row.fixed_side} side held fixed)")
+stats_lines.append(f"FP inter-event step (stacked band) {block_step(fp_rate):+.2f} mm/yr, Up {block_step(up_rate):+.2f}; "
+                   f"FP mean event {block_step(fp_evt):+.2f} mm, Up {block_step(up_evt):+.2f}")
+stats_lines.append(f"profiles, near-fault steps east - west ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m), +/-{cross_m / 1e3:g} km, "
+                   f"swath +/-{swath_m:.0f} m:")
+for name in profile_names:
+    fp_profile = profiles[name]
+    stats_lines.append(f"   {name}-{name}' ({fp_profile['lonlat'][1]:.4f} N, local strike {fp_profile['strike']:.1f} deg): "
+                       f"inter-event {fp_profile['rate_step']:+.2f} mm/yr, event {fp_profile['event_step']:+.2f} mm (n {fp_profile['d'].size})")
+stats_lines.append("LOS profiles per track (Fig 2), near-fault steps east - west, LOS positive toward the satellite:")
+for orbit in tracks:
+    for name in profile_names:
+        los_profile = los_profiles[orbit][name]
+        west_block = los_profile["blocks"]["W"]
+        east_block = los_profile["blocks"]["E"]
+        stats_lines.append(f"   {orbit[:3]} {name}-{name}': inter-event {los_profile['rate_step']:+.2f} mm/yr, event {los_profile['event_step']:+.2f} mm; "
+                           f"event per block (near {xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m over far {far_m[0]:.0f}-{far_m[1]:.0f} m) "
+                           f"W {west_block['amp']:+.2f} +/- {west_block['se']:.2f}, E {east_block['amp']:+.2f} +/- {east_block['se']:.2f} mm")
+stats_lines.append(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric {geom_ratio:+.2f})")
+print("\n".join(stats_lines))
+sidecar = REG.sidecar("06_event_field", stats_lines)
 
 REG.register("06_strike_local_deg", strike, "deg", 2, where="M4", cell="strike", sidecar=sidecar)
 REG.register("06_asc_desc_geom_ratio", geom_ratio, "", 2, where="M4", cell="los-steps", sidecar=sidecar)
 REG.register("06_n_events_mean", mean_event["ascending"]["n"], "count", 0, where="M4", cell="mean-event", sidecar=sidecar)
-for _, r_ in steps_df.iterrows():
-    tag = f"{int(r_.onset_yr)}"
-    REG.register(f"06_los_step_asc_{tag}_mm", r_.ascending_step_mm, "mm", 2, where="S", cell="los-steps", sidecar=sidecar)
-    REG.register(f"06_los_step_desc_{tag}_mm", r_.descending_step_mm, "mm", 2, where="S", cell="los-steps", sidecar=sidecar)
-    REG.register(f"06_step_ratio_{tag}", r_.ratio_asc_desc, "", 2, where="S", cell="los-steps", sidecar=sidecar)
-for _, r_ in burst_df.iterrows():
-    REG.register(f"06_burst_{r_.line_lat:.3f}_{int(r_.onset_yr)}_mm", r_.offset_mm, "mm", 2, where="S", cell="burst-fix", sidecar=sidecar)
+for _, step_row in steps_df.iterrows():
+    year_tag = f"{int(step_row.step_epoch)}"
+    REG.register(f"06_los_step_asc_{year_tag}_mm", step_row.ascending_step_mm, "mm", 2, where="S", cell="los-steps", sidecar=sidecar)
+    REG.register(f"06_los_step_desc_{year_tag}_mm", step_row.descending_step_mm, "mm", 2, where="S", cell="los-steps", sidecar=sidecar)
+    REG.register(f"06_step_ratio_{year_tag}", step_row.ratio_asc_desc, "", 2, where="S", cell="los-steps", sidecar=sidecar)
+for _, burst_row in burst_df.iterrows():
+    REG.register(f"06_burst_{burst_row.line_lat:.3f}_{int(burst_row.step_epoch)}_mm", burst_row.offset_mm, "mm", 2, where="S", cell="burst-fix", sidecar=sidecar)
 REG.register("06_fp_rate_step_mm_yr", block_step(fp_rate), "mm/yr", 2, where="P6", cell="decompose", sidecar=sidecar)
 REG.register("06_up_rate_step_mm_yr", block_step(up_rate), "mm/yr", 2, where="S", cell="decompose", sidecar=sidecar)
 REG.register("06_fp_event_step_mm", block_step(fp_evt), "mm", 2, where="P6", cell="decompose", sidecar=sidecar)
 REG.register("06_up_event_step_mm", block_step(up_evt), "mm", 2, where="S", cell="decompose", sidecar=sidecar)
-for n_ in names:
-    REG.register(f"06_{n_}{n_}_strike_local_deg", profiles[n_]["strike"], "deg", 1, where="Fig2", cell="profiles", sidecar=sidecar)
-    REG.register(f"06_{n_}{n_}_rate_step_mm_yr", profiles[n_]["rate_step"], "mm/yr", 2, where="P6", cell="profiles", sidecar=sidecar)
-    REG.register(f"06_{n_}{n_}_event_step_mm", profiles[n_]["event_step"], "mm", 2, where="P6", cell="profiles", sidecar=sidecar)
-for o in tracks:
-    for n_ in names:
-        REG.register(f"06_{n_}{n_}_rate_step_{o[:3]}_mm_yr", los_profiles[o][n_]["rate_step"], "mm/yr", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
-        REG.register(f"06_{n_}{n_}_event_step_{o[:3]}_mm", los_profiles[o][n_]["event_step"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
-        for blk in ("W", "E"):
-            REG.register(f"06_{n_}{n_}_event_{blk}_{o[:3]}_mm", los_profiles[o][n_]["blocks"][blk]["amp"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
-            REG.register(f"06_{n_}{n_}_event_{blk}_{o[:3]}_se_mm", los_profiles[o][n_]["blocks"][blk]["se"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+for name in profile_names:
+    REG.register(f"06_{name}{name}_strike_local_deg", profiles[name]["strike"], "deg", 1, where="Fig2", cell="profiles", sidecar=sidecar)
+    REG.register(f"06_{name}{name}_rate_step_mm_yr", profiles[name]["rate_step"], "mm/yr", 2, where="P6", cell="profiles", sidecar=sidecar)
+    REG.register(f"06_{name}{name}_event_step_mm", profiles[name]["event_step"], "mm", 2, where="P6", cell="profiles", sidecar=sidecar)
+for orbit in tracks:
+    for name in profile_names:
+        los_profile = los_profiles[orbit][name]
+        REG.register(f"06_{name}{name}_rate_step_{orbit[:3]}_mm_yr", los_profile["rate_step"], "mm/yr", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+        REG.register(f"06_{name}{name}_event_step_{orbit[:3]}_mm", los_profile["event_step"], "mm", 2, where="Fig2", cell="los-profiles", sidecar=sidecar)
+        for block_name in ("W", "E"):
+            REG.register(f"06_{name}{name}_event_{block_name}_{orbit[:3]}_mm", los_profile["blocks"][block_name]["amp"], "mm", 2,
+                         where="Fig2", cell="los-profiles", sidecar=sidecar)
+            REG.register(f"06_{name}{name}_event_{block_name}_{orbit[:3]}_se_mm", los_profile["blocks"][block_name]["se"], "mm", 2,
+                         where="Fig2", cell="los-profiles", sidecar=sidecar)
 REG.register("06_XX_event_ratio_asc_desc", xx_ratio, "", 2, where="S2", cell="los-profiles", sidecar=sidecar)
 for orbit in mean_event:
     REG.register(f"06_n_px_csi_{orbit[:3]}", int(np.isfinite(mean_event[orbit]["mean"]).sum()), "count", 0, where="M4", cell="mean-event", sidecar=sidecar)
