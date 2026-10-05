@@ -11,8 +11,8 @@ __pycache__/
 *.log
 # local pre-refresh snapshot zip, not part of the repo
 outputs.zip
-# PyLith draft data (meshes, spatial databases, Green's functions, HDF5 outputs, run logs): kept on disk and in
-# proj_TulePond_DISP/modeling_SFCVM, not in git. The scripts, cfg files and notes in drafts/pylith are tracked.
+# Data of the PyLith driver retired 2026-10-06 (left in place, git-ignored; every file was copied to the results
+# directory: modeling_inputs/, modeling_uniform/, modeling_SFCVM/; see drafts/pylith/README.md and pylith/README.md).
 drafts/pylith/output/
 drafts/pylith/gf/
 drafts/pylith/spatialdb/
