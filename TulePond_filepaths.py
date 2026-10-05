@@ -77,6 +77,17 @@ paths_sfcvm = {
 prep_dir   = os.path.join(data_dir, "prep_validation")
 
 # ------------------------
+# Notebooks retired from the paper: still in the repo (and runnable), but their registry keys are rendered in
+# the RETIRED block of registry.txt (insar_utils.Registry.render), never as live numbers. registry.csv keeps
+# their rows (append-only).
+# 07b_uniform_model_tests: the uniform-model CSI side checks (depth scan, synthetic recovery, ...) are no
+# longer part of the paper (Dani 2026-10-05: the model is PyLith only) and 07b was not re-run after
+# 2026-10-03, so its 07b_* keys would otherwise render as live. 07a_uniform_model stays (the data-prep
+# step of 08a and the CSI validation): its keys stay live.
+# ------------------------
+retired_notebooks = ("07b_uniform_model_tests",)
+
+# ------------------------
 # Common paths & constants
 # ------------------------
 common_paths = {
@@ -90,6 +101,7 @@ common_paths = {
     # manuscript. See insar_utils.Registry.
     "registry_csv": os.path.join(out_dir, "registry.csv"),
     "registry_txt": os.path.join(out_dir, "registry.txt"),
+    "retired_notebooks": retired_notebooks,     # their keys render as RETIRED (see above)
 
     # InSAR reference: every displacement/velocity product is referenced at the
     # pixel co-located with GNSS station ZOA1 (Fremont, west of the fault), so

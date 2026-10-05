@@ -1092,6 +1092,7 @@ class Registry:
 
     def __init__(self, notebook, common_paths, repo_dir):
         self.notebook = notebook
+        self.common_paths = common_paths
         self.csv_path = common_paths["registry_csv"]
         self.txt_path = common_paths["registry_txt"]
         self.out_dir = os.path.join(common_paths["out_dir"], notebook)
@@ -1182,10 +1183,20 @@ class Registry:
         # run's keys live (audit A_dataflow F9). Every run writes a sidecar first; one newer than the notebook's
         # last registered row, from a run that registered nothing, retires all of that notebook's keys.
         silent = self._notebooks_whose_latest_run_registered_nothing(rows)
-        is_live = latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
+        # ... and notebooks retired from the paper by decision (TulePond_filepaths.retired_notebooks, via
+        # common_paths): still in the repo, their keys are never live (07b, Dani 2026-10-05). A common_paths
+        # without the entry (the unit tests' temporary one) retires none.
+        retired_by_decision = set(self.common_paths.get("retired_notebooks", ()))
+        for nb in sorted(retired_by_decision - current):
+            print(f"  NB: retired notebook {nb} is not in the repo any more (its keys are retired either way)")
+        is_live = (latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
+                   & ~latest["notebook"].isin(retired_by_decision))
         live, retired = latest[is_live], latest[~is_live]
         for nb in sorted(silent):
             print(f"  {nb}: its latest run registered no numbers (sidecar newer than its last registry row); its keys are retired")
+        for nb in sorted(retired_by_decision):
+            print(f"  {nb}: retired from the paper (TulePond_filepaths.retired_notebooks); its "
+                  f"{int((latest['notebook'] == nb).sum())} keys are listed as RETIRED")
 
         def lines(f, frame):
             for nb, grp in frame.groupby("notebook"):
@@ -1202,8 +1213,9 @@ class Registry:
             for where, grp in live.groupby("where"):
                 f.write(f"{where}: " + ", ".join(f"{r['key']}={r['rendered']}" for _, r in grp.iterrows()) + "\n")
             if len(retired):
-                f.write(f"\n# ===== RETIRED: {len(retired)} keys from notebooks no longer in the repo or not produced by "
-                        f"their notebook's latest run ({', '.join(sorted(retired['notebook'].unique()))}). DO NOT QUOTE. =====\n\n")
+                f.write(f"\n# ===== RETIRED: {len(retired)} keys from notebooks no longer in the repo, retired from the paper "
+                        f"({', '.join(sorted(retired_by_decision)) or 'none'}), or not produced by their notebook's latest run "
+                        f"({', '.join(sorted(retired['notebook'].unique()))}). DO NOT QUOTE. =====\n\n")
                 lines(f, retired)
         print(f"Rendered registry to: {self.txt_path}")
         return self.txt_path

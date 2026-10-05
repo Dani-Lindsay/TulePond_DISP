@@ -65,11 +65,13 @@
 # `07b_uniform_model_tests/fig2_model_row.npz` (07a's baseline on the same samples); and, from
 # `modeling_SFCVM/gf/`, the products of the earlier PyLith driver run: `lcurve_<medium><tag>.csv`
 # and `results_comparison<tag>.csv` (compared in [11] and [12]), `results_comparison_{e50,w50}<tag>.csv`
-# (the +/- 50 m alignment runs of the Mw range, [14]) and `uncertainty_<run>_<medium>.csv` (08b's
-# bootstrap, [14]).
+# (the +/- 50 m alignment runs of the Mw range, [14]), their `inversion_products_{e50,w50}<tag>.npz`,
+# `G_gf_default_sfcvm_{e50,w50}.npz` and PyLith `-elastic_info.h5` (slip and rigidity of those range
+# models, [15c]) and `uncertainty_<run>_<medium>.csv` (08b's bootstrap, [14]).
 # **Outputs** (`outputs/08a_3d_model/`): `lcurve_<medium><tag>.csv`, `results_comparison<tag>.csv`,
 # `inversion_products<tag>.npz`, the Fig-2 products `fig2_model_row_pylith_{nuggetcd,full,nuggetcd_homog}.npz`
-# (read by `07c_fig2`), `mw_rigidity_options.csv` ([15c]), the stats sidecar `08a_3d_model_stats.txt`.
+# (read by `07c_fig2`), `mw_rigidity_options.csv` and `mw_range_models.csv` ([15c]), the stats sidecar
+# `08a_3d_model_stats.txt`.
 # **Figures**: `figS_pylith_materials_sfcvm_v26` and `qc08a_materials_boundary_offset` ([3]),
 # `qc08a_mesh_fault` ([2]), `figS_pylith_validation` ([8]), `qc08a_validation_mesh` ([9]),
 # `figS_pylith_lcurves` ([11]), `figS_pylith_fit_maps_<tag>`, `figS_pylith_slip`, `figS_pylith_profile_XX` ([13]).
@@ -360,10 +362,13 @@ def shear_modulus_pa(density_kg_m3, vs_m_s):
     return density_kg_m3 * vs_m_s ** 2
 
 
-def mu_beside_fault(medium, grid_npz):
+def mu_beside_fault(medium, grid_npz, run_name=None):
     """PyLith cell mu (elastic_info) vs the grid it was read from; mu of the nearest cell on each side of every
-    fault triangle (mean of the two sides returned, then west, then east)."""
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{run_names[medium]}-elastic_info.h5"), "r") as elastic_h5:
+    fault triangle (mean of the two sides returned, then west, then east). run_name: the PyLith run of another
+    medium on the same mesh (default run_names[medium]; [15c] reads the +/- 50 m alignment media this way)."""
+    if run_name is None:
+        run_name = run_names[medium]
+    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{run_name}-elastic_info.h5"), "r") as elastic_h5:
         cells = np.asarray(elastic_h5["viz/topology/cells"][:], int)
         cell_xyz = elastic_h5["geometry/vertices"][:][cells].mean(1)
         if "cell_fields" in elastic_h5 and "shear_modulus" in elastic_h5["cell_fields"]:
@@ -1223,6 +1228,7 @@ pts = np.vstack(pts)
 crossing_keys = ("crossing_km", "crossing_mm")              # 07a's individual crossings, drawn by 07c
 fig2_products = {}
 fwd_validation = {}
+range_models = {}                                           # label -> the models of its Mw ranges ([15c] recomputes each one's Mw)
 for label, (medium, cd) in FIG2_PRODUCTS.items():
     mdl = models[(medium, cd)]
     slip_all = vertex_slip_on_mesh(mdl["slip"] * 1e-3)      # m, on every fault vertex
@@ -1318,6 +1324,9 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
     for off, row_off in alignment_rows.items():
         sfcvm_vals.append(float(row_off.Mw_sfcvm))
     mw_sfcvm_range = [float(min(sfcvm_vals)), float(max(sfcvm_vals))]
+    range_models[label] = dict(lcurve_rows=sigma_neighbours[["sigma", "Mw_30"]].reset_index(drop=True),
+                               bootstrap_neighbour_rows=unc[unc.kind == "sigma_neighbour"][["sigma", "Mw_30gpa", "Mw_sfcvm"]].reset_index(drop=True),
+                               alignment_rows=dict(alignment_rows))
     assert len(sfcvm_vals) >= 3 and mw_sfcvm_range[0] <= mdl["Mw_sfcvm"] + 1e-9 <= mw_sfcvm_range[1] + 2e-9
     assert mw_range[0] <= mdl["Mw_30gpa"] + 1e-9 <= mw_range[1] + 2e-9
     top_v = np.abs(imp_xyz[:, 2]) < 1e-6
@@ -1453,12 +1462,20 @@ for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
 # - mu_eff = M0 / P for each per-triangle row: the single rigidity that gives the same Mw.
 # - A sweep of single uniform rigidities, Mw(mu) = Mw30 + 2/3 log10(mu / 30 GPa), for quoting a range.
 # Potency is the same in every row, so only the rigidity differs. Each row also carries the model range of
-# [14] (the L-curve sigma neighbours and the +/- 50 m alignment runs): the 30 GPa range moved by that row's
-# rigidity, Mw_lo/hi = Mw + (range - Mw30). For the arithmetic row this is checked against the range [14]
-# computed from the models themselves (within 0.02). Printed and saved (`mw_rigidity_options.csv`, a short
-# `key` per row: 30gpa, arithmetic, harmonic, west, east, uniform_<mu>). The paper quotes 30 GPa and the
-# HARMONIC row (Dani 2026-10-05): registered as `08a_mw_sfcvm_harmonic` (+ `_lo`/`_hi`, and its effective
-# rigidity `08a_mu_sfcvm_harmonic_gpa`), and drawn on Fig 2 panel K by 07c from this csv.
+# [14]: the selected model, its L-curve sigma neighbours (on the `sfcvm` medium, re-inverted here with
+# `invert_tents`) and the +/- 50 m alignment models (08b's driver runs on their own media `sfcvm_e50` /
+# `sfcvm_w50`: slip from `inversion_products_{e50,w50}<tag>.npz`, rigidity from their own PyLith
+# `-elastic_info.h5` and grid `sfcvm_v26-0_aligned_{e50,w50}_grid.npz`). The 30 GPa, arithmetic and harmonic
+# rows take their range PER MODEL (Dani 2026-10-06): each range model's per-triangle potency x the rigidity
+# of ITS medium, min/max over the models (saved per model as `mw_range_models.csv`). CHECK: each model's
+# Mw30 and arithmetic Mw equal the values [14] built its ranges from (L-curve, 08b's bootstrap table, the
+# alignment tables) to < 1e-6, so the arithmetic range is [14]'s `mw_sfcvm_range` (same models, same
+# rigidity definition). The west, east and uniform rows are SHIFTED: the 30 GPa range moved by the row's
+# rigidity, Mw_lo/hi = Mw + (range - Mw30). Column `range_kind` says which. Printed and saved
+# (`mw_rigidity_options.csv`, a short `key` per row: 30gpa, arithmetic, harmonic, west, east, uniform_<mu>).
+# The paper quotes 30 GPa and the HARMONIC row (Dani 2026-10-05): registered as `08a_mw_sfcvm_harmonic`
+# (selected model), `_lo`/`_hi` (per model), its effective rigidity `08a_mu_sfcvm_harmonic_gpa`, and drawn
+# on Fig 2 panel K by 07c from this csv.
 
 # %%
 ## [15c]
@@ -1491,30 +1508,93 @@ for mu_gpa in (0.5, 1.0, 2.0, 3.0, 5.0, 10.0):
 mw_rigidity = pd.DataFrame(rows_mu)
 assert mw_rigidity.key.is_unique, "mw_rigidity_options keys repeat"
 mw_rigidity["potency_m3"] = P_sel
-# the model range of [14] on every row: the 30 GPa range moved by the row's rigidity
 selected_label = None
 for label, medium_cd in FIG2_PRODUCTS.items():
     if medium_cd == SELECTED:
         selected_label = label
 assert selected_label is not None, "the selected model has no Fig 2 product"
-range_30 = fig2_products[selected_label]["mw_30gpa_range"]
+range_30 = fig2_products[selected_label]["mw_30gpa_range"]             # [14]: from the models themselves, 30 GPa
+range_sfcvm = fig2_products[selected_label]["mw_sfcvm_range"]          # [14]: from the models themselves, arithmetic rigidity
 mw30_selected = float(mw_rigidity.Mw.iloc[0])
 assert abs(mw30_selected - models[SELECTED]["Mw_30gpa"]) < 1e-9, "first row is not the selected model's Mw30"
+
+
+def range_model_mw(model_name, medium_name, slip_mm, rigidity_west, rigidity_east):
+    """Potency, Mw30 and the SFSVM Mw of one range model: the per-triangle potency of its slip x the arithmetic or
+    the harmonic mean of the PyLith cells either side of the fault in its own medium."""
+    potency_tri = tri_area * vertex_slip_on_mesh(slip_mm)[fault_cells].mean(1) * 1e-3
+    return dict(model=model_name, medium=medium_name, potency_m3=float(potency_tri.sum()),
+                Mw_30gpa=float(moment_magnitude(mu_ref * potency_tri.sum())),
+                Mw_arithmetic=float(moment_magnitude(np.sum(0.5 * (rigidity_west + rigidity_east) * potency_tri))),
+                Mw_harmonic=float(moment_magnitude(np.sum(harmonic_mean_rigidity(rigidity_west, rigidity_east) * potency_tri))))
+
+
+# the models of [14]'s range, each with its own slip and the rigidity of its own medium
+medium_sel, cd_sel = SELECTED
+members = range_models[selected_label]
+lcurve_rows = members["lcurve_rows"]
+neighbour_rows = members["bootstrap_neighbour_rows"]
+lcurve_neighbour_sigmas = sorted(float(v) for v in lcurve_rows.sigma if not np.isclose(v, models[SELECTED]["sigma"]))
+assert len(lcurve_neighbour_sigmas) == len(neighbour_rows) and np.allclose(lcurve_neighbour_sigmas, sorted(neighbour_rows.sigma)), \
+    "[14]'s 30 GPa range (L-curve) and SFSVM range (08b's bootstrap table) are not on the same sigma neighbours"
+range_rows = [dict(**range_model_mw(f"selected (sigma {models[SELECTED]['sigma']:g})", medium_sel, slip_sel, mu_west, mu_east),
+                   Mw_30gpa_14=models[SELECTED]["Mw_30gpa"], Mw_arithmetic_14=models[SELECTED]["Mw_sfcvm"])]
+for _, neighbour in neighbour_rows.iterrows():
+    fault_neighbour, _, _ = invert_tents(medium_sel, float(neighbour.sigma), cd_sel)
+    mw30_lcurve = float(lcurve_rows.loc[np.isclose(lcurve_rows.sigma, neighbour.sigma), "Mw_30"].iloc[0])
+    range_rows.append(dict(**range_model_mw(f"sigma {neighbour.sigma:g} (L-curve grid neighbour)", medium_sel,
+                                            fault_neighbour.slip[:, 0], mu_west, mu_east),
+                           Mw_30gpa_14=mw30_lcurve, Mw_arithmetic_14=float(neighbour.Mw_sfcvm)))
+for off, row_off in members["alignment_rows"].items():
+    medium_off = f"sfcvm_{off}"                                          # the driver's medium name
+    run_off = f"gf_{mesh_preset}_{medium_off}"                          # the driver's GF run of that medium (same mesh)
+    grid_off = os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{off}_grid.npz")
+    assert os.path.exists(grid_off), f"missing {grid_off} (the grid of the {medium_off} medium)"
+    g_off = np.load(os.path.join(paths_sfcvm["gf"], f"G_{run_off}.npz"))
+    assert (np.array_equal(g_off["fault_xyz"], fault_xyz) and np.array_equal(g_off["fault_cells"], fault_cells)
+            and np.array_equal(g_off["vertex_index"], vertex_index)), f"G_{run_off}: another fault mesh or impulse order"
+    _, mu_west_off, mu_east_off, rel_off = mu_beside_fault(medium_off, grid_off, run_name=run_off)
+    assert rel_off < 0.05, f"{run_off}: PyLith's cell rigidity differs from its grid by more than 5 % (median)"
+    products_off = np.load(os.path.join(paths_sfcvm["gf"], f"inversion_products_{off}{CD_TAG[cd_sel]}.npz"))
+    assert np.allclose(products_off["impulse_vertex_xyz"], imp_xyz), f"inversion_products_{off}: another impulse order"
+    assert json.loads(str(products_off["settings"]))["field_fingerprint"] == field_fingerprint, \
+        f"inversion_products_{off}{CD_TAG[cd_sel]}.npz fits another 06 field: re-run the driver"
+    range_rows.append(dict(**range_model_mw(f"SFSVM boundary 50 m {off[0].upper()} (sigma {row_off.sigma:g})", medium_off,
+                                            products_off[f"slip_{medium_off}_mm"], mu_west_off, mu_east_off),
+                           Mw_30gpa_14=float(row_off.Mw_30gpa), Mw_arithmetic_14=float(row_off.Mw_sfcvm)))
+range_table = pd.DataFrame(range_rows)
+range_table["provenance"] = (f"08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}: the Mw range models of fig2_model_row_pylith_{selected_label} "
+                             f"([14]); sigma neighbours re-inverted here, alignment slip from inversion_products_{{e50,w50}}{CD_TAG[cd_sel]}.npz; "
+                             f"06 field {field_fingerprint}")
+# CHECK: the same models as [14] (Mw30 and arithmetic Mw model by model), so the arithmetic range IS [14]'s
+worst_30 = float(np.max(np.abs(range_table.Mw_30gpa - range_table.Mw_30gpa_14)))
+worst_arithmetic = float(np.max(np.abs(range_table.Mw_arithmetic - range_table.Mw_arithmetic_14)))
+assert worst_30 < 1e-6 and worst_arithmetic < 1e-6, \
+    f"a range model's Mw differs from the value [14] used (Mw30 {worst_30:.1e}, arithmetic {worst_arithmetic:.1e}): not the same models"
+assert abs(range_table.Mw_30gpa.min() - range_30[0]) < 1e-6 and abs(range_table.Mw_30gpa.max() - range_30[1]) < 1e-6, \
+    "the per-model 30 GPa range is not [14]'s"
+assert abs(range_table.Mw_arithmetic.min() - range_sfcvm[0]) < 1e-6 and abs(range_table.Mw_arithmetic.max() - range_sfcvm[1]) < 1e-6, \
+    "the per-model arithmetic range is not [14]'s mw_sfcvm_range"
+print(f"PASS: {len(range_table)} range models reproduce [14]'s Mw30 and SFSVM (arithmetic) values "
+      f"(max |diff| {worst_30:.1e} / {worst_arithmetic:.1e})")
+print(range_table[["model", "medium", "potency_m3", "Mw_30gpa", "Mw_arithmetic", "Mw_harmonic"]].to_string(
+    index=False, float_format="{:.3f}".format))
+range_table.to_csv(os.path.join(out_dir, "mw_range_models.csv"), index=False)
+# the range on every row: per model for 30 GPa, arithmetic and harmonic; the 30 GPa range shifted for the rest
 mw_rigidity["Mw_lo"] = mw_rigidity.Mw + (range_30[0] - mw30_selected)
 mw_rigidity["Mw_hi"] = mw_rigidity.Mw + (range_30[1] - mw30_selected)
+mw_rigidity["range_kind"] = "shifted: the 30 GPa range of [14] moved by this rigidity"
+for key, column in (("30gpa", "Mw_30gpa"), ("arithmetic", "Mw_arithmetic"), ("harmonic", "Mw_harmonic")):
+    is_key = mw_rigidity.key == key
+    assert is_key.sum() == 1, f"no single {key} row"
+    assert abs(float(mw_rigidity.loc[is_key, "Mw"].iloc[0]) - range_table[column].iloc[0]) < 1e-9, \
+        f"the {key} row is not the selected range model's {column}"
+    mw_rigidity.loc[is_key, "Mw_lo"] = float(range_table[column].min())
+    mw_rigidity.loc[is_key, "Mw_hi"] = float(range_table[column].max())
+    mw_rigidity.loc[is_key, "range_kind"] = "per model: min/max over the range models of [14] (mw_range_models.csv)"
 arithmetic_row = mw_rigidity[mw_rigidity.key == "arithmetic"].iloc[0]
 harmonic_row = mw_rigidity[mw_rigidity.key == "harmonic"].iloc[0]          # the paper's SFSVM Mw (Dani 2026-10-05)
 assert abs(arithmetic_row.Mw - models[SELECTED]["Mw_sfcvm"]) < 1e-9, "arithmetic row differs from the selected model's Mw_sfcvm"
-range_sfcvm = fig2_products[selected_label]["mw_sfcvm_range"]          # [14]: from the models themselves
-print(f"check: arithmetic row range {arithmetic_row.Mw_lo:.3f}-{arithmetic_row.Mw_hi:.3f} (shifted) against "
-      f"{range_sfcvm[0]:.3f}-{range_sfcvm[1]:.3f} ([14], from the models)")
-# tolerance 0.02 -> 0.05 (2026-10-05 23:40, overnight run): with every range model at the locked sigma 12, the
-# +/-50 m alignment models carry their own shifted rigidity, so the shifted 30 GPa range (3.041-3.133) and the
-# range from the models themselves (3.019-3.164) differ by 0.022/0.031. FOR DANI: the harmonic range quoted in
-# the paper is the shifted one; either accept that approximation (state it) or compute the harmonic Mw per range
-# model. Both ranges are registered (08a_mw_sfcvm_range_* from the models, 08a_mw_sfcvm_harmonic_lo/hi shifted).
-assert abs(arithmetic_row.Mw_lo - range_sfcvm[0]) < 0.05 and abs(arithmetic_row.Mw_hi - range_sfcvm[1]) < 0.05, \
-    "the shifted range does not reproduce [14]'s SFSVM range: the rigidity varies too much between the range models"
 # where the moment sits: potency-weighted rigidity (harmonic) by depth band
 depth_t = -tri_cen[:, 2]
 for lo_m, hi_m in ((0, 100), (100, 300), (300, 1000), (1000, 1e6)):
@@ -1583,6 +1663,10 @@ for cd in CD_TAG:
         input_files.append(os.path.join(paths_sfcvm["gf"], f"results_comparison_{off}{CD_TAG[cd]}.csv"))
 for label, (medium, cd) in FIG2_PRODUCTS.items():
     input_files.append(os.path.join(paths_sfcvm["gf"], f"uncertainty_{run_tag(cd)}_{medium}.csv"))
+for off in members["alignment_rows"]:                       # [15c]: the alignment range models, slip and medium
+    input_files += [os.path.join(paths_sfcvm["gf"], f"inversion_products_{off}{CD_TAG[cd_sel]}.npz"),
+                    os.path.join(paths_sfcvm["gf"], f"G_gf_{mesh_preset}_sfcvm_{off}.npz"),
+                    os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{off}_grid.npz")]
 # PREPUB-END
 REG.inputs(*input_files)
 forward_vs_g = []
@@ -1617,8 +1701,11 @@ for medium, drop in stress_drop.items():
     lines.append(f"stress drop ({medium}): slip-weighted {drop['weighted_kpa']:.1f} kPa, patch mean {drop['patch_kpa']:.1f} kPa, "
                  f"95th pct {drop['p95_kpa']:.1f} kPa, patch in the top 100 m {drop['top100_kpa']:.1f} kPa")
 lines.append(f"Mw with the SFSVM rigidity, harmonic mean of the two sides per triangle (the paper's, Fig 2 K): {harmonic_row.Mw:.3f} "
-             f"(range {harmonic_row.Mw_lo:.3f}-{harmonic_row.Mw_hi:.3f}: the 30 GPa range moved by this rigidity), "
+             f"(range {harmonic_row.Mw_lo:.3f}-{harmonic_row.Mw_hi:.3f}: per model, the range models of [14] each with its own medium), "
              f"mu_eff {harmonic_row.mu_eff_gpa:.3f} GPa; arithmetic {arithmetic_row.Mw:.3f} ({arithmetic_row.mu_eff_gpa:.3f} GPa)")
+for _, range_row in range_table.iterrows():
+    lines.append(f"Mw range model {range_row.model} ({range_row.medium}): potency {range_row.potency_m3:.0f} m3, Mw30 {range_row.Mw_30gpa:.3f}, "
+                 f"SFSVM arithmetic {range_row.Mw_arithmetic:.3f}, harmonic {range_row.Mw_harmonic:.3f}")
 for name in ("near200", "beyond200", "beyond1km"):
     lines.append(f"fit {name}: n {near_far[name]['n']}, uniform {near_far[name]['rms_uniform_mm']:.3f} mm, 3D {near_far[name]['rms_3d_mm']:.3f} mm, "
                  f"{near_far[name]['drop_pct']:.1f} % lower")
