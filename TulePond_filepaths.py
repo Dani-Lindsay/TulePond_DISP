@@ -18,15 +18,16 @@ done in what order.
 """
 import os
 
-# The repo itself: outputs (products, stats sidecars, the number registry) and
-# figures are written NEXT TO THE NOTEBOOKS, not into data_dir, so that a
-# clean checkout plus the Zenodo data reproduces everything in one place.
+# The repo itself: the code only. Every product, figure and model run is written into data_dir (the Zenodo
+# results directory), never inside the repo: asserted at the end of this file (`assert_outside_repo`) and by
+# tests/test_filepaths.py (2026-10-06).
 repo_dir = os.path.dirname(os.path.abspath(__file__))
 
 # ------------------------
 # Data root -- one repo, two laptops: TULEPOND_DATA_DIR if set, else the
 # proj_TulePond_DISP folder where it exists, else the repo itself (the second
-# laptop keeps the inputs inside the repo). No per-machine edits.
+# laptop keeps the inputs inside the repo; since 2026-10-06 assert_outside_repo
+# stops there: set TULEPOND_DATA_DIR to a data folder outside the repo). No per-machine edits.
 #
 # proj_TulePond_DISP (2026-09-30) holds ONLY what this repo reads, in the
 # layout Zenodo will carry:
@@ -36,8 +37,10 @@ repo_dir = os.path.dirname(os.path.abspath(__file__))
 #   GPS/                   the screened UNR series and the run05 tie table
 #   prep_validation/       run05's GNSS-tie record and run20's rain tables
 #   aperture_sweep/        the frozen aperture sweep notebook 04 loads (Hayward_DISP-S1/analysis/run11)
-#   modeling_uniform/      products of 07a/07b that are data-sized (Green's functions, sweeps)
-#   modeling_SFCVM/        PyLith: cfg, mesh, spatialdb, G matrices, inversion products (08a/08b)
+#   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07a), impulse and test-slip dbs
+#   modeling_uniform/      the HOMOGENEOUS (30 GPa) PyLith runs: G matrices, run outputs, slip dbs, the CSI validation products
+#   modeling_SFCVM/        the USGS SFCVM PyLith runs: material grids and dbs (aligned, +/- 50 m, dip, no-cap), G matrices, run outputs
+#   outputs/<notebook>/    every notebook's own products (the selected models, the sensitivity tables, the registry)
 # Everything else of the older proj_HaywardCreep working tree stays there, untouched.
 # ------------------------
 data_dir = os.environ.get("TULEPOND_DATA_DIR", "")
@@ -56,20 +59,63 @@ fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
 out_dir    = os.path.join(data_dir, "outputs")
 inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
+# ------------------------
+# The slip models (notebooks 07a, 08a, 08b, 08c) and their PyLith runs (pylith/, README there). Three folders,
+# separated by what they hold (Dani 2026-10-06):
+#   modeling_inputs/   shared by both media: the gmsh meshes and fault geometry, the quadtree sample sets written by
+#                      07a (the PyLith output points), the impulse and test-slip spatial databases
+#   modeling_uniform/  the homogeneous medium (mu 30 GPa, nu 0.25): its PyLith runs, G matrices, slip databases of
+#                      its forward runs, and the CSI-vs-PyLith validation products (08a)
+#   modeling_SFCVM/    the USGS SFCVM medium: its material grids and databases (aligned, +/- 50 m, dipping, no Poisson
+#                      cap), its PyLith runs, G matrices and slip databases
+# The PyLith runs are made from data_dir (pylith/run_gf.sh, run_fwd.sh); the cfg files in pylith/cfg give every path
+# relative to it, and each material cfg names its own medium folder as the output directory.
+# ------------------------
+model_inputs_dir  = os.path.join(data_dir, "modeling_inputs")
 model_uniform_dir = os.path.join(data_dir, "modeling_uniform")
 model_sfcvm_dir   = os.path.join(data_dir, "modeling_SFCVM")
-# The PyLith side of the 3D model (notebooks 08a/08b): run ONCE (33 min per Green's-function run,
-# PyLith 5.0.2), its products are data-sized and live in modeling_SFCVM; the parameter files the
-# runs were made with are carried by the repo in scripts/pylith_cfg/ (helpers in scripts/pylith_helpers/).
-paths_sfcvm = {
-    "root":          model_sfcvm_dir,
-    "cfg":           os.path.join(repo_dir, "scripts", "pylith_cfg"),      # PyLith .cfg files (mesh, materials, GF, forward runs)
-    "mesh":          os.path.join(model_sfcvm_dir, "mesh"),               # gmsh meshes (.msh, *_fault.npz, *_report.txt), trace_tmerc.txt
-    "spatialdb":     os.path.join(model_sfcvm_dir, "spatialdb"),          # SFCVM grids (.npz) and spatialdata databases
-    "points":        os.path.join(model_sfcvm_dir, "points"),             # PyLith output points = 07a's quadtree samples
-    "gf":            os.path.join(model_sfcvm_dir, "gf"),                 # G matrices; the draft run's inversion products (08b's sensitivity table)
-    "pylith_output": os.path.join(model_sfcvm_dir, "pylith_output"),      # <run>-points.h5, -fault.h5, -elastic_info.h5, -parameters.json
+pylith_dir = os.path.join(repo_dir, "pylith")             # cfg files, run wrappers, mesh and spatial-database build scripts
+paths_pylith = {
+    "root":  pylith_dir,
+    "cfg":   os.path.join(pylith_dir, "cfg"),             # PyLith .cfg files (common, materials, GF, forward runs, order 2)
+    "build": os.path.join(pylith_dir, "build"),           # mesh, SFCVM grid and spatial-database writers
+    "workdir": data_dir,                                  # every PyLith run is made from here (the cfg paths are relative to it)
 }
+paths_inputs = {
+    "root":      model_inputs_dir,
+    "mesh":      os.path.join(model_inputs_dir, "mesh"),       # gmsh meshes (.msh, *_fault.npz, *_report.txt), trace_tmerc.txt
+    "points":    os.path.join(model_inputs_dir, "points"),     # the sample sets (07a): insar_points[_swath7|_coh07].{txt,npz}; fig2_points_<label>.txt
+    "spatialdb": os.path.join(model_inputs_dir, "spatialdb"),  # impulse region and validation-slip databases (medium independent)
+}
+
+
+def _medium_paths(root):
+    return {
+        "root":          root,
+        "gf":            os.path.join(root, "gf"),             # G_<run>.npz: the fault-parallel G matrices (model_utils.build_G)
+        "pylith_output": os.path.join(root, "pylith_output"),  # <run>-points.h5, -fault.h5, -elastic_info.h5, -parameters.json
+        "spatialdb":     os.path.join(root, "spatialdb"),      # material grids / databases (SFCVM) and the forward runs' slip databases
+        "runs":          os.path.join(root, "runs"),           # PyLith run logs (run_gf.log: start/done times)
+    }
+
+
+paths_uniform = _medium_paths(model_uniform_dir)
+paths_uniform["validation"] = os.path.join(model_uniform_dir, "validation")   # 08a: PyLith homogeneous vs CSI Meade, 2D screw
+paths_sfcvm = _medium_paths(model_sfcvm_dir)
+
+
+def medium_paths(medium):
+    """The folder set of one elastic medium: `homog` -> modeling_uniform, any SFCVM variant (`sfcvm`, `sfcvm_e50`,
+    `sfcvmasis`, ...) -> modeling_SFCVM."""
+    if medium == "homog":
+        return paths_uniform
+    assert medium.startswith("sfcvm"), f"unknown medium {medium!r}"
+    return paths_sfcvm
+
+
+# Constants of the slip models shared by 07a, 08a, 08b and 08c (one definition each).
+model_crs = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +type=crs"   # PyLith mesh CRS (m)
+model_frame_lonlat = (-121.968, 37.557)   # CSI local frame centre (lon0, lat0) = the mesh CRS origin (the creep-section centre)
 # QC products of the data_prep chain (station residuals, the prep-side rain
 # tables). Deliberately NOT under a second `outputs/`: the only `outputs/` in
 # this project is the repo's, written by the notebooks. Nothing in notebooks
@@ -402,8 +448,39 @@ paths_gps = {
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
-    "07a_uniform_model", "07b_uniform_model_tests", "08a_3d_model", "08b_3d_model_tests", "09_alignment_arrays",
+    "07a_uniform_model", "07b_uniform_model_tests", "08a_3d_model", "08b_3d_model_tests", "08c_3d_model_sensitivity",
+    "09_alignment_arrays",
     "10_rain_seasonality", "11_forecast", "12_paper_figures")}
 # The pre-2026-09-24 names 09_seasonality_forecast and 10_paper_figures are gone:
 # 09 split into 10_rain_seasonality and 11_forecast, and the paper-figure collector
 # moved to 11. The superseded notebooks are kept under drafts/originals/.
+
+
+# ------------------------
+# Nothing is written inside the repo (Dani 2026-10-06): every folder a notebook, a model run or a figure writes into
+# must resolve OUTSIDE repo_dir. On a machine whose data sit inside the repo (the data_dir fallback above), set
+# TULEPOND_DATA_DIR to a folder outside it.
+# ------------------------
+def output_locations():
+    """Every folder products, figures or model runs are written into, as (name, path) pairs."""
+    locations = [("fig_dir", fig_dir), ("out_dir", out_dir), ("registry_csv", common_paths["registry_csv"]),
+                 ("registry_txt", common_paths["registry_txt"])]
+    locations += [(f"paths_out[{nb}]", path) for nb, path in paths_out.items()]
+    for label, group in (("paths_inputs", paths_inputs), ("paths_uniform", paths_uniform), ("paths_sfcvm", paths_sfcvm)):
+        locations += [(f"{label}[{key}]", path) for key, path in group.items()]
+    locations.append(("paths_pylith[workdir]", paths_pylith["workdir"]))
+    return locations
+
+
+def assert_outside_repo():
+    """Fail if any output location resolves inside the repo."""
+    repo_real = os.path.realpath(repo_dir)
+    for name, path in output_locations():
+        real = os.path.realpath(path)
+        inside = real == repo_real or real.startswith(repo_real + os.sep)
+        assert not inside, (f"{name} -> {path} resolves inside the repo ({repo_dir}): products never go into the repo; "
+                            f"set TULEPOND_DATA_DIR to a folder outside it")
+
+
+assert_outside_repo()
+

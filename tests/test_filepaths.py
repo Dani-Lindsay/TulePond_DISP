@@ -54,19 +54,51 @@ def test_mosaic_products_exist():
 
 def test_paths_out_keys_are_notebooks():
     """Every outputs/<nb> key names a notebook script in scripts/ (renumbering leaves no stale key), and the
-    3D-model notebooks (08a/08b, 2026-09-30) have their keys."""
+    3D-model notebooks (08a/08b/08c) have their keys."""
     scripts_dir = os.path.join(fp.repo_dir, "scripts")
     for nb in fp.paths_out:
         assert os.path.exists(os.path.join(scripts_dir, nb + ".py")), f"paths_out key {nb} has no scripts/{nb}.py"
-    assert {"08a_3d_model", "08b_3d_model_tests"} <= set(fp.paths_out)
+    assert {"08a_3d_model", "08b_3d_model_tests", "08c_3d_model_sensitivity"} <= set(fp.paths_out)
 
 
-@pytest.mark.parametrize("key", ["cfg", "mesh", "spatialdb", "points", "gf", "pylith_output"])
-def test_pylith_side_exists(key):
-    """The PyLith products of the 3D model (modeling_SFCVM) and the repo's copy of the parameter files."""
-    assert os.path.isdir(fp.paths_sfcvm[key]), f"paths_sfcvm[{key}] -> {fp.paths_sfcvm[key]}"
-    if key == "cfg":
-        assert os.path.exists(os.path.join(fp.paths_sfcvm["cfg"], "pylithapp.cfg"))
+@pytest.mark.parametrize("group,key", [("inputs", "mesh"), ("inputs", "points"), ("inputs", "spatialdb"),
+                                       ("uniform", "gf"), ("uniform", "pylith_output"), ("sfcvm", "gf"),
+                                       ("sfcvm", "pylith_output"), ("sfcvm", "spatialdb")])
+def test_model_folders_exist(group, key):
+    """The PyLith products of the slip models in the 2026-10-06 layout: modeling_inputs (mesh, points, impulse dbs),
+    modeling_uniform (homogeneous runs), modeling_SFCVM (SFCVM grids and runs)."""
+    folders = {"inputs": fp.paths_inputs, "uniform": fp.paths_uniform, "sfcvm": fp.paths_sfcvm}[group]
+    assert os.path.isdir(folders[key]), f"paths_{group}[{key}] -> {folders[key]}"
+
+
+def test_pylith_cfg_in_repo():
+    """The PyLith parameter files the runs are made with are carried by the repo (pylith/cfg), and each material cfg
+    names its medium's output folder."""
+    assert os.path.exists(os.path.join(fp.paths_pylith["cfg"], "pylithapp.cfg"))
+    for name, medium_root in (("mat_homog.cfg", "modeling_uniform"), ("mat_sfcvm.cfg", "modeling_SFCVM")):
+        text = open(os.path.join(fp.paths_pylith["cfg"], name)).read()
+        assert f"defaults.output_directory = {medium_root}/pylith_output" in text, name
+
+
+def test_medium_paths():
+    assert fp.medium_paths("homog") is fp.paths_uniform
+    for medium in ("sfcvm", "sfcvm_e50", "sfcvmasis"):
+        assert fp.medium_paths(medium) is fp.paths_sfcvm
+    with pytest.raises(AssertionError):
+        fp.medium_paths("granite")
+
+
+def test_every_output_location_is_outside_the_repo():
+    """Nothing is written inside the repo (2026-10-06): every output, figure and model folder resolves outside
+    repo_dir (TulePond_filepaths.assert_outside_repo also runs at import)."""
+    repo_real = os.path.realpath(fp.repo_dir)
+    names = []
+    for name, path in fp.output_locations():
+        names.append(name)
+        real = os.path.realpath(path)
+        assert real != repo_real and not real.startswith(repo_real + os.sep), f"{name} -> {path} is inside the repo"
+    assert {"fig_dir", "out_dir", "paths_inputs[points]", "paths_uniform[pylith_output]", "paths_sfcvm[gf]"} <= set(names)
+    fp.assert_outside_repo()
 
 
 def test_params_string_encodes_the_aperture():
@@ -113,3 +145,10 @@ def test_north_first_trace_rejected(trace):
     ft_lon, ft_lat = trace
     with pytest.raises(ValueError):
         utils.along_fault_km(ft_lon[::-1], ft_lat[::-1])
+
+
+def test_inside_repo_location_is_refused(monkeypatch):
+    """assert_outside_repo fails when a product folder points into the repo (e.g. data_dir falling back to the repo)."""
+    monkeypatch.setattr(fp, "fig_dir", os.path.join(fp.repo_dir, "Figures_test"))
+    with pytest.raises(AssertionError, match="inside the repo"):
+        fp.assert_outside_repo()
