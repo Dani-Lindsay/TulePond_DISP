@@ -15,62 +15,51 @@
 #
 # ```
 # Created on Wed Sep 30 2026
-# PREPUB: promoted from drafts/pylith/pylith_sfcvm_tests.py and the 2026-09-30 sensitivity runs.
+# PREPUB: promoted from drafts/retired_2026-10-06/pylith/pylith_sfcvm_tests.py and the 2026-09-30 sensitivity runs; 2026-10-06: no exec
+# PREPUB: of 08a (model_utils.py), the bootstrap and the sensitivity runs read from 08c.
 # @author: daniellelindsay
-# Run in opera_disp_feb13, after 08a. About 35 min (about 130 tent inversions of ~10 s; no PyLith run).
+# Run in opera_disp_feb13, after 08c and 08a. About 15 min (about 70 tent inversions of ~10 s; no PyLith run).
 # ```
 #
 # **What this notebook does.** For the SELECTED model of 08a (aligned SFCVM, nugget Cd), its
 # companion (07a's full correlated Cd) and the homogeneous PyLith twins of both, on the cached
 # order-1 Green's functions:
 #
-# 1. **Bootstrap** (07a [11]): noise drawn from the inversion's own Cd (Cholesky) added to the
-#    model prediction and re-inverted at the selected sigma, N = 07a's `n_boot`; mean and 2-sigma
-#    of Mw30, Mw(SFCVM mu), potency, surface %, peak slip and its depth. Plus the same numbers at
-#    the neighbouring grid sigmas (sigma sensitivity).
+# 1. **Bootstrap** (made by 08c [6], read here): noise drawn from the inversion's own Cd (Cholesky) added to the
+#    model prediction and re-inverted at the selected sigma, N = 07a's `n_boot`; mean and 2-sigma of Mw30,
+#    Mw(SFCVM mu), potency, surface %, peak slip and its depth; plus the same numbers at the neighbouring grid
+#    sigmas (sigma sensitivity). Drawn and registered here.
 # 2. **Synthetic recovery** (07b [11]): 10 mm uniform slip from the surface to D over the SSE
 #    section (tapered), forward through the PyLith G, noise from the same Cd, inverted with the
 #    same setup: moment and depth recovery, and the west/east near-field residual (an artefact flag).
 # 3. **Fixed-depth scan** (07b [9]): uniform slip to D, amplitude + constant by whitened least
 #    squares with the run's Cd, chi2(D), bracket delta chi2 <= 4, Mw per D.
-# 4. **Sensitivity runs**: every other PyLith + CSI inversion of the model selection, read from
-#    `modeling_SFCVM/gf/` and NOT recomputed here: mesh `shallow` (60 m near-surface band), Cd
-#    nugget floors 15 and 4 pixels, equal weights (`diagcd`), no surface constraint (`nosurf`),
-#    swath 7 km, dip 80 E and 70 E, order-2 elements, the SFCVM boundary 50 m east / west of the
-#    trace (`e50`, `w50`), and the coherence-0.7 field (`coh07`), each with both media and, where
-#    run, both Cd treatments. Each needs its own Green's-function run, made once with the parameter
-#    files in `scripts/pylith_cfg/` (the mesh, material and points variants are the cfg files named
-#    there). The products (`inversion_products<tag>.npz`, `results_comparison<tag>.csv`,
-#    `lcurve_<medium><tag>.csv`, the table `final_comparison.csv`) are provided. This notebook
-#    draws the one-page summary of every run and the all-tests figure and copies the table.
-# Every run is solved at the locked sigma of 08a (`sigma_locked`, Dani 2026-10-03), not at its own
+# 4. **Sensitivity runs** (made by 08c, read here): every other PyLith + CSI inversion of the model selection --
+#    mesh `shallow` (60 m near-surface band), Cd nugget floors 15 and 4 pixels, equal weights (`diagcd`), no surface
+#    constraint (`nosurf`), swath 7 km, dip 80 E and 70 E, order-2 elements, the SFCVM boundary 50 m east / west of
+#    the trace (`e50`, `w50`), and the coherence-0.7 field (`coh07`), each with both media and, where run, both Cd
+#    treatments: one-page summary per run, the all-tests figure, the table and its range.
+# Every run is solved at the locked sigma (`TulePond_filepaths.model_sigma_locked`, Dani 2026-10-03), not at its own
 # L-curve pick (which each run still computes and records as `sigma_lcurve_pick`), so the spread of the
 # table is the spread of the factor tested, not of sigma. Each row carries the fingerprint of the 06
 # field it fits; [5] refuses a table made before the current 06 field or on another field.
-# PREPUB: The inversions are re-made by `drafts/pylith/models_overnight_2026-10-05.sh` (driver
-# PREPUB: `drafts/pylith/pylith_sfcvm_gf.py` with its `PYLITH_*` switches, `PYLITH_SIGMA=locked`); the earlier
-# PREPUB: sets are kept in `modeling_SFCVM/gf/pre_<date>/`.
 #
 # Surface % is the median modelled slip on the top-edge vertices of the SSE section over the median
-# of the measured crossings in the SSE section (08a [10]; the one shared denominator of 07a, 08a, this
-# notebook and the driver, `surface_crossings.surface_pct_denominator_mm`), so cached and fresh
-# surface % are compared and registered as they are.
+# of the measured crossings in the SSE section (`model_utils.surface_pct_denominator_mm`, the one denominator of
+# 07a, 08a, 08c and this notebook), so 08c's and fresh surface % are compared and registered as they are.
 #
-# 08a's cells [1]-[10] are exec'd from `scripts/08a_3d_model.py` (mesh, materials, cached PyLith
-# G, 07a's data and machinery, the validations, `invert_tents`, `numbers`), so nothing is
-# re-implemented here beyond the loops; the depth-scan least squares and the window/shape
-# definitions are those of 07b, applied to the tent (vertex) parameters.
-# PREPUB: CHECKS against the earlier run: the bootstrap, recovery and depth-scan tables equal the cached
-# PREPUB: ones in `modeling_SFCVM/gf/` (same seeds; run of 2026-10-03). 08a's Fig-2 products read the
-# PREPUB: cached bootstrap table, so this check is what ties them to this notebook.
+# The inversion setup is 08a's, built here from the same products with the same functions
+# (`model_utils.tent_model_setup`, `invert_tents`, `tent_numbers`); the depth-scan least squares and the
+# window/shape definitions are those of 07b, applied to the tent (vertex) parameters.
 #
-# **Inputs**: 08a's products (`results_comparison<tag>.csv` for the selected sigmas) and everything
-# 08a reads; from `modeling_SFCVM/gf/`: the sensitivity runs (`final_comparison.csv`,
-# `results_comparison<tag>.csv`, `inversion_products<tag>.npz`, `lcurve_<medium><tag>.csv`) and the
-# cached `uncertainty_*`, `recovery_*` and `depth_scan_*` tables of the checks.
-# **Outputs** (`outputs/08b_3d_model_tests/`): `uncertainty_<run>_<medium>.csv`, `recovery_<run>_<medium>.csv`,
-# `recovery_profiles.csv`, `depth_scan_<run>_<medium>.csv`, `sensitivity_runs.csv`, `tests_summary.txt`,
-# the stats sidecar `08b_3d_model_tests_stats.txt`.
+# **Inputs** (made by): 07a `model_data_07a.npz` and the sample points (07a); the G matrices, the SFCVM grid and the
+# GreensFns run outputs (pylith/, model_utils.build_G); 08a `results_comparison<tag>.csv` (the selected sigmas and
+# the models 08c's default rows must equal); 08c `uncertainty_<run>_<medium>.csv` (the bootstrap),
+# `final_comparison.csv`, `results_comparison<tag>.csv`, `inversion_products<tag>.npz`, `lcurve_<medium><tag>.csv`
+# (the sensitivity runs); the recovery depths and depth-scan grid of 07b (read from its source text).
+# **Outputs** (`outputs/08b_3d_model_tests/`): `uncertainty_<run>_<medium>.csv` (08c's, copied with provenance),
+# `recovery_<run>_<medium>.csv`, `recovery_profiles.csv`, `depth_scan_<run>_<medium>.csv`, `sensitivity_runs.csv`,
+# `tests_summary.txt`, the stats sidecar `08b_3d_model_tests_stats.txt`.
 # **Figures**: `qc08b_bootstrap`, `figS_pylith_recovery`, `figS_pylith_depth_scan`,
 # `qc08b_summary_<run>_<medium>` (one page per run), `figS_pylith_all_tests`.
 # **Registry keys** `08b_*`.
@@ -83,43 +72,100 @@
 # %%
 ## [1]
 # ------------------------
-# 08a's cells [1]-[10], then this notebook's own paths
+# Paths & constants, and 08a's inversion setup rebuilt from the products
 # ------------------------
 import ast
 import glob
 import os
 import re
+import sys
 import time
+import warnings
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from TulePond_filepaths import common_paths, repo_dir, paths_out, paths_sfcvm
+warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
+warnings.filterwarnings("ignore", category=FutureWarning)
+from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_sfcvm, medium_paths, model_crs, model_sigma_locked)
 import insar_utils as utils
 from insar_utils import mpl_paper_style
-
-t_setup = time.time()
-source_08a = open(os.path.join(repo_dir, "scripts", "08a_3d_model.py")).read()
-head_08a = source_08a.split("# %% [markdown]\n# ## [11]")[0]                 # cells [1]-[10]: G, 07a's machinery, invert_tents, numbers
-assert "def invert_tents" in head_08a and "def potency_m3" in head_08a and "def numbers" in head_08a, "08a layout changed: cell [10] not found"
-# 08a's own Registry line is replaced; 08a [7] quotes the same text inside a string (for 07a), which the ^...$ anchors skip
-reg_line = re.compile(r"^REG = utils\.Registry\(notebook, common_paths, repo_dir\)$", re.M)
-assert len(reg_line.findall(head_08a)) == 1, "08a layout changed: the Registry line"
-head_08a = reg_line.sub("REG = None", head_08a)
-ns08 = {"__name__": "nb08a"}
-exec(head_08a, ns08)
-for name_08a, value_08a in ns08.items():
-    if name_08a not in {"notebook", "out_dir", "REG"} and not name_08a.startswith("__"):
-        globals()[name_08a] = value_08a
-print(f"08a cells [1]-[10] exec'd in {time.time() - t_setup:.0f} s; runs {RUNS}; selected {SELECTED}")
+import model_utils                                  # every modelling function, once (with its source)
 
 notebook = "08b_3d_model_tests"
 out_dir = paths_out[notebook]
+fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
+dir_07a = paths_out["07a_uniform_model"]
 dir_08a = paths_out["08a_3d_model"]
-gf_cached = paths_sfcvm["gf"]                                                  # the earlier PyLith driver run's products (sensitivity runs live here)
+dir_08c = paths_out["08c_3d_model_sensitivity"]
+field_dir = paths_out["06_event_field_geometry"]
+sys.path.insert(0, os.path.join(repo_dir, "scripts", "model_plots"))
 REG = utils.Registry(notebook, common_paths, repo_dir)
+OK = dict(blue="#0072B2", orange="#E69F00", vermillion="#D55E00", purple="#CC79A7", black="#000000", grey="#999999")
+mu_ref = 3.0e10                                     # 30 GPa reference rigidity (07a)
+sigma_locked = model_sigma_locked
+RUNS = [("sfcvm", "nugget"), ("sfcvm", "full"), ("homog", "nugget"), ("homog", "full")]   # (medium, Cd); first = SELECTED (08a)
+SELECTED = ("sfcvm", "nugget")
+CD_TAG = {"nugget": "_nuggetcd", "full": ""}
+media = ("homog", "sfcvm")
+run_names = {m: f"gf_default_{m}" for m in media}   # 08a's PyLith GreensFns runs
+
+
+def run_tag(cd):
+    """The product tag of one data-covariance treatment: default (full Cd) or default_nuggetcd."""
+    return "default" + CD_TAG[cd]
+
+
+t_setup = time.time()
+model_data = np.load(os.path.join(dir_07a, "model_data_07a.npz"))
+frame_lonlat = tuple(model_data["frame_lonlat"])
+look = model_data["look"]
+lam_xz = tuple(model_data["lam_xz"])
+sigma_grid = [float(s) for s in model_data["sigma_grid"]]
+n_boot = int(model_data["n_boot"])
+creep_lo_km, creep_hi_km = float(model_data["creep_lo_km"]), float(model_data["creep_hi_km"])
+cov_p = model_data["cov_p"]
+nug_power = float(model_data["nug_power"])
+field_fingerprint = model_utils.field_fingerprint(os.path.join(field_dir, "fp_maps.npz"))
+assert str(model_data["field_fingerprint"]) == field_fingerprint, "07a's model data were made from another 06 field: re-run 07a"
+profile_lats = pd.read_csv(common_paths["fault_profiles"]).ft_lat.values
+trace = model_utils.model_trace(model_data["trace_lonlat"], -90.0, 90.0, frame_lonlat, profile_lats,
+                                every_km=float(model_data["trace_every_km"]))
+samples = model_utils.samples_from_arrays("Downsampled fault-parallel", model_data["sample_lon"], model_data["sample_lat"],
+                                          model_data["sample_x_km"], model_data["sample_y_km"], model_data["data_mm"],
+                                          model_data["wgt"], look, frame_lonlat, cov_p, nug_power)
+points_npz = str(model_data["points_default"]) + ".npz"
+setup = model_utils.tent_model_setup(run_names, points_npz, float(model_data["strike_deg"]),
+                                     {m: (medium_paths(m)["pylith_output"], medium_paths(m)["gf"]) for m in media},
+                                     dict(km=model_data["crossing_km"], lat=model_data["crossing_lat"], mean_mm=model_data["crossing_mean_mm"]),
+                                     tuple(model_data["km_window"]), creep_lo_km, creep_hi_km, float(model_data["surf_floor_mm"]),
+                                     trace["lonlat"][np.argsort(trace["lonlat"][:, 1])], (trace["x_km"] * 1e3, trace["y_km"] * 1e3),
+                                     frame_lonlat, model_crs, profile_lats)
+tents = setup["tents"]
+G = setup["G"]
+imp_km, imp_depth_km = tents.imp_km, tents.imp_depth_km
+west300, east300 = setup["west300"], setup["east300"]
+mu_sfcvm = model_utils.mu_beside_fault(os.path.join(paths_sfcvm["pylith_output"], f"{run_names['sfcvm']}-elastic_info.h5"),
+                                       os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_aligned_grid.npz"), tents, "sfcvm")[0]
+data_covariance = {cd: model_utils.data_cd(cd, samples, cov_p, nug_power) for cd in CD_TAG}
+
+
+def invert_tents(medium, sigma, cd, vel_insar=None, vel_surface=None):
+    """08a's inversion (model_utils.invert_tents) with its data, G and Cd; returns (fault, InSAR data, surface data)."""
+    return model_utils.invert_tents(setup["template"], samples, G[medium], data_covariance[cd], setup["surface"],
+                                    setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=True,
+                                    vel_insar=vel_insar, vel_surface=vel_surface, name=f"{medium} {cd} sigma {sigma:g}")
+
+
+def numbers(fault_model, insar_data, surface):
+    """08a's numbers of one solution (model_utils.tent_numbers)."""
+    return model_utils.tent_numbers(fault_model.slip[:, 0], insar_data, surface, tents, west300, east300,
+                                    setup["in_section_surface"], setup["denominator_mm"], mu_ref, mu_sfcvm)
+
+
+print(f"08a's setup rebuilt in {time.time() - t_setup:.0f} s: {samples.vel.size} samples x {tents.n_imp} impulses")
 
 tests_src = open(os.path.join(repo_dir, "scripts", "07b_uniform_model_tests.py")).read()
 
@@ -140,88 +186,48 @@ print(f"07b parameters: n_boot {n_boot}, recovery depths {recovery_depths}, scan
 
 
 def selected_sigma(medium, cd):
-    """The L-curve pick of 08a for this model (its results csv; 08a must have run)."""
+    """The sigma 08a solved this model at (its results csv; 08a must have run): the locked sigma."""
     results_file = os.path.join(dir_08a, f"results_comparison{CD_TAG[cd]}.csv")
     assert os.path.exists(results_file), f"missing {results_file}: run 08a_3d_model first"
-    return float(pd.read_csv(results_file).set_index("model").loc[f"PyLith {medium}", "sigma"])
+    sigma = float(pd.read_csv(results_file).set_index("model").loc[f"PyLith {medium}", "sigma"])
+    assert sigma == sigma_locked, f"08a solved {medium} {cd} at sigma {sigma:g}, not the locked {sigma_locked:g}"
+    return sigma
 
 
 in_window = np.clip(np.minimum(imp_km - scan_km[0], scan_km[1] - imp_km) / scan_taper + 1, 0, 1)   # 07b [9]
 REPORT = ["Mw_30gpa", "Mw_sfcvm", "potency_m3", "surface_pct", "peak_slip_mm", "peak_depth_m"]
 
-
-def check_table(mine, cached_file, cols, key_cols, rtol=1e-6):
-    """CHECK: the columns `cols` of this run's table equal the cached product of the earlier run, row-matched on
-    key_cols (surface % included: one denominator everywhere, 08a [10])."""
-    assert os.path.exists(cached_file), f"missing cached product {cached_file}"
-    theirs = pd.read_csv(cached_file)
-    mine_sorted = mine.set_index(key_cols).sort_index()
-    theirs_sorted = theirs.set_index(key_cols).sort_index()
-    assert mine_sorted.index.equals(theirs_sorted.index), f"{os.path.basename(cached_file)}: different rows"
-    worst = 0.0
-    for col in cols:
-        cached_values = theirs_sorted[col].values
-        diff = np.abs(mine_sorted[col].values - cached_values) / np.maximum(np.abs(cached_values), 1e-9)
-        worst = max(worst, float(np.nanmax(diff)))
-    assert worst < rtol, f"{os.path.basename(cached_file)}: max rel diff {worst:.2e}"
-    print(f"PASS: equals {os.path.basename(cached_file)} (max rel diff {worst:.1e})")
-
-
 # %% [markdown]
-# ## [2] Bootstrap and sigma sensitivity (07a [11])
+# ## [2] Bootstrap and sigma sensitivity (made by 08c [6])
 #
 # n_boot noise realisations from each run's own data and surface covariances (Cholesky) added
 # to the model's own synthetics, re-inverted at the selected sigma, each on a fresh fault and
 # fresh copies of the data (seed 11, as 07a). The spread is the formal error of THIS
 # configuration; the structural range is the sensitivity table of [5]. Then the neighbouring grid
-# sigmas on the real data.
+# sigmas on the real data. Read from 08c (made there because 08a quotes the 2-sigma); CHECK: each table's reference
+# row is 08a's model (Mw30, surface %) and fits the current 06 field.
 
 # %%
 ## [2]
-rng = np.random.default_rng(11)                                   # 07a [11]'s seed
 uncertainty = {}
+results_08a = {cd: pd.read_csv(os.path.join(dir_08a, f"results_comparison{CD_TAG[cd]}.csv")).set_index("model") for cd in CD_TAG}
 for medium, cd in RUNS:
-    sigma = selected_sigma(medium, cd)
-    ref_fault, ref_data, ref_surface = invert_tents(medium, sigma, cd)
-    ref = numbers(ref_fault, ref_data, ref_surface)
-    chol_insar = np.linalg.cholesky(ref_data.Cd + 1e-9 * np.eye(ref_data.Cd.shape[0]))
-    chol_surface = np.linalg.cholesky(ref_surface.Cd + 1e-9 * np.eye(ref_surface.Cd.shape[0]))
-    synth_insar = ref_data.synth.copy()
-    synth_surface = ref_surface.synth.copy()
-    rows = []
-    t0 = time.time()
-    for k in range(n_boot):
-        vel_i = synth_insar + np.dot(chol_insar, rng.standard_normal(synth_insar.size))
-        vel_s = synth_surface + np.dot(chol_surface, rng.standard_normal(synth_surface.size))
-        fault_model, insar_data, surface = invert_tents(medium, sigma, cd, vel_insar=vel_i, vel_surface=vel_s)
-        rows.append(dict(kind="boot", k=k, sigma=sigma, **numbers(fault_model, insar_data, surface)))
-        print(f"  {medium} {cd} boot {k + 1}/{n_boot}: Mw30 {rows[-1]['Mw_30gpa']:.3f}, surface {rows[-1]['surface_pct']:.0f} %")
-    boot = pd.DataFrame(rows)
-    boot_mean = {}
-    boot_2sd = {}
-    for col in REPORT:
-        boot_mean[col] = float(boot[col].mean())
-        boot_2sd[col] = float(2 * boot[col].std(ddof=1))
-    summary = [dict(kind="reference", k=-1, sigma=sigma, **ref),
-               dict(kind="boot_mean", k=-1, sigma=sigma, **boot_mean),
-               dict(kind="boot_2sd", k=-1, sigma=sigma, **boot_2sd)]
-    i_sig = sigma_grid.index(sigma)
-    for j in (i_sig - 1, i_sig + 1):
-        if 0 <= j < len(sigma_grid):
-            sigma_neighbour = sigma_grid[j]
-            fault_model, insar_data, surface = invert_tents(medium, sigma_neighbour, cd)
-            summary.append(dict(kind="sigma_neighbour", k=-1, sigma=sigma_neighbour, **numbers(fault_model, insar_data, surface)))
-    table = pd.concat([pd.DataFrame(summary), boot], ignore_index=True)
-    table["provenance"] = f"08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')}; G {run_names[medium]}; Cd {cd}; seed 11"
-    out = os.path.join(out_dir, f"uncertainty_{run_tag(cd)}_{medium}.csv")
-    table.to_csv(out, index=False)
+    unc_file = os.path.join(dir_08c, f"uncertainty_{run_tag(cd)}_{medium}.csv")
+    assert os.path.exists(unc_file), f"missing {unc_file}: run 08c_3d_model_sensitivity"
+    table = pd.read_csv(unc_file)
+    assert table.provenance.str.contains(field_fingerprint, regex=False).all(), f"{unc_file} fits another 06 field: re-run 08c"
+    reference = table[table.kind == "reference"].iloc[0]
+    assert float(reference.sigma) == selected_sigma(medium, cd)
+    for col in ("Mw_30gpa", "surface_pct", "potency_m3"):
+        mine = float(results_08a[cd].loc[f"PyLith {medium}", col])
+        assert abs(float(reference[col]) - mine) <= 1e-9 * abs(mine), f"{unc_file}: reference {col} is not 08a's model"
+    table["provenance"] = table.provenance + f"; copied by {notebook} {time.strftime('%Y-%m-%d %H:%M')}"
+    table.to_csv(os.path.join(out_dir, f"uncertainty_{run_tag(cd)}_{medium}.csv"), index=False)
     uncertainty[(medium, cd)] = table
-    report_parts = []
-    for col in REPORT:
-        report_parts.append(f"{col} {boot_mean[col]:.3g} +/- {boot_2sd[col]:.2g}")
-    print(f"{medium} {cd} (sigma {sigma:g}, {n_boot} realisations, {time.time() - t0:.0f} s): "
-          + ", ".join(report_parts) + f"; wrote {os.path.basename(out)}")
-    check_table(table, os.path.join(gf_cached, f"uncertainty_{run_tag(cd)}_{medium}.csv"), REPORT, ["kind", "k", "sigma"])   # PREPUB
+    boot_mean_row = table[table.kind == "boot_mean"].iloc[0]
+    boot_2sd_row = table[table.kind == "boot_2sd"].iloc[0]
+    print(f"{medium} {cd} (sigma {reference.sigma:g}, {int((table.kind == 'boot').sum())} realisations): "
+          + ", ".join(f"{col} {boot_mean_row[col]:.3g} +/- {boot_2sd_row[col]:.2g}" for col in REPORT))
 
 plt.rcParams.update({"font.size": 12, "savefig.facecolor": "white", "figure.facecolor": "white"})
 fig, axes = plt.subplots(2, 2, figsize=(13, 9), constrained_layout=True)
@@ -262,17 +268,18 @@ in_scan_section = (imp_km >= scan_km[0]) & (imp_km <= scan_km[1])
 zbins = np.arange(0, 3.01, 0.1)                                  # depth bins of the recovered profile (km)
 recovery_tables = {}
 profiles = []
+surf_ref = setup["surface"]
+G_surf = setup["G_surface"]
 for medium, cd in RUNS:
     sigma = selected_sigma(medium, cd)
     _, cd_data, _ = invert_tents(medium, sigma, cd)              # the run's Cd (InSAR)
     chol = np.linalg.cholesky(cd_data.Cd + 1e-9 * np.eye(cd_data.Cd.shape[0]))
-    surf_ref, G_surf, _ = surface_constraint()
     noise_w = float(np.sqrt(np.mean(np.diag(cd_data.Cd)[west300])))
     noise_e = float(np.sqrt(np.mean(np.diag(cd_data.Cd)[east300])))
     rows = []
     for D in recovery_depths:
         slip_in = 10.0 * in_window * (imp_depth_km < D)
-        pot_in = potency_m3(slip_in)
+        pot_in = tents.potency_m3(slip_in)
         vel_i = G[medium].dot(slip_in) + np.dot(chol, recovery_rng.standard_normal(cd_data.vel.size))
         vel_s = G_surf.dot(slip_in) + np.sqrt(np.diag(surf_ref.Cd)) * recovery_rng.standard_normal(surf_ref.vel.size)
         fault_model, insar_data, surface = invert_tents(medium, sigma, cd, vel_insar=vel_i, vel_surface=vel_s)
@@ -290,7 +297,7 @@ for medium, cd in RUNS:
         below = np.nonzero(prof < 0.1 * np.nanmax(prof))[0]
         d_rec = float(zbins[below[0]]) if below.size else np.nan
         rows.append(dict(D_km=D, potency_in_m3=pot_in, potency_out_m3=num["potency_m3"], moment_recovery=num["potency_m3"] / pot_in,
-                         Mw_in=float(moment_magnitude(mu_ref * pot_in)), Mw_out=num["Mw_30gpa"], depth_10pct_km=d_rec,
+                         Mw_in=float(model_utils.moment_magnitude(mu_ref * pot_in)), Mw_out=num["Mw_30gpa"], depth_10pct_km=d_rec,
                          peak_out_mm=num["peak_slip_mm"], peak_depth_m=num["peak_depth_m"], surface_pct=num["surface_pct"],
                          rms_mm=num["rms_mm"], rms_west300_mm=num["rms_west300_mm"], rms_east300_mm=num["rms_east300_mm"],
                          mean_res_west300_mm=float(res[west300].mean()), mean_res_east300_mm=float(res[east300].mean()),
@@ -307,7 +314,6 @@ for medium, cd in RUNS:
     table["provenance"] = f"08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')}; G {run_names[medium]}; Cd {cd}; sigma {sigma:g}; seed 7"
     table.to_csv(os.path.join(out_dir, f"recovery_{run_tag(cd)}_{medium}.csv"), index=False)
     recovery_tables[(medium, cd)] = table
-    check_table(table, os.path.join(gf_cached, f"recovery_{run_tag(cd)}_{medium}.csv"), ["moment_recovery", "Mw_out"], ["D_km"])   # PREPUB
 pd.concat(profiles).to_csv(os.path.join(out_dir, "recovery_profiles.csv"), index=False)
 
 import plot_tests_figures                                  # the recovery figure, drawn from the products just written
@@ -337,10 +343,10 @@ for medium, cd in RUNS:
         design_w = np.linalg.solve(chol, design)
         coef, *_ = np.linalg.lstsq(design_w, data_w, rcond=None)
         resid_w = data_w - design_w.dot(coef)
-        pot = potency_m3(shape * coef[0])
+        pot = tents.potency_m3(shape * coef[0])
         assert pot > 0, f"depth scan {medium} {cd} D={D}: non-positive amplitude {coef[0]:.2f} mm"
         rows.append(dict(D_km=D, slip_mm=float(coef[0]), constant_mm=float(coef[1]), chi2=float(np.dot(resid_w, resid_w)),
-                         potency_m3=pot, Mw=float(moment_magnitude(mu_ref * pot))))
+                         potency_m3=pot, Mw=float(model_utils.moment_magnitude(mu_ref * pot))))
     scan = pd.DataFrame(rows)
     scan["dchi2"] = scan.chi2 - scan.chi2.min()
     scan["provenance"] = f"08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')}; G {run_names[medium]}; Cd {cd}"
@@ -350,7 +356,6 @@ for medium, cd in RUNS:
     bracket = scan[scan.dchi2 <= 4]
     print(f"depth scan {medium} {cd}: best D {best.D_km:g} km ({best.slip_mm:.1f} mm, Mw {best.Mw:.2f}); delta chi2 <= 4: "
           f"{bracket.D_km.min():g}-{bracket.D_km.max():g} km, Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f}")
-    check_table(scan, os.path.join(gf_cached, f"depth_scan_{run_tag(cd)}_{medium}.csv"), ["chi2", "slip_mm"], ["D_km"])   # PREPUB
 
 mpl_paper_style(base=7)
 fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.6), constrained_layout=True)
@@ -376,12 +381,12 @@ print("wrote figS_pylith_depth_scan.png")
 #
 # The table `final_comparison.csv` (every run: settings, sigma, rms, near-fault rms west / east,
 # chi2, surface %, potency, Mw at 30 GPa and with the SFCVM rigidity, the bootstrap 2-sigma where
-# made) and the per-run products are read from `modeling_SFCVM/gf/`; the runs are NOT recomputed
-# (each needs its own PyLith Green's-function run: mesh `shallow`, the dipping meshes, order-2
-# elements, the swath-7 and coherence-0.7 sample sets, the +/- 50 m SFCVM grids).
+# made) and the per-run products are read from 08c (`outputs/08c_3d_model_sensitivity/`); each run needs its own
+# PyLith Green's-function run (mesh `shallow`, the dipping meshes, order-2 elements, the swath-7 and coherence-0.7
+# sample sets, the +/- 50 m SFCVM grids; pylith/README.md).
 # CHECKS (fail loud on a stale table): the table is newer than 06's `fig2_inputs.npz` and `fp_maps.npz`;
 # every PyLith row (and every `results_comparison*.csv` the figures read) carries the current 06 field's
-# fingerprint and the locked sigma; the `default` and `default_nuggetcd` rows equal 08a's fresh
+# fingerprint and the locked sigma; the `default` and `default_nuggetcd` rows equal 08a's
 # `results_comparison*.csv`. One-page diagnostic per run and medium (`qc08b_summary_<run>_<medium>`), then the
 # all-tests figure (`figS_pylith_all_tests`): near-fault fit both sides, west fit against Mw, and
 # the run-by-run ladder of the west-side rms, homogeneous vs SFCVM on the same settings.
@@ -398,28 +403,27 @@ def no_decimals(value):
     return "" if pd.isna(value) else f"{value:.0f}"
 
 
-final_file = os.path.join(gf_cached, "final_comparison.csv")
-assert os.path.exists(final_file), f"missing {final_file}"
+final_file = os.path.join(dir_08c, "final_comparison.csv")
+assert os.path.exists(final_file), f"missing {final_file}: run 08c_3d_model_sensitivity"
 for field_file in ("fig2_inputs.npz", "fp_maps.npz"):                      # stale table = made before the current 06 field
     field_path = os.path.join(field_dir, field_file)
     assert os.path.getmtime(final_file) > os.path.getmtime(field_path), \
         f"{final_file} ({time.ctime(os.path.getmtime(final_file))}) is older than 06's {field_file} " \
-        f"({time.ctime(os.path.getmtime(field_path))}): re-run the driver inversions and final_comparison.py"
+        f"({time.ctime(os.path.getmtime(field_path))}): re-run 08c"
 sensitivity = pd.read_csv(final_file)
 assert {"run", "medium", "sigma", "sigma_lcurve_pick", "field_fingerprint", "rms_W300_mm", "Mw_30gpa", "surface_pct"} <= set(sensitivity.columns), \
-    f"{final_file} lacks the sigma / field provenance columns: made by an old final_comparison.py"
+    f"{final_file} lacks the sigma / field provenance columns"
 pylith_rows = sensitivity[sensitivity.run != "07 CSI baseline"]
 stale = pylith_rows[pylith_rows.field_fingerprint.astype(str) != field_fingerprint]
 assert stale.empty, f"{len(stale)} sensitivity rows fit another 06 field (not {field_fingerprint}): {sorted(set(stale.run))}"
 off_sigma = pylith_rows[~np.isclose(pylith_rows.sigma.astype(float), sigma_locked)]
 assert off_sigma.empty, f"{len(off_sigma)} sensitivity rows not at the locked sigma {sigma_locked:g}: {sorted(set(off_sigma.run))}"
 for cd in CD_TAG:                                                           # the default rows ARE 08a's models
-    results_08a = pd.read_csv(os.path.join(dir_08a, f"results_comparison{CD_TAG[cd]}.csv")).set_index("model")
     for medium in media:
         row = pylith_rows[(pylith_rows.run == run_tag(cd)) & (pylith_rows.medium == medium)]
         assert len(row) == 1, f"{run_tag(cd)} / {medium}: {len(row)} rows in {final_file}"
         for col in ("Mw_30gpa", "potency_m3", "surface_pct", "rms_mm"):
-            mine = float(results_08a.loc[f"PyLith {medium}", col])
+            mine = float(results_08a[cd].loc[f"PyLith {medium}", col])
             assert abs(float(row[col].iloc[0]) - mine) <= 1e-6 * abs(mine), f"{final_file} {run_tag(cd)} / {medium} {col} differs from 08a's"
 print(f"PASS: {final_file} is newer than the 06 field, every PyLith row fits field {field_fingerprint} at sigma {sigma_locked:g}, "
       f"and its default rows equal 08a's")
@@ -446,22 +450,22 @@ print(f"\n{len(pylith_rows)} PyLith inversions on {pylith_rows.run.nunique()} ru
 import plot_run_summary
 import plot_test_summary
 tags = []
-for results_file in glob.glob(os.path.join(gf_cached, "results_comparison*.csv")):
+for results_file in glob.glob(os.path.join(dir_08c, "results_comparison*.csv")):
     tags.append(os.path.basename(results_file).replace("results_comparison", "").replace(".csv", ""))
 tags = sorted(tags)
 for tag in tags:                                                            # the figures read every table: none may be stale
-    table_tag = pd.read_csv(os.path.join(gf_cached, f"results_comparison{tag}.csv"))
+    table_tag = pd.read_csv(os.path.join(dir_08c, f"results_comparison{tag}.csv"))
     pylith_tag = table_tag[table_tag.model.str.startswith("PyLith ")]
     assert (pylith_tag.field_fingerprint.astype(str) == field_fingerprint).all(), f"results_comparison{tag}.csv fits another 06 field"
     assert np.allclose(pylith_tag.sigma.astype(float), sigma_locked), f"results_comparison{tag}.csv is not at the locked sigma"
 summary_pages = []
 for tag in tags:
     media_tag = []
-    for run_medium in plot_run_summary.load_run(tag, gf_cached)["media"]:
+    for run_medium in plot_run_summary.load_run(tag, dir_08c)["media"]:
         if run_medium != "sfcvmasis":                                            # aligned SFCVM only (Dani)
             media_tag.append(run_medium)
-    summary_pages += plot_run_summary.main(tag, media_tag, gf_dir=gf_cached, fig_dir=fig_dir, prefix="qc08b_summary")
-all_runs = plot_test_summary.main(gf_cached, os.path.join(fig_dir, "figS_pylith_all_tests.png"))
+    summary_pages += plot_run_summary.main(tag, media_tag, gf_dir=dir_08c, fig_dir=fig_dir, prefix="qc08b_summary")
+all_runs = plot_test_summary.main(dir_08c, os.path.join(fig_dir, "figS_pylith_all_tests.png"))
 assert len(all_runs) == len(pylith_rows), f"all-tests figure drew {len(all_runs)} runs, the table has {len(pylith_rows)}"
 print(f"{len(summary_pages)} one-page summaries; all-tests figure on {len(all_runs)} runs")
 
@@ -472,7 +476,7 @@ print(f"{len(summary_pages)} one-page summaries; all-tests figure on {len(all_ru
 # structural range keys (`08b_sens_*`) are over every SFCVM run WITH the surface constraint in the
 # sensitivity table (mesh, Cd treatments, swath, dip, order, alignment, coherence), all at the locked
 # sigma; surface % on the one measured-crossing denominator. NB: `08b_*_2sig` and 08a's `08a_*_2sig` are the same
-# bootstrap (this notebook's fresh one and the cached one 08a reads, checked equal in [2]).
+# bootstrap (08c's).
 
 # %%
 ## [6]
@@ -508,17 +512,13 @@ lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions at sigma 
 print("\n".join(lines))
 with open(os.path.join(out_dir, "tests_summary.txt"), "w") as fh:
     fh.write(f"# 08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')}\n" + "\n".join(lines) + "\n")
-input_files = []
+input_files = [os.path.join(dir_07a, "model_data_07a.npz"), final_file]
 for cd in CD_TAG:
     input_files.append(os.path.join(dir_08a, f"results_comparison{CD_TAG[cd]}.csv"))
-input_files.append(final_file)
 for medium in media:
-    input_files.append(os.path.join(paths_sfcvm["gf"], f"G_{run_names[medium]}.npz"))
-# PREPUB-START: the cached tables of the earlier PyLith driver run that the checks compare with
+    input_files.append(os.path.join(medium_paths(medium)["gf"], f"G_{run_names[medium]}.npz"))
 for medium, cd in RUNS:
-    for product in ("uncertainty", "recovery", "depth_scan"):
-        input_files.append(os.path.join(gf_cached, f"{product}_{run_tag(cd)}_{medium}.csv"))
-# PREPUB-END
+    input_files.append(os.path.join(dir_08c, f"uncertainty_{run_tag(cd)}_{medium}.csv"))
 REG.inputs(*input_files)
 sidecar = REG.sidecar("08b_3d_model_tests", lines)
 for medium, cd in RUNS:

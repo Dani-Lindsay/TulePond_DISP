@@ -15,21 +15,22 @@
 #
 # ```
 # Created on Wed Sep 30 2026
-# PREPUB: promoted from drafts/pylith/pylith_sfcvm_gf.py, the 2026-09-29/30 draft.
+# PREPUB: promoted from drafts/retired_2026-10-06/pylith/pylith_sfcvm_gf.py, the 2026-09-29/30 draft; 2026-10-06: modelling functions in
+# PREPUB: model_utils.py, 07a's data read from its product (no exec of 07a), PyLith files in the 2026-10-06 layout.
 # @author: daniellelindsay
-# Run in opera_disp_feb13, after 06 and 07a. About 15 min (about 60 tent inversions of ~10 s each);
-# no PyLith run: the Green's functions, mesh, materials and forward runs are read from modeling_SFCVM/.
+# Run in opera_disp_feb13, after 07a and 08c. About 15 min (about 60 tent inversions of ~10 s each);
+# no PyLith run: the Green's functions, mesh, materials and forward runs are read from the results directory.
 # ```
 #
 # **What this notebook does.** The slip model of the paper: the five-event mean fault-parallel
 # field of notebook 06 inverted on **3D finite-element Green's functions (PyLith 5.0.2)** for the
 # vertical fault under the mapped creeping trace, in the **USGS SFCVM v26.0** elastic structure
 # aligned on the trace (the sediment-over-bedrock contrast that the homogeneous half-space of 07a
-# cannot represent). The data, the quadtree samples, the noise model and the CSI inversion
-# machinery are 07a's, exec'd unchanged from `scripts/07a_uniform_model.py` cells [1]-[6], so the
-# two models are compared like for like. The surface constraint is NOT 07a's: every measured fault
-# crossing inside the mesh is one datum, tied to the slip at its own position on the fault's top
-# edge (`pylith_helpers/surface_crossings.py`, Dani 2026-10-02; cell [10]). The 3D model supersedes
+# cannot represent). The data, the quadtree samples and the noise model are 07a's (read from its
+# `model_data_07a.npz`), and the inversion is 07a's CSI machinery with the PyLith G (one definition of every
+# function, in `model_utils.py`), so the two models are compared like for like. The surface constraint is NOT
+# 07a's: every measured fault crossing inside the mesh is one datum, tied to the slip at its own position on the
+# fault's top edge (`model_utils.crossing_constraint`, Dani 2026-10-02; cell [10]). The 3D model supersedes
 # the uniform one (07a) in the paper; 07a stays as the baseline it is measured against. After the
 # models: the PyLith stress drop of the selected model [15b], its Mw under each rigidity choice
 # [15c], and where the 3D medium improves the fit [15d].
@@ -37,41 +38,42 @@
 # The **SELECTED model** (Dani, 2026-09-30): run tag `default_nuggetcd`, aligned SFCVM medium,
 # vertical fault, `default` mesh (100 m fault cells in the Tule Pond patch), order-1 elements,
 # nugget-only diagonal data covariance, measured-crossing surface constraint ON, sigma 12 (the
-# grid value at or above the L-curve corner, 07a [8] rule; locked, asserted in [11]). Its
-# **companion** is the same inversion with 07a's full correlated covariance (tag `default`). Both
-# media (homogeneous 30 GPa and aligned SFCVM) are inverted in each, so every table carries four
-# models plus 07a's CSI baseline. The sensitivity runs (mesh, Cd floors, no surface constraint,
-# wider swath, dip, order 2, alignment +/- 50 m, coherence 0.7) are collected in `08b_3d_model_tests`.
+# grid value at or above the L-curve corner, 07a [9] rule; locked, `TulePond_filepaths.model_sigma_locked`,
+# asserted in [11]). Its **companion** is the same inversion with 07a's full correlated covariance (tag
+# `default`). Both media (homogeneous 30 GPa and aligned SFCVM) are inverted in each, so every table carries four
+# models plus 07a's CSI baseline. The sensitivity runs (mesh, Cd floors, no surface constraint, wider swath, dip,
+# order 2, alignment +/- 50 m, coherence 0.7) and the bootstrap are made by `08c_3d_model_sensitivity` and drawn by
+# `08b_3d_model_tests`.
 #
-# | Step | Tool (validated library) | Glue written here |
+# | Step | Tool (validated library) | Glue written here (`model_utils`) |
 # |---|---|---|
-# | mesh | gmsh via PyLith `gmsh_utils.GenerateMesh` (`pylith_helpers/generate_gmsh_vertical.py`) | size fields |
-# | materials | SFCVM read with h5py (`pylith_helpers/sfcvm_grid.py`); spatialdata `SimpleGridAscii` writer | alignment shift, vs floor, Poisson cap |
-# | Green's functions | PyLith `GreensFns` + `FaultCohesiveImpulses` + `OutputSolnPoints` (`scripts/pylith_cfg/`) | impulse-region db |
-# | G assembly | reading pattern of PyLith `examples/subduction-3d/invert_slip.py` (`pylith_helpers/build_G.py`) | vertex/point matching, projection, sign |
-# | inversion | CSI `TriangularTents`, `setGFs`, `buildCmXY`, `transformation`, `multisourcesolve` NNLS, `surfaceslip` (as 07a) | surface constraint on vertices (`surface_crossings.py`) |
+# | mesh | gmsh via PyLith `gmsh_utils.GenerateMesh` (`pylith/build/generate_gmsh_vertical.py`) | size fields |
+# | materials | SFCVM read with h5py (`pylith/build/sfcvm_grid.py`); spatialdata `SimpleGridAscii` writer | alignment shift, vs floor, Poisson cap |
+# | Green's functions | PyLith `GreensFns` + `FaultCohesiveImpulses` + `OutputSolnPoints` (`pylith/cfg/gf.cfg`) | impulse-region db |
+# | G assembly | reading pattern of PyLith `examples/subduction-3d/invert_slip.py` (`build_G`, `load_G`) | vertex/point matching, projection, sign |
+# | inversion | CSI `TriangularTents`, `setGFs`, `buildCmXY`, `transformation`, `multisourcesolve` NNLS, `surfaceslip` (as 07a) | surface constraint on vertices (`crossing_constraint`) |
 # | validation | PyLith `FaultCohesiveKin` forward runs; CSI Meade dislocations; 2D screw dislocation | comparisons |
 #
 # **The PyLith side is not re-run here.** The Green's-function runs (33 min each, 8 MPI ranks,
-# PyLith 5.0.2 bundle) were made once with the parameter files in `scripts/pylith_cfg/` and the
-# helpers in `scripts/pylith_helpers/`; their products (mesh, spatialdb, points, G matrices, the
-# forward runs) are read from `TulePond_filepaths.model_sfcvm_dir` (`modeling_SFCVM/`, part of
-# the Zenodo deposit). A missing product stops the notebook with the command that makes it;
-# `TULEPOND_RUN_PYLITH=1` lets the notebook shell out to PyLith instead.
+# PyLith 5.0.2 bundle) were made once with the parameter files in `pylith/cfg/` and the wrappers and build scripts
+# of `pylith/` (every run, its cfg stack, inputs and outputs: `pylith/README.md`). Their products are read from the
+# results directory: `modeling_inputs/` (mesh, sample points, impulse database), `modeling_uniform/` (the
+# homogeneous runs) and `modeling_SFCVM/` (the SFCVM grids and runs). A missing product stops the notebook with the
+# command that makes it; `TULEPOND_RUN_PYLITH=1` lets the notebook shell out to PyLith instead.
 #
-# **Inputs**: `modeling_SFCVM/{mesh,spatialdb,points,gf,pylith_output}`; 07a's data and machinery
-# (06 `fp_maps.npz` and `fig2_inputs.npz`, 04 `event_fraction_by_crossing.csv` = the measured
-# crossings of the surface constraint, 04 `section_lengths.csv`, the trace);
-# `07b_uniform_model_tests/fig2_model_row.npz` (07a's baseline on the same samples); and, from
-# `modeling_SFCVM/gf/`, the products of the earlier PyLith driver run: `lcurve_<medium><tag>.csv`
-# and `results_comparison<tag>.csv` (compared in [11] and [12]), `results_comparison_{e50,w50}<tag>.csv`
-# (the +/- 50 m alignment runs of the Mw range, [14]), their `inversion_products_{e50,w50}<tag>.npz`,
-# `G_gf_default_sfcvm_{e50,w50}.npz` and PyLith `-elastic_info.h5` (slip and rigidity of those range
-# models, [15c]) and `uncertainty_<run>_<medium>.csv` (08b's bootstrap, [14]).
+# **Inputs** (made by): 07a `model_data_07a.npz` (samples, data, noise model, crossings, strike, prior, the trace and
+# uniform mesh) and `fig2_model_row.npz` (07a's baseline on the same samples); 06 `fp_maps.npz` (fingerprint) and
+# `fig2_inputs.npz` (the profile lines); 04 `section_lengths.csv`; `modeling_inputs/mesh/`, `points/insar_points.*`
+# (07a), `spatialdb/` (pylith/build); `modeling_uniform/` and `modeling_SFCVM/` `pylith_output/` (pylith/run_gf.sh,
+# run_fwd.sh), `gf/` (G matrices, model_utils.build_G), `modeling_SFCVM/spatialdb/` grids (pylith/build/sfcvm_grid.py);
+# from `outputs/08c_3d_model_sensitivity/`: `lcurve_<medium><tag>.csv` and `results_comparison<tag>.csv` (compared
+# in [11] and [12]), `results_comparison_{e50,w50}<tag>.csv`, `lcurve_sfcvm_{e50,w50}_*` and
+# `inversion_products_{e50,w50}<tag>.npz` (the +/- 50 m alignment runs of the Mw range, [14], [15c]) and
+# `uncertainty_<run>_<medium>.csv` (the bootstrap, [14]).
 # **Outputs** (`outputs/08a_3d_model/`): `lcurve_<medium><tag>.csv`, `results_comparison<tag>.csv`,
 # `inversion_products<tag>.npz`, the Fig-2 products `fig2_model_row_pylith_{nuggetcd,full,nuggetcd_homog}.npz`
 # (read by `07c_fig2`), `mw_rigidity_options.csv` and `mw_range_models.csv` ([15c]), the stats sidecar
-# `08a_3d_model_stats.txt`.
+# `08a_3d_model_stats.txt`; `modeling_uniform/validation/csi_vs_pylith_homog.npz` ([8], [9]).
 # **Figures**: `figS_pylith_materials_sfcvm_v26` and `qc08a_materials_boundary_offset` ([3]),
 # `qc08a_mesh_fault` ([2]), `figS_pylith_validation` ([8]), `qc08a_validation_mesh` ([9]),
 # `figS_pylith_lcurves` ([11]), `figS_pylith_fit_maps_<tag>`, `figS_pylith_slip`, `figS_pylith_profile_XX` ([13]).
@@ -81,8 +83,8 @@
 # (median) [6]; no sample more than 50 m from the mesh fault on the other side of 07a's trace [7];
 # PyLith against CSI beyond 300 m of the trace under 2 % of the signal and on agreeing sides under
 # 10 % rms [8]; superposition to 1e-4 mm and fine minus default mesh under 0.2 mm [9]; every model
-# at the locked sigma 12 [11]; each forward run's imposed slip equal to the inverted slip and its
-# displacement equal to G x slip to 0.05 mm [14].
+# at the locked sigma 12 and equal to 08c's run of the same settings [11], [12]; each forward run's imposed slip
+# equal to the inverted slip and its displacement equal to G x slip to 0.05 mm [14].
 
 # %%
 ## [1]
@@ -92,8 +94,6 @@
 import copy
 import json
 import os
-import subprocess
-import sys
 import time
 import warnings
 
@@ -104,45 +104,46 @@ import pyproj
 import matplotlib.pyplot as plt
 from matplotlib.collections import PolyCollection
 import matplotlib.tri as mtri
-from scipy.interpolate import CubicSpline, RegularGridInterpolator
 from scipy.spatial import cKDTree
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
-from TulePond_filepaths import common_paths, repo_dir, paths_out, paths_sfcvm, model_sfcvm_dir
+from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_inputs, paths_uniform, paths_sfcvm, paths_pylith,
+                                medium_paths, model_crs, model_sigma_locked)
 import insar_utils as utils
 from insar_utils import mpl_paper_style
+import model_utils                                  # every modelling function, once (with its source)
 
 # CSI: Classic Slip Inversion (Jolivet et al.; external/csi at 1277bb4)
-from csi import TriangularTents, insar, surfaceslip
-from csi import transformation as transform
-from csi import multisourcesolve as multisrc
+from csi import insar
 
 notebook = "08a_3d_model"
 out_dir = paths_out[notebook]
 fig_dir = common_paths["fig_dir"]
-helpers_dir = os.path.join(repo_dir, "scripts", "pylith_helpers")
-cfg_dir = paths_sfcvm["cfg"]                        # scripts/pylith_cfg: the PyLith parameter files the runs were made with
-sys.path.insert(0, helpers_dir)
-from surface_crossings import crossing_constraint, surface_pct_denominator_mm   # surface constraint (2026-10-02), surface % denominator (2026-10-05)
+dir_07a = paths_out["07a_uniform_model"]
+dir_08c = paths_out["08c_3d_model_sensitivity"]
+field_dir = paths_out["06_event_field_geometry"]
+events_dir = paths_out["04_event_detection"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
-WORK = model_sfcvm_dir                              # the PyLith side (mesh/, spatialdb/, points/, gf/, pylith_output/)
-for key in ("mesh", "spatialdb", "points", "gf", "pylith_output"):
-    assert os.path.isdir(paths_sfcvm[key]), f"missing {paths_sfcvm[key]}: modeling_SFCVM/ holds the PyLith products"
+WORK = paths_pylith["workdir"]                      # PyLith runs are made from here (pylith/README.md)
+for folder in (paths_inputs["mesh"], paths_inputs["points"], paths_inputs["spatialdb"], paths_uniform["pylith_output"],
+               paths_sfcvm["pylith_output"], paths_sfcvm["spatialdb"]):
+    assert os.path.isdir(folder), f"missing {folder}: the PyLith products (pylith/README.md)"
 run_pylith = os.environ.get("TULEPOND_RUN_PYLITH", "0") == "1"   # 1: make a missing PyLith product here (33 min per GF run)
-opera_py = sys.executable
-CRS = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +type=crs"   # mesh CRS = the CSI frame of 07a
+CRS = model_crs                                     # mesh CRS = the CSI frame of 07a
+pylith_dir = paths_pylith["root"]
+build_dir = paths_pylith["build"]
 
 # the FIXED configuration of the selected model and its companion (Dani 2026-09-30); the
-# alternatives (mesh, dip, order, swath, coherence, Cd floors, no surface constraint) live in 08b
+# alternatives (mesh, dip, order, swath, coherence, Cd floors, no surface constraint) are 08c's runs
 mesh_preset = "default"                             # 100 m fault cells in km 56-63 / top 1.5 km, 250 m elsewhere on the fault
 elem_order = "1"                                    # linear elements; slip impulses are tents on the fault vertices
 points_set = "default"                              # 07a's 2386 quadtree samples (swath 4 km)
-use_surface = True                                  # measured-crossing surface constraint ON (surface_crossings.py, [10])
-sigma_locked = 12.0                                 # the model sigma, locked for every model (Dani 2026-10-03; asserted in [11])
-media = {"homog": "mat_homog.cfg", "sfcvm": "mat_sfcvm.cfg"}     # 30 GPa / SFCVM v26.0 aligned on the trace (scripts/pylith_cfg)
-run_names = {m: f"gf_{mesh_preset}_{m}" for m in media}         # PyLith GreensFns runs (pylith_output/<run>-*.h5)
+use_surface = True                                  # measured-crossing surface constraint ON (model_utils.crossing_constraint, [10])
+sigma_locked = model_sigma_locked                   # the model sigma, locked for every model (Dani 2026-10-03; asserted in [11])
+media = {"homog": "mat_homog.cfg", "sfcvm": "mat_sfcvm.cfg"}     # 30 GPa / SFCVM v26.0 aligned on the trace (pylith/cfg)
+run_names = {m: f"gf_{mesh_preset}_{m}" for m in media}         # PyLith GreensFns runs (<medium>/pylith_output/<run>-*.h5)
 CD_TAG = {"nugget": "_nuggetcd", "full": ""}        # product suffix of each data-covariance treatment
 RUNS = [("sfcvm", "nugget"), ("sfcvm", "full"), ("homog", "nugget"), ("homog", "full")]   # (medium, Cd); first = SELECTED
 SELECTED = ("sfcvm", "nugget")
@@ -167,29 +168,13 @@ def run_tag(cd):
     return "default" + CD_TAG[cd]
 
 
-def run_shell(cmd):
-    """Run a shell command in modeling_SFCVM (PYLITH_WORKDIR / PYLITH_CFG for the run wrappers), echo it, fail loudly."""
-    print("$", cmd)
-    t0 = time.time()
-    env = dict(os.environ, PYLITH_WORKDIR=WORK, PYLITH_CFG=cfg_dir)
-    out = subprocess.run(cmd, shell=True, cwd=WORK, env=env, capture_output=True, text=True)
-    assert out.returncode == 0, f"command failed ({out.returncode}):\n{out.stdout[-3000:]}\n{out.stderr[-3000:]}"
-    print(out.stdout[-1500:])
-    return time.time() - t0
-
-
 def cached(path, recipe):
-    """A product of the PyLith side. It must exist in modeling_SFCVM (made once with the cfg in
-    scripts/pylith_cfg); with TULEPOND_RUN_PYLITH=1 a missing one is made by `recipe` (run in modeling_SFCVM)."""
-    if not os.path.exists(path):
-        assert run_pylith, (f"missing PyLith product {path}\n  made once with: {recipe}\n  set TULEPOND_RUN_PYLITH=1 to run it "
-                            f"here (needs the PyLith 5.0.2 bundle, see scripts/pylith_helpers/pylith_env.sh)")
-        timings[os.path.basename(path)] = run_shell(recipe)
-        assert os.path.exists(path), f"{recipe} did not write {path}"
-    return path
+    """A product of the PyLith side; with TULEPOND_RUN_PYLITH=1 a missing one is made by `recipe`, run in the results
+    directory (model_utils.ensure_product)."""
+    return model_utils.ensure_product(path, recipe, WORK, run_pylith, timings)
 
 
-pyenv = f"bash {helpers_dir}/pylith_env.sh {WORK}"   # "<pyenv> <command>" runs the command in the PyLith env, in modeling_SFCVM
+in_pylith = f"bash {pylith_dir}/pylith_env.sh {WORK}"   # "<in_pylith> <command>" runs the command in the PyLith env, from the results directory
 to_mesh = pyproj.Transformer.from_crs("EPSG:4326", CRS, always_xy=True)
 REG = utils.Registry(notebook, common_paths, repo_dir)
 print(f"selected model: {run_tag(SELECTED[1])} / {SELECTED[0]}; companion {run_tag(COMPANION[1])} / {COMPANION[0]}; "
@@ -198,16 +183,17 @@ print(f"selected model: {run_tag(SELECTED[1])} / {SELECTED[0]}; companion {run_t
 # %% [markdown]
 # ## [2] Mesh
 #
-# `pylith_helpers/generate_gmsh_vertical.py` (PyLith `gmsh_utils.GenerateMesh`): the mapped trace
+# `pylith/build/generate_gmsh_vertical.py` (PyLith `gmsh_utils.GenerateMesh`): the mapped trace
 # (every 3rd 100 m point, km 52-67) as a spline, extruded 3 km straight down, fragmented into a
 # 100 x 100 x 40 km box. Cell size from three linear-growth fields combined by a gmsh Min field.
 # Preset `default`: 100 m on the fault in km 56-63 / top 1.5 km, 250 m elsewhere on the fault,
-# 250 m on the surface over the data, bias 1.15. Read from `modeling_SFCVM/mesh/`.
+# 250 m on the surface over the data, bias 1.15. Read from `modeling_inputs/mesh/`.
 
 # %%
 ## [2]
-mesh_file = cached(os.path.join(paths_sfcvm["mesh"], f"mesh_vertical_tet_{mesh_preset}.msh"),
-                   f"{pyenv} python3 {helpers_dir}/generate_gmsh_vertical.py --write --preset {mesh_preset}")
+mesh_file = cached(os.path.join(paths_inputs["mesh"], f"mesh_vertical_tet_{mesh_preset}.msh"),
+                   f"{in_pylith} python3 {build_dir}/generate_gmsh_vertical.py --write --preset {mesh_preset}")
+mesh_rel = os.path.relpath(mesh_file, WORK)         # the mesh as the PyLith runs name it (relative to the results directory)
 mesh_report = mesh_file.replace(".msh", "_report.txt")
 mesh_fault_npz = mesh_file.replace(".msh", "_fault.npz")
 assert os.path.exists(mesh_report) and os.path.exists(mesh_fault_npz), f"mesh report / fault npz missing next to {mesh_file}"
@@ -245,107 +231,108 @@ print("wrote qc08a_mesh_fault.png")
 # %% [markdown]
 # ## [3] Output points and materials
 #
-# The 2386 quadtree samples of 07a (`fig2_model_row.npz`) in the mesh CRS (`make_points.py`).
-# SFCVM v26.0 on a non-uniform grid (50 m horizontally around the Tule Pond section, 25 m
+# The 2386 quadtree samples of 07a in the mesh CRS (`modeling_inputs/points/insar_points.{txt,npz}`, written by 07a
+# [6]). SFCVM v26.0 on a non-uniform grid (50 m horizontally around the Tule Pond section, 25 m
 # vertically to 500 m), aligned so that its Hayward block boundary ({22|23}|7) at the surface lies
 # on the mapped trace (a local cross-fault shift b(km), full within 3 km of the trace, tapered to
 # zero at 6 km; dip kept), vs floored at 150 m/s, Poisson's ratio capped at 0.40
-# (`sfcvm_grid.py`), written as a spatialdata SimpleGridDB by spatialdata's own writer
-# (`write_sfcvm_griddb.py`). The unshifted ("as is") grid is read too, for the figure.
+# (`pylith/build/sfcvm_grid.py`), written as a spatialdata SimpleGridDB by spatialdata's own writer
+# (`pylith/build/write_sfcvm_griddb.py`). The unshifted ("as is") grid is read too, for the figure.
 
 # %%
 ## [3]
-points_file = os.path.join(paths_sfcvm["points"], "insar_points")          # .txt (PyLith PointsList) / .npz
-cached(points_file + ".npz", f"{opera_py} {helpers_dir}/make_points.py")
-assert os.path.exists(points_file + ".txt"), f"missing {points_file}.txt"
+model_data = np.load(os.path.join(dir_07a, "model_data_07a.npz"))
+points_file = str(model_data["points_default"])                      # .txt (PyLith PointsList) / .npz, written by 07a [6]
+assert os.path.exists(points_file + ".npz") and os.path.exists(points_file + ".txt"), f"missing {points_file}: run 07a_uniform_model"
 points = np.load(points_file + ".npz")
 for grid_tag, flag in (("aligned", ""), ("asis", "--no-align")):
-    cached(os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_{grid_tag}_grid.npz"), f"{opera_py} {helpers_dir}/sfcvm_grid.py {flag}")
+    cached(os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_{grid_tag}_grid.npz"),
+           f"python {build_dir}/sfcvm_grid.py {flag}")
 cached(os.path.join(paths_sfcvm["spatialdb"], "mat_sfcvm_v26-0_aligned.spatialdb"),
-       f"{pyenv} python3 {helpers_dir}/write_sfcvm_griddb.py spatialdb/sfcvm_v26-0_aligned_grid.npz "
-       f"spatialdb/mat_sfcvm_v26-0_aligned.spatialdb")
+       f"{in_pylith} python3 {build_dir}/write_sfcvm_griddb.py modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_grid.npz "
+       f"modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_aligned.spatialdb")
 grid_file = os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_aligned_grid.npz")
 grid = np.load(grid_file)
 print(str(grid["provenance"]))
 print(f"{points['lon'].size} output points; grid {grid['x'].size} x {grid['y'].size} x {grid['z'].size}, "
       f"vs floor {float(grid['vs_floor']):g} m/s, nu cap {float(grid['nu_cap']):g}")
-section_lengths = pd.read_csv(os.path.join(paths_out["04_event_detection"], "section_lengths.csv")).set_index("name")
+section_lengths = pd.read_csv(os.path.join(events_dir, "section_lengths.csv")).set_index("name")
 sse_km = (float(section_lengths.loc["tulepond_creep_length", "km_lo"]), float(section_lengths.loc["tulepond_creep_length", "km_hi"]))
+import sys
+sys.path.insert(0, os.path.join(repo_dir, "scripts", "model_plots"))
 import plot_materials
 plot_materials.main(paths_sfcvm["spatialdb"], fig_dir, sse_km)
 
 # %% [markdown]
 # ## [4] PyLith Green's functions, both media
 #
-# `GreensFns` with `FaultCohesiveImpulses` (`scripts/pylith_cfg/gf.cfg`): unit left-lateral
+# `GreensFns` with `FaultCohesiveImpulses` (`pylith/cfg/gf.cfg`): unit left-lateral
 # impulses (right-lateral = -left-lateral, sign derived in [5]) on every fault vertex of km 54-65
 # over the full 3 km depth (buried edges excluded automatically), the rest of the fault locked;
 # Dirichlet zero on the sides and bottom, free top; displacement output at the samples. Slip basis
 # order 1 (tent per vertex), as the PyLith examples require for inversion. The runs
-# (`gf_default_homog`, `gf_default_sfcvm`; 33 min each on 8 ranks) are read from
-# `modeling_SFCVM/pylith_output/`.
+# (`gf_default_homog` in `modeling_uniform/pylith_output/`, `gf_default_sfcvm` in `modeling_SFCVM/pylith_output/`;
+# 33 min each on 8 ranks; `pylith/run_gf.sh`).
 
 # %%
 ## [4]
-impulse_db = "spatialdb/impulses_km54-65_z3000.spatialdb"          # y window = impulse_y_m, depth impulse_depth_m
-cached(os.path.join(WORK, impulse_db), f"{pyenv} python3 {helpers_dir}/make_impulse_db.py {impulse_y_m[0]} {impulse_y_m[1]} "
+impulse_db = os.path.relpath(os.path.join(paths_inputs["spatialdb"], "impulses_km54-65_z3000.spatialdb"), WORK)   # y window = impulse_y_m, depth impulse_depth_m
+cached(os.path.join(WORK, impulse_db), f"{in_pylith} python3 {build_dir}/make_impulse_db.py {impulse_y_m[0]} {impulse_y_m[1]} "
                                        f"{impulse_depth_m} {impulse_db}")
+points_rel = os.path.relpath(points_file + ".txt", WORK)
 for medium, mat_cfg in media.items():
     name = run_names[medium]
-    cached(os.path.join(paths_sfcvm["pylith_output"], f"{name}-points.h5"),
-           f"bash {helpers_dir}/run_gf.sh {name} {mat_cfg} mesh/{os.path.basename(mesh_file)} {impulse_db} {n_procs} points/insar_points.txt")
+    output_dir = medium_paths(medium)["pylith_output"]
+    cached(os.path.join(output_dir, f"{name}-points.h5"),
+           f"bash {pylith_dir}/run_gf.sh {name} {mat_cfg} {mesh_rel} {impulse_db} {n_procs} {points_rel}")
     for suffix in ("-fault.h5", "-elastic_info.h5", "-parameters.json"):
-        assert os.path.exists(os.path.join(paths_sfcvm["pylith_output"], name + suffix)), f"missing {name}{suffix}"
-    run_parameters = json.load(open(os.path.join(paths_sfcvm["pylith_output"], f"{name}-parameters.json")))
+        assert os.path.exists(os.path.join(output_dir, name + suffix)), f"missing {name}{suffix}"
+    run_parameters = json.load(open(os.path.join(output_dir, f"{name}-parameters.json")))
     print(f"{name}: PyLith {run_parameters['version']['pylith']['version']}, {run_parameters['timestamp']}, "
           f"{run_parameters['platform']['machine']}")
 
 # %% [markdown]
-# ## [5] G matrices
+# ## [5] G matrices, the tent fault and the surface constraint
 #
-# `pylith_helpers/build_G.py` (pattern of PyLith `invert_slip.py`): impulse -> vertex (unit tent
-# asserted), output point -> sample (KD-tree, < 1 mm asserted), 3D displacement projected on 07a's
-# fault-parallel look vector, sign derived (right-lateral must move the east side along +look, as
-# the data). Both media must share the fault mesh and the impulse order. `G_<run>.npz` is read from
-# `modeling_SFCVM/gf/` (numpy only: rebuilt there from the PyLith output when absent).
+# `model_utils.tent_model_setup` (the same call as every run of 08c): for each medium `model_utils.load_G` reads
+# `G_<run>.npz` from the medium's `gf/` folder, built by `model_utils.build_G` (pattern of PyLith `invert_slip.py`):
+# impulse -> vertex (unit tent asserted), output point -> sample (KD-tree, < 1 mm asserted), 3D displacement
+# projected on 07a's fault-parallel look vector, sign derived (right-lateral must move the east side along +look, as
+# the data); a G projected on another strike than the current field's is rebuilt from the cached PyLith output (no
+# PyLith run). Both media must share the fault mesh and the impulse order. The same call builds the tent fault
+# (`model_utils.TentFault`: triangles, centroids, normals, areas, the impulse vertices and their km from Point Pinole)
+# and the surface constraint of [10].
 
 # %%
 ## [5]
-import build_G
-G = {}                                   # medium -> G matrix (samples x impulses), right-lateral positive, m per m
-gnpz = {}                                # medium -> the G_<run>.npz product
-for medium in media:
-    path = os.path.join(paths_sfcvm["gf"], f"G_{run_names[medium]}.npz")
-    if not os.path.exists(path):
-        build_G.main([run_names[medium]], points_file=points_file + ".npz")
-    gnpz[medium] = np.load(path)
-    # the cached G is projected on the strike it was built with: rebuild it (from the cached PyLith outputs, no PyLith
-    # run) when the current field's strike differs (2026-10-05: the along-trace section moved the strike 146.40 -> 146.51)
-    strike_now = float(np.load(os.path.join(paths_out["07b_uniform_model_tests"], "fig2_model_row.npz"))["strike_deg"])   # 07a's strike of the current field (what build_G projects on)
-    if abs(float(gnpz[medium]["strike_deg"]) - strike_now) > 1e-6:
-        print(f"G_{run_names[medium]}: built at strike {float(gnpz[medium]['strike_deg']):.4f}, field at {strike_now:.4f} -> rebuilding")
-        build_G.main([run_names[medium]], points_file=points_file + ".npz")
-        gnpz[medium] = np.load(path)
-    assert abs(float(gnpz[medium]["strike_deg"]) - strike_now) < 1e-6, f"G_{run_names[medium]} strike differs from the field's"
-    G[medium] = gnpz[medium]["G_rl_m_per_m"]
-    assert np.array_equal(gnpz[medium]["sample_lon"], points["lon"]), f"G_{run_names[medium]} is not on the output points"
-ref_medium = "sfcvm"
-for medium in media:
-    assert np.array_equal(gnpz[ref_medium]["vertex_index"], gnpz[medium]["vertex_index"]), "impulse order differs between media"
-    assert np.array_equal(gnpz[ref_medium]["fault_xyz"], gnpz[medium]["fault_xyz"])
-fault_xyz = gnpz[ref_medium]["fault_xyz"]
-fault_cells = gnpz[ref_medium]["fault_cells"]
-vertex_index = gnpz[ref_medium]["vertex_index"]
-n_imp = vertex_index.size
-# PyLith fault triangles: centroid, unit normal (east +), area (m^2)
-tri_xyz = fault_xyz[fault_cells]
-tri_cen = tri_xyz.mean(1)
-tri_n = np.cross(tri_xyz[:, 1] - tri_xyz[:, 0], tri_xyz[:, 2] - tri_xyz[:, 0])
-tri_area = 0.5 * np.linalg.norm(tri_n, axis=1)
-tri_n /= np.linalg.norm(tri_n, axis=1)[:, None]
-tri_n[tri_n[:, 0] < 0] *= -1.0                                             # east +
-print(f"G: {G[ref_medium].shape[0]} samples x {n_imp} impulses (of {len(fault_xyz)} fault vertices); "
-      + ", ".join(f"max |G| {m} {np.abs(G[m]).max():.3f}" for m in media) + " m/m")
+frame_lonlat = tuple(model_data["frame_lonlat"])
+strike_bearing = float(model_data["strike_deg"])
+look = model_data["look"]
+profile_lats = pd.read_csv(common_paths["fault_profiles"]).ft_lat.values
+trace = model_utils.model_trace(model_data["trace_lonlat"], -90.0, 90.0, frame_lonlat, profile_lats,
+                                every_km=float(model_data["trace_every_km"]))
+trace_south_north = trace["lonlat"][np.argsort(trace["lonlat"][:, 1])]
+creep_lo_km, creep_hi_km = float(model_data["creep_lo_km"]), float(model_data["creep_hi_km"])
+km_window = tuple(model_data["km_window"])
+surf_floor_mm = float(model_data["surf_floor_mm"])
+crossings = dict(km=model_data["crossing_km"], lat=model_data["crossing_lat"], mean_mm=model_data["crossing_mean_mm"])
+medium_dirs = {medium: (medium_paths(medium)["pylith_output"], medium_paths(medium)["gf"]) for medium in media}
+t0 = time.time()
+setup = model_utils.tent_model_setup({"sfcvm": run_names["sfcvm"], "homog": run_names["homog"]}, points_file + ".npz",
+                                     strike_bearing, medium_dirs, crossings, km_window, creep_lo_km, creep_hi_km, surf_floor_mm,
+                                     trace_south_north, (trace["x_km"] * 1e3, trace["y_km"] * 1e3), frame_lonlat, CRS, profile_lats)
+G = setup["G"]                              # medium -> G matrix (samples x impulses), right-lateral positive, m per m
+gnpz = setup["gnpz"]                        # medium -> the G_<run>.npz product
+tents = setup["tents"]
+fault_xyz, fault_cells, vertex_index = tents.fault_xyz, tents.fault_cells, tents.vertex_index
+n_imp = tents.n_imp
+tri_xyz, tri_cen, tri_n, tri_area = tents.tri_xyz, tents.tri_cen, tents.tri_n, tents.tri_area
+imp_xyz, imp_km, imp_depth_km, sub_faces = tents.imp_xyz, tents.imp_km, tents.imp_depth_km, tents.sub_faces
+top = tents.top                                                               # the mesh fault's top-edge vertices, south to north
+print(f"G: {G['sfcvm'].shape[0]} samples x {n_imp} impulses (of {len(fault_xyz)} fault vertices); "
+      + ", ".join(f"max |G| {m} {np.abs(G[m]).max():.3f}" for m in media) + f" m/m; G strike {strike_bearing:.4f} "
+      f"(07a's field); CSI TriangularTents: {len(setup['template'].tent)} tents, {len(setup['template'].Faces)} faces "
+      f"({time.time() - t0:.0f} s)")
 
 # %% [markdown]
 # ## [6] The rigidity beside the fault, and CHECK: PyLith read the SFCVM material as intended
@@ -353,51 +340,12 @@ print(f"G: {G[ref_medium].shape[0]} samples x {n_imp} impulses (of {len(fault_xy
 # The per-cell shear modulus PyLith actually used (`-elastic_info.h5`, basis order 0) against the
 # aligned grid interpolated at the cell centroids, for cells in the fine grid box; and mu of the
 # cells next to the fault (nearest cell centroid on each side of every fault triangle), used for
-# the SFCVM moment (`Mw_sfcvm`) and the rigidity options of [15c].
+# the SFCVM moment (`Mw_sfcvm`) and the rigidity options of [15c] (`model_utils.mu_beside_fault`).
 
 # %%
 ## [6]
-def shear_modulus_pa(density_kg_m3, vs_m_s):
-    """Shear modulus mu = rho vs^2 (Pa)."""
-    return density_kg_m3 * vs_m_s ** 2
-
-
-def mu_beside_fault(medium, grid_npz, run_name=None):
-    """PyLith cell mu (elastic_info) vs the grid it was read from; mu of the nearest cell on each side of every
-    fault triangle (mean of the two sides returned, then west, then east). run_name: the PyLith run of another
-    medium on the same mesh (default run_names[medium]; [15c] reads the +/- 50 m alignment media this way)."""
-    if run_name is None:
-        run_name = run_names[medium]
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{run_name}-elastic_info.h5"), "r") as elastic_h5:
-        cells = np.asarray(elastic_h5["viz/topology/cells"][:], int)
-        cell_xyz = elastic_h5["geometry/vertices"][:][cells].mean(1)
-        if "cell_fields" in elastic_h5 and "shear_modulus" in elastic_h5["cell_fields"]:
-            cell_mu = elastic_h5["cell_fields/shear_modulus"][0, :, 0]                      # materials basis order 0
-        else:
-            cell_mu = elastic_h5["vertex_fields/shear_modulus"][0, :, 0][cells].mean(1)     # basis order 1: cell mean of the vertex values
-    grid_data = np.load(grid_npz)
-    grid_mu_values = shear_modulus_pa(grid_data["density"].astype(float), grid_data["vs"].astype(float))
-    grid_mu = RegularGridInterpolator((grid_data["x"], grid_data["y"], grid_data["z"]), grid_mu_values)
-    fine = (cell_xyz[:, 0] > -3500) & (cell_xyz[:, 0] < 2500) & (cell_xyz[:, 1] > -4000) & (cell_xyz[:, 1] < 3600) & (cell_xyz[:, 2] > -1500)
-    rel = cell_mu[fine] / grid_mu(cell_xyz[fine]) - 1.0
-    print(f"{medium}: PyLith cell mu vs grid at centroids ({fine.sum()} cells in the fine box, top 1.5 km): median |rel diff| "
-          f"{np.median(np.abs(rel)):.3f}, 90th pct {np.percentile(np.abs(rel), 90):.3f}; PyLith mu range "
-          f"{cell_mu.min() / 1e9:.3f}-{cell_mu.max() / 1e9:.1f} GPa")
-    assert cell_mu.min() >= 0.99 * float(np.min(grid_mu_values)), "mu below the floor"
-    _, near = cKDTree(cell_xyz).query(tri_cen, k=30)
-    rel_xyz = cell_xyz[near] - tri_cen[:, None, :]
-    offset = np.einsum("tkc,tc->tk", rel_xyz, tri_n)
-    assert np.all((offset > 0).any(1)) and np.all((offset < 0).any(1)), "a fault triangle lacks a cell on one side"
-    dist = np.linalg.norm(rel_xyz, axis=2)
-    east_i = near[np.arange(len(near)), np.argmin(np.where(offset > 0, dist, np.inf), axis=1)]
-    west_i = near[np.arange(len(near)), np.argmin(np.where(offset < 0, dist, np.inf), axis=1)]
-    shallow = tri_cen[:, 2] > -100
-    print(f"{medium}: fault-adjacent mu, top 100 m median: west {np.median(cell_mu[west_i][shallow]) / 1e9:.3f}, "
-          f"east {np.median(cell_mu[east_i][shallow]) / 1e9:.3f} GPa")
-    return 0.5 * (cell_mu[east_i] + cell_mu[west_i]), cell_mu[west_i], cell_mu[east_i], float(np.median(np.abs(rel)))
-
-
-mu_mean, mu_west, mu_east, mu_rel_median = mu_beside_fault("sfcvm", grid_file)
+elastic_info = os.path.join(paths_sfcvm["pylith_output"], f"{run_names['sfcvm']}-elastic_info.h5")
+mu_mean, mu_west, mu_east, mu_rel_median = model_utils.mu_beside_fault(elastic_info, grid_file, tents, "sfcvm")
 assert mu_rel_median < 0.05, "PyLith's cell rigidity differs from the aligned grid by more than 5 % (median)"
 mu_fault = {"sfcvm": mu_mean}
 shallow_tri = tri_cen[:, 2] > -100
@@ -405,63 +353,54 @@ mu_top100 = dict(west_gpa=float(np.median(mu_west[shallow_tri]) / 1e9), east_gpa
 print("PASS: PyLith used the aligned SFCVM rigidity")
 
 # %% [markdown]
-# ## [7] 07a's data and machinery
+# ## [7] 07a's data, and CHECK: the samples sit on the same side of both traces
 #
-# `scripts/07a_uniform_model.py` cells [1]-[6] exec'd unchanged: data, quadtree (2386 samples),
-# noise covariance, the table of measured crossings (`crossings_all`, used by [10]'s surface
-# constraint), the CSI triangle fault and `invert`. Only 07a's registry object is neutralised (this
-# notebook has its own). The samples must be the PyLith output points, and 07a's
-# `fig2_model_row.npz` (its baseline on the same samples) is loaded for the comparison rows. Then
-# the side check: the mesh fault (a polyline through its top-edge vertices, on the spline through
-# every 3rd trace point) vs 07a's trace (20 m discretisation): are any samples on different sides?
-#
-# Names used below that come from 07a: `samples`, `look`, `fault`, `mesh_nodes`, `mesh_faces`,
-# `dip_deg`, `wrap_fault`, `cell_area_km2`, `crossings_all`, `km_window`, `trace_south_north`,
-# `crossing_median` (the surface % denominator of 07a [5], re-derived and asserted equal in [10]),
-# `creep_lo_km`, `creep_hi_km`, `cov_p`, `sigma_grid`, `lam_xz`, `surf_floor_mm`, `n_boot`,
-# `frame_lon0`, `frame_lat0`, `lat_to_km_pp`, `strike_bearing`, `field_dir`, `events_dir`, `tests_dir`.
-# NB: 07a's cell [1] silences every warning again (`warnings.simplefilter("ignore")`).
+# The quadtree samples, their data and noise model from 07a's `model_data_07a.npz` (a `csi.insar` data set rebuilt
+# with `model_utils.samples_from_arrays`; its full Cd with `model_utils.build_cd`), the measured crossings of the
+# surface constraint, and 07a's `fig2_model_row.npz` (its baseline on the same samples) for the comparison rows; the
+# samples must be the PyLith output points. Then the side check: the mesh fault (a polyline through its top-edge
+# vertices, on the spline through every 3rd trace point) vs 07a's trace (20 m discretisation): are any samples on
+# different sides?
 
 # %%
 ## [7]
-source_07a = open(os.path.join(repo_dir, "scripts", "07a_uniform_model.py")).read()
-head_07a = source_07a.split("# %% [markdown]\n# ### CHECK")[0]                 # cells [1]-[6]
-for old, new in (("REG = utils.Registry(notebook, common_paths, repo_dir)", "REG = None"), ("REG.inputs(", "inputs_07a = (")):
-    assert head_07a.count(old) == 1, f"07a_uniform_model.py layout changed: {old!r} not found once"
-    head_07a = head_07a.replace(old, new)
-assert "def invert(" in head_07a and "def make_surface(" in head_07a, "07a_uniform_model.py layout changed: cells [1]-[6] not found"
-t0 = time.time()
-ns07 = {"__name__": "nb07a"}
-exec(head_07a, ns07)
-protected = {"notebook", "out_dir", "fig_dir", "REG"}                        # this notebook's own
-for name_07a, value_07a in ns07.items():
-    if name_07a not in protected and not name_07a.startswith("__"):
-        globals()[name_07a] = value_07a
-print(f"07a cells [1]-[6] exec'd in {time.time() - t0:.0f} s: {samples.vel.size} samples, sigma grid {sigma_grid}, "
-      f"lambda {lam_xz} km, surface floor {surf_floor_mm} mm, n_boot {n_boot}")
-row07_file = os.path.join(tests_dir, "fig2_model_row.npz")
+cov_p = model_data["cov_p"]
+nug_power = float(model_data["nug_power"])
+lam_xz = tuple(model_data["lam_xz"])
+sigma_grid = [float(s) for s in model_data["sigma_grid"]]
+samples = model_utils.samples_from_arrays("Downsampled fault-parallel", model_data["sample_lon"], model_data["sample_lat"],
+                                          model_data["sample_x_km"], model_data["sample_y_km"], model_data["data_mm"],
+                                          model_data["wgt"], look, frame_lonlat, cov_p, nug_power)
+field_fingerprint = model_utils.field_fingerprint(os.path.join(field_dir, "fp_maps.npz"))   # the 06 field every inversion here fits
+assert str(model_data["field_fingerprint"]) == field_fingerprint, "07a's model data were made from another 06 field: re-run 07a"
+row07_file = os.path.join(dir_07a, "fig2_model_row.npz")
 assert os.path.exists(row07_file), f"missing {row07_file}: run 07a_uniform_model first"
 row07 = np.load(row07_file)
-fault07_trace = copy.deepcopy(fault)                                          # 07a's fault (trace), for maps
 assert samples.lon.size == points["lon"].size and np.array_equal(samples.lon, points["lon"]) \
     and np.array_equal(samples.lat, points["lat"]), "the quadtree samples are not the PyLith output points"
 assert np.array_equal(row07["sample_lon"], samples.lon) and np.ptp(samples.vel - row07["data_mm"]) < 1e-9, \
     "07a's fig2_model_row.npz is not on the same samples / data as this run: re-run 07a"
-block_lon = row07["block_lon"]
-block_lat = row07["block_lat"]
-from plot_run_summary import signed_distance_m                                # one definition, shared with 08b's one-page diagnostic
+block_lon = model_data["block_lon"]
+block_lat = model_data["block_lat"]
+mesh_nodes, mesh_faces, dip_deg = model_data["mesh_nodes_sz"], model_data["mesh_faces"], float(model_data["mesh_dip_deg"])
+fault07_trace = model_utils.wrap_fault(mesh_nodes, mesh_faces, dip_deg, "mean event", trace, frame_lonlat)   # 07a's fault (trace), for maps
+cell_area_km2 = model_utils.triangle_areas_km2(mesh_nodes, mesh_faces)
+signed_d_km = setup["signed_d_km"]                                           # from 07a's trace (model_utils.signed_distance_m)
+print(f"07a baseline: sigma {float(row07['sigma']):g}, rms {float(row07['rms_mm']):.3f} mm, Mw {float(row07['mw_30gpa']):.3f}; "
+      f"{samples.vel.size} samples, sigma grid {sigma_grid}, lambda {lam_xz} km, surface floor {surf_floor_mm} mm")
 
-signed_d_km = signed_distance_m(fault07_trace.xi * 1e3, fault07_trace.yi * 1e3, points["x"], points["y"]) / 1e3
-print(f"07a baseline: sigma {float(row07['sigma']):g}, rms {float(row07['rms_mm']):.3f} mm, Mw {float(row07['mw_30gpa']):.3f}")
 
-top = fault_xyz[np.abs(fault_xyz[:, 2]) < 1e-6]                           # the mesh fault's top-edge vertices
-top = top[np.argsort(top[:, 1])]                                            # ... sorted south to north (mesh y)
+def lat_to_km_pp(lats):
+    """km from Point Pinole of each latitude (model_utils.km_from_pinole on the fault-profile trace)."""
+    return model_utils.km_from_pinole(lats, profile_lats)
+
+
 dense_s = np.linspace(0, 1, 20000)
 top_arc = np.r_[0, np.cumsum(np.hypot(np.diff(top[:, 0]), np.diff(top[:, 1])))]
 top_arc /= top_arc[-1]
 top_dense_x = np.interp(dense_s, top_arc, top[:, 0])
 top_dense_y = np.interp(dense_s, top_arc, top[:, 1])
-signed_mesh_m = signed_distance_m(top_dense_x, top_dense_y, points["x"], points["y"])
+signed_mesh_m = model_utils.signed_distance_m(top_dense_x, top_dense_y, points["x"], points["y"])
 in_mesh = (points["y"] > top[0, 1]) & (points["y"] < top[-1, 1])
 side_mismatch = in_mesh & (np.sign(signed_mesh_m) != np.sign(signed_d_km))
 side_max_m = float(np.abs(signed_mesh_m[side_mismatch]).max()) if side_mismatch.any() else 0.0
@@ -481,45 +420,21 @@ assert side_max_m < 50.0, "a sample more than 50 m from the mesh fault sits on t
 # slip. The all-sample rms is dominated by the few samples that lie on opposite sides of the mesh
 # fault and of 07a's trace (a full step each, [7]); the numbers that matter are the far-field
 # (> 300 m) and the agreeing-side rms. (b) Homogeneous PyLith against the 2D screw dislocation
-# u = (s/pi) arctan(D/x) for uniform slip on km 54-65, top 1 km, at samples within 2 km of the trace
-# and at least 3 km from the slip ends (D = 1 km + half a fault cell for the tent taper); PyLith is
-# lower at 1-2 km, the 3D end effect of an 11 km patch, so this is a sanity check.
+# u = (s/pi) arctan(D/x) (`model_utils.screw_dislocation_mm`) for uniform slip on km 54-65, top 1 km, at samples
+# within 2 km of the trace and at least 3 km from the slip ends (D = 1 km + half a fault cell for the tent taper);
+# PyLith is lower at 1-2 km, the 3D end effect of an 11 km patch, so this is a sanity check.
 
 # %%
 ## [8]
-def screw_dislocation_mm(slip_mm, locking_depth_m, x_m):
-    """Surface displacement of a 2D screw dislocation, slip s from the surface to depth D:
-    u(x) = (s / pi) arctan(D / x), x the signed distance from the fault (m)."""
-    return (slip_mm / np.pi) * np.arctan(locking_depth_m / x_m)
-
-
-def median_edge_length_m(triangles_xyz):
-    """Median length of all the edges of a set of triangles (n, 3 vertices, xyz), m."""
-    edge_01 = np.linalg.norm(triangles_xyz[:, 1] - triangles_xyz[:, 0], axis=1)
-    edge_12 = np.linalg.norm(triangles_xyz[:, 2] - triangles_xyz[:, 1], axis=1)
-    edge_20 = np.linalg.norm(triangles_xyz[:, 0] - triangles_xyz[:, 2], axis=1)
-    return float(np.median(np.concatenate([edge_01, edge_12, edge_20])))
-
-
-def vertex_slip_on_mesh(slip_mm):
-    """Slip on every PyLith fault vertex: the impulse vertices carry slip_mm, the locked ones zero."""
-    slip_all = np.zeros(len(fault_xyz))
-    slip_all[vertex_index] = slip_mm
-    return slip_all
-
-
-imp_xyz = fault_xyz[vertex_index]
-top_km = lat_to_km_pp(to_mesh.transform(top[:, 0], top[:, 1], direction="INVERSE")[1])    # km of the mesh trace (top sorted by y)
-imp_km = np.interp(imp_xyz[:, 1], top[:, 1], top_km)                        # km from Point Pinole of every impulse vertex
 slip_test = np.where((imp_km >= test_km[0]) & (imp_km <= test_km[1]) & (imp_xyz[:, 2] >= -test_depth_m - 1e-6), test_slip_mm, 0.0)
 pred_pylith = G["homog"].dot(slip_test)
-vertex_slip = vertex_slip_on_mesh(slip_test)
+vertex_slip = tents.vertex_slip(slip_test)
 tri_yz = mtri.Triangulation(fault_xyz[:, 1], fault_xyz[:, 2], fault_cells)
 interp_slip = mtri.LinearTriInterpolator(tri_yz, vertex_slip)
-fault_val = wrap_fault(mesh_nodes, mesh_faces, dip_deg, "validation")
+fault_val = model_utils.wrap_fault(mesh_nodes, mesh_faces, dip_deg, "validation", trace, frame_lonlat)
 csi_cen = np.array([p.mean(0) for p in fault_val.patch])              # km, depth +
 csi_slip = np.asarray(interp_slip(csi_cen[:, 1] * 1e3, -csi_cen[:, 2] * 1e3).filled(0.0))
-line = insar("validation", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
+line = insar("validation", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
 line.read_from_binary(np.zeros(samples.lon.size), samples.lon, samples.lat, err=np.ones(samples.lon.size),
                       los=np.tile(look, (samples.lon.size, 1)), remove_nan=False, remove_zeros=False)
 fault_val.buildGFs(line, vertical=True, slipdir="s", verbose=False)
@@ -545,12 +460,12 @@ assert val_a["rel_rms_okside"] < 0.10, "PyLith homogeneous and CSI Meade disagre
 slip_b = np.where(imp_xyz[:, 2] >= -test_depth_m - 1e-6, test_slip_mm, 0.0)
 pred_b = G["homog"].dot(slip_b)
 patch_cells = (np.abs(tri_cen[:, 1]) < 3000) & (tri_cen[:, 2] > -1500)
-dx_fault_m = median_edge_length_m(tri_xyz[patch_cells])
+dx_fault_m = model_utils.median_edge_length_m(tri_xyz[patch_cells])
 D_eff = test_depth_m + 0.5 * dx_fault_m
 x_m = signed_mesh_m                                                  # distance from the MESH fault (the source)
 km_samples = lat_to_km_pp(samples.lat)
 sel_b = (np.abs(x_m) <= 2000) & (np.abs(x_m) >= 20) & (km_samples >= 57.0) & (km_samples <= 62.0)
-screw = screw_dislocation_mm(test_slip_mm, D_eff, x_m)
+screw = model_utils.screw_dislocation_mm(test_slip_mm, D_eff, x_m)
 diff_b = pred_b[sel_b] - screw[sel_b]
 val_b = dict(n=int(sel_b.sum()), D_eff_m=D_eff, rms_diff_mm=float(np.sqrt(np.mean(diff_b ** 2))),
              max_abs_diff_mm=float(np.abs(diff_b).max()), rms_signal_mm=float(np.sqrt(np.mean(screw[sel_b] ** 2))))
@@ -594,32 +509,28 @@ print("wrote figS_pylith_validation.png")
 # %% [markdown]
 # ## [9] CHECK: superposition and mesh convergence with forward runs
 #
-# PyLith `FaultCohesiveKin` forward runs (`scripts/pylith_cfg/fwd_kin.cfg`, one static step) with
+# PyLith `FaultCohesiveKin` forward runs (`pylith/cfg/fwd_kin.cfg`, one static step; `pylith/run_fwd.sh`) with
 # 10 mm right-lateral on km 57-61 (y window), top 1 km, homogeneous, on the `default` and the
-# `fine` mesh (60 m fault cells in the patch), read from `modeling_SFCVM/pylith_output/`.
+# `fine` mesh (60 m fault cells in the patch), read from `modeling_uniform/pylith_output/`.
 # (c) superposition: default-mesh forward = G x (the forward run's own vertex slip) -- tests G
-# assembly, point matching and sign, exact to 1e-4 mm; (d) mesh convergence: the fine-mesh forward
-# against CSI with the same (fine) slip field, and against the default-mesh forward. The same
+# assembly, point matching and sign, exact to 1e-4 mm (`model_utils.superposition_check`); (d) mesh convergence: the
+# fine-mesh forward against CSI with the same (fine) slip field, and against the default-mesh forward. The same
 # superposition check for the SFCVM medium is made in [14] with the Fig-2 forward run of the
-# inverted slip.
+# inverted slip. The CSI and PyLith predictions of (a)-(d) are saved in `modeling_uniform/validation/`.
 
 # %%
 ## [9]
-kin_db = "spatialdb/kin_slip_km57-61_z1000.spatialdb"
-cached(os.path.join(WORK, kin_db), f"{pyenv} python3 {helpers_dir}/make_kin_slip_db.py {kin_y_m[0]} {kin_y_m[1]} {test_depth_m} "
+kin_db = os.path.relpath(os.path.join(paths_inputs["spatialdb"], "kin_slip_km57-61_z1000.spatialdb"), WORK)
+cached(os.path.join(WORK, kin_db), f"{in_pylith} python3 {build_dir}/make_kin_slip_db.py {kin_y_m[0]} {kin_y_m[1]} {test_depth_m} "
                                    f"{test_slip_mm / 1e3} {kin_db}")
+sample_xy = np.c_[points["x"], points["y"]]
 
 
 def read_forward(name):
-    """Fault-parallel displacement at the samples (mm) and the right-lateral vertex slip (mm) of a forward run."""
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{name}-points.h5"), "r") as points_h5:
-        dist, order = cKDTree(points_h5["geometry/vertices"][:, :2]).query(np.c_[points["x"], points["y"]])
-        assert dist.max() < 1e-3, f"{name}: output points are not the samples"
-        u_fp = points_h5["vertex_fields/displacement"][-1][order].dot(look) * 1e3            # mm
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{name}-fault.h5"), "r") as fault_h5:
-        f_xyz = fault_h5["geometry/vertices"][:]
-        f_cells = np.asarray(fault_h5["viz/topology/cells"][:], int)
-        slip_rl = float(gnpz["homog"]["sign_rl"]) * fault_h5["vertex_fields/slip"][-1][:, 1] * 1e3    # RL = sign_rl x LL (build_G)
+    """Fault-parallel displacement at the samples (mm) and the right-lateral vertex slip (mm) of a homogeneous forward run."""
+    run_dir = paths_uniform["pylith_output"]
+    u_fp = model_utils.read_forward_points(os.path.join(run_dir, f"{name}-points.h5"), sample_xy).dot(look)
+    f_xyz, f_cells, slip_rl = model_utils.read_forward_slip(os.path.join(run_dir, f"{name}-fault.h5"), gnpz["homog"]["sign_rl"])
     return dict(u=u_fp, xyz=f_xyz, cells=f_cells, slip=slip_rl)
 
 
@@ -627,24 +538,19 @@ forward_runs = {}
 for pre in ("default", "fine"):
     name = f"fwd_{pre}_homog"
     if pre == "fine":
-        cached(os.path.join(paths_sfcvm["mesh"], "mesh_vertical_tet_fine.msh"),
-               f"{pyenv} python3 {helpers_dir}/generate_gmsh_vertical.py --write --preset fine")
-    cached(os.path.join(paths_sfcvm["pylith_output"], f"{name}-points.h5"),
-           f"{pyenv} pylith {cfg_dir}/pylithapp.cfg {cfg_dir}/mat_homog.cfg {cfg_dir}/fwd_kin.cfg --problem.defaults.name={name} "
-           f"--problem.mesh_initializer.phases.read_mesh.reader.filename=mesh/mesh_vertical_tet_{pre}.msh --nodes=2")
+        cached(os.path.join(paths_inputs["mesh"], "mesh_vertical_tet_fine.msh"),
+               f"{in_pylith} python3 {build_dir}/generate_gmsh_vertical.py --write --preset fine")
+    cached(os.path.join(paths_uniform["pylith_output"], f"{name}-points.h5"),
+           f"bash {pylith_dir}/run_fwd.sh {name} mat_homog.cfg modeling_inputs/mesh/mesh_vertical_tet_{pre}.msh 2 fwd_kin.cfg")
     forward_runs[pre] = read_forward(name)
     print(f"{name}: slip {forward_runs[pre]['slip'].min():.2f}..{forward_runs[pre]['slip'].max():.2f} mm on {np.sum(forward_runs[pre]['slip'] > 1e-6)} vertices; "
           f"max |u| {np.abs(forward_runs[pre]['u']).max():.2f} mm")
     assert np.all(forward_runs[pre]["slip"] > -1e-6), f"{name}: forward slip is not right-lateral"
 
 # (c) superposition on the default mesh, homogeneous medium
-vertex_dist, vertex_match = cKDTree(forward_runs["default"]["xyz"]).query(imp_xyz)
-assert vertex_dist.max() < 1e-6, "forward-run fault vertices differ from the GF fault vertices"
-assert np.setdiff1d(np.nonzero(forward_runs["default"]["slip"] > 1e-6)[0], vertex_match).size == 0, "forward slip on vertices without an impulse"
-superposed_mm = G["homog"].dot(forward_runs["default"]["slip"][vertex_match])
-superposition_diff_mm = superposed_mm - forward_runs["default"]["u"]
-val_c = dict(max_abs_diff_mm=float(np.abs(superposition_diff_mm).max()), rms_diff_mm=float(np.sqrt(np.mean(superposition_diff_mm ** 2))),
-             rms_signal_mm=float(np.sqrt(np.mean(superposed_mm ** 2))))
+val_c = model_utils.superposition_check(G["homog"], imp_xyz, os.path.join(paths_uniform["pylith_output"], "fwd_default_homog-points.h5"),
+                                        os.path.join(paths_uniform["pylith_output"], "fwd_default_homog-fault.h5"), sample_xy, look,
+                                        gnpz["homog"]["sign_rl"])
 print("validation (c) superposition, G[homog] x slip vs forward run fwd_default_homog:", {k: round(v, 6) for k, v in val_c.items()})
 assert val_c["rms_diff_mm"] < 1e-4, "superposition failed: G[homog] is not consistent with fwd_default_homog"
 print("PASS: G x slip reproduces the forward run (homogeneous)")
@@ -661,8 +567,10 @@ def csi_prediction(f_xyz, f_cells, slip_mm):
 
 ok_side = ~side_mismatch
 val_d = {}
+csi_forward = {}
 for pre in forward_runs:
-    diff_pre = forward_runs[pre]["u"] - csi_prediction(forward_runs[pre]["xyz"], forward_runs[pre]["cells"], forward_runs[pre]["slip"])
+    csi_forward[pre] = csi_prediction(forward_runs[pre]["xyz"], forward_runs[pre]["cells"], forward_runs[pre]["slip"])
+    diff_pre = forward_runs[pre]["u"] - csi_forward[pre]
     val_d[pre] = dict(rms_diff_mm=float(np.sqrt(np.mean(diff_pre[ok_side] ** 2))),
                       rms_diff_near300_mm=float(np.sqrt(np.mean(diff_pre[ok_side & near_300] ** 2))),
                       rms_diff_far_mm=float(np.sqrt(np.mean(diff_pre[~near_300] ** 2))),
@@ -675,12 +583,21 @@ val_d["fine_minus_default_near300_rms_mm"] = float(np.sqrt(np.mean(d_mesh[near_3
 print(f"validation (d) fine - default forward: rms {val_d['fine_minus_default_rms_mm']:.4f} mm, within 300 m "
       f"{val_d['fine_minus_default_near300_rms_mm']:.4f} mm, farther {np.sqrt(np.mean(d_mesh[~near_300] ** 2)):.4f} mm")
 assert val_d["fine_minus_default_rms_mm"] < 0.2, "the default mesh is not converged: fine - default forward differ by > 0.2 mm rms (data rms ~1.4 mm)"
+os.makedirs(paths_uniform["validation"], exist_ok=True)
+np.savez(os.path.join(paths_uniform["validation"], "csi_vs_pylith_homog.npz"),
+         sample_lon=samples.lon, sample_lat=samples.lat, signed_d_km=signed_d_km, signed_mesh_m=signed_mesh_m,
+         side_mismatch=side_mismatch, a_pylith_mm=pred_pylith, a_csi_mm=pred_csi, b_pylith_mm=pred_b, b_screw_mm=screw,
+         b_selected=sel_b, d_default_pylith_mm=forward_runs["default"]["u"], d_default_csi_mm=csi_forward["default"],
+         d_fine_pylith_mm=forward_runs["fine"]["u"], d_fine_csi_mm=csi_forward["fine"],
+         numbers=json.dumps(dict(a=val_a, b=val_b, c=val_c, d=val_d)),
+         provenance=f"08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}: validation (a) 10 mm on km 57-61 top 1 km, PyLith "
+                    f"{run_names['homog']} vs CSI Meade on 07a's mesh; (b) vs the 2D screw dislocation (D {D_eff:.0f} m); "
+                    f"(c), (d) forward runs fwd_default_homog, fwd_fine_homog")
 
 plt.rcParams.update({"font.size": 12})
 fig, axes = plt.subplots(1, 2, figsize=(13, 5.6), constrained_layout=True)
 for ax, pre in zip(axes, forward_runs):
-    cpred = csi_prediction(forward_runs[pre]["xyz"], forward_runs[pre]["cells"], forward_runs[pre]["slip"])
-    ax.scatter(signed_d_km[ok_side], (forward_runs[pre]["u"] - cpred)[ok_side], s=6, color=OK["black"], linewidths=0)
+    ax.scatter(signed_d_km[ok_side], (forward_runs[pre]["u"] - csi_forward[pre])[ok_side], s=6, color=OK["black"], linewidths=0)
     ax.axhline(0, color="0.5", lw=0.8)
     ax.set_xlim(-1, 1)
     ax.set_ylim(-2, 2)
@@ -697,11 +614,12 @@ print("wrote qc08a_validation_mesh.png")
 #
 # PyLith impulses are tents on fault vertices, not CSI triangles, so both media are inverted on
 # the vertex parameterisation with CSI's `TriangularTents` (its `tent` list and `Vertices` = the
-# impulse vertices, in G's column order; faces = the PyLith fault triangles among them). The G
-# matrix enters through `Fault.setGFs`. Everything else is 07a's `invert`: exponential prior
+# impulse vertices, in G's column order; faces = the PyLith fault triangles among them;
+# `model_utils.tent_fault_template`, built in [5]). The G matrix enters through `Fault.setGFs`. Everything else is
+# 07a's inversion (`model_utils.invert_tents`): exponential prior
 # `buildCmXY` with lambda (0.1, 0.05) km on the vertex positions, per-dataset constant
 # (`csi.transformation`), NNLS (`multisourcesolve.ConstrainedLeastSquareSoln`). The surface
-# constraint (Dani 2026-10-02, `pylith_helpers/surface_crossings.py`): every measured fault crossing
+# constraint (Dani 2026-10-02, `model_utils.crossing_constraint`, built in [5]): every measured fault crossing
 # inside the mesh (04's five-event mean step, one every 0.1 km) is one datum, tied to the modelled
 # slip at its own position on the top edge, i.e. linear between the two neighbouring top-edge
 # vertices (the order-1 tents); error = the local scatter of the crossings (1.4826 MAD within
@@ -711,18 +629,15 @@ print("wrote qc08a_validation_mesh.png")
 # PREPUB: Mw30 at 3.756 and the rms within 0.02 mm.)
 # The surface % of [12] compares the same measured crossings with the model: the median modelled
 # slip on the top-edge vertices of the SSE section over the median of the measured crossings in the
-# SSE section (`section_crossing_median_mm`, defined here by `surface_crossings.surface_pct_denominator_mm`;
-# Dani 2026-10-03). It is the ONE denominator of every surface % (07a, 07b, 08b and the PyLith driver
-# use the same helper; asserted equal to 07a's `crossing_median`), so every cached surface % read in [12]
-# and [14] is compared as it is.
-# PREPUB: (Until 2026-10-05 07a and the driver divided by the median of 07a's running-median profile and
-# PREPUB: this notebook re-expressed their numbers by the ratio of the two medians.)
-# Also here: the numbers of one solution (`numbers`, shared with 08b), and Mw from the moment.
+# SSE section (`model_utils.surface_pct_denominator_mm`; Dani 2026-10-03). It is the ONE denominator of every
+# surface % (07a, 08b and 08c use the same function; asserted equal to 07a's), so every surface % read from 08c in
+# [12] and [14] is compared as it is.
+# Also here: the numbers of one solution (`model_utils.tent_numbers`), and Mw from the moment.
 # NB: `buildCmXY` normalises by lambda0 from the parameter spacing, so sigma is not numerically
 # comparable with 07a's triangle sigma; each model gets its own L-curve corner, by 07a's rule.
 #
-# **Data covariance.** The one thing that differs between the selected model and its companion;
-# a standard modelling choice, not new physics:
+# **Data covariance** (`model_utils.data_cd`). The one thing that differs between the selected model and its
+# companion; a standard modelling choice, not new physics:
 # - `full` (07a [4], the companion): Cd from the semivariogram of the mean-event field away from
 #   the fault, nugget + exponential terms; the nugget is divided down by each quadtree block's
 #   pixel count and the exponential terms give the OFF-diagonal (correlated) part. Estimating Cd
@@ -733,7 +648,7 @@ print("wrote qc08a_validation_mesh.png")
 #   quadtree convention of Jonsson et al. (2002) and most InSAR slip inversions since. Under it
 #   the west lobe must be fitted (the aligned SFCVM does; the homogeneous medium cannot); the
 #   reduced chi2 (~5.5, printed in [12]) shows these variances are too small in absolute terms, so the bootstrap
-#   errors of 08b are formal, and the structural range comes from the sensitivity runs.
+#   errors of 08c are formal, and the structural range comes from the sensitivity runs.
 #
 # References (author, year, journal; check the DOI before citing):
 # Lohman, R. B., and M. Simons (2005), Some thoughts on the use of InSAR data to constrain models
@@ -747,201 +662,49 @@ print("wrote qc08a_validation_mesh.png")
 
 # %%
 ## [10]
-imp_lon, imp_lat = to_mesh.transform(imp_xyz[:, 0], imp_xyz[:, 1], direction="INVERSE")
-column_of_vertex = {}                                   # PyLith vertex index -> its column in G (impulse order)
-for column, vertex in enumerate(vertex_index):
-    column_of_vertex[vertex] = column
-sub_faces = []                                          # the fault triangles whose three vertices all carry an impulse
-for triangle in fault_cells:
-    if all(vertex in column_of_vertex for vertex in triangle):
-        sub_faces.append([column_of_vertex[vertex] for vertex in triangle])
-sub_faces = np.array(sub_faces)
-surface_imp = np.nonzero(np.abs(imp_xyz[:, 2]) < 1e-6)[0]
-imp_depth_km = -imp_xyz[:, 2] / 1e3
-
-
-def tent_fault_template():
-    """CSI TriangularTents on the impulse vertices (km, depth +), in G's column order (built once: its adjacency
-    map is slow; each solve deep-copies it, as 07a builds a fresh fault per solve)."""
-    template = TriangularTents("tents", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    x_km, y_km = template.ll2xy(imp_lon, imp_lat)
-    assert np.allclose(x_km * 1e3, imp_xyz[:, 0], atol=1e-3) and np.allclose(y_km * 1e3, imp_xyz[:, 1], atol=1e-3), \
-        "CSI frame differs from the mesh CRS"
-    template.Vertices = np.c_[x_km, y_km, -imp_xyz[:, 2] / 1e3]
-    template.Vertices_ll = np.c_[imp_lon, imp_lat, -imp_xyz[:, 2] / 1e3]
-    template.Faces = sub_faces.copy()
-    template.patch = [template.Vertices[face] for face in template.Faces]
-    template.patchll = [template.Vertices_ll[face] for face in template.Faces]
-    template.vertices2tents()
-    template.initializeslip(n=n_imp)
-    assert len(template.tent) == n_imp and template.N_slip == n_imp
-    return template
-
-
-t0 = time.time()
-TENTS = tent_fault_template()
-print(f"CSI TriangularTents: {len(TENTS.tent)} tents, {len(TENTS.Faces)} faces ({time.time() - t0:.0f} s)")
-
-
-def tent_fault(name):
-    """A fresh copy of the tent fault for one solve."""
-    fault_model = copy.deepcopy(TENTS)
-    fault_model.name = name
-    return fault_model
-
-
-def trace_lon_of_lat(lat):
-    """Longitude of the mapped trace at a latitude (07a's trace, south to north)."""
-    return np.interp(lat, trace_south_north[:, 1], trace_south_north[:, 0])
-
-
-def lonlat_to_mesh_xy(lon, lat):
-    """(x, y) in the mesh CRS (m) of lon/lat points."""
-    return to_mesh.transform(lon, lat)
-
-
-top_order = surface_imp[np.argsort(imp_xyz[surface_imp, 1])]          # top-edge impulse vertices, south to north (mesh y)
-assert np.all(np.diff(imp_xyz[top_order, 1]) > 0), "top-edge vertices not monotone in mesh y"
-crossings_in = crossings_all[(crossings_all.km >= km_window[0]) & (crossings_all.km <= km_window[1])]
-
-# the denominator of surface % ([12]): the median of the measured crossings in the SSE section (Dani 2026-10-03),
-# from the one shared helper; 07a's cells [1]-[6] computed the same number (`crossing_median`) with it
-n_section_crossings = int(np.sum((crossings_in.km >= creep_lo_km) & (crossings_in.km <= creep_hi_km)
-                                 & np.isfinite(crossings_in.mean_event_mm)))
-section_crossing_median_mm = surface_pct_denominator_mm(crossings_in.km.values, crossings_in.mean_event_mm.values,
-                                                        creep_lo_km, creep_hi_km)
-assert abs(section_crossing_median_mm - crossing_median) < 1e-12, \
-    f"surface % denominators differ: 08a {section_crossing_median_mm} vs 07a {crossing_median} (07a out of date?)"
+surface_rows = setup["constraint"]
+section_crossing_median_mm = setup["denominator_mm"]
+n_section_crossings = setup["n_section_crossings"]
+assert abs(section_crossing_median_mm - float(model_data["crossing_median_mm"])) < 1e-12, \
+    f"surface % denominators differ: 08a {section_crossing_median_mm} vs 07a {float(model_data['crossing_median_mm'])} (07a out of date?)"
 print(f"surface % denominator: median of {n_section_crossings} measured crossings in the SSE section "
       f"{section_crossing_median_mm:.2f} mm (= 07a's crossing_median)")
-# the 06 field every inversion here fits: the cached driver tables read in [12] and [14] must carry the same fingerprint
-field_fingerprint = f"fp_maps.npz:{utils.file_fingerprint(os.path.join(field_dir, 'fp_maps.npz'))}"   # the driver's form
-
-
-def surface_constraint():
-    """The measured crossings, each tied to the tent slip at its own top-edge position (surface_crossings.py).
-    Returns the CSI surfaceslip data, its G rows and the crossing_constraint dictionary."""
-    constraint = crossing_constraint(crossings_in.km.values, crossings_in.lat.values, crossings_in.mean_event_mm.values,
-                                     trace_lon_of_lat, lonlat_to_mesh_xy, imp_xyz[top_order, :2], top_order, n_imp,
-                                     floor_mm=surf_floor_mm)
-    surface_data = surfaceslip(f"crossings f{surf_floor_mm:g}", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    surface_data.read_from_binary(constraint["vel"], constraint["lon"], constraint["lat"], err=constraint["err"])
-    surface_data.buildCd()
-    return surface_data, constraint["G"], constraint
-
-
-_, _, surface_rows = surface_constraint()
 print(f"surface constraint: {surface_rows['vel'].size} crossings inside the mesh top edge "
       f"(km {surface_rows['km'].min():.1f}-{surface_rows['km'].max():.1f}; {surface_rows['n_outside']} beyond its ends), "
       f"distance to the edge median {np.median(surface_rows['dist_m']):.1f} m, max {surface_rows['dist_m'].max():.1f} m; "
       f"error median {np.median(surface_rows['err']):.2f} mm")
-
-
-def data_cd(cd):
-    """The data covariance of one treatment: 07a's full correlated Cd (samples.Cd, 07a [4]) or its diagonal
-    nugget part alone (diag of the full Cd = nugget / n_px^0.5 + the two sills at zero lag)."""
-    if cd == "full":
-        return samples.Cd.copy()
-    assert cd == "nugget", f"unknown Cd treatment {cd!r}"
-    Cd = np.diag(np.diag(samples.Cd) - (cov_p[1] + cov_p[3]))
-    assert np.all(np.diag(Cd) > 0)
-    return Cd
+west300, east300 = setup["west300"], setup["east300"]
+in_sec_surface = setup["in_section_surface"]
+surface_imp = tents.surface_imp
+data_covariance = {cd: model_utils.data_cd(cd, samples, cov_p, nug_power) for cd in CD_TAG}   # the two Cd treatments
 
 
 def invert_tents(medium, sigma, cd, vel_insar=None, vel_surface=None):
-    """07a's invert() with PyLith G on the tent parameters (setGFs instead of buildGFs). Returns fault, data, surface.
-    vel_insar / vel_surface: replacement data vectors (bootstrap and recovery tests, 08b)."""
-    fault_model = tent_fault(f"{medium} {cd} sigma {sigma}")
-    insar_data = copy.deepcopy(samples)
-    if vel_insar is not None:
-        insar_data.vel[:] = vel_insar
-    insar_data.Cd = data_cd(cd)
-    surface, G_surf, _ = surface_constraint()
-    if vel_surface is not None:
-        surface.vel[:] = vel_surface
-    fault_model.setGFs(insar_data, strikeslip=[G[medium].copy()])     # already right-lateral positive (build_G sign)
-    fault_model.setGFs(surface, strikeslip=[G_surf])
-    solve_datas = [insar_data, surface]                               # surface constraint ON (use_surface)
-    trans = transform("ramps", lon0=frame_lon0, lat0=frame_lat0, verbose=False)
-    trans.buildGFs(solve_datas, ["1", "1"], verbose=False)
-    fault_model.assembleGFs(solve_datas, slipdir="s", verbose=False)
-    fault_model.assembled(solve_datas)
-    fault_model.assembleCd(solve_datas)
-    trans.assembleGFs(solve_datas)
-    trans.assembled(solve_datas)
-    trans.assembleCd(solve_datas)
-    fault_model.buildCmXY(sigma, lam_xz, verbose=False)
-    trans.buildCm(1e4, verbose=False)
-    solver = multisrc(f"{medium} mean event", [fault_model, trans], verbose=False)
-    solver.assembleGFs()
-    solver.assembleCm()
-    mprior = np.zeros(solver.Np)
-    ramp_idx = []                                                     # the parameters of the per-dataset constants
-    for i, param_type in enumerate(solver.paramTypes):
-        if param_type[0] == trans.name:
-            ramp_idx.append(i)
-    mprior[ramp_idx] = -1e3
-    solver.ConstrainedLeastSquareSoln(method="nnls", mprior=mprior)
-    solver.distributem()
-    for dataset in solve_datas:
-        dataset.buildsynth([fault_model], direction="s")
-        dataset.removeTransformation(trans)
-    return fault_model, insar_data, surface
-
-
-def potency_m3(slip_mm):
-    """Exact integral of the piecewise-linear (tent) slip over the PyLith fault triangles (locked vertices = 0):
-    P = sum over triangles of area x mean of its three vertex slips."""
-    slip_all = vertex_slip_on_mesh(slip_mm)
-    return float(np.sum(tri_area * slip_all[fault_cells].mean(1)) * 1e-3)
-
-
-def moment_sfcvm(slip_mm):
-    """Sum over fault triangles of area x mean tent slip x mu (mean of the PyLith cells either side, aligned SFCVM).
-    For the homogeneous model this is a rescale, as 07a's Mw_sfcvm."""
-    slip_all = vertex_slip_on_mesh(slip_mm)
-    return float(np.sum(tri_area * slip_all[fault_cells].mean(1) * 1e-3 * mu_fault["sfcvm"]))
-
-
-def moment_magnitude(m0_nm):
-    """Mw = 2/3 (log10 M0 - 9.1), M0 in N m (Hanks & Kanamori 1979)."""
-    return (2.0 / 3.0) * (np.log10(m0_nm) - 9.1)
-
-
-# the numbers of one solution (here, not in [12], so that 08b, which execs cells [1]-[10], uses the same function)
-west300 = (signed_d_km < 0) & (signed_d_km >= -0.3)                   # samples within 300 m west of 07a's trace
-east300 = (signed_d_km > 0) & (signed_d_km <= 0.3)                    # ... and east
-in_sec_surface = np.isin(np.arange(n_imp), surface_imp) & (imp_km >= creep_lo_km) & (imp_km <= creep_hi_km)
+    """One solve on the tents (model_utils.invert_tents) with this notebook's data, G and Cd; returns
+    (fault, InSAR data, surface data). vel_insar / vel_surface: replacement data vectors (08b's recovery test)."""
+    return model_utils.invert_tents(setup["template"], samples, G[medium], data_covariance[cd], setup["surface"],
+                                    setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=use_surface,
+                                    vel_insar=vel_insar, vel_surface=vel_surface, name=f"{medium} {cd} sigma {sigma:g}")
 
 
 def numbers(fault_model, insar_data, surface):
-    """The numbers of one solution: rms (all, 300 m west / east), chi2 with the run's Cd, surface % (median top-edge
-    slip in the SSE section / median measured crossing there), potency, Mw at 30 GPa and SFCVM mu, peak slip."""
-    slip_vec = fault_model.slip[:, 0]
-    res = insar_data.vel - insar_data.synth
-    pot = potency_m3(slip_vec)
-    m0_sfcvm = moment_sfcvm(slip_vec)
-    return dict(rms_mm=float(np.sqrt(np.mean(res ** 2))), rms_west300_mm=float(np.sqrt(np.mean(res[west300] ** 2))),
-                rms_east300_mm=float(np.sqrt(np.mean(res[east300] ** 2))), chi2=float(np.dot(res, np.linalg.solve(insar_data.Cd, res))),
-                surface_pct=float(100 * np.median(slip_vec[in_sec_surface]) / section_crossing_median_mm), potency_m3=pot,
-                Mw_30gpa=float(moment_magnitude(mu_ref * pot)), Mw_sfcvm=float(moment_magnitude(m0_sfcvm)),
-                mu_effective_gpa=m0_sfcvm / pot / 1e9,
-                peak_slip_mm=float(slip_vec.max()), peak_depth_m=float(imp_depth_km[np.argmax(slip_vec)] * 1e3),
-                surf_rms_mm=float(np.sqrt(np.mean((surface.vel - surface.synth) ** 2))))
+    """The numbers of one solution (model_utils.tent_numbers; Mw_sfcvm with the SFCVM rigidity beside the fault)."""
+    return model_utils.tent_numbers(fault_model.slip[:, 0], insar_data, surface, tents, west300, east300, in_sec_surface,
+                                    section_crossing_median_mm, mu_ref, mu_fault["sfcvm"])
 
 
-assert use_surface, "the selected model has the surface constraint ON; the InSAR-only run is a sensitivity case (08b)"
+moment_magnitude = model_utils.moment_magnitude
+assert use_surface, "the selected model has the surface constraint ON; the InSAR-only run is a sensitivity case (08c)"
 
 # %% [markdown]
-# ## [11] Sigma: the L-curve corner for each model (07a [8] rule)
+# ## [11] Sigma: the L-curve corner for each model (07a [9] rule)
 #
 # Same sigma grid, same weighted misfit sqrt(chi2 InSAR + chi2 surface) against the prior-weighted
-# roughness, corner by maximum curvature of cubic splines in log sigma (end intervals excluded),
-# selected = smallest grid sigma at or above the corner. Four L-curves: the two media under each
-# covariance treatment. Every model must land on the locked sigma 12 (asserted).
-# PREPUB: CHECK against the earlier run: each L-curve equals the cached `lcurve_<medium><tag>.csv` in
-# PREPUB: `modeling_SFCVM/gf/`, made by the PyLith driver run of 2026-10-03 (`drafts/pylith/pylith_sfcvm_gf.py`
-# PREPUB: via `drafts/pylith/overnight_2026-10-02.sh`), the run 08b's sensitivity table comes from.
+# roughness (`model_utils.tent_lcurve`), corner by maximum curvature of cubic splines in log sigma (end intervals
+# excluded; `model_utils.lcurve_corner`), selected = smallest grid sigma at or above the corner. Four L-curves: the
+# two media under each covariance treatment. Every model must land on the locked sigma 12 (asserted).
+# CHECK: each L-curve equals 08c's run of the same settings (`lcurve_<medium><tag>.csv`), made by the same
+# functions on the same products.
 #
 # Why the grid value and not the corner itself (Dani 2026-10-03, locked in): the corner is broad. For
 # the selected model it sits at sigma 10.3 on this grid and at 11.1 when steps at 7, 9, 10, 11, 13 and
@@ -951,42 +714,14 @@ assert use_surface, "the selected model has the surface constraint ON; the InSAR
 
 # %%
 ## [11]
-def lcurve_corner(sigma, misfit, roughness):
-    """The L-curve corner (07a [8] rule): cubic splines of log10 misfit and log10 roughness against log10 sigma, the
-    maximum of the curvature |m' r'' - r' m''| / (m'^2 + r'^2)^1.5 on a fine grid, the two end intervals excluded."""
-    log_sigma = np.log10(sigma)
-    misfit_spline = CubicSpline(log_sigma, np.log10(misfit))
-    roughness_spline = CubicSpline(log_sigma, np.log10(roughness))
-    fine_ls = np.linspace(log_sigma[1], log_sigma[-2], 400)
-    d_misfit = misfit_spline(fine_ls, 1)
-    dd_misfit = misfit_spline(fine_ls, 2)
-    d_rough = roughness_spline(fine_ls, 1)
-    dd_rough = roughness_spline(fine_ls, 2)
-    curvature = np.abs(d_misfit * dd_rough - d_rough * dd_misfit) / (d_misfit ** 2 + d_rough ** 2) ** 1.5
-    return float(10 ** fine_ls[np.argmax(curvature)])
-
-
 def lcurve(medium, cd):
     """One L-curve over sigma_grid: misfit, roughness, rms and Mw30 per sigma; the corner and the selected sigma."""
-    rows = []
-    for sigma in sigma_grid:
-        t0 = time.time()
-        fault_model, insar_data, surface = invert_tents(medium, sigma, cd)
-        res_insar = insar_data.vel - insar_data.synth
-        res_surface = surface.vel - surface.synth
-        slip_vec = fault_model.slip[:, 0]
-        rows.append(dict(sigma=sigma, chi2=float(np.dot(res_insar, np.linalg.solve(insar_data.Cd, res_insar))),
-                         chi2_surf=float(np.dot(res_surface, np.linalg.solve(surface.Cd, res_surface))),
-                         prior_norm=float(np.sqrt(np.dot(slip_vec, np.linalg.solve(fault_model.Cm / sigma ** 2, slip_vec)))),
-                         rms_mm=float(np.sqrt(np.mean(res_insar ** 2))), peak_slip_mm=float(slip_vec.max()),
-                         Mw_30=moment_magnitude(mu_ref * potency_m3(slip_vec)), seconds=time.time() - t0))
-        rows[-1]["chi2_total"] = rows[-1]["chi2"] + rows[-1]["chi2_surf"]
-        print(f"  {medium} {cd} sigma {sigma:>4g}: chi2 {rows[-1]['chi2']:.0f} + {rows[-1]['chi2_surf']:.0f}, "
-              f"roughness {rows[-1]['prior_norm']:.1f}, rms {rows[-1]['rms_mm']:.3f}, Mw30 {rows[-1]['Mw_30']:.2f} "
-              f"({rows[-1]['seconds']:.0f} s)")
-    lcurve_table = pd.DataFrame(rows)
-    corner = lcurve_corner(lcurve_table.sigma.values, np.sqrt(lcurve_table.chi2_total.values), lcurve_table.prior_norm.values)
-    selected = float(lcurve_table.sigma[lcurve_table.sigma >= corner].min())
+    def solve(sigma):
+        return invert_tents(medium, sigma, cd)
+    lcurve_table = model_utils.tent_lcurve(solve, sigma_grid, tents, mu_ref, f"{medium} {cd}")
+    corner, _, _ = model_utils.lcurve_corner(lcurve_table.sigma.values, np.sqrt(lcurve_table.chi2_total.values),
+                                             lcurve_table.prior_norm.values)
+    selected = model_utils.lcurve_pick(lcurve_table.sigma.values, corner)
     assert selected == sigma_locked, f"{medium} {cd}: corner {corner:.1f} now selects sigma {selected:g}, not the locked {sigma_locked:g}"
     lcurve_table["corner"] = corner
     lcurve_table["selected"] = selected
@@ -998,15 +733,13 @@ def lcurve(medium, cd):
 families = {}
 for medium, cd in RUNS:
     families[(medium, cd)] = lcurve(medium, cd)
-    # PREPUB-START: comparison with the cached products of the earlier PyLith driver run
-    cached_lc = pd.read_csv(os.path.join(paths_sfcvm["gf"], f"lcurve_{medium}{CD_TAG[cd]}.csv"))
+    lcurve_08c = pd.read_csv(os.path.join(dir_08c, f"lcurve_{medium}{CD_TAG[cd]}.csv"))     # CHECK: 08c's run of the same settings
     lcurve_table = families[(medium, cd)][0]
-    assert np.array_equal(cached_lc.sigma.values, lcurve_table.sigma.values), "cached L-curve is on another sigma grid"
-    lc_diff = float(np.max(np.abs(cached_lc.chi2_total.values / lcurve_table.chi2_total.values - 1)))
-    assert lc_diff < 1e-6 and float(cached_lc.selected.iloc[0]) == families[(medium, cd)][2], \
-        f"{medium} {cd}: L-curve differs from the cached earlier run (max rel chi2 diff {lc_diff:.1e})"
-    print(f"PASS: {medium} {cd} L-curve equals modeling_SFCVM/gf/lcurve_{medium}{CD_TAG[cd]}.csv (max rel chi2 diff {lc_diff:.1e})")
-    # PREPUB-END
+    assert np.array_equal(lcurve_08c.sigma.values, lcurve_table.sigma.values), "08c's L-curve is on another sigma grid"
+    lc_diff = float(np.max(np.abs(lcurve_08c.chi2_total.values / lcurve_table.chi2_total.values - 1)))
+    assert lc_diff < 1e-9 and float(lcurve_08c.lcurve_pick.iloc[0]) == families[(medium, cd)][2], \
+        f"{medium} {cd}: L-curve differs from 08c's (max rel chi2 diff {lc_diff:.1e}): re-run 08c"
+    print(f"PASS: {medium} {cd} L-curve equals 08c's lcurve_{medium}{CD_TAG[cd]}.csv (max rel chi2 diff {lc_diff:.1e})")
 
 mpl_paper_style(base=7)
 fig, axes = plt.subplots(2, 2, figsize=(7.2, 6.0), constrained_layout=True)
@@ -1038,8 +771,8 @@ print("wrote figS_pylith_lcurves.png")
 # rigidity of the PyLith cells beside the fault (`mu_effective` = that moment / potency). 07a's CSI
 # baseline is re-scored from `fig2_model_row.npz` on the same samples under each Cd (its surface % is on
 # the same measured-crossing denominator; 07a quotes Mw at 30 GPa only, so its Mw_sfcvm is empty).
-# PREPUB: CHECK against the earlier run: the two PyLith rows equal the cached `results_comparison<tag>.csv`
-# PREPUB: in `modeling_SFCVM/gf/` on sigma, rms, rms west, potency, Mw30, Mw_sfcvm and surface %.
+# CHECK: the two PyLith rows equal 08c's `results_comparison<tag>.csv` (same settings) on sigma, rms, rms west,
+# potency, Mw30, Mw_sfcvm and surface %, and fit the same 06 field.
 
 # %%
 ## [12]
@@ -1047,7 +780,7 @@ res07 = row07["residual_mm"]
 models = {}                     # (medium, cd) -> the solution at the selected sigma and its numbers
 results = {}                    # cd -> the comparison table
 for cd in CD_TAG:
-    Cd07 = data_cd(cd)
+    Cd07 = data_covariance[cd]
     table = [dict(model="CSI homogeneous (07)", sigma=float(row07["sigma"]),
                   rms_mm=float(np.sqrt(np.mean(res07 ** 2))), rms_west300_mm=float(np.sqrt(np.mean(res07[west300] ** 2))),
                   rms_east300_mm=float(np.sqrt(np.mean(res07[east300] ** 2))), chi2=float(np.dot(res07, np.linalg.solve(Cd07, res07))),
@@ -1062,18 +795,15 @@ for cd in CD_TAG:
         table.append(dict(model=f"PyLith {medium}", sigma=selected, **num))
     results[cd] = pd.DataFrame(table).set_index("model")
     results[cd].to_csv(os.path.join(out_dir, f"results_comparison{CD_TAG[cd]}.csv"))
-    # PREPUB-START: comparison with the cached products of the earlier PyLith driver run
-    cached_res = pd.read_csv(os.path.join(paths_sfcvm["gf"], f"results_comparison{CD_TAG[cd]}.csv")).set_index("model")
+    results_08c = pd.read_csv(os.path.join(dir_08c, f"results_comparison{CD_TAG[cd]}.csv")).set_index("model")   # CHECK: 08c's run
     for medium in media:
-        assert str(cached_res.loc[f"PyLith {medium}", "field_fingerprint"]) == field_fingerprint, \
-            f"cached results_comparison{CD_TAG[cd]}.csv ({medium}) fits another 06 field: re-run the driver"
-    for medium in media:
+        assert str(results_08c.loc[f"PyLith {medium}", "field_fingerprint"]) == field_fingerprint, \
+            f"08c's results_comparison{CD_TAG[cd]}.csv ({medium}) fits another 06 field: re-run 08c"
         for col in ("sigma", "rms_mm", "rms_west300_mm", "potency_m3", "Mw_30gpa", "Mw_sfcvm", "surface_pct"):
             mine = float(results[cd].loc[f"PyLith {medium}", col])
-            theirs = float(cached_res.loc[f"PyLith {medium}", col])
-            assert abs(mine - theirs) <= 1e-6 * max(abs(theirs), 1e-9), f"{medium} {cd} {col}: {mine} vs cached {theirs}"
-    print(f"PASS: results ({run_tag(cd)}) equal modeling_SFCVM/gf/results_comparison{CD_TAG[cd]}.csv")
-    # PREPUB-END
+            theirs = float(results_08c.loc[f"PyLith {medium}", col])
+            assert abs(mine - theirs) <= 1e-9 * max(abs(theirs), 1e-9), f"{medium} {cd} {col}: {mine} vs 08c's {theirs}"
+    print(f"PASS: results ({run_tag(cd)}) equal 08c's results_comparison{CD_TAG[cd]}.csv")
     print(f"--- Cd {cd} ({run_tag(cd)})")
     print(results[cd].round(3).T.to_string())
 selected_model = models[SELECTED]
@@ -1109,7 +839,7 @@ for cd in CD_TAG:
             ax.plot(trace_plot[:, 0], trace_plot[:, 1], "k-", lw=0.5)
             ax.set_xlim(-122.08, -121.86)
             ax.set_ylim(37.47, 37.63)
-            ax.set_aspect(1 / np.cos(np.deg2rad(frame_lat0)))
+            ax.set_aspect(1 / np.cos(np.deg2rad(frame_lonlat[1])))
             rms_txt = f" (rms {np.sqrt(np.mean(residual_mm ** 2)):.2f} mm)" if col == 2 else ""
             ax.set_title(r"$\bf{" + "ABCDEFGHI"[3 * row + col] + r"}$  " + f"{label}: {title}{rms_txt}", loc="left", fontsize=7)
             ax.set_xticks([-122.05, -121.95], ["-122.05", "-121.95"])
@@ -1189,31 +919,29 @@ print("wrote figS_pylith_profile_XX.png")
 # `07c_fig2` draws the model row of Fig 2 from `fig2_model_row_pylith_nuggetcd.npz` (the selected
 # model), with the homogeneous PyLith model of the same inversion (`_nuggetcd_homog`) as the
 # comparison line on the profiles, and `_full` for the companion. Same keys as 07a's
-# `fig2_model_row.npz` [13], with the fault on the impulse vertices (`nodes_kmz`, `faces`,
+# `fig2_model_row.npz` [14], with the fault on the impulse vertices (`nodes_kmz`, `faces`,
 # `slip_vertex_mm`). The profile lines X-X' and Y-Y' (fault-parallel and vertical, every 10 m,
 # zeroed on the far field as 06 zeroes the observed profiles) come from ONE PyLith
-# `FaultCohesiveKin` forward run of the inverted vertex slip (`fwd_kin_simpledb.cfg`: a SimpleDB
+# `FaultCohesiveKin` forward run of the inverted vertex slip (`pylith/cfg/fwd_kin_simpledb.cfg`: a SimpleDB
 # with the vertex slip, "nearest", the same mesh and material as the GF run, output at the profile
-# points and the samples), read from `modeling_SFCVM/pylith_output/fwd_fig2_<label>`.
+# points and the samples; `pylith/run_fwd.sh`), read from the medium's `pylith_output/fwd_fig2_<label>`.
 #
 # CHECKS: the forward run's imposed slip equals the slip just inverted (< 1e-4 mm: the cached
 # forward run IS this model), and the forward displacement at the samples equals G x slip
 # (< 0.05 mm rms: superposition for the SFCVM medium, the counterpart of [9]'s homogeneous check).
 # The Mw30 range on the product is the L-curve grid neighbours of this run plus the +/- 50 m
-# alignment runs of 08b's table (`results_comparison_{e50,w50}<tag>.csv` in `modeling_SFCVM/gf/`), both
-# at the locked sigma (asserted: every driver run is solved at `sigma_locked`, Dani 2026-10-03; the
-# alignment row must also equal its own L-curve at that sigma and fit the current 06 field); the
-# bootstrap 2-sigma comes from 08b's `uncertainty_<run>_<medium>.csv` in `modeling_SFCVM/gf/` (08b re-makes
-# and checks it); the bootstrap's reference row must match this model, surface % included.
-# PREPUB: the alignment and bootstrap numbers are read from the cached products of the earlier PyLith driver run.
+# alignment runs of 08c (`results_comparison_{e50,w50}<tag>.csv`), both at the locked sigma (asserted: every
+# 08c run is solved at `sigma_locked`, Dani 2026-10-03; the alignment row must also equal its own L-curve at that
+# sigma and fit the current 06 field); the bootstrap 2-sigma comes from 08c's `uncertainty_<run>_<medium>.csv`
+# ([6] there); the bootstrap's reference row must match this model, surface % included.
 
 # %%
 ## [14]
 to_mesh_from_field = pyproj.Transformer.from_crs(int(fig2_in["epsg"]), CRS, always_xy=True)
 cross_m = float(fig2_in["cross_m"])                         # half length of the profile lines (m)
-far_m = 1500.0                                              # the far field the profiles are zeroed on (07a [13])
+far_m = 1500.0                                              # the far field the profiles are zeroed on (07a [14])
 d_line = np.arange(-cross_m, cross_m + 1.0, 10.0)
-d_line = d_line[np.abs(d_line) > 5.0]                       # 07a [13]: the trace itself is a discontinuity
+d_line = d_line[np.abs(d_line) > 5.0]                       # 07a [14]: the trace itself is a discontinuity
 frac = (d_line + cross_m) / (2 * cross_m)
 prof_names = []
 for profile_name in fig2_in["names"]:
@@ -1231,31 +959,27 @@ fwd_validation = {}
 range_models = {}                                           # label -> the models of its Mw ranges ([15c] recomputes each one's Mw)
 for label, (medium, cd) in FIG2_PRODUCTS.items():
     mdl = models[(medium, cd)]
-    slip_all = vertex_slip_on_mesh(mdl["slip"] * 1e-3)      # m, on every fault vertex
+    slip_all = tents.vertex_slip(mdl["slip"] * 1e-3)        # m, on every fault vertex
     fwd_name = f"fwd_fig2_{label}"
-    slip_npz = f"gf/fig2_slip_{label}.npz"
-    slip_db = f"spatialdb/fig2_slip_{label}.spatialdb"
-    pts_file = f"points/fig2_points_{label}.txt"
-    if not os.path.exists(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_name}-points.h5")) and run_pylith:
-        np.savez(os.path.join(WORK, slip_npz), xyz=fault_xyz, slip_rl_m=slip_all, sign_rl=float(gnpz[medium]["sign_rl"]))
-        run_shell(f"{pyenv} python3 {helpers_dir}/make_vertex_slip_db.py {slip_npz} {slip_db}")
+    folders = medium_paths(medium)
+    slip_npz = os.path.join(folders["spatialdb"], f"fig2_slip_{label}.npz")
+    slip_db = os.path.relpath(os.path.join(folders["spatialdb"], f"fig2_slip_{label}.spatialdb"), WORK)
+    pts_file = os.path.relpath(os.path.join(paths_inputs["points"], f"fig2_points_{label}.txt"), WORK)
+    if not os.path.exists(os.path.join(folders["pylith_output"], f"{fwd_name}-points.h5")) and run_pylith:
+        np.savez(slip_npz, xyz=fault_xyz, slip_rl_m=slip_all, sign_rl=float(gnpz[medium]["sign_rl"]))
+        model_utils.run_logged(f"{in_pylith} python3 {build_dir}/make_vertex_slip_db.py {os.path.relpath(slip_npz, WORK)} {slip_db}", WORK)
         with open(os.path.join(WORK, pts_file), "w") as fh:
-            fh.write(f"# 07a [13] profile points ({', '.join(prof_names)}: {d_line.size} each, +/- {cross_m:.0f} m every 10 m) "
+            fh.write(f"# 07a [14] profile points ({', '.join(prof_names)}: {d_line.size} each, +/- {cross_m:.0f} m every 10 m) "
                      f"+ the {points['lon'].size} quadtree samples; 08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}\n# name x y z (m) in {CRS}\n")
             for k, (x, y) in enumerate(pts):
                 fh.write(f"p{k:05d} {x:.3f} {y:.3f} 0.0\n")
-    cached(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_name}-points.h5"),
-           f"{pyenv} pylith {cfg_dir}/pylithapp.cfg {cfg_dir}/{media[medium]} {cfg_dir}/fwd_kin_simpledb.cfg --problem.defaults.name={fwd_name} "
-           f"--problem.mesh_initializer.phases.read_mesh.reader.filename=mesh/{os.path.basename(mesh_file)} "
+    cached(os.path.join(folders["pylith_output"], f"{fwd_name}-points.h5"),
+           f"bash {pylith_dir}/run_fwd.sh {fwd_name} {media[medium]} {mesh_rel} 4 fwd_kin_simpledb.cfg "
            f"--problem.solution_observers.points.reader.filename={pts_file} "
-           f"--problem.interfaces.fault.eq_ruptures.rupture.db_auxiliary_field.iohandler.filename={slip_db} --nodes=4")
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_name}-points.h5"), "r") as points_h5:
-        dist, order = cKDTree(points_h5["geometry/vertices"][:, :2]).query(pts)
-        assert dist.max() < 1e-3, f"{fwd_name}: output points are not the profile points + samples"
-        displacement_3d_mm = points_h5["vertex_fields/displacement"][-1][order] * 1e3       # mm, 3 components
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_name}-fault.h5"), "r") as fault_h5:
-        f_xyz = fault_h5["geometry/vertices"][:]
-        slip_fwd = float(gnpz[medium]["sign_rl"]) * fault_h5["vertex_fields/slip"][-1][:, 1] * 1e3
+           f"--problem.interfaces.fault.eq_ruptures.rupture.db_auxiliary_field.iohandler.filename={slip_db}")
+    displacement_3d_mm = model_utils.read_forward_points(os.path.join(folders["pylith_output"], f"{fwd_name}-points.h5"), pts)
+    f_xyz, _, slip_fwd = model_utils.read_forward_slip(os.path.join(folders["pylith_output"], f"{fwd_name}-fault.h5"),
+                                                       gnpz[medium]["sign_rl"])
     vertex_dist, vertex_match = cKDTree(f_xyz).query(fault_xyz)
     assert vertex_dist.max() < 1e-6, f"{fwd_name}: fault vertices differ from the GF fault"
     slip_check = float(np.abs(slip_fwd[vertex_match] - slip_all * 1e3).max())
@@ -1276,36 +1000,34 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
         for component, vec in (("fp", look), ("up", np.array([0.0, 0.0, 1.0]))):
             vals = u_line.dot(vec)
             profiles[f"prof_{name}_{component}_d"] = d_line
-            profiles[f"prof_{name}_{component}_mm"] = vals - np.median(vals[np.abs(d_line) >= far_m])   # 07a [13]: far field zeroed
+            profiles[f"prof_{name}_{component}_mm"] = vals - np.median(vals[np.abs(d_line) >= far_m])   # 07a [14]: far field zeroed
         step = profiles[f"prof_{name}_fp_mm"]
         print(f"  {name}-{name}' model fault-parallel: west {step[d_line < 0].min():+.2f} mm, east {step[d_line > 0].max():+.2f} mm")
 
-    # PREPUB-START: the alignment-run and bootstrap numbers are read from the cached products of the earlier PyLith driver run
-    alignment_rows = {}                                       # e50 / w50 -> the SFCVM row of 08b's alignment runs (this Cd)
+    # the alignment runs and the bootstrap of 08c
+    alignment_rows = {}                                       # e50 / w50 -> the SFCVM row of 08c's alignment runs (this Cd)
     if medium == "sfcvm":
         for off in ("e50", "w50"):
-            f_off = os.path.join(paths_sfcvm["gf"], f"results_comparison_{off}{CD_TAG[cd]}.csv")
-            assert os.path.exists(f_off), f"missing alignment-sensitivity product {f_off} (08b's table)"
+            f_off = os.path.join(dir_08c, f"results_comparison_{off}{CD_TAG[cd]}.csv")
+            assert os.path.exists(f_off), f"missing alignment-sensitivity product {f_off} (08c)"
             row_off = pd.read_csv(f_off).set_index("model").loc[f"PyLith sfcvm_{off}"]
-            assert float(row_off.sigma) == sigma_locked, (f"{f_off}: solved at sigma {row_off.sigma:g}, not the locked "
-                                                          f"{sigma_locked:g} (re-run the driver with PYLITH_SIGMA=locked)")
-            assert str(row_off.field_fingerprint) == field_fingerprint, f"{f_off} fits another 06 field: re-run the driver"
-            lc_off = pd.read_csv(os.path.join(paths_sfcvm["gf"], f"lcurve_sfcvm_{off}_{off}{CD_TAG[cd]}.csv"))
+            assert float(row_off.sigma) == sigma_locked, f"{f_off}: solved at sigma {row_off.sigma:g}, not the locked {sigma_locked:g}"
+            assert str(row_off.field_fingerprint) == field_fingerprint, f"{f_off} fits another 06 field: re-run 08c"
+            lc_off = pd.read_csv(os.path.join(dir_08c, f"lcurve_sfcvm_{off}_{off}{CD_TAG[cd]}.csv"))
             mw_lc_off = float(lc_off.loc[np.isclose(lc_off.sigma, sigma_locked), "Mw_30"].iloc[0])
             assert abs(mw_lc_off - float(row_off.Mw_30gpa)) < 1e-9, f"{f_off}: Mw30 differs from its own L-curve at sigma {sigma_locked:g}"
             alignment_rows[off] = row_off
-    unc_file = os.path.join(paths_sfcvm["gf"], f"uncertainty_{run_tag(cd)}_{medium}.csv")
-    assert os.path.exists(unc_file), f"missing bootstrap product {unc_file} (08b)"
+    unc_file = os.path.join(dir_08c, f"uncertainty_{run_tag(cd)}_{medium}.csv")
+    assert os.path.exists(unc_file), f"missing bootstrap product {unc_file} (08c)"
     unc = pd.read_csv(unc_file)
     boot_reference = unc[unc.kind == "reference"].iloc[0]
     boot_2sd = unc[unc.kind == "boot_2sd"].iloc[0]
     assert abs(float(boot_reference.Mw_30gpa) - mdl["Mw_30gpa"]) < 1e-6, f"{unc_file} is not the bootstrap of this model"
     assert abs(float(boot_reference.surface_pct) - mdl["surface_pct"]) <= 1e-6 * mdl["surface_pct"], \
         f"{unc_file}: its surface % is not this model's (made on another denominator or field?)"
-    # PREPUB-END
 
     # Mw30 range: the selected sigma and its L-curve grid neighbours (this run), plus the +/- 50 m SFCVM alignment
-    # runs where they exist for this Cd (08b's cached table; SFCVM medium only)
+    # runs where they exist for this Cd (08c's table; SFCVM medium only)
     lcurve_sorted = families[(medium, cd)][0].sort_values("sigma").reset_index(drop=True)
     i_sel = int(np.nonzero(np.isclose(lcurve_sorted.sigma.values, mdl["sigma"]))[0][0])
     sigma_neighbours = lcurve_sorted.iloc[max(i_sel - 1, 0):i_sel + 2]
@@ -1318,8 +1040,8 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
         range_vals.append(float(row_off.Mw_30gpa))
         basis.append(f"SFSVM boundary 50 m {off[0].upper()} at sigma {row_off.sigma:g} ({row_off.Mw_30gpa:.2f})")
     mw_range = [float(min(range_vals)), float(max(range_vals))]
-    # the same range at the SFCVM rigidity (Dani 2026-10-01): sigma neighbours from 08b's bootstrap table (its
-    # sigma_neighbour rows), alignment runs from the same cached tables; no new inversion
+    # the same range at the SFCVM rigidity (Dani 2026-10-01): sigma neighbours from 08c's bootstrap table (its
+    # sigma_neighbour rows), alignment runs from the same tables; no new inversion
     sfcvm_vals = [mdl["Mw_sfcvm"]] + list(unc[unc.kind == "sigma_neighbour"].Mw_sfcvm.values)
     for off, row_off in alignment_rows.items():
         sfcvm_vals.append(float(row_off.Mw_sfcvm))
@@ -1344,7 +1066,7 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
                potency_2sig_m3=float(boot_2sd.potency_m3), mw_30gpa_range=np.array(mw_range), mw_30gpa_range_basis="; ".join(basis),
                mw_sfcvm_range=np.array(mw_sfcvm_range),
                provenance=f"08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}: run {run_tag(cd)}, medium {medium}, PyLith GF {run_names[medium]}, "
-                          f"Cd {cd}, surface constraint ON, forward run {fwd_name}; bootstrap 2-sigma from {os.path.basename(unc_file)}; "
+                          f"Cd {cd}, surface constraint ON, forward run {fwd_name}; bootstrap 2-sigma from 08c {os.path.basename(unc_file)}; "
                           f"06 field {field_fingerprint}")
     for key in crossing_keys:
         out[key] = row07[key]
@@ -1362,8 +1084,7 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
 # ## [15] Products and provenance
 #
 # `inversion_products<tag>.npz` per covariance treatment (slip, model, residual at the samples,
-# both media; the settings, the validation numbers and the results table as json), the inputs of
-# 08b's one-page diagnostics.
+# both media; the settings, the validation numbers and the results table as json).
 
 # %%
 ## [15]
@@ -1377,7 +1098,7 @@ for cd in CD_TAG:
         products[f"model_{medium}_mm"] = models[(medium, cd)]["model"]
         products[f"residual_{medium}_mm"] = models[(medium, cd)]["residual"]
     products.update(sample_lon=samples.lon, sample_lat=samples.lat,
-                    data_mm=models[(ref_medium, cd)]["data"], signed_d_km=signed_d_km, block_lon=block_lon, block_lat=block_lat,
+                    data_mm=models[("sfcvm", cd)]["data"], signed_d_km=signed_d_km, block_lon=block_lon, block_lat=block_lat,
                     trace_lon=fault07_trace.lon, trace_lat=fault07_trace.lat,
                     settings=json.dumps(dict(settings_common, cd_mode=cd, cd_floor=None)),
                     validation_a=pd.Series(val_a).to_json(), validation_b=pd.Series(val_b).to_json(), validation_c=json.dumps(val_c),
@@ -1396,7 +1117,8 @@ for product_name, seconds in timings.items():
 # (`FaultCohesiveKin`, the same mesh, medium and slip database as [14]) with the fault observer writing
 # `traction_change` as well as `slip`. The stress drop is the slip-weighted mean of the shear-traction drop
 # over the fault, sum(dtau s A) / sum(s A) over the fault vertices (A = one third of the adjacent triangle
-# areas): the standard definition for a distributed slip model (Noda et al., 2013). PyLith's fault vectors
+# areas; `model_utils.vertex_areas_m2`, `slip_weighted_stress_drop_pa`): the standard definition for a distributed
+# slip model (Noda et al., 2013). PyLith's fault vectors
 # are (opening, left-lateral, reverse); right-lateral slip is minus the left-lateral component, and a drop in
 # right-lateral shear stress is a positive left-lateral traction change (CHECKED below). No single rigidity
 # or depth scale is assumed: the traction change is carried by the SFCVM cells beside the fault. Also
@@ -1405,33 +1127,18 @@ for product_name, seconds in timings.items():
 
 # %%
 ## [15b]
-def vertex_areas_m2(vertices_xyz, cells):
-    """Area attached to every fault vertex: one third of the area of each triangle it belongs to (m^2)."""
-    triangles = vertices_xyz[cells]
-    triangle_area = 0.5 * np.linalg.norm(np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]), axis=1)
-    areas = np.zeros(len(vertices_xyz))
-    np.add.at(areas, cells.ravel(), np.repeat(triangle_area / 3.0, 3))
-    return areas
-
-
-def slip_weighted_stress_drop_pa(dtau_pa, slip_m, vertex_area_m2):
-    """Stress drop of a distributed slip model: sum(dtau s A) / sum(s A) over the fault vertices (Noda et al., 2013),
-    negative slip counted as zero."""
-    weight = np.clip(slip_m, 0.0, None) * vertex_area_m2
-    assert np.sum(dtau_pa * weight) > 0, "right-lateral slip did not lower the right-lateral shear traction: sign convention broken"
-    return float(np.sum(dtau_pa * weight) / np.sum(weight))
-
-
 stress_drop = {}
 for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
     fwd_t = f"fwd_traction_{label}"
-    cached(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_t}-fault.h5"),
-           f"{pyenv} pylith {cfg_dir}/pylithapp.cfg {cfg_dir}/{media[medium]} {cfg_dir}/fwd_kin_simpledb.cfg --problem.defaults.name={fwd_t} "
-           f"--problem.mesh_initializer.phases.read_mesh.reader.filename=mesh/{os.path.basename(mesh_file)} "
-           f"--problem.solution_observers.points.reader.filename=points/fig2_points_{label}.txt "
-           f"--problem.interfaces.fault.eq_ruptures.rupture.db_auxiliary_field.iohandler.filename=spatialdb/fig2_slip_{label}.spatialdb "
-           f"'--problem.interfaces.fault.observers.observer.data_fields=[slip,traction_change]' --nodes=4")
-    with h5py.File(os.path.join(paths_sfcvm["pylith_output"], f"{fwd_t}-fault.h5"), "r") as fault_h5:
+    folders = medium_paths(medium)
+    slip_db = os.path.relpath(os.path.join(folders["spatialdb"], f"fig2_slip_{label}.spatialdb"), WORK)
+    pts_file = os.path.relpath(os.path.join(paths_inputs["points"], f"fig2_points_{label}.txt"), WORK)
+    cached(os.path.join(folders["pylith_output"], f"{fwd_t}-fault.h5"),
+           f"bash {pylith_dir}/run_fwd.sh {fwd_t} {media[medium]} {mesh_rel} 4 fwd_kin_simpledb.cfg "
+           f"--problem.solution_observers.points.reader.filename={pts_file} "
+           f"--problem.interfaces.fault.eq_ruptures.rupture.db_auxiliary_field.iohandler.filename={slip_db} "
+           f"'--problem.interfaces.fault.observers.observer.data_fields=[slip,traction_change]'")
+    with h5py.File(os.path.join(folders["pylith_output"], f"{fwd_t}-fault.h5"), "r") as fault_h5:
         f_xyz = fault_h5["geometry/vertices"][:]
         f_cells = np.asarray(fault_h5["viz/topology/cells"][:], int)
         slip_vectors = fault_h5["vertex_fields/slip"][-1]                  # (opening, left-lateral, reverse), m
@@ -1439,11 +1146,12 @@ for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
     assert np.abs(slip_vectors[:, [0, 2]]).max() < 1e-9, "opening or reverse slip in a strike-slip forward run"
     slip_rl = -slip_vectors[:, 1]
     assert abs(slip_rl.max() * 1e3 - fig2_products[label]["slip_vertex_mm"].max()) < 1e-3, f"{fwd_t}: slip is not the inverted slip"
-    v_area = vertex_areas_m2(f_xyz, f_cells)
+    v_area = model_utils.vertex_areas_m2(f_xyz, f_cells)
     patch = slip_rl > 0.5 * slip_rl.max()
     patch_top100 = patch & (-f_xyz[:, 2] < 100.0)
-    stress_drop[medium] = dict(weighted_kpa=slip_weighted_stress_drop_pa(dtau, slip_rl, v_area) / 1e3, patch_kpa=float(dtau[patch].mean() / 1e3),
-                               top100_kpa=float(dtau[patch_top100].mean() / 1e3), p95_kpa=float(np.percentile(dtau[patch], 95) / 1e3))
+    stress_drop[medium] = dict(weighted_kpa=model_utils.slip_weighted_stress_drop_pa(dtau, slip_rl, v_area) / 1e3,
+                               patch_kpa=float(dtau[patch].mean() / 1e3), top100_kpa=float(dtau[patch_top100].mean() / 1e3),
+                               p95_kpa=float(np.percentile(dtau[patch], 95) / 1e3))
     drop = stress_drop[medium]
     print(f"{medium}: slip-weighted stress drop {drop['weighted_kpa']:.0f} kPa; patch (slip > 50 % of peak) mean {drop['patch_kpa']:.0f} kPa, "
           f"95th pct {drop['p95_kpa']:.0f} kPa; patch in the top 100 m {drop['top100_kpa']:.0f} kPa")
@@ -1455,20 +1163,20 @@ for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
 # moment M0 = sum(mu_t x P_t) needs a rigidity, and Mw = 2/3 (log10 M0 - 9.1) (Hanks & Kanamori 1979, M0 in
 # N m). One table, the selected model's slip throughout, every row a different rigidity choice:
 # - 30 GPa: the crustal reference value (the convention for comparing with other slow-slip events).
-# - Per triangle, from the PyLith cells either side of the fault (`mu_beside_fault`, [6]):
+# - Per triangle, from the PyLith cells either side of the fault (`model_utils.mu_beside_fault`, [6]):
 #   arithmetic mean (mu_W + mu_E) / 2 (the rigidity of `Mw_sfcvm`, registered as `08a_mw_sfcvm`); harmonic mean
 #   2 mu_W mu_E / (mu_W + mu_E), the effective rigidity of a fault on a material interface (Vavrycuk 2013,
-#   GJI 194, 395-400, doi:10.1093/gji/ggt084); west side only; east side only.
+#   GJI 194, 395-400, doi:10.1093/gji/ggt084; `model_utils.harmonic_mean_rigidity`); west side only; east side only.
 # - mu_eff = M0 / P for each per-triangle row: the single rigidity that gives the same Mw.
 # - A sweep of single uniform rigidities, Mw(mu) = Mw30 + 2/3 log10(mu / 30 GPa), for quoting a range.
 # Potency is the same in every row, so only the rigidity differs. Each row also carries the model range of
 # [14]: the selected model, its L-curve sigma neighbours (on the `sfcvm` medium, re-inverted here with
-# `invert_tents`) and the +/- 50 m alignment models (08b's driver runs on their own media `sfcvm_e50` /
-# `sfcvm_w50`: slip from `inversion_products_{e50,w50}<tag>.npz`, rigidity from their own PyLith
+# `invert_tents`) and the +/- 50 m alignment models (08c's runs on their own media `sfcvm_e50` /
+# `sfcvm_w50`: slip from 08c's `inversion_products_{e50,w50}<tag>.npz`, rigidity from their own PyLith
 # `-elastic_info.h5` and grid `sfcvm_v26-0_aligned_{e50,w50}_grid.npz`). The 30 GPa, arithmetic and harmonic
 # rows take their range PER MODEL (Dani 2026-10-06): each range model's per-triangle potency x the rigidity
 # of ITS medium, min/max over the models (saved per model as `mw_range_models.csv`). CHECK: each model's
-# Mw30 and arithmetic Mw equal the values [14] built its ranges from (L-curve, 08b's bootstrap table, the
+# Mw30 and arithmetic Mw equal the values [14] built its ranges from (L-curve, 08c's bootstrap table, the
 # alignment tables) to < 1e-6, so the arithmetic range is [14]'s `mw_sfcvm_range` (same models, same
 # rigidity definition). The west, east and uniform rows are SHIFTED: the 30 GPa range moved by the row's
 # rigidity, Mw_lo/hi = Mw + (range - Mw30). Column `range_kind` says which. Printed and saved
@@ -1479,18 +1187,12 @@ for label, medium in (("nuggetcd", "sfcvm"), ("nuggetcd_homog", "homog")):
 
 # %%
 ## [15c]
-def harmonic_mean_rigidity(mu_a, mu_b):
-    """Effective rigidity of a fault on a material interface: 2 mu_a mu_b / (mu_a + mu_b) (Vavrycuk 2013)."""
-    return 2.0 * mu_a * mu_b / (mu_a + mu_b)
-
-
 slip_sel = models[SELECTED]["slip"]
-v_sel = vertex_slip_on_mesh(slip_sel)
-pot_tri = tri_area * v_sel[fault_cells].mean(1) * 1e-3                     # m3 per triangle (tent slip exact for linear tents)
+pot_tri = tents.potency_per_triangle_m3(slip_sel)                          # m3 per triangle (tent slip exact for linear tents)
 P_sel = float(pot_tri.sum())
-assert abs(P_sel - potency_m3(slip_sel)) < 1e-6 * P_sel, "per-triangle potency does not sum to potency_m3"
+assert abs(P_sel - tents.potency_m3(slip_sel)) < 1e-6 * P_sel, "per-triangle potency does not sum to the potency"
 mu_options = {"arithmetic mean of the two sides": 0.5 * (mu_west + mu_east),
-              "harmonic mean of the two sides (Vavrycuk 2013)": harmonic_mean_rigidity(mu_west, mu_east),
+              "harmonic mean of the two sides (Vavrycuk 2013)": model_utils.harmonic_mean_rigidity(mu_west, mu_east),
               "west side only": mu_west, "east side only": mu_east}
 assert np.allclose(mu_options["arithmetic mean of the two sides"], mu_fault["sfcvm"]), "arithmetic row is not Mw_sfcvm's rigidity"
 mu_option_key = {"arithmetic mean of the two sides": "arithmetic", "harmonic mean of the two sides (Vavrycuk 2013)": "harmonic",
@@ -1522,11 +1224,11 @@ assert abs(mw30_selected - models[SELECTED]["Mw_30gpa"]) < 1e-9, "first row is n
 def range_model_mw(model_name, medium_name, slip_mm, rigidity_west, rigidity_east):
     """Potency, Mw30 and the SFSVM Mw of one range model: the per-triangle potency of its slip x the arithmetic or
     the harmonic mean of the PyLith cells either side of the fault in its own medium."""
-    potency_tri = tri_area * vertex_slip_on_mesh(slip_mm)[fault_cells].mean(1) * 1e-3
+    potency_tri = tents.potency_per_triangle_m3(slip_mm)
     return dict(model=model_name, medium=medium_name, potency_m3=float(potency_tri.sum()),
                 Mw_30gpa=float(moment_magnitude(mu_ref * potency_tri.sum())),
                 Mw_arithmetic=float(moment_magnitude(np.sum(0.5 * (rigidity_west + rigidity_east) * potency_tri))),
-                Mw_harmonic=float(moment_magnitude(np.sum(harmonic_mean_rigidity(rigidity_west, rigidity_east) * potency_tri))))
+                Mw_harmonic=float(moment_magnitude(np.sum(model_utils.harmonic_mean_rigidity(rigidity_west, rigidity_east) * potency_tri))))
 
 
 # the models of [14]'s range, each with its own slip and the rigidity of its own medium
@@ -1536,7 +1238,7 @@ lcurve_rows = members["lcurve_rows"]
 neighbour_rows = members["bootstrap_neighbour_rows"]
 lcurve_neighbour_sigmas = sorted(float(v) for v in lcurve_rows.sigma if not np.isclose(v, models[SELECTED]["sigma"]))
 assert len(lcurve_neighbour_sigmas) == len(neighbour_rows) and np.allclose(lcurve_neighbour_sigmas, sorted(neighbour_rows.sigma)), \
-    "[14]'s 30 GPa range (L-curve) and SFSVM range (08b's bootstrap table) are not on the same sigma neighbours"
+    "[14]'s 30 GPa range (L-curve) and SFSVM range (08c's bootstrap table) are not on the same sigma neighbours"
 range_rows = [dict(**range_model_mw(f"selected (sigma {models[SELECTED]['sigma']:g})", medium_sel, slip_sel, mu_west, mu_east),
                    Mw_30gpa_14=models[SELECTED]["Mw_30gpa"], Mw_arithmetic_14=models[SELECTED]["Mw_sfcvm"])]
 for _, neighbour in neighbour_rows.iterrows():
@@ -1546,25 +1248,26 @@ for _, neighbour in neighbour_rows.iterrows():
                                             fault_neighbour.slip[:, 0], mu_west, mu_east),
                            Mw_30gpa_14=mw30_lcurve, Mw_arithmetic_14=float(neighbour.Mw_sfcvm)))
 for off, row_off in members["alignment_rows"].items():
-    medium_off = f"sfcvm_{off}"                                          # the driver's medium name
-    run_off = f"gf_{mesh_preset}_{medium_off}"                          # the driver's GF run of that medium (same mesh)
+    medium_off = f"sfcvm_{off}"                                          # 08c's medium name
+    run_off = f"gf_{mesh_preset}_{medium_off}"                          # 08c's GF run of that medium (same mesh)
     grid_off = os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{off}_grid.npz")
     assert os.path.exists(grid_off), f"missing {grid_off} (the grid of the {medium_off} medium)"
     g_off = np.load(os.path.join(paths_sfcvm["gf"], f"G_{run_off}.npz"))
     assert (np.array_equal(g_off["fault_xyz"], fault_xyz) and np.array_equal(g_off["fault_cells"], fault_cells)
             and np.array_equal(g_off["vertex_index"], vertex_index)), f"G_{run_off}: another fault mesh or impulse order"
-    _, mu_west_off, mu_east_off, rel_off = mu_beside_fault(medium_off, grid_off, run_name=run_off)
+    _, mu_west_off, mu_east_off, rel_off = model_utils.mu_beside_fault(
+        os.path.join(paths_sfcvm["pylith_output"], f"{run_off}-elastic_info.h5"), grid_off, tents, medium_off)
     assert rel_off < 0.05, f"{run_off}: PyLith's cell rigidity differs from its grid by more than 5 % (median)"
-    products_off = np.load(os.path.join(paths_sfcvm["gf"], f"inversion_products_{off}{CD_TAG[cd_sel]}.npz"))
+    products_off = np.load(os.path.join(dir_08c, f"inversion_products_{off}{CD_TAG[cd_sel]}.npz"))
     assert np.allclose(products_off["impulse_vertex_xyz"], imp_xyz), f"inversion_products_{off}: another impulse order"
     assert json.loads(str(products_off["settings"]))["field_fingerprint"] == field_fingerprint, \
-        f"inversion_products_{off}{CD_TAG[cd_sel]}.npz fits another 06 field: re-run the driver"
+        f"inversion_products_{off}{CD_TAG[cd_sel]}.npz fits another 06 field: re-run 08c"
     range_rows.append(dict(**range_model_mw(f"SFSVM boundary 50 m {off[0].upper()} (sigma {row_off.sigma:g})", medium_off,
                                             products_off[f"slip_{medium_off}_mm"], mu_west_off, mu_east_off),
                            Mw_30gpa_14=float(row_off.Mw_30gpa), Mw_arithmetic_14=float(row_off.Mw_sfcvm)))
 range_table = pd.DataFrame(range_rows)
 range_table["provenance"] = (f"08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}: the Mw range models of fig2_model_row_pylith_{selected_label} "
-                             f"([14]); sigma neighbours re-inverted here, alignment slip from inversion_products_{{e50,w50}}{CD_TAG[cd_sel]}.npz; "
+                             f"([14]); sigma neighbours re-inverted here, alignment slip from 08c inversion_products_{{e50,w50}}{CD_TAG[cd_sel]}.npz; "
                              f"06 field {field_fingerprint}")
 # CHECK: the same models as [14] (Mw30 and arithmetic Mw model by model), so the arithmetic range IS [14]'s
 worst_30 = float(np.max(np.abs(range_table.Mw_30gpa - range_table.Mw_30gpa_14)))
@@ -1643,31 +1346,29 @@ print(f"share of the total misfit reduction from samples within 200 m: {near_far
 #
 # `08a_*` = the selected model (aligned SFCVM, nugget Cd); `08a_hom_*` its homogeneous twin;
 # `08a_full_*` / `08a_full_hom_*` the companion pair under 07a's full covariance. The 2-sigma and
-# range keys come from the Fig-2 product (bootstrap of 08b, L-curve neighbours, alignment +/- 50 m).
+# range keys come from the Fig-2 product (bootstrap of 08c, L-curve neighbours, alignment +/- 50 m).
 # The sidecar also carries the surface % denominator, the stress drop [15b] and the near/far fit [15d].
 
 # %%
 ## [16]
 input_files = []
 for medium in media:
-    input_files.append(os.path.join(paths_sfcvm["gf"], f"G_{run_names[medium]}.npz"))
+    input_files.append(os.path.join(medium_paths(medium)["gf"], f"G_{run_names[medium]}.npz"))
 input_files += [mesh_fault_npz, grid_file, points_file + ".npz", os.path.join(field_dir, "fp_maps.npz"),
-                os.path.join(field_dir, "fig2_inputs.npz"), row07_file, os.path.join(events_dir, "section_lengths.csv"),
-                os.path.join(events_dir, "event_fraction_by_crossing.csv")]
-# PREPUB-START: the cached products of the earlier PyLith driver run that this notebook reads
-for medium, cd in RUNS:
-    input_files.append(os.path.join(paths_sfcvm["gf"], f"lcurve_{medium}{CD_TAG[cd]}.csv"))
+                os.path.join(field_dir, "fig2_inputs.npz"), os.path.join(dir_07a, "model_data_07a.npz"), row07_file,
+                os.path.join(events_dir, "section_lengths.csv")]
+for medium, cd in RUNS:                                     # 08c's tables this notebook reads or checks against
+    input_files.append(os.path.join(dir_08c, f"lcurve_{medium}{CD_TAG[cd]}.csv"))
 for cd in CD_TAG:
-    input_files.append(os.path.join(paths_sfcvm["gf"], f"results_comparison{CD_TAG[cd]}.csv"))
+    input_files.append(os.path.join(dir_08c, f"results_comparison{CD_TAG[cd]}.csv"))
     for off in ("e50", "w50"):
-        input_files.append(os.path.join(paths_sfcvm["gf"], f"results_comparison_{off}{CD_TAG[cd]}.csv"))
+        input_files.append(os.path.join(dir_08c, f"results_comparison_{off}{CD_TAG[cd]}.csv"))
 for label, (medium, cd) in FIG2_PRODUCTS.items():
-    input_files.append(os.path.join(paths_sfcvm["gf"], f"uncertainty_{run_tag(cd)}_{medium}.csv"))
+    input_files.append(os.path.join(dir_08c, f"uncertainty_{run_tag(cd)}_{medium}.csv"))
 for off in members["alignment_rows"]:                       # [15c]: the alignment range models, slip and medium
-    input_files += [os.path.join(paths_sfcvm["gf"], f"inversion_products_{off}{CD_TAG[cd_sel]}.npz"),
+    input_files += [os.path.join(dir_08c, f"inversion_products_{off}{CD_TAG[cd_sel]}.npz"),
                     os.path.join(paths_sfcvm["gf"], f"G_gf_{mesh_preset}_sfcvm_{off}.npz"),
                     os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{off}_grid.npz")]
-# PREPUB-END
 REG.inputs(*input_files)
 forward_vs_g = []
 for label, val in fwd_validation.items():
@@ -1684,7 +1385,7 @@ lines = [f"selected model: {run_tag(SELECTED[1])} / {SELECTED[0]} (vertical faul
          f"forward-vs-G at the samples: " + ", ".join(forward_vs_g),
          f"fault-adjacent mu, top 100 m: west {mu_top100['west_gpa']:.3f}, east {mu_top100['east_gpa']:.3f} GPa; side mismatches {side_mismatch.sum()}",
          f"surface % denominator: median of {n_section_crossings} measured crossings in the SSE section {section_crossing_median_mm:.3f} mm",
-         f"06 field fp_maps.npz fingerprint {field_fingerprint} (asserted on every cached driver results table read here)",
+         f"06 field fp_maps.npz fingerprint {field_fingerprint} (asserted on 07a's model data and on every 08c table read here)",
          "L-curves: " + "; ".join(lcurve_lines)]
 for (medium, cd) in RUNS:
     mdl = models[(medium, cd)]

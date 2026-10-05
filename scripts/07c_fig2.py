@@ -35,7 +35,7 @@
 # **Inputs**: `06_event_field_geometry/fig2_inputs.npz`;
 # `08a_3d_model/fig2_model_row_pylith_nuggetcd.npz` and `..._nuggetcd_homog.npz`;
 # `08a_3d_model/mw_rigidity_options.csv` (row `harmonic`: the SFSVM Mw of panel K, Dani 2026-10-05);
-# `07b_uniform_model_tests/fig2_model_row.npz` (07a's product: the quadtree samples the 08a
+# `07a_uniform_model/fig2_model_row.npz` (07a's product: the quadtree samples the 08a
 # products must be on); `04_event_detection/event_fraction_by_crossing.csv` and
 # `creep_events.csv`; `hayward_fault_profiles.csv`; the alignment-array summary;
 # the GHCN file of the Fremont rain gauge; the GNSS station list of the descending frame
@@ -116,7 +116,7 @@ f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz"
 aa_file = common_paths["aa_summary"]
 pylith_model = os.path.join(paths_out["08a_3d_model"], "fig2_model_row_pylith_nuggetcd.npz")             # the paper's model
 pylith_compare = os.path.join(paths_out["08a_3d_model"], "fig2_model_row_pylith_nuggetcd_homog.npz")    # its homogeneous twin
-row07a_file = os.path.join(paths_out["07b_uniform_model_tests"], "fig2_model_row.npz")                   # 07a writes it there
+row07a_file = os.path.join(paths_out["07a_uniform_model"], "fig2_model_row.npz")                         # 07a [14]
 rigidity_file = os.path.join(paths_out["08a_3d_model"], "mw_rigidity_options.csv")    # 08a [15c]: Mw under each rigidity choice
 
 # %% [markdown]
