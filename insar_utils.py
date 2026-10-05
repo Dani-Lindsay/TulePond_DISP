@@ -687,18 +687,39 @@ def linear_rate(t, y):
     return slope, intercept, std_err, int(m.sum())
 
 
-def gaussian_smooth_km(x, lats_of_x, sigma_km):
-    """NaN-aware, gap-preserving Gaussian smoothing along the fault (crossings
-    in fault order; spacing from the latitudes, 1 deg = 111.19 km). Weights are
+def gaussian_smooth_km(x, km_of_x, sigma_km):
+    """NaN-aware, gap-preserving Gaussian smoothing ALONG THE TRACE. `km_of_x`
+    is the along-trace km of each sample (km from Point Pinole, e.g. from
+    `lat_to_km_map`), in fault order (strictly monotonic). The samples are
+    placed on a regular grid of their median spacing (the 100 m crossings), so
+    a missing crossing is a hole in the grid, not a closer neighbour, and
+    sigma_km is a true along-trace width. (Until 2026-10-05 the spacing came
+    from the LATITUDES at 1 deg = 111.19 km: along the ~144 deg strike every
+    width was ~1.2x the stated one; audit C_parameters #8.) Weights are
     renormalised over the finite neighbours; NaN where fewer than 15 % of the
     kernel weight is data, and NaN wherever the input is NaN. Used by 03, 04
-    (Fig 1C, sigma 0.15 km) and 07c (Fig 2K, the same 0.15 km)."""
-    spacing_km = float(np.median(np.abs(np.diff(lats_of_x)))) * 111.19
+    (Fig 1C) and 07c (Fig 2K)."""
+    x = np.asarray(x, float)
+    km_of_x = np.asarray(km_of_x, float)
+    assert km_of_x.shape == x.shape, f"km_of_x {km_of_x.shape} does not match x {x.shape}"
+    assert np.isfinite(km_of_x).all(), "km_of_x has NaN: every sample needs an along-trace position"
+    step_km = np.diff(km_of_x)
+    assert (step_km > 0).all() or (step_km < 0).all(), "km_of_x is not strictly monotonic: samples must be in fault order"
+    spacing_km = float(np.median(np.abs(step_km)))
+    # the crossings are 0.1 km apart; a spacing of ~0.001 means LATITUDES were passed (the old signature)
+    assert 0.02 <= spacing_km <= 2.0, (f"median spacing {spacing_km:.4g} km is not an along-trace spacing: pass km "
+                                       f"(utils.lat_to_km_map), not latitude")
+    node = np.round((km_of_x - km_of_x.min()) / spacing_km).astype(int)
+    assert np.allclose(node * spacing_km + km_of_x.min(), km_of_x, rtol=0, atol=0.25 * spacing_km), \
+        "the samples are not on a regular along-trace grid of their median spacing"
+    grid = np.full(node.max() + 1, np.nan)                     # the regular along-trace grid, holes NaN
+    grid[node] = x
     sig = max(sigma_km / spacing_km, 0.5)
-    finite = np.isfinite(x).astype(float)
-    filled = np.where(finite > 0, x, 0.0)
+    finite = np.isfinite(grid).astype(float)
+    filled = np.where(finite > 0, grid, 0.0)
     den = gaussian_filter1d(finite, sig, mode="nearest")
-    out = np.divide(gaussian_filter1d(filled, sig, mode="nearest"), den, out=np.full_like(filled, np.nan), where=den > 0.15)
+    smooth = np.divide(gaussian_filter1d(filled, sig, mode="nearest"), den, out=np.full_like(filled, np.nan), where=den > 0.15)
+    out = smooth[node]
     out[~np.isfinite(x)] = np.nan
     return out
 
@@ -731,18 +752,34 @@ def creepmeter_file(creepmeter_dir, code):
     return gz if os.path.exists(gz) else os.path.join(creepmeter_dir, code.lower() + ".10min")
 
 
+def creepmeter_decimal_year(year, doy):
+    """Decimal year of USGS creepmeter samples. The fractional day-of-year is
+    1-BASED: 1 January 00:00 is doy 1.000 (`cfw1.10min.gz`: the first sample of
+    2020 is `2020 1.000000000`, the last of 2019 `2019 365.993055556`), so the
+    time is year + (doy - 1) / days in the year, the convention of
+    `date_to_decimal_year` (1 January = year + 0). Until 2026-10-05 the readers
+    used doy / days, which put every creepmeter time one day late (audit
+    A_dataflow F4)."""
+    year = np.asarray(year)
+    doy = np.asarray(doy, float)
+    is_leap = ((year % 4 == 0) & (year % 100 != 0)) | (year % 400 == 0)
+    days_in_year = np.where(is_leap, 366.0, 365.0)
+    assert np.all((doy >= 1.0) & (doy < days_in_year + 1.0)), "creepmeter day-of-year outside 1 to days-in-year + 1"
+    return year + (doy - 1.0) / days_in_year
+
+
 def read_creepmeter_10min(filepath, date_start=None, date_end=None):
     """Read a USGS creepmeter `.10min`/`.10min.gz` file (whitespace columns:
-    year, fractional day-of-year, slip_mm; no header) into DAILY means with
-    columns ['decimal_year', 'slip_mm'], zeroed to the first day.
+    year, fractional 1-based day-of-year, slip_mm; no header) into DAILY means
+    with columns ['decimal_year', 'slip_mm'], zeroed to the first day. The
+    decimal year of a day is its first sample's (`creepmeter_decimal_year`).
 
     The published values are already divided by cos(30 deg) at source, i.e.
     they are right-lateral fault-parallel slip; no obliquity correction here.
     """
     df = pd.read_csv(filepath, sep=r"\s+", usecols=[0, 1, 2], header=None,
                      names=["year", "doy", "slip_mm"])
-    df["decimal_year"] = df["year"] + (df["doy"] / df["year"].apply(
-        lambda y: 366 if (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0) else 365))
+    df["decimal_year"] = creepmeter_decimal_year(df["year"].to_numpy(), df["doy"].to_numpy())
     if date_start is not None:
         df = df[df["decimal_year"] >= date_start]
     if date_end is not None:
@@ -763,9 +800,9 @@ def daily_creepmeter(creepmeter_dir, code, t_start, t_end, glitches):
     kept. Used by notebooks 04 and 05.
 
     `glitches` is the explicit list in TulePond_filepaths (creepmeter_glitches):
-    (code, first day, last day, reason) rows, days as 'YYYY-MM-DD' in this
-    reader's day convention (the day of a daily mean is the floor of its
-    decimal year). No automatic filter: only those days are dropped, and each
+    (code, first day, last day, reason) rows, days as 'YYYY-MM-DD' calendar
+    days (the day of a daily mean is the floor of its decimal year, which with
+    the 1-based day-of-year handled is the calendar day of its samples). No automatic filter: only those days are dropped, and each
     listed day inside the window must be in the record. Prints the days dropped.
     Returns (decimal_year, slip_mm) as two arrays."""
     cm = read_creepmeter_10min(creepmeter_file(creepmeter_dir, code), date_start=t_start, date_end=t_end)
@@ -806,8 +843,7 @@ def read_creepmeter_10min_raw(filepath, date_start=None, date_end=None):
     them across two days)."""
     df = pd.read_csv(filepath, sep=r"\s+", usecols=[0, 1, 2], header=None,
                      names=["year", "doy", "slip_mm"])
-    df["decimal_year"] = df["year"] + (df["doy"] / df["year"].apply(
-        lambda y: 366 if (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0) else 365))
+    df["decimal_year"] = creepmeter_decimal_year(df["year"].to_numpy(), df["doy"].to_numpy())   # 1-based doy
     if date_start is not None:
         df = df[df["decimal_year"] >= date_start]
     if date_end is not None:
@@ -846,20 +882,55 @@ def load_growclust_catalog(path, bbox=None):
 
 
 def load_aa(aa_dir, code):
-    """One USGS Bay Area alignment array (v3.0 archive): year, cumulative dextral
-    movement (mm), its std (mm), sorted by year. Two file layouts exist."""
+    """One USGS Bay Area alignment array (v3.0 archive): decimal year, cumulative
+    dextral movement (mm), its std (mm), sorted by year. Two file layouts exist.
+
+    The archive's decimal year (`Measurement_yr`, or `Year` in the old layout) is
+    year + doy / days with a 1-BASED day of year (HRKT `1979.726, 9/22/1979`:
+    265/365), so it is one day late against `date_to_decimal_year` (1 January =
+    year + 0) and the InSAR epochs (audit B_conventions F3). One day (1 / days in
+    that year) is taken off here: year + (doy - 1) / days. The survey-date column
+    (`Measurement_date`, or the third column of the old layout) is the check: over
+    each file the median of (archive year - date) must lie within 0.5 to 1.5 d
+    (asserted, so an archive re-issued in the other convention fails loud). Rows
+    where the corrected year and the date still disagree by more than 1.5 d are
+    inconsistencies inside the archive (one of the two mistyped, e.g. HAPP 2024.68
+    against 10/5/2024); they keep the archive's year and are printed."""
     d = pd.read_csv(os.path.join(aa_dir, f"{code}.csv"), encoding="latin-1")
     d = d.rename(columns={c: c.replace("\xa0", " ").strip() for c in d.columns})
     if "Measurement_yr" in d.columns:
-        d = d[["Measurement_yr", "Cumulative_dextral_movement_mm", "Dextral_movement_st_dev_mm"]]
+        date_column = "Measurement_date"
+        d = d[["Measurement_yr", "Cumulative_dextral_movement_mm", "Dextral_movement_st_dev_mm", date_column]]
     elif "Year" in d.columns:
-        d = d[["Year", "Cumulative movement (mm)", "Std. dev."]]
+        date_column = d.columns[2]                                  # the unnamed survey-date column after Year
+        d = d[["Year", "Cumulative movement (mm)", "Std. dev.", date_column]]
     else:
         raise ValueError(f"{code}: unrecognised alignment-array file layout ({list(d.columns)[:4]}...)")
-    d.columns = ["year", "cum_mm", "std_mm"]
-    d = d.apply(pd.to_numeric, errors="coerce").dropna(subset=["year", "cum_mm"])
+    d.columns = ["year", "cum_mm", "std_mm", "date"]
+    for column in ("year", "cum_mm", "std_mm"):
+        d[column] = pd.to_numeric(d[column], errors="coerce")
+    d = d.dropna(subset=["year", "cum_mm"]).copy()
     d["std_mm"] = d["std_mm"].fillna(0.0).clip(lower=0.0)
-    return d.sort_values("year").reset_index(drop=True)
+    # the archive's 1-based day of year -> 1 January = year + 0
+    whole_year = np.floor(d["year"].to_numpy()).astype(int)
+    is_leap = ((whole_year % 4 == 0) & (whole_year % 100 != 0)) | (whole_year % 400 == 0)
+    archive_year = d["year"].to_numpy()
+    d["year"] = archive_year - 1.0 / np.where(is_leap, 366.0, 365.0)
+    # the check against the survey dates
+    survey_day = pd.to_datetime(d["date"].astype(str).str.strip(), format="%m/%d/%Y", errors="coerce")
+    has_date = survey_day.notna().to_numpy()
+    assert has_date.sum() >= 0.9 * len(d), f"{code}: only {has_date.sum()} of {len(d)} surveys have a readable date"
+    date_year = np.array([date_to_decimal_year(day.to_pydatetime()) for day in survey_day[has_date]])
+    archive_minus_date_d = (archive_year[has_date] - date_year) * 365.25
+    median_offset_d = float(np.median(archive_minus_date_d))
+    assert 0.5 <= median_offset_d <= 1.5, (f"{code}: the archive year runs {median_offset_d:+.2f} d from the survey dates; "
+                                           f"the 1-based day-of-year correction assumes ~ +1 d")
+    disagree = np.abs(archive_minus_date_d - 1.0) > 1.5
+    if disagree.any() or (~has_date).any():
+        listed = ", ".join(f"{year:.3f} vs {day}" for year, day in zip(archive_year[has_date][disagree], d["date"].to_numpy()[has_date][disagree]))
+        print(f"  AA {code}: {disagree.sum()} surveys whose archive year and date disagree by > 1.5 d after the 1-day "
+              f"correction (kept at the archive year){': ' + listed if listed else ''}; {(~has_date).sum()} without a readable date")
+    return d[["year", "cum_mm", "std_mm"]].sort_values("year").reset_index(drop=True)
 
 
 def load_aa_summary(aa_summary, fault="Hayward"):
@@ -1079,10 +1150,14 @@ class Registry:
 
     def sidecar(self, name, lines):
         """Write a human-readable stats file next to the products, with a
-        provenance header. Returns the path (relative to outputs/)."""
+        provenance header (notebook, git, time; then this run's id; then the
+        input fingerprints). The header is also the record that the run
+        happened: render() uses it to retire the keys of a notebook whose
+        latest run registered nothing. Returns the path (relative to outputs/)."""
         path = os.path.join(self.out_dir, f"{name}_stats.txt")
         with open(path, "w") as f:
             f.write(f"# {provenance_stamp(self.notebook, self.repo_dir)}\n")
+            f.write(f"# run {self.run_id}\n")                  # render() reads it: a run that wrote this and registered nothing
             f.write(f"# inputs: {'; '.join(self._inputs)}\n")
             for line in lines:
                 f.write(str(line).rstrip("\n") + "\n")
@@ -1102,8 +1177,15 @@ class Registry:
         rows = pd.read_csv(self.csv_path, dtype=str)
         last_run = rows.sort_values("timestamp").groupby("notebook")["run_id"].last()
         in_last_run = latest.apply(lambda r: r["run_id"] == last_run.get(r["notebook"]), axis=1).astype(bool)
-        is_live = latest["notebook"].isin(current) & in_last_run
+        # ... and that latest run must be the notebook's latest run at all: registry.csv only sees runs that registered
+        # something, so a run that registered NOTHING (01_prep_inputs since 2026-10-02) used to leave its previous
+        # run's keys live (audit A_dataflow F9). Every run writes a sidecar first; one newer than the notebook's
+        # last registered row, from a run that registered nothing, retires all of that notebook's keys.
+        silent = self._notebooks_whose_latest_run_registered_nothing(rows)
+        is_live = latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
         live, retired = latest[is_live], latest[~is_live]
+        for nb in sorted(silent):
+            print(f"  {nb}: its latest run registered no numbers (sidecar newer than its last registry row); its keys are retired")
 
         def lines(f, frame):
             for nb, grp in frame.groupby("notebook"):
@@ -1125,6 +1207,38 @@ class Registry:
                 lines(f, retired)
         print(f"Rendered registry to: {self.txt_path}")
         return self.txt_path
+
+    def _notebooks_whose_latest_run_registered_nothing(self, rows):
+        """Notebooks whose newest sidecar (outputs/<notebook>/*_stats.txt with that notebook's provenance header)
+        comes from a run that registered no row. A sidecar from 2026-10-05 on carries its run id ('# run <id>',
+        second line): that run registered nothing if the id is not in registry.csv and the sidecar is not older
+        than the notebook's last registry row (the header time is to the minute). An older sidecar has no run id:
+        it counts only if its minute is strictly after the minute of the last registry row (a run writes its
+        sidecar before it registers, so the sidecar of the run that made the last rows is never later)."""
+        outputs_root = os.path.dirname(self.out_dir)
+        silent = set()
+        for nb, nb_rows in rows.groupby("notebook"):
+            last_row_minute = pd.Timestamp(nb_rows["timestamp"].max()).floor("min")
+            registered_runs = set(nb_rows["run_id"])
+            folder = os.path.join(outputs_root, nb)
+            if not os.path.isdir(folder):
+                continue
+            for name in os.listdir(folder):
+                if not name.endswith("_stats.txt"):
+                    continue
+                with open(os.path.join(folder, name)) as f:
+                    first_line = f.readline()
+                    second_line = f.readline()
+                if not first_line.startswith(f"# {nb} | git "):
+                    continue                                        # another notebook's (or an old name's) sidecar
+                written = pd.Timestamp(first_line.rsplit("|", 1)[1].strip())
+                if second_line.startswith("# run "):
+                    run_id = second_line[len("# run "):].strip()
+                    if run_id not in registered_runs and written >= last_row_minute:
+                        silent.add(nb)
+                elif written > last_row_minute:
+                    silent.add(nb)
+        return silent
 
 
 # ---------------------------------------------------------------------------

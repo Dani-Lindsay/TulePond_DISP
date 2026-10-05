@@ -34,6 +34,7 @@
 #
 # **Inputs**: `06_event_field_geometry/fig2_inputs.npz`;
 # `08a_3d_model/fig2_model_row_pylith_nuggetcd.npz` and `..._nuggetcd_homog.npz`;
+# `08a_3d_model/mw_rigidity_options.csv` (row `harmonic`: the SFSVM Mw of panel K, Dani 2026-10-05);
 # `07b_uniform_model_tests/fig2_model_row.npz` (07a's product: the quadtree samples the 08a
 # products must be on); `04_event_detection/event_fraction_by_crossing.csv` and
 # `creep_events.csv`; `hayward_fault_profiles.csv`; the alignment-array summary;
@@ -116,6 +117,7 @@ aa_file = common_paths["aa_summary"]
 pylith_model = os.path.join(paths_out["08a_3d_model"], "fig2_model_row_pylith_nuggetcd.npz")             # the paper's model
 pylith_compare = os.path.join(paths_out["08a_3d_model"], "fig2_model_row_pylith_nuggetcd_homog.npz")    # its homogeneous twin
 row07a_file = os.path.join(paths_out["07b_uniform_model_tests"], "fig2_model_row.npz")                   # 07a writes it there
+rigidity_file = os.path.join(paths_out["08a_3d_model"], "mw_rigidity_options.csv")    # 08a [15c]: Mw under each rigidity choice
 
 # %% [markdown]
 # ## [3] Load: the maps and profiles from notebook 06, the trace
@@ -524,11 +526,13 @@ def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, col
 # The selected 3D model (aligned SFCVM, nugget-only data covariance) draws panels I-L and
 # the vermillion lines on G and H; the homogeneous PyLith model of the same inversion draws
 # the blue lines on G and H only. Both must be on 07a's current quadtree samples, i.e. 08a
-# must have run after 07a (asserted).
+# must have run after 07a (asserted). Panel K's SFSVM Mw is the harmonic-mean row of 08a's
+# rigidity table (registry `08a_mw_sfcvm_harmonic`, `08a_mu_sfcvm_harmonic_gpa`), which must
+# belong to the same model (same potency, asserted).
 
 # %%
 ## [8]
-for path in (pylith_model, pylith_compare, row07a_file):
+for path in (pylith_model, pylith_compare, row07a_file, rigidity_file):
     assert os.path.exists(path), f"missing {path}: run 07a_uniform_model and 08a_3d_model first"
 model = np.load(pylith_model)
 compare = np.load(pylith_compare)
@@ -540,6 +544,13 @@ for product, product_file in ((model, pylith_model), (compare, pylith_compare)):
                     and np.array_equal(product["sample_lat"], row07a["sample_lat"]))
     assert same_samples, f"{product_file} is not on 07a's current quadtree samples: re-run 08a_3d_model after 07a"
 model_tag = "_" + str(model["model_tag"])               # in the Fig 2 file name
+rigidity_options = pd.read_csv(rigidity_file)
+assert "key" in rigidity_options.columns and (rigidity_options.key == "harmonic").sum() == 1, \
+    f"{rigidity_file} has no single 'harmonic' row: re-run 08a_3d_model"
+mw_harmonic = rigidity_options[rigidity_options.key == "harmonic"].iloc[0]
+assert abs(float(mw_harmonic.potency_m3) - float(model["potency_m3"])) <= 1e-6 * float(model["potency_m3"]), \
+    f"{rigidity_file} is not the model of {pylith_model} (potency differs): re-run 08a_3d_model"
+print(f"panel K: Mw {float(model['mw_30gpa']):.2f} (30 GPa), {mw_harmonic.Mw:.2f} (harmonic SFSVM, {mw_harmonic.mu_eff_gpa:.1f} GPa)")
 print(f"Fig 2 model row from {pylith_model} (tag {model_tag!r}); comparison {pylith_compare}")
 
 
@@ -573,7 +584,7 @@ for column in cols04:
     assert column in crossings04.columns, f"04's crossing table lacks the Tule Pond event {column}"
 crossing_mean04 = crossings04[cols04].mean(axis=1).values
 k_line_km = crossings04.km.values
-k_line_mm = utils.gaussian_smooth_km(crossing_mean04, crossings04.lat.values, profile_smooth_km)
+k_line_mm = utils.gaussian_smooth_km(crossing_mean04, crossings04.km.values, profile_smooth_km)
 print(f"K line: {np.isfinite(crossing_mean04).sum()} crossings, Gaussian sigma {profile_smooth_km} km")
 
 # %% [markdown]
@@ -649,8 +660,10 @@ def model_row(fig, product, lim):
     # no +/- in the label: the bootstrap 2-sigma understates the uncertainty, which is set by the sigma
     # choice and the SFCVM alignment; quote the range in the caption (08a registry
     # 08a_mw_30gpa_range_lo, 08a_mw_30gpa_range_hi)
-    fig.text(position="TR", text=f"M@-w@- {float(product['mw_30gpa']):.2f} (30 GPa), {float(product['mw_sfcvm']):.2f} "
-                                 f"({float(product['mu_effective_gpa']):.1f} GPa, USGS SFSVM)",
+    # the SFSVM Mw: harmonic mean of the two sides per triangle (08a [15c], Dani 2026-10-05), not the arithmetic
+    # mean stored in the product as mw_sfcvm
+    fig.text(position="TR", text=f"M@-w@- {float(product['mw_30gpa']):.2f} (30 GPa), {mw_harmonic.Mw:.2f} "
+                                 f"({mw_harmonic.mu_eff_gpa:.1f} GPa, USGS SFSVM)",
              justify="BR", offset="0c/0.12c", font=annot_font, no_clip=True)
 
     # L: slip on the unrolled fault, sampled on a regular grid by linear interpolation on the

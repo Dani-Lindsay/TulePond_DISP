@@ -532,7 +532,8 @@ def interp_to_dates(target_dates, dates, values):
     interp = np.interp(target_dates, dates, values)
     left = np.clip(np.searchsorted(dates, target_dates, side="right") - 1, 0, len(dates) - 1)   # real date at or before
     right = np.clip(left + 1, 0, len(dates) - 1)                                                # real date after
-    is_real = np.isclose(target_dates, dates[left], atol=0.5 / 365.25)                          # a real acquisition
+    is_real = np.isclose(target_dates, dates[left], rtol=0, atol=0.5 / 365.25)                  # a real acquisition
+    #                                       (rtol=0: on decimal years the default rtol=1e-5 alone is ~7 days)
     gap_days = (dates[right] - dates[left]) * 365.25
     inside = (target_dates >= dates[0] - 0.5 / 365.25) & (target_dates <= dates[-1] + 0.5 / 365.25)
     keep = inside & (is_real | (gap_days <= max_interp_gap_days))
@@ -645,7 +646,7 @@ print(utils.design_matrix_up_fp([crossing_inc["asc"][mid], crossing_inc["desc"][
 # along-fault trend. Crossings more than `trend_nsigma` robust sigma from a
 # 21-crossing running median are dropped from every product. The surviving
 # profile is smoothed with a 0.5 km Gaussian that preserves the gaps
-# (`utils.gaussian_smooth_km`).
+# (`utils.gaussian_smooth_km`; sigma in km along the trace, from `km_of`).
 #
 # PREPUB: (`np.polyfit`, as in the 2025 scripts)
 
@@ -672,9 +673,10 @@ print(f"along-fault rejection: {landslide_flag.sum()}/{len(fp_rate_raw)} crossin
 for ts in (los_interp["asc"], los_interp["desc"], up_ts, fp_ts):
     ts.iloc[landslide_flag, :] = np.nan
 fp_rate = np.where(landslide_flag, np.nan, fp_rate_raw)
-fp_rate_smooth = utils.gaussian_smooth_km(fp_rate, lats, rate_smooth_km)    # NaN-aware, gap-preserving
+crossing_km = km_of(lats)                                                       # along-trace km of each crossing
+fp_rate_smooth = utils.gaussian_smooth_km(fp_rate, crossing_km, rate_smooth_km)  # NaN-aware, gap-preserving, along-trace km
 up_rate = rate_per_crossing(up_ts)
-up_rate_smooth = utils.gaussian_smooth_km(up_rate, lats, rate_smooth_km)
+up_rate_smooth = utils.gaussian_smooth_km(up_rate, crossing_km, rate_smooth_km)
 
 valid = fp_rate[np.isfinite(fp_rate)]
 print(f"FP creep rate: {valid.size} valid crossings, median {np.median(valid):.2f} mm/yr, "
@@ -774,7 +776,8 @@ plt.show()
 # grid. Before both orbits reached 6-day sampling they shared few dates, so
 # nearly every early epoch has one track interpolated. The 6-day start dates and
 # the window when both were acquired on the same days are computed from the
-# acquisition lists, not assumed.
+# acquisition lists, not assumed; so is the share of all interpolated epochs
+# (both tracks) that fall before that window starts (registered).
 
 # %%
 # [28]
@@ -812,6 +815,12 @@ sameday_start = max(sixday_asc, sixday_desc, main_interp_block_end(common_dates,
                     main_interp_block_end(common_dates, real["desc"]))
 sameday_start = float(common_dates[common_dates > sameday_start].min())
 in_window = (common_dates >= sameday_start) & (common_dates <= s1b_death)
+# where the interpolation sits: the share of all interpolated epochs (both tracks together) before the
+# same-day window starts (the text: "most interpolated values fall before <that month>")
+n_interp = int((~real["asc"]).sum() + (~real["desc"]).sum())
+n_interp_before = int((~real["asc"] & (common_dates < sameday_start)).sum() + (~real["desc"] & (common_dates < sameday_start)).sum())
+assert n_interp > 0, "no interpolated epoch on either track"
+interp_before_pct = 100 * n_interp_before / n_interp
 
 s4_lines = [f"common grid: {len(common_dates)} dates, {month_year(common_dates[0])} to {month_year(common_dates[-1])}",
       f"both orbits real       : {both_real.sum()} epochs",
@@ -821,7 +830,9 @@ s4_lines = [f"common grid: {len(common_dates)} dates, {month_year(common_dates[0
       f"6-day sampling starts  : asc {month_year(sixday_asc)}, desc {month_year(sixday_desc)}",
       f"same-day window        : {month_year(sameday_start)} -> {month_year(s1b_death)} ({sameday_start:.3f}-{s1b_death:g}), "
       f"{in_window.sum()} epochs, both real {both_real[in_window].mean():.0%}, interpolated inside it: "
-      f"asc {(~real['asc'])[in_window].sum()}, desc {(~real['desc'])[in_window].sum()}"]
+      f"asc {(~real['asc'])[in_window].sum()}, desc {(~real['desc'])[in_window].sum()}",
+      f"interpolated epochs before the same-day window ({month_year(sameday_start)}): {n_interp_before} of {n_interp} "
+      f"(asc + desc), {interp_before_pct:.1f}%"]
 print("\n".join(s4_lines))
 
 fig, ax = plt.subplots(figsize=(7.2, 2.2))
@@ -877,6 +888,8 @@ REG.register("03_window_end", grid_end, "decyear", 3, where="M3", cell="common-g
 REG.register("03_sixday_start_asc", month_year(sixday_asc), "date", 0, where="M3", cell="figS4", sidecar=sidecar)
 REG.register("03_sixday_start_desc", month_year(sixday_desc), "date", 0, where="M3", cell="figS4", sidecar=sidecar)
 REG.register("03_sameday_window_epochs", int(in_window.sum()), "count", 0, where="M3", cell="figS4", sidecar=sidecar)
+REG.register("03_sameday_start", month_year(sameday_start), "date", 0, where="M3", cell="figS4", sidecar=sidecar)
+REG.register("03_interp_before_sameday_pct", interp_before_pct, "pct", 0, where="M3, Fig S4", cell="figS4", sidecar=sidecar)
 REG.register("03_n_crossings_common", len(fp_rate_raw), "count", 0, where="M3", cell="decompose", sidecar=sidecar)
 REG.register("03_n_landslide_flagged", int(landslide_flag.sum()), "count", 0, where="M3", cell="landslide-flag", sidecar=sidecar)
 REG.register("03_landslide_flagged_pct", 100 * landslide_flag.mean(), "pct", 0, where="M3", cell="landslide-flag", sidecar=sidecar)

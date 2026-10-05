@@ -43,15 +43,18 @@
 #    there). The products (`inversion_products<tag>.npz`, `results_comparison<tag>.csv`,
 #    `lcurve_<medium><tag>.csv`, the table `final_comparison.csv`) are provided. This notebook
 #    draws the one-page summary of every run and the all-tests figure and copies the table.
-# PREPUB: The inversions were re-made on 2026-10-02/03 with the measured-crossing surface constraint
-# PREPUB: (`drafts/pylith/overnight_2026-10-02.sh`, driver `drafts/pylith/pylith_sfcvm_gf.py` with its
-# PREPUB: `PYLITH_*` switches); the pre-2026-10-02 set is kept in `modeling_SFCVM/gf/pre_2026-10-02/`.
+# Every run is solved at the locked sigma of 08a (`sigma_locked`, Dani 2026-10-03), not at its own
+# L-curve pick (which each run still computes and records as `sigma_lcurve_pick`), so the spread of the
+# table is the spread of the factor tested, not of sigma. Each row carries the fingerprint of the 06
+# field it fits; [5] refuses a table made before the current 06 field or on another field.
+# PREPUB: The inversions are re-made by `drafts/pylith/models_overnight_2026-10-05.sh` (driver
+# PREPUB: `drafts/pylith/pylith_sfcvm_gf.py` with its `PYLITH_*` switches, `PYLITH_SIGMA=locked`); the earlier
+# PREPUB: sets are kept in `modeling_SFCVM/gf/pre_<date>/`.
 #
 # Surface % is the median modelled slip on the top-edge vertices of the SSE section over the median
-# of the measured crossings in the SSE section (08a [10]). The cached products of the earlier run used
-# 07a's running-median denominator: their surface % is re-expressed by the ratio of the two medians
-# (`surface_pct_cached_scale`, 08a [10]) wherever this notebook reads or registers it. The one-page
-# summaries and the all-tests figure, drawn from the cached products, still show the old surface %.
+# of the measured crossings in the SSE section (08a [10]; the one shared denominator of 07a, 08a, this
+# notebook and the driver, `surface_crossings.surface_pct_denominator_mm`), so cached and fresh
+# surface % are compared and registered as they are.
 #
 # 08a's cells [1]-[10] are exec'd from `scripts/08a_3d_model.py` (mesh, materials, cached PyLith
 # G, 07a's data and machinery, the validations, `invert_tents`, `numbers`), so nothing is
@@ -149,7 +152,7 @@ REPORT = ["Mw_30gpa", "Mw_sfcvm", "potency_m3", "surface_pct", "peak_slip_mm", "
 
 def check_table(mine, cached_file, cols, key_cols, rtol=1e-6):
     """CHECK: the columns `cols` of this run's table equal the cached product of the earlier run, row-matched on
-    key_cols. A cached surface % is re-expressed on the measured-crossing denominator (08a [10]) first."""
+    key_cols (surface % included: one denominator everywhere, 08a [10])."""
     assert os.path.exists(cached_file), f"missing cached product {cached_file}"
     theirs = pd.read_csv(cached_file)
     mine_sorted = mine.set_index(key_cols).sort_index()
@@ -158,8 +161,6 @@ def check_table(mine, cached_file, cols, key_cols, rtol=1e-6):
     worst = 0.0
     for col in cols:
         cached_values = theirs_sorted[col].values
-        if col == "surface_pct":
-            cached_values = cached_values * surface_pct_cached_scale
         diff = np.abs(mine_sorted[col].values - cached_values) / np.maximum(np.abs(cached_values), 1e-9)
         worst = max(worst, float(np.nanmax(diff)))
     assert worst < rtol, f"{os.path.basename(cached_file)}: max rel diff {worst:.2e}"
@@ -377,10 +378,11 @@ print("wrote figS_pylith_depth_scan.png")
 # chi2, surface %, potency, Mw at 30 GPa and with the SFCVM rigidity, the bootstrap 2-sigma where
 # made) and the per-run products are read from `modeling_SFCVM/gf/`; the runs are NOT recomputed
 # (each needs its own PyLith Green's-function run: mesh `shallow`, the dipping meshes, order-2
-# elements, the swath-7 and coherence-0.7 sample sets, the +/- 50 m SFCVM grids). The copy adds the
-# surface % re-expressed on the measured-crossing denominator (`surface_pct_measured_crossings`).
-# The `default` and `default_nuggetcd` rows are the models of 08a, which checked its fresh products
-# against these. One-page diagnostic per run and medium (`qc08b_summary_<run>_<medium>`), then the
+# elements, the swath-7 and coherence-0.7 sample sets, the +/- 50 m SFCVM grids).
+# CHECKS (fail loud on a stale table): the table is newer than 06's `fig2_inputs.npz` and `fp_maps.npz`;
+# every PyLith row (and every `results_comparison*.csv` the figures read) carries the current 06 field's
+# fingerprint and the locked sigma; the `default` and `default_nuggetcd` rows equal 08a's fresh
+# `results_comparison*.csv`. One-page diagnostic per run and medium (`qc08b_summary_<run>_<medium>`), then the
 # all-tests figure (`figS_pylith_all_tests`): near-fault fit both sides, west fit against Mw, and
 # the run-by-run ladder of the west-side rms, homogeneous vs SFCVM on the same settings.
 
@@ -398,17 +400,39 @@ def no_decimals(value):
 
 final_file = os.path.join(gf_cached, "final_comparison.csv")
 assert os.path.exists(final_file), f"missing {final_file}"
+for field_file in ("fig2_inputs.npz", "fp_maps.npz"):                      # stale table = made before the current 06 field
+    field_path = os.path.join(field_dir, field_file)
+    assert os.path.getmtime(final_file) > os.path.getmtime(field_path), \
+        f"{final_file} ({time.ctime(os.path.getmtime(final_file))}) is older than 06's {field_file} " \
+        f"({time.ctime(os.path.getmtime(field_path))}): re-run the driver inversions and final_comparison.py"
 sensitivity = pd.read_csv(final_file)
-assert {"run", "medium", "sigma", "rms_W300_mm", "Mw_30gpa", "surface_pct"} <= set(sensitivity.columns)
-sensitivity["surface_pct_measured_crossings"] = sensitivity.surface_pct * surface_pct_cached_scale
+assert {"run", "medium", "sigma", "sigma_lcurve_pick", "field_fingerprint", "rms_W300_mm", "Mw_30gpa", "surface_pct"} <= set(sensitivity.columns), \
+    f"{final_file} lacks the sigma / field provenance columns: made by an old final_comparison.py"
+pylith_rows = sensitivity[sensitivity.run != "07 CSI baseline"]
+stale = pylith_rows[pylith_rows.field_fingerprint.astype(str) != field_fingerprint]
+assert stale.empty, f"{len(stale)} sensitivity rows fit another 06 field (not {field_fingerprint}): {sorted(set(stale.run))}"
+off_sigma = pylith_rows[~np.isclose(pylith_rows.sigma.astype(float), sigma_locked)]
+assert off_sigma.empty, f"{len(off_sigma)} sensitivity rows not at the locked sigma {sigma_locked:g}: {sorted(set(off_sigma.run))}"
+for cd in CD_TAG:                                                           # the default rows ARE 08a's models
+    results_08a = pd.read_csv(os.path.join(dir_08a, f"results_comparison{CD_TAG[cd]}.csv")).set_index("model")
+    for medium in media:
+        row = pylith_rows[(pylith_rows.run == run_tag(cd)) & (pylith_rows.medium == medium)]
+        assert len(row) == 1, f"{run_tag(cd)} / {medium}: {len(row)} rows in {final_file}"
+        for col in ("Mw_30gpa", "potency_m3", "surface_pct", "rms_mm"):
+            mine = float(results_08a.loc[f"PyLith {medium}", col])
+            assert abs(float(row[col].iloc[0]) - mine) <= 1e-6 * abs(mine), f"{final_file} {run_tag(cd)} / {medium} {col} differs from 08a's"
+print(f"PASS: {final_file} is newer than the 06 field, every PyLith row fits field {field_fingerprint} at sigma {sigma_locked:g}, "
+      f"and its default rows equal 08a's")
 sensitivity["provenance"] = f"copied by 08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')} from {final_file}"
 sensitivity.to_csv(os.path.join(out_dir, "sensitivity_runs.csv"), index=False)
-show = sensitivity.drop(columns=["summary_png", "provenance"]).copy()
+show = sensitivity.drop(columns=["summary_png", "provenance", "field_fingerprint", "made"]).copy()
 for col in ("rms_mm", "rms_W300_mm", "rms_E300_mm", "Mw_30gpa", "Mw_sfcvm", "Mw_30gpa_2sd", "Mw_sfcvm_2sd", "surface_pct_2sd"):
     show[col] = show[col].map(two_decimals)
-for col in ("chi2", "surface_pct", "surface_pct_measured_crossings", "potency_m3"):
+for col in ("chi2", "surface_pct", "potency_m3"):
     show[col] = show[col].map(no_decimals)
 show["sigma"] = show["sigma"].map("{:g}".format)
+show["sigma_lcurve_pick"] = show["sigma_lcurve_pick"].map(lambda v: "" if pd.isna(v) else f"{v:g}")
+show["sigma_corner"] = show["sigma_corner"].map(lambda v: "" if pd.isna(v) else f"{v:.1f}")
 cols = list(show.columns)
 print("| " + " | ".join(cols) + " |")
 print("|" + "---|" * len(cols))
@@ -417,7 +441,6 @@ for row in show.itertuples(index=False):
     for value in row:
         cells.append(str(value))
     print("| " + " | ".join(cells) + " |")
-pylith_rows = sensitivity[sensitivity.run != "07 CSI baseline"]
 print(f"\n{len(pylith_rows)} PyLith inversions on {pylith_rows.run.nunique()} run tags (+ the 07a CSI baseline row)")
 
 import plot_run_summary
@@ -426,6 +449,11 @@ tags = []
 for results_file in glob.glob(os.path.join(gf_cached, "results_comparison*.csv")):
     tags.append(os.path.basename(results_file).replace("results_comparison", "").replace(".csv", ""))
 tags = sorted(tags)
+for tag in tags:                                                            # the figures read every table: none may be stale
+    table_tag = pd.read_csv(os.path.join(gf_cached, f"results_comparison{tag}.csv"))
+    pylith_tag = table_tag[table_tag.model.str.startswith("PyLith ")]
+    assert (pylith_tag.field_fingerprint.astype(str) == field_fingerprint).all(), f"results_comparison{tag}.csv fits another 06 field"
+    assert np.allclose(pylith_tag.sigma.astype(float), sigma_locked), f"results_comparison{tag}.csv is not at the locked sigma"
 summary_pages = []
 for tag in tags:
     media_tag = []
@@ -442,8 +470,8 @@ print(f"{len(summary_pages)} one-page summaries; all-tests figure on {len(all_ru
 #
 # `08b_*` = the selected model; `08b_hom_*`, `08b_full_*`, `08b_full_hom_*` as in 08a. The
 # structural range keys (`08b_sens_*`) are over every SFCVM run WITH the surface constraint in the
-# sensitivity table (mesh, Cd treatments, swath, dip, order, alignment, coherence); the surface %
-# range is on the measured-crossing denominator. NB: `08b_*_2sig` and 08a's `08a_*_2sig` are the same
+# sensitivity table (mesh, Cd treatments, swath, dip, order, alignment, coherence), all at the locked
+# sigma; surface % on the one measured-crossing denominator. NB: `08b_*_2sig` and 08a's `08a_*_2sig` are the same
 # bootstrap (this notebook's fresh one and the cached one 08a reads, checked equal in [2]).
 
 # %%
@@ -472,10 +500,11 @@ for medium, cd in RUNS:
                  f"depth scan: best {scan.loc[scan.chi2.idxmin()].D_km:g} km, bracket {bracket.D_km.min():g}-{bracket.D_km.max():g} km "
                  f"(Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f})")
 sens_sfcvm = pylith_rows[(pylith_rows.medium.str.startswith("sfcvm")) & (pylith_rows.surface == "on")]
-lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions; SFSVM with surface constraint ({len(sens_sfcvm)} runs): "
+lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions at sigma {sigma_locked:g} on 06 field {field_fingerprint}; "
+             f"SFSVM with surface constraint ({len(sens_sfcvm)} runs): "
              f"Mw30 {sens_sfcvm.Mw_30gpa.min():.2f}-{sens_sfcvm.Mw_30gpa.max():.2f}, rms W300 {sens_sfcvm.rms_W300_mm.min():.2f}-{sens_sfcvm.rms_W300_mm.max():.2f} mm, "
-             f"surface {sens_sfcvm.surface_pct_measured_crossings.min():.0f}-{sens_sfcvm.surface_pct_measured_crossings.max():.0f} % "
-             f"(measured-crossing denominator; cached x {surface_pct_cached_scale:.4f})")
+             f"surface {sens_sfcvm.surface_pct.min():.0f}-{sens_sfcvm.surface_pct.max():.0f} %; "
+             f"own L-curve picks {', '.join(f'{v:g}' for v in sorted(set(sens_sfcvm.sigma_lcurve_pick)))} (not used)")
 print("\n".join(lines))
 with open(os.path.join(out_dir, "tests_summary.txt"), "w") as fh:
     fh.write(f"# 08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')}\n" + "\n".join(lines) + "\n")
@@ -520,7 +549,7 @@ for medium, cd in RUNS:
 REG.register("08b_n_sensitivity_runs", int(len(pylith_rows)), "count", 0, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_mw_30gpa_min", float(sens_sfcvm.Mw_30gpa.min()), "Mw", 2, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_mw_30gpa_max", float(sens_sfcvm.Mw_30gpa.max()), "Mw", 2, where="M8", cell="sensitivity", sidecar=sidecar)
-REG.register("08b_sens_surface_pct_min", float(sens_sfcvm.surface_pct_measured_crossings.min()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
-REG.register("08b_sens_surface_pct_max", float(sens_sfcvm.surface_pct_measured_crossings.max()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
+REG.register("08b_sens_surface_pct_min", float(sens_sfcvm.surface_pct.min()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
+REG.register("08b_sens_surface_pct_max", float(sens_sfcvm.surface_pct.max()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.render()
 print("08b_3d_model_tests complete")

@@ -19,6 +19,8 @@ Run:  pytest tests/test_insar_utils.py -v      (env: opera_disp_feb13)
 import os
 import sys
 
+from datetime import datetime
+
 import numpy as np
 import pytest
 
@@ -330,13 +332,29 @@ def test_read_creepmeter_10min_raw_matches_daily_reader():
 
 
 def test_gaussian_smooth_km_constant_gaps_and_width():
-    lats = 37.5 + 0.1 / 111.19 * np.arange(200)                  # crossings every 0.1 km
+    km = 70.0 - 0.1 * np.arange(200)                              # crossings every 0.1 km along the trace, south -> north
     x = np.full(200, 5.0); x[50:53] = np.nan
-    out = utils.gaussian_smooth_km(x, lats, 0.15)
+    out = utils.gaussian_smooth_km(x, km, 0.15)
     assert np.allclose(out[np.isfinite(x)], 5.0) and np.isnan(out[50:53]).all()   # constant kept, gaps stay gaps
     spike = np.zeros(200); spike[100] = 1.0
-    w = utils.gaussian_smooth_km(spike, lats, 0.15)
+    w = utils.gaussian_smooth_km(spike, km, 0.15)
     assert np.isclose(w.sum(), 1.0, atol=1e-6) and np.isclose(np.sqrt(np.sum(w * (np.arange(200) - 100) ** 2)) * 0.1, 0.15, atol=0.01)
+
+
+def test_gaussian_smooth_km_is_along_trace_and_rejects_latitudes():
+    """sigma is km ALONG THE TRACE: a missing crossing is a hole, not a closer neighbour (the spike's
+    neighbours across a 1 km hole get the weight of 1 km, not of 0.1 km), and latitudes (the old
+    signature, spacing ~0.001) fail loud."""
+    km = np.r_[np.arange(0.0, 5.0, 0.1), np.arange(6.0, 11.0, 0.1)]       # a 1 km hole between 4.9 and 6.0
+    spike = np.zeros(km.size); spike[49] = 1.0                             # the crossing at 4.9 km, at the hole's edge
+    w = utils.gaussian_smooth_km(spike, km, 0.3)
+    assert w[50] < 1e-2 * w[49]                                            # 6.0 km is 1.1 km away (3.7 sigma): next to no weight
+    assert w[48] > 0.5 * w[49]                                             # 4.8 km is 0.1 km away: full neighbour
+    lats = 37.5 + 0.1 / 111.19 * np.arange(200)
+    with pytest.raises(AssertionError, match="not latitude"):
+        utils.gaussian_smooth_km(np.ones(200), lats, 0.15)
+    with pytest.raises(AssertionError, match="fault order"):
+        utils.gaussian_smooth_km(np.ones(4), np.array([0.0, 0.1, 0.3, 0.2]), 0.15)
 
 
 def test_daily_creepmeter_drops_listed_glitches_and_zeroes():
@@ -351,7 +369,7 @@ def test_daily_creepmeter_drops_listed_glitches_and_zeroes():
             slip = 100.0 + 0.1 * doy + 4.0 * (doy >= 40.5)        # and a 4 mm creep step half way through day 40
             rows.append((2018, doy, slip))
     rows[144 * 30] = (2018, 31.0, -338.0)                      # a CPP1-style spike on record day 31
-    day_31 = "2018-02-01"                                      # record day 31 in the reader's convention: 1 January + 31 days
+    day_31 = "2018-01-31"                                      # record day 31: the doy is 1-based, so 31 January
     with tempfile.TemporaryDirectory() as folder:
         with open(os.path.join(folder, "test.10min"), "w") as f:
             for year, doy, slip in rows:
@@ -359,13 +377,64 @@ def test_daily_creepmeter_drops_listed_glitches_and_zeroes():
         dates, slip = utils.daily_creepmeter(folder, "TEST", 2018.0, 2019.0, [("TEST", day_31, day_31, "spike")])
         assert slip[0] == 0.0
         assert len(dates) == 59                                # only the listed day is dropped
-        assert not np.any(np.isclose(dates * 365, 31.0, atol=0.5))
+        assert not np.any(np.isclose((dates - 2018.0) * 365, 30.0, rtol=0, atol=0.5))   # 31 January = 2018 + 30/365
         assert np.all(np.diff(dates) > 0)
         assert np.isclose(slip[-1], 0.1 * 59 + 4.0, atol=0.01)    # the creep and the whole step are kept
         unlisted_dates, _ = utils.daily_creepmeter(folder, "TEST", 2018.0, 2019.0, [("OTHER", day_31, day_31, "spike")])
         assert len(unlisted_dates) == 60                       # another instrument's glitch does not touch this one
         with pytest.raises(AssertionError):                    # a listed day missing from the record fails loud
             utils.daily_creepmeter(folder, "TEST", 2018.0, 2019.0, [("TEST", "2018-06-01", "2018-06-01", "gap")])
+
+
+def test_creepmeter_day_of_year_is_one_based():
+    """USGS creepmeter doy 1.000 is 1 January 00:00 (cfw1.10min.gz: '2020 1.000000000' is the first sample of
+    2020, '2019 365.993055556' the last of 2019), so it maps to year + 0, as date_to_decimal_year does."""
+    assert utils.creepmeter_decimal_year(np.array([2020]), np.array([1.0]))[0] == 2020.0
+    assert np.isclose(utils.creepmeter_decimal_year(np.array([2019]), np.array([365.993055556]))[0],
+                      utils.date_to_decimal_year(datetime(2019, 12, 31, 23, 50)), rtol=0, atol=1e-7)
+    assert np.isclose(utils.creepmeter_decimal_year(np.array([2020]), np.array([60.5]))[0],     # leap year: 29 Feb 12:00
+                      utils.date_to_decimal_year(datetime(2020, 2, 29, 12)), rtol=0, atol=1e-9)
+    with pytest.raises(AssertionError):
+        utils.creepmeter_decimal_year(np.array([2019]), np.array([0.5]))                      # doy 0.5 does not exist
+
+
+def test_load_aa_is_one_day_earlier_than_the_archive_year():
+    """The archive's decimal year is year + doy/days with a 1-based doy; load_aa takes the day off, so a survey
+    lands on its calendar date (HRKT '1979.726, 9/22/1979'), and fails loud on a file in the other convention."""
+    import tempfile
+    from TulePond_filepaths import common_paths
+    if os.path.exists(os.path.join(common_paths["aa_dir"], "HRKT.csv")):
+        hrkt = utils.load_aa(common_paths["aa_dir"], "HRKT")
+        assert utils.decimal_year_to_day(hrkt.year.iloc[0]).date().isoformat() == "1979-09-22"
+    header = "Site_code,Measurement_yr,Measurement_date,Cumulative_dextral_movement_mm,Dextral_movement_st_dev_mm\n"
+    days = ["3/1/2018", "6/15/2018", "9/30/2018", "12/31/2018", "1/1/2019"]
+    with tempfile.TemporaryDirectory() as folder:
+        with open(os.path.join(folder, "TST1.csv"), "w") as f:                 # the archive's 1-based convention
+            f.write(header + "".join(f"TST1,{utils.date_to_decimal_year(day) + 1 / 365:.6f},{day},{k},0.1\n" for k, day in enumerate(days)))
+        aa = utils.load_aa(folder, "TST1")
+        assert np.allclose(aa.year, [utils.date_to_decimal_year(day) for day in days], rtol=0, atol=1e-5)
+        with open(os.path.join(folder, "TST2.csv"), "w") as f:                 # already 0-based: must fail loud
+            f.write(header + "".join(f"TST2,{utils.date_to_decimal_year(day):.6f},{day},{k},0.1\n" for k, day in enumerate(days)))
+        with pytest.raises(AssertionError, match="1-based"):
+            utils.load_aa(folder, "TST2")
+
+
+def test_render_retires_keys_of_a_run_that_registered_nothing(tmp_path):
+    """A notebook whose latest run wrote its sidecar but registered no number (01_prep_inputs since 2026-10-02)
+    has all its older keys retired; a run that wrote a sidecar AND registered keeps them live."""
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = tmp_path / "outputs"
+    paths = {"out_dir": str(out), "registry_csv": str(out / "registry.csv"), "registry_txt": str(out / "registry.txt")}
+    first = utils.Registry("05_validation", paths, repo)                   # a notebook that exists in the repo
+    first.sidecar("05_validation", ["first run"])
+    first.register("05_kept_if_rerun", 1, "count", 0, "P3", "a")
+    live, _ = open(first.render()).read().split("## By manuscript location")
+    assert "05_kept_if_rerun = 1" in live                                   # sidecar + registration: live
+    silent = utils.Registry("05_validation", paths, repo)                  # the next run registers nothing
+    silent.sidecar("05_validation", ["second run"])
+    text = open(silent.render()).read()
+    live, retired = text.split("RETIRED")
+    assert "05_kept_if_rerun" not in live and "05_kept_if_rerun = 1" in retired
 
 
 def test_strike_frame_origin_axes_and_roundtrip():

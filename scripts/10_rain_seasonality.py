@@ -26,8 +26,25 @@
 # 3. **Onset seasonality**: every season-resolved onset (the InSAR windows and the
 #    bimonthly-era array windows, all 130 d or less) on the water year over the rain
 #    (a working figure here; the paper's Fig 3B is drawn by 11_forecast from the
-#    panel products this notebook saves). The wet season of this count is November to
-#    March (`wet_season_months`); 11_forecast uses its own, named windows.
+#    panel products this notebook saves). The wet season is October to April
+#    (`wet_season_months`, Dani 2026-10-05), the same months as 11_forecast's
+#    "WY2027 wet season" (one definition, `TulePond_filepaths.wet_season_months`).
+#
+# **The day convention (the one place it is defined; 11_forecast and drafts/10x read
+# the days this notebook writes).** InSAR acquisitions are UTC: the ascending pass
+# (09157) is at ~02:08Z, the evening of the PREVIOUS local day (18:08 PST), the descending
+# pass (11115) at ~14:08Z, the morning of the same local day (06:08 PST); the times are
+# read from the OPERA granule names. Rain is booked by the LOCAL day (Fremont midnight
+# basis; Newark, a morning observer, shifted -1 d onto it, Fremont 0 d, both asserted).
+# So every InSAR onset window is turned into local calendar days before it meets the
+# rain: the first day is the local day of the LATER acquisition among the tracks that
+# acquired on `onset_lo`, the last day is the local day of the EARLIER acquisition among
+# the tracks that acquired on `onset_hi` (the tracks that acquired on a date are the
+# columns of 03's per-track series). The window is inclusive of both days. The local
+# day is computed in `rain_day_timezone` and must equal the standard-time (UTC-8) day
+# (asserted: no acquisition is near local midnight, so daylight saving cannot move it).
+# Array windows are survey days, already local. The renewal forecast of 11 works in
+# continuous decimal years and is not affected (hours).
 #
 # The forecast of the next event and the rainfall conditioning of the onsets
 # are notebook 11 (11_forecast), which reads the rain table this notebook writes.
@@ -38,13 +55,17 @@
 # **Inputs**: the three GHCN-daily gauge files, 04 `creep_events.csv` (InSAR onset windows, `onset_lo`
 # to `onset_hi`), 09 `hrkt_aa_events.csv` (array onset windows, the same columns, plus `onset_mid`, the
 # window midpoint, for plot positions only) and `aa_insar_stacks.csv` (the start of the InSAR
-# record), the HRKT array file (the end of its bimonthly surveys).
+# record), the HRKT array file (the end of its bimonthly surveys), 03 `creep_ts_LOS_<track>.csv`
+# (the header only: each track's acquisition dates) and the OPERA granule names of each frame
+# (`TulePond_filepaths.frames[<frame>]["data_dir"]`; the names only: each acquisition's UTC time).
 #
 # **Outputs** (`outputs/10_rain_seasonality/`): `tulepond_daily_precip.csv`,
-# `wateryear_totals.csv`, `event_table.csv`, the Fig 3 panel products `fig3_rain_panel.npz` and
+# `wateryear_totals.csv`, `event_table.csv` (window ends as local days, `window_day_basis`),
+# the Fig 3 panel products `fig3_rain_panel.npz` (with the wet-season months) and
 # `fig3_onset_windows.csv` (one row per onset window of both catalogues: `onset_lo`, `onset_hi`,
-# `onset_mid` for the plot position, the day of water year of each end; read by 11), the stats
-# sidecar `10_rain_stats.txt`, registry rows `10_*`.
+# `onset_mid` for the plot position, the window as local calendar days `day_lo`, `day_hi`, the UTC
+# acquisitions that bound an InSAR window `utc_lo`, `utc_hi`, and the day of water year of each
+# end; read by 11), the stats sidecar `10_rain_stats.txt`, registry rows `10_*`.
 #
 # **Figures**: `qc10_onset_seasonality_wateryear_density7d_vmax80mm` (working figure, not Fig 3).
 #
@@ -52,16 +73,27 @@
 # 0.73-1.29 over the complete years; no rescaling); Newark shifted by one day agrees better with
 # Hayward on storm days and lines up with it on the 11 Dec 2014 storm (both asserted); every InSAR
 # onset window and the 30 days before it on Fremont alone (asserted: the Newark fill does not
-# enter the InSAR analysis); the onset windows counted against the wet season BY WINDOW, not
-# midpoint (November to March: wholly inside, partly, wholly outside; `10_n_wet_season_*`).
+# enter the InSAR analysis); the InSAR windows in local days (printed beside the UTC days: a window
+# whose first or last acquisition is ascending starts or ends one day earlier); the onset windows
+# counted against the wet season BY WINDOW, not midpoint (October to April: wholly inside, partly,
+# wholly outside; `10_n_wet_<season>_*`, e.g. `10_n_wet_oct_apr_inside`).
+#
+# PREPUB: Until 2026-10-05 the count used November to March under the keys `10_n_wet_season_inside`,
+# PREPUB: `_partly`, `_outside`, `10_n_insar_wet_season_inside` and `10_wet_season_rain_pct`. Those keys are
+# PREPUB: no longer registered, so registry.txt lists them as RETIRED; do not quote them.
 
 # %%
 # [2]
+import calendar
+import glob
 import os
+import re
 import urllib.request
 
 import insar_utils as utils
+import TulePond_filepaths as filepaths
 from TulePond_filepaths import common_paths, paths_out, repo_dir, forecast_issue_date, rain_total_days, rain_total_mm
+from TulePond_filepaths import frames, insar_dic_list
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -102,9 +134,32 @@ storm_day_mm = 10.0                # gauge comparison: days on which either gaug
 complete_wy = (1980, 2025)         # the complete water years the rain climatology is quoted over
 insar_rain_check_days = 30         # the one-gauge check: each InSAR window and this many days before it must be Fremont alone
 
+# the day convention (header): InSAR acquisitions are UTC, rain is booked by the local day
+rain_day_timezone = "America/Los_Angeles"   # the gauges' local day
+rain_day_standard_offset_h = -8             # local standard time (PST); the local day must come out the same (asserted)
+
 # the seasonality
 resolvable_days = 130      # array windows longer than this do not constrain the season (= 09's dense_window_days)
-wet_season_months = [11, 12, 1, 2, 3]   # the wet season of the onset count, November to March (its share of the year's rain is computed below)
+# the wet season, (first month, last month): ONE definition for this onset count and 11's forecast window (Dani
+# 2026-10-05: October to April). It belongs in TulePond_filepaths as wet_season_months; until it is there, the
+# fallback below is used and the run says so (11 reads the same, and checks it against the months saved here)
+wet_season_fallback = (10, 4)
+if hasattr(filepaths, "wet_season_months"):
+    wet_season_first_last = tuple(filepaths.wet_season_months)
+    wet_season_source = "TulePond_filepaths.wet_season_months"
+else:
+    wet_season_first_last = wet_season_fallback
+    wet_season_source = f"FALLBACK in {notebook}: add wet_season_months = {wet_season_fallback} to TulePond_filepaths"
+    print("WARNING:", wet_season_source)
+assert len(wet_season_first_last) == 2 and all(int(m) == m and 1 <= m <= 12 for m in wet_season_first_last), \
+    f"wet_season_months must be (first month, last month), got {wet_season_first_last}"
+first_wet_month, last_wet_month = (int(m) for m in wet_season_first_last)
+wet_season_months = []                     # the months of the season in order, wrapping across the new year
+for k in range((last_wet_month - first_wet_month) % 12 + 1):
+    wet_season_months.append((first_wet_month - 1 + k) % 12 + 1)
+wet_season_tag = f"{calendar.month_abbr[first_wet_month].lower()}_{calendar.month_abbr[last_wet_month].lower()}"   # in the registry keys
+wet_season_text = f"{calendar.month_name[first_wet_month]} to {calendar.month_name[last_wet_month]}"
+print(f"wet season {wet_season_text}, months {wet_season_months} ({wet_season_source})")
 density_days = 7           # the figure: running rain total (days)
 density_max = 80           # ... mm at full colour
 rain_colours = ["#FFFFFF", "#C6DBEF", "#4292C6", "#08306B"]      # sequential blues for the rain (no other blue on the panel)
@@ -118,19 +173,27 @@ stacks_file = os.path.join(paths_out["09_alignment_arrays"], "aa_insar_stacks.cs
 hrkt_file = os.path.join(common_paths["aa_dir"], "HRKT.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 aa_events_file = os.path.join(paths_out["09_alignment_arrays"], "hrkt_aa_events.csv")
+# each track's acquisition dates (03's per-track series, header only) and the frame whose granule names give their UTC times
+track_files = {}
+granule_dirs = {}
+for dic in insar_dic_list:
+    track_files[dic["ORBIT_DIRECTION"]] = os.path.join(paths_out["03_creep_timeseries"], f"creep_ts_LOS_{dic['ORBIT_DIRECTION']}.csv")
+    granule_dirs[dic["ORBIT_DIRECTION"]] = (dic["Frame"], frames[dic["Frame"]]["data_dir"])
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
 gauge_files = []
 for sid in stations:
     gauge_files.append(os.path.join(common_paths["ghcn_dir"], f"{sid}.csv"))
-REG.inputs(events_file, aa_events_file, stacks_file, hrkt_file, *gauge_files)
+REG.inputs(events_file, aa_events_file, stacks_file, hrkt_file, *gauge_files, *track_files.values())
 
 # %% [markdown]
-# ## [5] Functions: dates and water years
+# ## [5] Functions: dates, water years and the local day of an acquisition
 #
 # Water year N runs Oct 1 of N-1 to Sep 30 of N; day of water year counts
 # from Oct 1 = 1. A decimal year is turned into its calendar day first, so
 # every day of water year in this notebook comes from the same calendar.
+# An InSAR acquisition's UTC time comes from its OPERA granule name, and its
+# rain day is the local day of that time (the day convention, header).
 
 # %%
 # [6]
@@ -171,6 +234,51 @@ def dowy_frac(decimal_years):
 def sigma_from_ci95(lo, hi):
     """1 sigma from a 95 % interval: for a normal distribution it spans mean +/- 1.96 sigma (full width 3.92 sigma)."""
     return (hi - lo) / 3.92
+
+
+def acquisition_clock(frame, granule_dir):
+    """The UTC time of every secondary acquisition of one OPERA DISP-S1 frame, from the granule names
+    (OPERA_L3_DISP-S1_IW_F<frame>_VV_<reference>Z_<secondary>Z_v...nc), as a Series indexed by the UTC day."""
+    names = sorted(glob.glob(os.path.join(granule_dir, f"OPERA_L3_DISP-S1_IW_F{frame}_VV_*.nc")))
+    assert names, f"no OPERA granules of frame {frame} in {granule_dir}"
+    times = []
+    for name in names:
+        match = re.search(r"_(\d{8}T\d{6})Z_(\d{8}T\d{6})Z_v", os.path.basename(name))
+        assert match, f"unexpected granule name {os.path.basename(name)}"
+        times.append(pd.Timestamp(match.group(2)))
+    clock = pd.Series(times, index=pd.DatetimeIndex(times).normalize()).sort_index()
+    assert clock.index.is_unique, f"frame {frame}: two granules share a secondary day"
+    return clock
+
+
+def local_day(utc_time):
+    """The local calendar day (the rain day) of a UTC time; it must be the same in standard time (asserted)."""
+    local = pd.Timestamp(utc_time).tz_localize("UTC").tz_convert(rain_day_timezone).tz_localize(None).normalize()
+    standard = (pd.Timestamp(utc_time) + pd.Timedelta(hours=rain_day_standard_offset_h)).normalize()
+    assert local == standard, f"{utc_time} UTC is near local midnight: its rain day depends on daylight saving"
+    return local
+
+
+def insar_local_window(onset_lo, onset_hi):
+    """An InSAR onset window as local calendar days (inclusive): from the local day of the LATER acquisition among the
+    tracks that acquired on the UTC day of onset_lo, to the local day of the EARLIER acquisition among the tracks
+    that acquired on the UTC day of onset_hi. Returns (first day, last day, the bounding UTC times, their tracks)."""
+    utc_day_lo = utils.decimal_year_to_day(onset_lo)
+    utc_day_hi = utils.decimal_year_to_day(onset_hi)
+    before = {}
+    after = {}
+    for track in track_days:
+        if utc_day_lo in track_days[track]:
+            before[track] = track_clock[track][utc_day_lo]
+        if utc_day_hi in track_days[track]:
+            after[track] = track_clock[track][utc_day_hi]
+    assert before and after, f"window {utc_day_lo.date()}..{utc_day_hi.date()}: an end is not an acquisition of either track"
+    track_lo = max(before, key=before.get)          # the last look before the step
+    track_hi = min(after, key=after.get)            # the first look after it
+    day_lo = local_day(before[track_lo])
+    day_hi = local_day(after[track_hi])
+    assert day_lo <= day_hi, f"window {utc_day_lo.date()}..{utc_day_hi.date()} is empty in local days"
+    return day_lo, day_hi, before[track_lo], after[track_hi], track_lo, track_hi
 
 # %% [markdown]
 # ## [7] The daily rain composite
@@ -328,6 +436,11 @@ stats_lines.append(f"CHECK Newark shift: vs Hayward on storm days r {r_as_publis
 # bimonthly era, whose survey windows (130 d or less) resolve the season (asserted). Each InSAR
 # event gets an `onset_mid` (the window midpoint), as the array events have: a plot position only.
 #
+# The windows in local days (the day convention, header): `onset_days`, one row per window of both
+# catalogues, is the only place a window becomes calendar days; every rain quantity below, 11_forecast and
+# drafts/10x read these days. Each track's acquisition dates are 03's per-track columns, and every one must
+# have a granule (asserted), so each InSAR window end has a UTC time.
+#
 # CHECK, one gauge for the InSAR analysis: every InSAR onset window and the `insar_rain_check_days`
 # days before it must be Fremont, with no Newark-filled day (asserted); the days inside those spans
 # with no data from either gauge are printed.
@@ -341,11 +454,48 @@ aa_dense = pd.read_csv(aa_events_file)
 assert (aa_dense.window_days <= resolvable_days).all(), f"09 returned an array window longer than {resolvable_days} d"
 print(f"InSAR {len(insar_events)} events; array bimonthly era {len(aa_dense)} events (windows <= {resolvable_days} d)")
 
+# the acquisition clock of each track: its dates (03's columns) and their UTC times (granule names)
+track_clock = {}
+track_days = {}
+clock_lines = []
+for track, (frame, granule_dir) in granule_dirs.items():
+    track_clock[track] = acquisition_clock(frame, granule_dir)
+    track_days[track] = set(to_date(pd.read_csv(track_files[track], index_col=0, nrows=0).columns.astype(float)))
+    no_granule = sorted(track_days[track] - set(track_clock[track].index))
+    assert not no_granule, f"{track}: {len(no_granule)} acquisition dates of 03 have no {frame} granule, e.g. {no_granule[:3]}"
+    seconds_of_day = (track_clock[track] - track_clock[track].index).dt.total_seconds()
+    clock_lines.append(f"  {track} (frame {frame}): {len(track_days[track])} acquisitions, UTC {seconds_of_day.min() / 3600:.2f}-"
+                       f"{seconds_of_day.max() / 3600:.2f} h = local day of the UTC date "
+                       f"{(local_day(track_clock[track].iloc[0]) - track_clock[track].index[0]).days:+d} d")
+print("acquisition clock (OPERA granule names):\n" + "\n".join(clock_lines))
+
+# every onset window as local calendar days, inclusive
+onset_rows = []
+for event in insar_events.itertuples():
+    day_lo, day_hi, utc_lo, utc_hi, track_lo, track_hi = insar_local_window(event.onset_lo, event.onset_hi)
+    onset_rows.append(dict(source="InSAR", src="insar", onset_lo=event.onset_lo, onset_hi=event.onset_hi, onset_mid=event.onset_mid,
+                           day_lo=day_lo, day_hi=day_hi, utc_lo=utc_lo, utc_hi=utc_hi, track_lo=track_lo, track_hi=track_hi,
+                           step_mm=event.amplitude_mm, step_err=sigma_from_ci95(event.amp_lo, event.amp_hi),
+                           window_day_basis=f"local day ({rain_day_timezone}) of the bounding UTC acquisitions"))
+for event in aa_dense.itertuples():
+    onset_rows.append(dict(source="HRKT array", src="aa_dense", onset_lo=event.onset_lo, onset_hi=event.onset_hi, onset_mid=event.onset_mid,
+                           day_lo=to_date([event.onset_lo])[0], day_hi=to_date([event.onset_hi])[0], utc_lo=pd.NaT, utc_hi=pd.NaT,
+                           track_lo="", track_hi="", step_mm=event.amplitude_mm, step_err=event.amp_err,
+                           window_day_basis="survey day (local)"))
+onset_days = pd.DataFrame(onset_rows)
+assert (onset_days.day_lo <= onset_days.day_hi).all()
+window_lines = ["InSAR onset windows, UTC days of the grid epochs -> local days (the rain days):"]
+for row in onset_days[onset_days.src == "insar"].itertuples():
+    window_lines.append(f"  {to_date([row.onset_lo])[0].date()}..{to_date([row.onset_hi])[0].date()} UTC -> {row.day_lo.date()}..{row.day_hi.date()} local "
+                        f"(last look before {row.track_lo} {row.utc_lo:%Y-%m-%d %H:%M}Z, first after {row.track_hi} {row.utc_hi:%Y-%m-%d %H:%M}Z)")
+print("\n".join(window_lines))
+insar_days = onset_days[onset_days.src == "insar"].reset_index(drop=True)
+
 # one gauge over the InSAR analysis: each InSAR window and the insar_rain_check_days before it, Fremont only
 no_data_days = []
-for event in insar_events.itertuples():
-    first_day = to_date([event.onset_lo])[0] - pd.Timedelta(days=insar_rain_check_days)
-    last_day = to_date([event.onset_hi])[0]
+for event in insar_days.itertuples():
+    first_day = event.day_lo - pd.Timedelta(days=insar_rain_check_days)
+    last_day = event.day_hi
     span = rain.loc[first_day:last_day]
     sources_in_span = set(span.src.unique())
     assert sources_in_span <= {"FREMONT", "none"}, \
@@ -356,18 +506,20 @@ print(f"every InSAR onset window and the {insar_rain_check_days} d before it: Fr
       + (", ".join(no_data_days) if no_data_days else "none"))
 stats_lines.append(f"CHECK one gauge for the InSAR analysis: every InSAR window and the {insar_rain_check_days} d before it on FREMONT "
                    f"alone (asserted); no-data days in those spans: " + (", ".join(no_data_days) if no_data_days else "none"))
+stats_lines += ["DAY CONVENTION: InSAR windows turned into local rain days (header); acquisition clock:"] + clock_lines + window_lines
 
 
 # %% [markdown]
 # ## [13] The event table: every season-resolved onset, with its rain
 #
-# One row per event: the InSAR events (04) and the HRKT events of the bimonthly era (09). The onset is
+# One row per event: the InSAR events (04) and the HRKT events of the bimonthly era (09), the window as the
+# local days of `onset_days` (`window_lo`, `window_hi`; `window_day_basis` says which kind of day). The onset is
 # equally likely anywhere in its window, so every rain quantity is given at BOTH ends of the window (never at a
 # midpoint): the day of the water year, the season, the water-year rain to date, and the days since the last
 # storm, a `rain_total_days`-day total of at least `rain_total_mm` (TulePond_filepaths; a description of each window only: 11 tests a grid of totals and lags).
 # The step is 04's or 09's fitted amplitude with its 1-sigma error (the InSAR 95 % bootstrap bounds / 3.92).
 # Missing rain days in the water year up to the window are counted, so a gap in the composite shows. The share
-# of each window inside the wet season (November to March) is added; written to `event_table.csv`.
+# of each window inside the wet season (`wet_season_months`) is added; written to `event_table.csv`.
 
 # %%
 # [14]
@@ -389,16 +541,12 @@ def days_since_storm(day):
     return (day - last_storm[day]).days
 
 
-catalogue_rows = []
-for event in insar_events.itertuples():
-    catalogue_rows.append(("InSAR", event.onset_lo, event.onset_hi, event.amplitude_mm, sigma_from_ci95(event.amp_lo, event.amp_hi)))
-for event in aa_dense.itertuples():
-    catalogue_rows.append(("HRKT array", event.onset_lo, event.onset_hi, event.amplitude_mm, event.amp_err))
 table_rows = []
 wet_fraction_by_window = {}            # (source, first day) -> fraction of the window's days in the wet season (unrounded)
-for source, window_lo, window_hi, step_mm, step_err in catalogue_rows:
-    day_lo = to_date([window_lo])[0]
-    day_hi = to_date([window_hi])[0]
+for window in onset_days.itertuples():
+    source, window_lo, window_hi, step_mm, step_err = window.source, window.onset_lo, window.onset_hi, window.step_mm, window.step_err
+    day_lo = window.day_lo
+    day_hi = window.day_hi
     assert rain.index[0] <= day_lo <= day_hi <= rain.index[-1], f"{source} window {day_lo.date()}-{day_hi.date()} outside the rain record"
     seasons = []
     for season in season_order:
@@ -406,7 +554,8 @@ for source, window_lo, window_hi, step_mm, step_err in catalogue_rows:
             seasons.append(season)
     window_days_all = pd.date_range(day_lo, day_hi)
     wet_fraction_by_window[(source, day_lo.date())] = float(window_days_all.month.isin(wet_season_months).mean())
-    table_rows.append(dict(source=source, window_lo=day_lo.date(), window_hi=day_hi.date(), window_days=round((window_hi - window_lo) * 365.25),
+    table_rows.append(dict(source=source, window_lo=day_lo.date(), window_hi=day_hi.date(), window_day_basis=window.window_day_basis,
+                           window_days=round((window_hi - window_lo) * 365.25),
                            step_mm=round(step_mm, 1), step_1sigma_mm=round(step_err, 1), water_year=int(rain.wy[day_lo]),
                            dowy_lo=int(rain.dowy[day_lo]), dowy_hi=int(rain.dowy[day_hi]), season="/".join(seasons),
                            wy_rain_to_date_lo_mm=round(float(rain_to_date[day_lo]), 0), wy_rain_to_date_hi_mm=round(float(rain_to_date[day_hi]), 0),
@@ -434,7 +583,8 @@ assert n_wet_inside + n_wet_partly + n_wet_outside == len(event_table)
 # the wet season's share of the year's rain: median over the complete water years
 in_wet = rain.index.month.isin(wet_season_months)
 wet_share = (rain.prcp_mm[in_wet].groupby(rain.wy[in_wet]).sum() / rain.prcp_mm.groupby(rain.wy).sum()).reindex(complete_years.index)
-print(f"wet season (months {wet_season_months}) = {100 * wet_share.median():.0f} % of the water-year rain (median of {len(wet_share)} complete years)")
+print(f"wet season ({wet_season_text}, months {wet_season_months}) = {100 * wet_share.median():.0f} % of the water-year rain "
+      f"(median of {len(wet_share)} complete years)")
 print(f"onset windows: {n_wet_inside} of {len(event_table)} wholly inside the wet season ({n_insar_wet_inside} of {is_insar.sum()} InSAR, "
       f"{int((wet_fraction[~is_insar] == 1).sum())} of {(~is_insar).sum()} array), {n_wet_partly} partly, {n_wet_outside} wholly outside")
 
@@ -476,10 +626,9 @@ for j, wy in enumerate(water_years):
 x_edges.append(water_years[-1] + 273 / 365.25)
 cmap = LinearSegmentedColormap.from_list("rain", rain_colours)
 mesh = ax.pcolormesh(np.array(x_edges), np.arange(-0.5, 367.5), rain_grid, cmap=cmap, vmin=0, vmax=density_max, shading="flat", rasterized=True, zorder=0)
-for event in aa_dense.itertuples():
-    onset_bar(ax, event.onset_mid, dowy_frac(event.onset_lo)[0], dowy_frac(event.onset_hi)[0], array_bar_colour, 1.8)
-for event in insar_events.itertuples():
-    onset_bar(ax, event.onset_mid, dowy_frac(event.onset_lo)[0], dowy_frac(event.onset_hi)[0], insar_bar_colour, 2.6)
+for src, bar_colour, bar_width in (("aa_dense", array_bar_colour, 1.8), ("insar", insar_bar_colour, 2.6)):
+    for event in onset_days[onset_days.src == src].itertuples():        # the local days (the day convention)
+        onset_bar(ax, event.onset_mid, dowy([event.day_lo])[0], dowy([event.day_hi])[0], bar_colour, bar_width)
 ax.set_xlim(x0, x1)
 ax.set_ylim(366, 1)
 ax.set_yticks([1, 62, 124, 182, 244, 305, 366])
@@ -516,16 +665,17 @@ survey_gap_days = np.diff(hrkt.year.values) * 365.25
 dense_era_end = float(hrkt.year.values[np.max(np.where(survey_gap_days <= resolvable_days)[0]) + 1])
 insar_start = float(hrkt_stack.date.min())
 print(f"bimonthly surveys at HRKT end {dense_era_end:.2f}; annual surveys from then until the InSAR record starts {insar_start:.2f}")
-window_tables = []
-for src, cat in (("aa_dense", aa_dense), ("insar", insar_events)):
-    window_tables.append(pd.DataFrame(dict(src=src, onset_lo=cat.onset_lo.values, onset_hi=cat.onset_hi.values, onset_mid=cat.onset_mid.values,
-                                           dowy_lo=dowy_frac(cat.onset_lo.values), dowy_hi=dowy_frac(cat.onset_hi.values))))
-windows = pd.concat(window_tables, ignore_index=True)
+# the windows as local days (onset_days, the day convention); 11 reads day_lo/day_hi for every rain quantity
+windows = onset_days[["src", "onset_lo", "onset_hi", "onset_mid", "day_lo", "day_hi", "utc_lo", "utc_hi", "window_day_basis"]].copy()
+windows["dowy_lo"] = np.asarray(dowy(windows.day_lo))
+windows["dowy_hi"] = np.asarray(dowy(windows.day_hi))
+windows["day_lo"] = windows.day_lo.dt.strftime("%Y-%m-%d")
+windows["day_hi"] = windows.day_hi.dt.strftime("%Y-%m-%d")
 assert len(windows) == len(aa_dense) + len(insar_events) and windows[["dowy_lo", "dowy_hi"]].notna().all().all()
 windows.to_csv(os.path.join(out_dir, "fig3_onset_windows.csv"), index=False)
 np.savez(os.path.join(out_dir, "fig3_rain_panel.npz"), rain_grid=rain_grid, x_edges=np.asarray(x_edges), density_days=density_days,
          density_max=density_max, x0=x0, x1=x1, loma_prieta=loma_prieta, dense_era_end=dense_era_end, insar_start=insar_start,
-         rain_colours=np.array(rain_colours))
+         rain_colours=np.array(rain_colours), wet_season_months=np.array(wet_season_months))     # 11 checks it uses the same season
 print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 11_forecast")
 
 # %% [markdown]
@@ -533,7 +683,8 @@ print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 11_forecast")
 
 # %%
 # [20]
-stats_lines += ["", f"onset windows against the wet season (months {wet_season_months}, {100 * wet_share.median():.0f} % of the year's rain): "
+stats_lines += ["", f"onset windows against the wet season ({wet_season_text}, months {wet_season_months}, {wet_season_source}; "
+                f"{100 * wet_share.median():.0f} % of the year's rain): "
                 f"{n_wet_inside} of {len(event_table)} wholly inside, {n_wet_partly} partly, {n_wet_outside} wholly outside; "
                 f"InSAR {n_insar_wet_inside} of {is_insar.sum()} wholly inside"]
 sidecar = REG.sidecar("10_rain", stats_lines)
@@ -544,9 +695,11 @@ REG.register("10_wy_p10_mm", complete_years.total_mm.quantile(.1), "mm", 0, wher
 REG.register("10_wy_p90_mm", complete_years.total_mm.quantile(.9), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
 REG.register("10_n_aa_season_resolved", len(aa_dense), "count", 0, where="Fig3 caption", cell="catalogues", sidecar=sidecar)
 REG.register("10_n_events", len(event_table), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register("10_n_wet_season_inside", n_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register("10_n_wet_season_partly", n_wet_partly, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register("10_n_wet_season_outside", n_wet_outside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register("10_n_insar_wet_season_inside", n_insar_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register("10_wet_season_rain_pct", 100 * wet_share.median(), "%", 0, where="P10", cell="seasonality", sidecar=sidecar)
+# the season is in the key (e.g. 10_n_wet_oct_apr_inside): a change of season retires the old keys instead of overwriting
+# them (the November-to-March keys 10_n_wet_season_* and 10_wet_season_rain_pct were retired so on 2026-10-05)
+REG.register(f"10_n_wet_{wet_season_tag}_inside", n_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"10_n_wet_{wet_season_tag}_partly", n_wet_partly, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"10_n_wet_{wet_season_tag}_outside", n_wet_outside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"10_n_insar_wet_{wet_season_tag}_inside", n_insar_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"10_wet_{wet_season_tag}_rain_pct", 100 * wet_share.median(), "%", 0, where="P10", cell="seasonality", sidecar=sidecar)
 REG.render()

@@ -47,6 +47,7 @@
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -111,7 +112,23 @@ align_tag = "".join(f"_{m[6:]}" for m in media if m.startswith("sfcvm_"))   # al
                                                                   # their products never overwrite the default run's
 out_tag = (("" if mesh_preset == "default" else f"_{mesh_preset}") + dip_tag + points_tag + order_tag + align_tag
            + ("" if use_surface else "_nosurf") + cd_tag)         # suffix of every product of this run
-print(f"run: mesh {mesh_preset}, dip {dip}, points {points_set}, order {elem_order}, surface {use_surface}, Cd {cd_mode} (floor {cd_floor}); tag {out_tag!r}")
+
+
+def sigma_locked_08a():
+    """The model sigma locked in scripts/08a_3d_model.py (Dani 2026-10-03): the literal on its `sigma_locked = ...`
+    line, read here so it is typed in one place only."""
+    found = re.findall(r"^sigma_locked\s*=\s*([0-9.]+)", open(os.path.join(REPO, "scripts", "08a_3d_model.py")).read(), re.M)
+    assert len(found) == 1, f"08a_3d_model.py: {len(found)} `sigma_locked = <number>` lines, expected 1"
+    return float(found[0])
+
+
+SIGMA_LOCKED_08A = sigma_locked_08a()
+sigma_env = os.environ.get("PYLITH_SIGMA", "")                   # "" = each run's own L-curve pick (the rule of 07a [8]);
+sigma_fixed = {"": None, "locked": SIGMA_LOCKED_08A}.get(sigma_env)   # "locked" = 08a's sigma_locked for every run (the
+if sigma_env not in ("", "locked"):                               # sensitivity runs, Dani 2026-10-05); or a number
+    sigma_fixed = float(sigma_env)
+print(f"run: mesh {mesh_preset}, dip {dip}, points {points_set}, order {elem_order}, surface {use_surface}, Cd {cd_mode} (floor {cd_floor}); "
+      f"sigma {'L-curve pick' if sigma_fixed is None else f'fixed {sigma_fixed:g}'}; tag {out_tag!r}")
 mu_ref = 3.0e10                         # 30 GPa reference rigidity (07)
 test_km, test_depth_m, test_slip_mm = (57.0, 61.0), 1000.0, 10.0      # validation (a) slip patch
 plt.rcParams.update({"font.size": 12, "savefig.facecolor": "white", "figure.facecolor": "white"})
@@ -252,6 +269,14 @@ for medium in media:
     if not os.path.exists(path):
         build_G.main([run_names[medium]], points_file=points_file + ".npz")
     gnpz[medium] = np.load(path)
+    # the cached G is projected on the strike it was built with: rebuild it (from the cached PyLith outputs, no PyLith
+    # run) when the current field's strike differs (2026-10-05: the along-trace section moved the strike 146.40 -> 146.51)
+    strike_now = float(np.load("/Users/dlindsay/work/proj_TulePond_DISP/outputs/07b_uniform_model_tests/fig2_model_row.npz")["strike_deg"])   # 07a's strike of the current field (what build_G projects on)
+    if abs(float(gnpz[medium]["strike_deg"]) - strike_now) > 1e-6:
+        print(f"G_{run_names[medium]}: built at strike {float(gnpz[medium]['strike_deg']):.4f}, field at {strike_now:.4f} -> rebuilding")
+        build_G.main([run_names[medium]], points_file=points_file + ".npz")
+        gnpz[medium] = np.load(path)
+    assert abs(float(gnpz[medium]["strike_deg"]) - strike_now) < 1e-6, f"G_{run_names[medium]} strike differs from the field's"
     G[medium] = gnpz[medium]["G_rl_m_per_m"]
 ref_medium = list(media)[0]                                  # order-2 SFCVM can be inverted before order-2 homog exists
 for medium in media:
@@ -322,9 +347,11 @@ if "sfcvmasis" in media:
 # %% [markdown]
 # ## [6] 07's data and machinery
 #
-# `scripts/07_slip_model.py` cells [1]-[6] exec'd unchanged (as `scripts/07_slip_model_tests.py` and the drafts do):
-# data, quadtree (2386 samples), noise covariance, the crossing-stack surface profile, the CSI triangle fault and
-# `invert`. The samples must be the PyLith output points.
+# `scripts/07a_uniform_model.py` cells [1]-[6] exec'd unchanged (as 08a does): data, quadtree (2386 samples), noise
+# covariance, the measured crossings, the surface % denominator `crossing_median` (re-derived here from the shared
+# helper and asserted equal), the CSI triangle fault and `invert`. The samples must be the PyLith output points.
+# Every product carries the fingerprint of the 06 field it fits (`field_fingerprint`); for the swath-7 and
+# coherence-0.7 sample sets, whose data live in their points npz, that npz must be newer than 06's field.
 
 # %%
 ## [6]
@@ -334,6 +361,12 @@ for old, new in (("REG = utils.Registry(notebook, common_paths, repo_dir)", "REG
     assert head_07.count(old) == 1, f"07a_uniform_model.py layout changed: {old!r} not found once"   # as 08a: no registry writes from here
     head_07 = head_07.replace(old, new)
 exec(head_07)
+field_fp_file = os.path.join(field_dir, "fp_maps.npz")              # the 06 field every run fits (directly or via its points npz)
+field_fingerprint = f"fp_maps.npz:{utils.file_fingerprint(field_fp_file)}"   # registry form; never parsed as a number
+if points_set in ("swath7", "coh07"):                    # their data live in the points npz (make_points_swath.py)
+    assert os.path.getmtime(points_file + ".npz") > os.path.getmtime(field_fp_file) \
+        and str(points["field_fingerprint"] if "field_fingerprint" in points.files else "") == field_fingerprint, \
+        (f"{points_file}.npz was made from another (older) 06 field; re-make it (models_overnight_2026-10-05.sh step 2)")
 row07 = np.load(os.path.join(tests_dir, "fig2_model_row.npz"))
 fault07_trace = copy.deepcopy(fault)                    # 07's fault (trace), for maps
 if points_set in ("swath7", "coh07"):                   # make_points_swath.py: 07's cells [1]-[4] with swath_km 7 (2396 samples) or on
@@ -579,7 +612,9 @@ fig.savefig(os.path.join(FIG, f"fig_iii_validation_mesh{out_tag}.png"), dpi=300)
 # interpolated to every top-edge impulse vertex, errors scaled by sqrt(vertices per 0.2 km) as 07 does for its
 # triangles, with G = 1 on that vertex's own slip (the tent equals the slip at its vertex).
 # NB: `buildCmXY` normalises by lambda0 from the parameter spacing, so sigma is not numerically comparable with
-# 07's triangle sigma; each medium gets its own L-curve corner, with the same rule as 07 [8].
+# 07's triangle sigma; each medium gets its own L-curve corner, with the same rule as 07 [8]. With PYLITH_SIGMA
+# set (`locked` = 08a's sigma_locked, the sensitivity runs from 2026-10-05) the model is solved at that sigma
+# instead; the L-curve is still computed and saved, its pick recorded as `lcurve_pick` / `sigma_lcurve_pick`.
 #
 # **Data covariance (`PYLITH_CD`).** The choice of Cd is the one thing that changes between the runs on this
 # fault; it is a standard modelling choice, not new physics:
@@ -644,10 +679,13 @@ def tent_fault(name):
 
 
 sys.path.insert(0, os.path.join(REPO, "scripts", "pylith_helpers"))
-from surface_crossings import crossing_constraint        # the surface constraint (Dani 2026-10-02), shared with 08a
+from surface_crossings import crossing_constraint, surface_pct_denominator_mm   # surface constraint (2026-10-02) and the one
+                                                                                 # surface % denominator (2026-10-05), shared with 07a/08a/08b
 top_order = surface_imp[np.argsort(imp_xyz[surface_imp, 1])]          # top-edge impulse vertices, south to north (mesh y)
 assert np.all(np.diff(imp_xyz[top_order, 1]) > 0), "top-edge vertices not monotone in mesh y"
 crossings_in = crossings_all[(crossings_all.km >= km_window[0]) & (crossings_all.km <= km_window[1])]
+assert abs(surface_pct_denominator_mm(crossings_in.km.values, crossings_in.mean_event_mm.values, creep_lo_km, creep_hi_km)
+           - crossing_median) < 1e-12, "07a's crossing_median is not the median of the measured crossings in the SSE section"
 
 
 def surface_constraint(floor_mm=surf_floor_mm):
@@ -728,8 +766,8 @@ mw = lambda m0: (2.0 / 3.0) * (np.log10(m0) - 9.1)
 # ## [9] L-curve for each medium (07 [8] rule)
 #
 # Same sigma grid, same weighted misfit sqrt(chi2 InSAR + chi2 surface) against the prior-weighted roughness,
-# corner by maximum curvature of cubic splines in log sigma (end intervals excluded), selected = smallest grid
-# sigma at or above the corner.
+# corner by maximum curvature of cubic splines in log sigma (end intervals excluded), L-curve pick = smallest grid
+# sigma at or above the corner; selected = the pick, or the fixed sigma (PYLITH_SIGMA) when one is given.
 
 # %%
 ## [9]
@@ -757,13 +795,17 @@ def lcurve(medium):
     d1, dd1, d2, dd2 = s_mis(fine_ls, 1), s_mis(fine_ls, 2), s_rough(fine_ls, 1), s_rough(fine_ls, 2)
     curvature = np.abs(d1 * dd2 - d2 * dd1) / (d1 ** 2 + d2 ** 2) ** 1.5
     corner = float(10 ** fine_ls[np.argmax(curvature)])
-    selected = float(fam.sigma[fam.sigma >= corner].min())
-    fam["corner"], fam["selected"] = corner, selected
+    pick = float(fam.sigma[fam.sigma >= corner].min())
+    selected = pick if sigma_fixed is None else sigma_fixed
+    fam["corner"], fam["lcurve_pick"], fam["selected"] = corner, pick, selected
+    fam["sigma_rule"] = "L-curve pick" if sigma_fixed is None else f"fixed (PYLITH_SIGMA={sigma_env})"
     fam.to_csv(os.path.join(HERE, "gf", f"lcurve_{medium}{out_tag}.csv"), index=False)
-    print(f"{medium}: L-curve corner sigma {corner:.1f} -> selected {selected:g}")
+    print(f"{medium}: L-curve corner sigma {corner:.1f} -> pick {pick:g}; model solved at sigma {selected:g}"
+          + ("" if selected == pick else f" (fixed: PYLITH_SIGMA={sigma_env}; NOT the pick)"))
     return fam, corner, selected
 
 
+assert sigma_fixed is None or sigma_fixed in sigma_grid, f"fixed sigma {sigma_fixed:g} is not on the grid {sigma_grid} (08b needs its neighbours)"
 families = {}
 for medium in media:
     families[medium] = lcurve(medium)
@@ -785,9 +827,11 @@ fig.savefig(os.path.join(FIG, f"fig_lcurves{out_tag}.png"), dpi=300)
 # ## [10] The selected models and their numbers
 #
 # rms, rms within 300 m west / east of 07's trace, chi2 (InSAR, full covariance), surface slip against the
-# crossings (median over top-edge vertices in the SSE section / crossing median, as 07's surface_pct), potency
-# (exact tent integral), Mw at 30 GPa and with the SFCVM rigidity of the PyLith cells beside the fault.
-# The 07 CSI baseline is re-scored from `fig2_model_row.npz` on the same samples.
+# crossings (median over top-edge vertices in the SSE section / median of the measured crossings there, the one
+# denominator `crossing_median`), potency (exact tent integral), Mw at 30 GPa and with the SFCVM rigidity of the
+# PyLith cells beside the fault; and the provenance columns: the sigma used, the L-curve pick and corner, the
+# sigma rule, the 06 field fingerprint, the time. The 07 CSI baseline is re-scored from `fig2_model_row.npz` on
+# the same samples (07a quotes Mw at 30 GPa only: Mw_sfcvm empty).
 
 # %%
 ## [10]
@@ -795,13 +839,16 @@ models, table = {}, []
 west = (signed_d_km < 0) & (signed_d_km >= -0.3)
 east = (signed_d_km > 0) & (signed_d_km <= 0.3)
 res07 = row07["residual_mm"]
+made = time.strftime("%Y-%m-%d %H:%M")
+provenance_cols = dict(field_fingerprint=field_fingerprint, made=made)
 if points_set == "default":
   table.append(dict(model="CSI homogeneous (07)", sigma=float(row07["sigma"]),
                   rms_mm=float(np.sqrt(np.mean(res07 ** 2))), rms_west300_mm=float(np.sqrt(np.mean(res07[west] ** 2))),
                   rms_east300_mm=float(np.sqrt(np.mean(res07[east] ** 2))),
                   chi2=float(np.dot(res07, np.linalg.solve(samples.Cd, res07))),
                   surface_pct=float(row07["surf_ratio_pct"]), potency_m3=np.nan,
-                  Mw_30gpa=float(row07["mw_30gpa"]), Mw_sfcvm=float(row07["mw_sfcvm"])))
+                  Mw_30gpa=float(row07["mw_30gpa"]), Mw_sfcvm=np.nan, sigma_lcurve_pick=np.nan, sigma_corner=np.nan,
+                  sigma_rule="07a L-curve pick", **provenance_cols))
 for medium in media:
     fam, corner, selected = families[medium]
     flt, ds, surface = invert_tents(medium, selected)
@@ -816,7 +863,9 @@ for medium in media:
                       chi2=float(np.dot(res, np.linalg.solve(ds.Cd, res))),
                       surface_pct=float(100 * np.median(slip_vec[in_sec]) / crossing_median),
                       potency_m3=pot, Mw_30gpa=mw(mu_ref * pot), Mw_sfcvm=mw(moment_sfcvm(slip_vec, medium)),
-                      peak_slip_mm=float(slip_vec.max()), peak_depth_m=float(-imp_xyz[np.argmax(slip_vec), 2])))
+                      peak_slip_mm=float(slip_vec.max()), peak_depth_m=float(-imp_xyz[np.argmax(slip_vec), 2]),
+                      sigma_lcurve_pick=float(fam.lcurve_pick.iloc[0]), sigma_corner=corner, sigma_rule=str(fam.sigma_rule.iloc[0]),
+                      **provenance_cols))
 results = pd.DataFrame(table).set_index("model")
 results.to_csv(os.path.join(HERE, "gf", f"results_comparison{out_tag}.csv"))
 print(results.round(3).T.to_string())
@@ -897,9 +946,11 @@ np.savez(os.path.join(HERE, "gf", f"inversion_products{out_tag}.npz"),
                                   cd_mode=cd_mode, cd_floor=cd_floor, use_surface=use_surface,
                                   points=f"{points_set} ({samples.vel.size} samples, " + {"default": "07 quadtree swath 4 km", "swath7": "swath 7 km",
                                                                                           "coh07": "coh 0.7 field, swath 4 km"}[points_set] + ")",
-                                  run_names=run_names, n_impulses=int(n_imp), mesh_file=os.path.basename(mesh_file))),
+                                  run_names=run_names, n_impulses=int(n_imp), mesh_file=os.path.basename(mesh_file),
+                                  sigma_rule="L-curve pick" if sigma_fixed is None else f"fixed {sigma_fixed:g} (PYLITH_SIGMA={sigma_env})",
+                                  field_fingerprint=field_fingerprint)),
          validation_a=pd.Series(val_a).to_json(), validation_b=pd.Series(val_b).to_json(), validation_c=json.dumps(val_c),
-         results=results.to_json(), provenance=f"pylith_sfcvm_gf.py {time.strftime('%Y-%m-%d %H:%M')}; runs {run_names}; "
+         results=results.to_json(), provenance=f"pylith_sfcvm_gf.py {made}; runs {run_names}; 06 field {field_fingerprint}; "
                                                f"mesh {mesh_file}; {grid['provenance']}")
 import plot_run_summary                                   # the one-page diagnostic per medium (from the products just written)
 plot_run_summary.main(out_tag, list(media))

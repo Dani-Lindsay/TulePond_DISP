@@ -8,6 +8,8 @@ text substitutions (each asserted to occur exactly once; scripts/06 and outputs/
   - out_dir / fig_dir                    -> drafts/pylith/coh07/coh<NN>/ (every file this span writes goes there)
   - the time-function fit cache          -> READ from 06's own outputs (asserted valid, never refitted or written there)
   - the saved-steps / burst-offset paths -> read from 06's own outputs (saved-products mode only)
+    (the saved-steps line follows 06's loop form since 2026-10-05; the gate reads 06's outputs from paths_out, the
+    data root, since outputs/ left the repo on 2026-10-01)
   - REG = utils.Registry(...)            -> a no-op (nothing is written to outputs/registry.csv)
 06 applies coh_maps only when it differs from coh_timeseries (0.7); at coh_maps 0.7 the maps therefore use the
 fit mask itself, i.e. every pixel with temporal coherence >= 0.7 in both tracks.
@@ -26,6 +28,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 os.chdir(REPO)
 sys.path.insert(0, REPO)
+from TulePond_filepaths import paths_out   # noqa: E402
 coh = float(sys.argv[1])
 assert coh in (0.7, 0.9)
 out = os.path.join(HERE, f"coh{int(round(coh * 10)):02d}")
@@ -48,7 +51,7 @@ subs = [
     ("coh_maps = 0.9 ", f"coh_maps = {coh} "),
     ('out_dir = paths_out[notebook]\n', f'out_dir = paths_out[notebook]\nin_dir = out_dir\nout_dir = {out!r}\n'),
     ('fig_dir = common_paths["fig_dir"]\n', f'fig_dir = {out!r}\n'),
-    ('saved_steps = {o: os.path.join(out_dir, f"tulepond_steps_{o}.h5")', 'saved_steps = {o: os.path.join(in_dir, f"tulepond_steps_{o}.h5")'),
+    ('    saved_steps[orbit] = os.path.join(out_dir, f"tulepond_steps_{orbit}.h5")', '    saved_steps[orbit] = os.path.join(in_dir, f"tulepond_steps_{orbit}.h5")'),
     ('    burst_df = pd.read_csv(os.path.join(out_dir, "burst_offsets.csv"))', '    burst_df = pd.read_csv(os.path.join(in_dir, "burst_offsets.csv"))'),
     ('    f_fit = os.path.join(out_dir, f"timefunc_fit_{orbit}.npz")', '    f_fit = os.path.join(in_dir, f"timefunc_fit_{orbit}.npz")'),
     ('    if cache_ok:\n        coef = ', '    assert cache_ok, "06 time-function cache unusable: refusing to refit into outputs/06"\n    if cache_ok:\n        coef = '),
@@ -71,7 +74,7 @@ np.savez(os.path.join(out, "los_mean_event.npz"), lon=ns["lon_g"], lat=ns["lat_g
 print(f"coh {coh}: fp_event finite pixels {n_fp} ({time.time() - t0:.0f} s); wrote {out}/fp_maps.npz")
 
 if coh == 0.9:                                                          # the reproduction gate
-    ref = np.load(os.path.join(REPO, "outputs", "06_event_field_geometry", "fig2_inputs.npz"))["fp_event"]
+    ref = np.load(os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz"))["fp_event"]
     a, b = fp["fp_event"], ref
     assert a.shape == b.shape, f"shape {a.shape} vs {b.shape}"
     assert np.array_equal(np.isfinite(a), np.isfinite(b)), "NaN pattern differs from 06's fig2_inputs fp_event"

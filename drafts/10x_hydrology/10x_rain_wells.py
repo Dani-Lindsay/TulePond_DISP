@@ -32,7 +32,10 @@
 # is as extreme as the observed one (two-sided).
 #
 # **Inputs**: notebook 10's `tulepond_daily_precip.csv` and `event_table.csv`
-# (the InSAR events and the HRKT bimonthly-era events, with their windows); the
+# (the InSAR events and the HRKT bimonthly-era events, with their windows as LOCAL
+# calendar days: the InSAR acquisitions are UTC and the rain is booked by the local
+# day; 10_rain_seasonality's header defines the convention, and a table without its
+# `window_day_basis` column, written before 2026-10-05, stops this notebook); the
 # ACWD well records `WL 4S1W27D008.csv` (east of the fault) and
 # `WL 4S1W29A006.csv` (west), exported from ACWD's .xlsx with day-first dates.
 #
@@ -52,7 +55,7 @@ import sys
 REPO = "/Users/dlindsay/tools/internal/TulePond_DISP"
 sys.path.insert(0, REPO)
 import insar_utils as utils
-from TulePond_filepaths import common_paths, paths_out
+from TulePond_filepaths import common_paths, paths_out, rain_total_days, rain_total_mm
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -73,7 +76,7 @@ wells = {"east": ("WL 4S1W27D008.csv", "1990-10-02"),     # file, first date in 
          "west": ("WL 4S1W29A006.csv", "1991-10-09")}
 ft_to_m = 0.3048            # the ACWD levels are in feet above NGVD29 (ACWD, 2026-10-02)
 max_gap_days = 42           # well levels are interpolated across gaps up to 6 weeks, left missing beyond
-storm_days, storm_mm = 3, 40.0                  # a storm: 3-day rain total of at least 40 mm (11's rule C)
+storm_days, storm_mm = rain_total_days, rain_total_mm      # a storm: 3-day rain total of at least 40 mm (TulePond_filepaths; 11's rule C)
 rule_c_z, rule_c_x = [20, 30, 40, 50], [7, 14, 21, 30]   # 11's rule C search: storm size (mm) x lag (d)
 rain_window_days = 30       # "rate": rain in the previous 30 days
 well_rate_days = 28         # "rate": the well's change over the previous 4 weeks
@@ -94,6 +97,8 @@ okabe = dict(insar="#D55E00", aa="#0B2D6B", null="0.75", east="#0072B2", west="#
 rain = pd.read_csv(rain_file, index_col="date", parse_dates=True)
 assert rain.index.is_monotonic_increasing and (np.diff(rain.index.values).astype("timedelta64[D]").astype(int) == 1).all(), "rain is not daily"
 events = pd.read_csv(events_file, parse_dates=["window_lo", "window_hi"])
+assert "window_day_basis" in events.columns, f"{events_file} predates the local-day windows (2026-10-05): rerun 10_rain_seasonality"
+print("window days:", "; ".join(f"{source}: {basis}" for source, basis in events.groupby("source").window_day_basis.first().items()))
 print(f"rain {rain.index[0].date()} to {rain.index[-1].date()}; {len(events)} events "
       f"({(events.source == 'InSAR').sum()} InSAR, {(events.source != 'InSAR').sum()} array)")
 

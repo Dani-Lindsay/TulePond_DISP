@@ -11,8 +11,13 @@
 # **uniform-rock (homogeneous half-space) Green's functions** (CSI, Meade triangular
 # dislocations). It is the baseline against which the paper's selected model, the 3D PyLith
 # model in the USGS SFCVM (`08a_3d_model`; labelled SFSVM in the figures), is measured. The rock
-# enters the INVERSION as uniform; the USGS rigidity only rescales the moment afterwards (Mw with
-# SFCVM mu(z)).
+# is uniform throughout: Mw is quoted at 30 GPa only. The SFSVM rigidity enters the paper through
+# the 3D model (08a: its per-triangle rigidity table, and `08a_hom_mw_sfcvm` for the homogeneous
+# slip rescaled by it).
+# PREPUB: Until 2026-10-05 this notebook also rescaled its moment by a median SFCVM mu(z) profile
+# PREPUB: (`07a_hom_mw_sfcvm`, `07a_hom_mu_effective_gpa`), read from an orphan csv made by
+# PREPUB: drafts/07/sfcvm_extract.py with a superseded section (km 56.5-62.3) and strike (143.05);
+# PREPUB: retired as superseded by 08a's rigidity table (Dani's modelling paragraph: 30 GPa + harmonic SFSVM).
 # PREPUB: Every lesson of the 2026-09-25 to 28 tests is applied (`07_sweep_lessons_2026-09-28.md`, `drafts/07/`).
 #
 # | Choice | Value | Evidence |
@@ -41,8 +46,7 @@
 # **Inputs**: 06 `fp_maps.npz`, `fig2_inputs.npz` (the profile lines, [13]) and
 # `csi_mean_event_{ascending,descending}.npz` (the LOS geometry, [10]); 04
 # `event_fraction_by_crossing.csv`, `creep_events.csv`, `section_lengths.csv`; the trace and
-# `hayward_fault_profiles.csv`; the USGS SFCVM v26.0 creep-section profiles
-# `07b_uniform_model_tests/sfcvm_creep_section_profiles_v26-0.csv`.
+# `hayward_fault_profiles.csv`.
 #
 # **Outputs** (`outputs/07a_uniform_model/`): `sigma_lcurve.csv` (the sigma pick, read by 07b),
 # `slip_homogeneous_baseline.csv` (read by 07b's CHECK [16]), the stats sidecar
@@ -56,7 +60,7 @@
 # - [4] the noise fit: a long-range sill of 0 means the noise model is a nugget plus one exponential.
 # - [8] the L-curve corner lies inside the searched range (between the second and second-last grid
 #   sigma) and the pick is the next grid sigma at or above it.
-# - [9] Mw at 30 GPa and with the SFCVM rigidity; the surface % of the crossing slip.
+# - [9] Mw at 30 GPa; the surface % of the measured crossing slip.
 # - [10] PASS: the model's own fault-normal motion leaks into the fault-parallel field below the noise.
 # - [11] the bootstrap mean against the model Mw (printed): re-inverted noisy synthetics can come
 #   back low, so the bootstrap sd is the scatter of this configuration, not an error bar centred on
@@ -75,6 +79,7 @@
 # ------------------------
 import copy
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -90,6 +95,8 @@ warnings.simplefilter("ignore")
 from TulePond_filepaths import common_paths, repo_dir
 import insar_utils as utils
 from insar_utils import load_trace, mpl_paper_style
+sys.path.insert(0, os.path.join(repo_dir, "scripts", "pylith_helpers"))
+from surface_crossings import surface_pct_denominator_mm   # the one surface % denominator, shared with 07b, 08a, 08b and the driver
 
 # CSI: Classic Slip Inversion (Jolivet et al.; external/csi at 1277bb4)
 from csi import TriangularPatches, insar, surfaceslip
@@ -144,15 +151,9 @@ lam_xz         = (0.1, 0.05)   # prior correlation lengths along strike, down di
 tie_depth_km   = 0.0           # no top tie (Dani 2026-09-29): at the L-curve smoothing the untied model peaks at the surface;
                                # the tie code in [6] stays so [2]-[6] equal 07b's copy, whose tie family uses it
                                # (drafts/07/tie_decision.py)  # PREPUB
-shear_modulus  = 3.0e10        # uniform rigidity of the reference Mw
-mu_floor_gpa   = 0.5           # SFCVM rigidity floor (the model is ~0 at the surface)
+shear_modulus  = 3.0e10        # uniform rigidity of the reference Mw (the SFSVM rigidity of the 3D model is in 08a)
 sigma_grid     = [4, 6, 8, 12, 16, 20, 24, 32, 40, 48, 64, 96, 128]   # L-curve (larger = LESS smoothing)
 sigma_check    = 24            # sigma of the draft the CHECK compares against  # PREPUB
-sfcvm_version  = "v26-0"       # USGS SFCVM v26.0 (2026-08-14; new rules west of the Hayward fault), Dani 2026-09-29
-# the creep-section profiles are made by drafts/07/sfcvm_extract.py v26-0  # PREPUB: the extract script lives in drafts/
-sfcvm_file     = os.path.join(tests_dir, f"sfcvm_creep_section_profiles_{sfcvm_version}.csv")
-assert os.path.exists(sfcvm_file), (f"missing {sfcvm_file}: download USGS_SFCVM_{sfcvm_version}_detailed.h5 "
-                                    "(doi:10.5066/P13AEJFI) and run the SFCVM extract script (comment above) first")
 n_boot         = 24
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
@@ -163,8 +164,7 @@ REG.inputs(os.path.join(field_dir, "fp_maps.npz"),
            os.path.join(events_dir, "section_lengths.csv"),
            os.path.join(field_dir, "fig2_inputs.npz"),
            os.path.join(field_dir, "csi_mean_event_ascending.npz"),
-           os.path.join(field_dir, "csi_mean_event_descending.npz"),
-           sfcvm_file)
+           os.path.join(field_dir, "csi_mean_event_descending.npz"))
 print(f"SSE section: km {creep_lo_km:.1f}-{creep_hi_km:.1f} (04 section_lengths.csv)")
 
 # %% [markdown]
@@ -459,8 +459,10 @@ print(f"quadtree: {samples.vel.size} samples")
 # of every surface triangle, errors scaled by sqrt(triangles per 0.2 km) so
 # the total weight is unchanged. This running median is the uniform model's
 # surface constraint only: the 3D model (08a) ties each measured crossing
-# directly (`pylith_helpers/surface_crossings.py`), and uses `crossing_median`
-# (the creep-section median of this profile) as the denominator of its surface %.
+# directly (`pylith_helpers/surface_crossings.py`). The denominator of every
+# surface % (here, 07b, 08a, 08b and the PyLith driver) is `crossing_median`:
+# the median of the MEASURED crossings in the SSE section, from the one shared
+# helper `surface_crossings.surface_pct_denominator_mm` (Dani 2026-10-05).
 
 # %%
 ## [5]
@@ -527,10 +529,10 @@ def make_surface_interp(fault, floor_mm):
 
 crossing_profile = make_surface(surf_floor_mm)
 crossing_km = lat_to_km_pp(crossing_profile.lat)
-crossing_median = float(np.median(crossing_profile.vel[(crossing_km >= creep_lo_km)
-                                                       & (crossing_km <= creep_hi_km)]))
-print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-section "
-      f"median {crossing_median:.2f} mm")
+crossing_median = surface_pct_denominator_mm(crossings_all.km.values, crossings_all.mean_event_mm.values,
+                                             creep_lo_km, creep_hi_km)   # median of the measured crossings in the SSE section
+print(f"surface constraint: {crossing_profile.vel.size} profile points; surface % denominator: median of the "
+      f"measured crossings in the SSE section {crossing_median:.2f} mm")
 
 # %% [markdown]
 # ## [6] The inversion
@@ -787,14 +789,10 @@ print("wrote fig07_hom_lcurve.png/.pdf")
 # %% [markdown]
 # ## [9] The baseline model and its numbers
 #
-# Mw at 30 GPa is the reference. Mw with the USGS SFCVM v26.0 rigidity,
-# following Materna et al. (2024): one shear modulus for the depth that
-# slips, taken from the regional velocity model. Here it is the SFCVM
-# rigidity weighted by the model's own potency (each cell's median mu(z) of
-# the creep-section profiles, floored at 0.5 GPa), reported as
-# `mu_effective_gpa`; the slip is the uniform-rock slip, so this is a
-# rescale, not a layered inversion.
-# PREPUB: The creep-section profiles are made by `drafts/07/sfcvm_extract.py v26-0`.
+# Mw at 30 GPa (the uniform rock of these Green's functions); surface % =
+# the median slip of the surface cells in the SSE section over the median of
+# the measured crossings there ([5]). The SFSVM rigidity is applied to the 3D
+# model only (08a [15c]).
 
 # %%
 ## [9]
@@ -816,13 +814,8 @@ table = pd.DataFrame(dict(
     slip_mm=fault.slip[:, 0]))
 table["km_pp"] = lat_to_km_pp(table.lat.values)
 
-profiles_sfcvm = pd.read_csv(sfcvm_file)
-mu_by_depth = profiles_sfcvm.groupby("depth_m").mu_gpa.median()
-table["mu_sfcvm_gpa"] = np.maximum(np.interp(table.z_c.values * 1000, mu_by_depth.index.values,
-                                             mu_by_depth.values), mu_floor_gpa)
 potency_m3 = potency_from_slip(table.area_km2, table.slip_mm)
 moment_30 = shear_modulus * potency_m3
-moment_sfcvm = float(np.sum(table.mu_sfcvm_gpa * 1e9 * table.area_km2 * 1e6 * table.slip_mm * 1e-3))
 
 residual = ds.vel - ds.synth
 near = dist_to_trace(ds, fault) <= near_field_km
@@ -837,9 +830,7 @@ results = pd.Series(dict(
     peak_slip_mm=float(table.slip_mm.max()),
     peak_depth_m=float(1000 * table.z_c[table.slip_mm.idxmax()]),
     potency_m3=potency_m3,
-    mw_30gpa=moment_magnitude(moment_30),
-    mw_sfcvm=moment_magnitude(moment_sfcvm),
-    mu_effective_gpa=moment_sfcvm / potency_m3 / 1e9))
+    mw_30gpa=moment_magnitude(moment_30)))
 print(results.to_string(float_format="{:.4g}".format))
 
 # %% [markdown]
@@ -964,8 +955,7 @@ ax.set_ylim(mesh_depth_km, 0)
 ax.set_xlabel("Along-strike distance from north end (km)")
 ax.set_ylabel("Depth (km)")
 fig.colorbar(pc, ax=ax, label="Right-lateral slip (mm)", shrink=0.8)
-ax.set_title(f"Homogeneous baseline, sigma {sigma_sel:g}: Mw {results.mw_30gpa:.2f} (30 GPa), "
-             f"{results.mw_sfcvm:.2f} ({results.mu_effective_gpa:.1f} GPa, SFSVM {sfcvm_version})", loc="left", fontsize=7)
+ax.set_title(f"Homogeneous baseline, sigma {sigma_sel:g}: Mw {results.mw_30gpa:.2f} (30 GPa)", loc="left", fontsize=7)
 fig.savefig(os.path.join(fig_dir, "fig07_hom_slip.png"), dpi=300)
 fig.savefig(os.path.join(fig_dir, "fig07_hom_slip.pdf"))
 print("wrote fig07_hom_slip.png/.pdf")
@@ -1032,8 +1022,7 @@ np.savez(os.path.join(tests_dir, "fig2_model_row.npz"),
          sample_lon=ds.lon, sample_lat=ds.lat, block_lon=block_lon, block_lat=block_lat, data_mm=ds.vel, model_mm=ds.synth,
          residual_mm=residual, nodes_sz=nodes, faces=faces, slip_mm=table.slip_mm.values,
          s0_km_pp=float(lat_to_km_pp([ref_fault.lati[0]])[0]),
-         mw_30gpa=results.mw_30gpa, mw_sfcvm=results.mw_sfcvm, mu_effective_gpa=results.mu_effective_gpa,
-         sfcvm_version=sfcvm_version, rms_mm=results.rms_mm,
+         mw_30gpa=results.mw_30gpa, rms_mm=results.rms_mm,
          surf_ratio_pct=results.surface_pct, sigma=sigma_sel, strike_deg=strike_bearing,
          tie_depth_km=tie_depth_km,
          surface_km=surface_row.km_pp.values, surface_model_mm=surface_row.slip_mm.values,
@@ -1063,10 +1052,8 @@ sidecar = REG.sidecar("07a_hom_baseline", [
     f"(noise sd {noise_sd_mm:.2f} mm)",
 ] + [f"{key}: {value:.4g}" for key, value in results.items()])
 REG.register("07a_hom_mw_30gpa", results.mw_30gpa, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07a_hom_mw_sfcvm", results.mw_sfcvm, "Mw", 2, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07a_hom_mw_boot_sd", mw_boot_sd, "Mw", 3, where="M7", cell="bootstrap", sidecar=sidecar)
 REG.register("07a_hom_potency_m3", results.potency_m3, "m3", 0, where="M7", cell="baseline", sidecar=sidecar)
-REG.register("07a_hom_mu_effective_gpa", results.mu_effective_gpa, "GPa", 1, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07a_hom_surface_pct", results.surface_pct, "%", 0, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07a_hom_peak_slip_mm", results.peak_slip_mm, "mm", 1, where="M7", cell="baseline", sidecar=sidecar)
 REG.register("07a_hom_rms_mm", results.rms_mm, "mm", 2, where="M7", cell="baseline", sidecar=sidecar)

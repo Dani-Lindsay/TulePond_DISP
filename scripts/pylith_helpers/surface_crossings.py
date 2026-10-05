@@ -13,8 +13,25 @@ scatter of the crossings (1.4826 x MAD within +/- 0.2 km), floored at floor_mm.
 
 Replaces (2026-10-02) 07a's running median (0.4 km window every 0.2 km) interpolated to every vertex, whose
 window test lost the edge crossings to float roundoff and dropped half its points.
+
+Also here: `surface_pct_denominator_mm`, the ONE denominator of every surface % (07a, 07b, 08a, 08b and the
+PyLith driver drafts/pylith/pylith_sfcvm_gf.py; Dani 2026-10-05): the median of the measured crossings in the
+SSE section. Until 2026-10-05 07a/07b and the driver divided by the creep-section median of 07a's running-median
+profile and 08a/08b re-expressed those numbers by the ratio of the two medians.
 """
 import numpy as np
+
+
+def surface_pct_denominator_mm(km, mean_mm, km_lo, km_hi, min_n=10):
+    """The denominator of surface % (modelled surface slip / measured): the median of the measured crossings
+    (04's five-event mean step at each crossing; finite values only) with km_lo <= km <= km_hi, the SSE section
+    of 04's section_lengths.csv (its ends are crossing positions; the 1e-6 km tolerance keeps them against float
+    roundoff, as local_scatter_mm). Fails if fewer than min_n crossings are inside."""
+    km = np.asarray(km, float)
+    mean_mm = np.asarray(mean_mm, float)
+    inside = (km >= km_lo - 1e-6) & (km <= km_hi + 1e-6) & np.isfinite(mean_mm)
+    assert inside.sum() >= min_n, f"only {inside.sum()} measured crossings in km {km_lo:.2f}-{km_hi:.2f}"
+    return float(np.median(mean_mm[inside]))
 
 
 def arc_length_on_polyline(px, py, vx, vy):

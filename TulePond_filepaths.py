@@ -49,7 +49,7 @@ if not data_dir:
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-10-03_final"   # clean sweep of every notebook in order (Dani 2026-10-03); 2026-10-03 = onset-window fix + publication style pass; 2026-10-02 = manuscript-pass figure notes; 2026-09-30 = PyLith + SFCVM model set
+fig_date   = "2026-10-06"   # full update on the 2026-10-05 fixes (audit, along-trace km, doy, burst seams, sigma-12 sensitivity); 2026-10-03_final = clean sweep of every notebook in order (Dani 2026-10-03); 2026-10-03 = onset-window fix + publication style pass; 2026-10-02 = manuscript-pass figure notes; 2026-09-30 = PyLith + SFCVM model set
 # Figures and notebook products live with the data, not in the repo (Dani 2026-10-01): the repo is the code
 # base archived on GitHub plus the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
@@ -213,6 +213,15 @@ segments = {
     "TULEPOND": {"label": "Tule Pond",      "lat": 37.5570, "lat_lo": 37.50, "lat_hi": 37.60},
     "COZ1":     {"label": "Oakland (COZ1)", "lat": 37.7500, "lat_lo": 37.68, "lat_hi": 37.82},
 }
+# The two LARGE Oakland (COZ1) creep events the control must find (notebooks 04 and 05): a decimal year inside
+# each one's InSAR onset window (the COZ1 creepmeter's Jan 2019 event, catalogued from 2019-01-11, and its
+# Feb 2022 surge, from 2022-02-14; Gittins et al. 2026). 04 asserts that each lies in exactly one COZ1 onset
+# window (widened by coz1_large_tol_days each side) and 05 that they are the two COZ1 events with the largest
+# creepmeter steps. The control may find more: since the along-trace stack (2026-10-05) it also finds the
+# Oct 2022 COZ1 surge (Dani 2026-10-05: kept, the third control event), so COZ1 events are labelled by their
+# onset day (`onset_day` in creep_events.csv), not by year.
+coz1_large_events_yr = (2019.02, 2022.13)
+coz1_large_tol_days = 12.0     # one long (12 d) acquisition interval
 
 # Box for the per-pixel event maps (notebook 06) and the slip model (07):
 # W, S, E, N in degrees, around the Tule Pond section.
@@ -234,16 +243,19 @@ creepmeters = [("CPP1", 37.9895,  -122.3559,  "Pinole Point"),
 
 # Creepmeter glitch days (insar_utils.daily_creepmeter, notebooks 04 and 05), found by inspection
 # (Dani 2026-10-05: drop only the listed days, no automatic filter; QC figure qc05_creepmeter_glitches
-# from notebook 05). (code, first day, last day, reason). Days are in the reader's day-of-year convention
-# (record day N of a year -> 1 January + N days); the pending day-of-year check may move every creepmeter
-# date, these included, by one day. The five records over the InSAR window (2016-09 to 2026-03) were
+# from notebook 05). (code, first day, last day, reason). Days are CALENDAR days: the USGS day-of-year is
+# 1-based (1 January 00:00 = doy 1.000) and the readers convert it so (insar_utils.creepmeter_decimal_year,
+# 2026-10-05). Both days were found and first listed in the old reader convention (doy / days, one day late:
+# 2017-05-19 and 2018-02-13) and moved back one day with that fix; the raw samples are at CPP1 doy 138.50 and
+# 138.54 of 2017 (18 May 12:00 and 13:00) and doy 43.33 of 2018 (12 Feb 08:00). daily_creepmeter asserts that
+# each listed day is in the record. The five records over the InSAR window (2016-09 to 2026-03) were
 # screened for days whose mean departs from the median of their 10-minute samples by > 0.2 mm or from a
 # 15-day running median by > 0.3 mm, and for offsets across data gaps; only these two are glitches (COZ1's
 # two flagged days are creep events inside the day). The whole-record 6-sigma + 10 mm cut it replaces
 # dropped no day in that window and did not catch these.
 creepmeter_glitches = [
-    ("CPP1", "2017-05-19", "2017-05-19", "two 10-min samples at -283.7 mm (~340 mm below the record) pull the daily mean down 4.8 mm"),
-    ("CPP1", "2018-02-13", "2018-02-13", "one 10-min sample at -283.7 mm (~350 mm below the record) pulls the daily mean down 2.4 mm"),
+    ("CPP1", "2017-05-18", "2017-05-18", "two 10-min samples at -283.7 mm (~340 mm below the record) pull the daily mean down 4.8 mm"),
+    ("CPP1", "2018-02-12", "2018-02-12", "one 10-min sample at -283.7 mm (~350 mm below the record) pulls the daily mean down 2.4 mm"),
 ]
 # Checked and NOT listed: CTM1 around 2025.3-2025.5. Its record is smooth there; the drop-and-recover in the
 # cumulative panel of Fig S validation is one InSAR epoch (2025-04-01, ~5.6 mm below its neighbours), as is
@@ -256,6 +268,11 @@ creepmeter_glitches = [
 # lists every CFW1 catalogue event that overlaps a Tule Pond InSAR onset window widened by this many days
 # on each side (outputs/05_validation/cfw1_gittins_near_windows.csv, the table's source).
 gittins_window_pad_days = 7
+
+# Shared choices read by more than one notebook (one definition each).
+wet_season_months = (10, 4)    # (first month, last month) of the wet season, shared by 10 and 11 (Dani 2026-10-05: Oct-Apr)
+paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 11)
+model_sigma_locked = 12.0      # regularisation sigma of the selected slip model and all sensitivity runs (L-curve rule, Dani 2026-10-03)
 
 # Date the forecast is issued from (notebook 09). Pinned so the forecast
 # numbers are reproducible; do not use "today".

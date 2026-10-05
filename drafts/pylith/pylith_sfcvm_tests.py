@@ -80,8 +80,13 @@ CD_TAG = {"full": "", "nugget": "_nuggetcd"}
 def run_name(cd):
     return "default" + CD_TAG[cd]
 def selected_sigma(medium, cd):
+    """The sigma the driver solved this model at; it must be 08a's locked sigma (Dani 2026-10-03), and the run must
+    fit the current 06 field."""
     res = pd.read_csv(os.path.join(HERE, "gf", f"results_comparison{CD_TAG[cd]}.csv")).set_index("model")
-    return float(res.loc[f"PyLith {medium}", "sigma"])
+    row = res.loc[f"PyLith {medium}"]
+    assert float(row.sigma) == SIGMA_LOCKED_08A, f"results_comparison{CD_TAG[cd]}.csv {medium}: sigma {row.sigma:g}, not 08a's {SIGMA_LOCKED_08A:g}"
+    assert str(row.field_fingerprint) == field_fingerprint, f"results_comparison{CD_TAG[cd]}.csv {medium} fits another 06 field"
+    return float(row.sigma)
 def set_cd(cd):
     """invert_tents reads the notebook's global cd_mode."""
     globals()["cd_mode"] = cd
@@ -93,7 +98,8 @@ in_sec_surface = np.isin(np.arange(n_imp), surface_imp) & (imp_km >= creep_lo_km
 
 
 def numbers(medium, flt, ds, surface):
-    """The notebook's [10] numbers for one solution."""
+    """The notebook's [10] numbers for one solution (surface % over `crossing_median`, the one measured-crossing
+    denominator of 07a/08a/08b)."""
     slip = flt.slip[:, 0]
     res = ds.vel - ds.synth
     pot = potency_m3(slip)

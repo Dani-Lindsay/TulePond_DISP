@@ -59,8 +59,7 @@
 #
 # **Outputs** (`outputs/07b_uniform_model_tests/`): `final_suite.csv`, `final_lcurves.csv`,
 # `final_tie_slip_<tie>.csv`, `final_depth_scan_<variant>.csv`, `final_depth_vs_noise.csv`,
-# `final_recovery.csv`, `final_recovery_profiles.csv`, `stress_drop_inputs.csv` (cell [17b],
-# to be removed), the stats sidecar `07_tests_final_stats.txt`. **Figure**:
+# `final_recovery.csv`, `final_recovery_profiles.csv`, the stats sidecar `07_tests_final_stats.txt`. **Figure**:
 # `fig07_sensitivity_final`. **Registry keys** `07b_*`.
 #
 # **What to check**
@@ -87,6 +86,7 @@
 # ------------------------
 import copy
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -100,6 +100,8 @@ warnings.simplefilter("ignore")
 from TulePond_filepaths import common_paths, repo_dir
 import insar_utils as utils
 from insar_utils import load_trace, mpl_paper_style
+sys.path.insert(0, os.path.join(repo_dir, "scripts", "pylith_helpers"))
+from surface_crossings import surface_pct_denominator_mm   # the one surface % denominator, shared with 07a, 08a, 08b and the driver
 
 # CSI: Classic Slip Inversion (Jolivet et al.; external/csi at 1277bb4)
 from csi import TriangularPatches, insar, surfaceslip
@@ -473,8 +475,10 @@ print(f"quadtree: {samples.vel.size} samples")
 # of every surface triangle, errors scaled by sqrt(triangles per 0.2 km) so
 # the total weight is unchanged. This running median is the uniform model's
 # surface constraint only: the 3D model (08a) ties each measured crossing
-# directly (`pylith_helpers/surface_crossings.py`), and uses `crossing_median`
-# (the creep-section median of this profile) as the denominator of its surface %.
+# directly (`pylith_helpers/surface_crossings.py`). The denominator of every
+# surface % (here, 07b, 08a, 08b and the PyLith driver) is `crossing_median`:
+# the median of the MEASURED crossings in the SSE section, from the one shared
+# helper `surface_crossings.surface_pct_denominator_mm` (Dani 2026-10-05).
 
 # %%
 ## [5]
@@ -541,10 +545,10 @@ def make_surface_interp(fault, floor_mm):
 
 crossing_profile = make_surface(surf_floor_mm)
 crossing_km = lat_to_km_pp(crossing_profile.lat)
-crossing_median = float(np.median(crossing_profile.vel[(crossing_km >= creep_lo_km)
-                                                       & (crossing_km <= creep_hi_km)]))
-print(f"surface constraint: {crossing_profile.vel.size} profile points; creep-section "
-      f"median {crossing_median:.2f} mm")
+crossing_median = surface_pct_denominator_mm(crossings_all.km.values, crossings_all.mean_event_mm.values,
+                                             creep_lo_km, creep_hi_km)   # median of the measured crossings in the SSE section
+print(f"surface constraint: {crossing_profile.vel.size} profile points; surface % denominator: median of the "
+      f"measured crossings in the SSE section {crossing_median:.2f} mm")
 
 # %% [markdown]
 # ## [6] The inversion
@@ -1202,56 +1206,6 @@ fig_file = os.path.join(fig_dir, "fig07_sensitivity_final.png")
 fig.savefig(fig_file, dpi=300)
 fig.savefig(fig_file.replace(".png", ".pdf"))
 print("wrote", fig_file)
-
-# %% [markdown]
-# ## [17b] Inputs for a stress-drop estimate (saved, not reported)
-#
-# PREPUB: This whole cell is to be removed before publication: superseded by the PyLith traction-change stress drop of `08a_3d_model` [15b] (Dani 2026-10-03).
-# PREPUB: Its weighting is also inconsistent: `mu_weighted` and the 95% depth weight by slip only, not by area x slip (potency) as 07a's mu_effective does.
-# PREPUB: Depth is not constrained, so no stress drop is reported (Dani 2026-09-29);
-# PREPUB: a ballpark is quoted as a range. Following Materna et al. (2024, Text S3),
-# PREPUB: stress drop = mu d / x with d the slip and x half the depth extent. For the
-# PREPUB: distributed model (x = half the depth holding 95% of its potency) and for
-# PREPUB: every uniform-slip depth D (x = D / 2), mu is the SFCVM v26.0 rigidity
-# PREPUB: weighted by that model's own potency (as 07a_uniform_model), and d is the mean
-# PREPUB: band-stack event slip of notebook 04. Written to
-# PREPUB: `stress_drop_inputs.csv`; no registry rows.
-
-# %%
-## [17b]
-# PREPUB-START: superseded Materna-style stress drop (the paper uses 08a [15b]); remove the whole cell
-sfcvm = pd.read_csv(os.path.join(out_dir, "sfcvm_creep_section_profiles_v26-0.csv"))
-mu_by_depth = sfcvm.groupby("depth_m").mu_gpa.median()
-registry = pd.read_csv(common_paths["registry_csv"], dtype=str).groupby("key").last()
-d_band_mm = float(registry.loc["04_band90_steps_mean_mm", "value"])
-def mu_weighted(table, slip_mm):
-    """SFCVM rigidity weighted by potency (GPa), floored at 0.5 GPa as 07a_uniform_model."""
-    mu_cell = np.maximum(np.interp(table.z_c.values * 1000, mu_by_depth.index.values, mu_by_depth.values), 0.5)
-    return float(np.sum(mu_cell * slip_mm) / np.sum(slip_mm))
-stress_rows = []
-base_table = tie_tables[tie_depth_km]
-order = np.argsort(base_table.z_c.values)
-cum = np.cumsum(base_table.slip_mm.values[order]) / base_table.slip_mm.sum()   # slip-weighted (cell areas are similar at the top)
-depth95_km = float(base_table.z_c.values[order][np.searchsorted(cum, 0.95)])
-mu_dist = mu_weighted(base_table, base_table.slip_mm.values)
-stress_rows.append(dict(model="distributed (the model)", depth_extent_km=depth95_km, mu_gpa=mu_dist, d_mm=d_band_mm,
-                        stress_drop_kpa=mu_dist * 1e9 * d_band_mm * 1e-3 / (depth95_km * 500) / 1e3, dchi2=np.nan))
-scan_table = slip_table(scan_fault)
-in_window_scan = np.clip(np.minimum(scan_table.km_pp - scan_km[0], scan_km[1] - scan_table.km_pp) / scan_taper + 1, 0, 1).values
-for r in model_mesh_scan.itertuples():
-    shape = in_window_scan * (scan_table.z_c.values < r.D_km)
-    if shape.sum() == 0:
-        continue
-    mu_d = mu_weighted(scan_table, shape)
-    stress_rows.append(dict(model=f"uniform slip to {r.D_km:g} km", depth_extent_km=r.D_km, mu_gpa=mu_d, d_mm=d_band_mm,
-                            stress_drop_kpa=mu_d * 1e9 * d_band_mm * 1e-3 / (r.D_km * 500) / 1e3, dchi2=r.dchi2))
-stress_inputs = pd.DataFrame(stress_rows)
-stress_inputs.to_csv(os.path.join(out_dir, "stress_drop_inputs.csv"), index=False)
-accepted = stress_inputs[(stress_inputs.dchi2 <= 4) | stress_inputs.dchi2.isna()]
-print(accepted.round(2).to_string(index=False))
-print(f"ballpark (distributed model and the accepted uniform-slip depths): "
-      f"{accepted.stress_drop_kpa.min():.0f}-{accepted.stress_drop_kpa.max():.0f} kPa")
-# PREPUB-END
 
 # %% [markdown]
 # ## [18] Registry -- the sensitivity numbers

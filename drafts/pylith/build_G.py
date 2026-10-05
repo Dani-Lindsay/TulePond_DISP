@@ -44,7 +44,9 @@ def read_run(name):
 def main(names, points_file=None):
     """points_file: the .npz of the output points the run used (default points/insar_points.npz, the 2386 samples)."""
     points = np.load(points_file or os.path.join(HERE, "points", "insar_points.npz"))
-    row = np.load(os.path.join(REPO, "outputs", "07_slip_model_tests", "fig2_model_row.npz"))
+    # 07a writes the fault-parallel strike of the current 06 field next to its model row (outputs moved to the data
+    # root 2026-10-01; the old repo path outputs/07_slip_model_tests no longer exists)
+    row = np.load(os.path.join("/Users/dlindsay/work/proj_TulePond_DISP", "outputs", "07b_uniform_model_tests", "fig2_model_row.npz"))
     strike = float(row["strike_deg"])
     look = np.array([np.sin(np.deg2rad(strike)), np.cos(np.deg2rad(strike)), 0.0])     # 07 [3]
     columns, vertex_index, fault_xyz0, cells0 = [], [], None, None

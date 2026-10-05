@@ -71,9 +71,13 @@
 # its creep is distributed over ~300 m. The detrended RMSE per station (~1.5 to
 # 1.9 mm, mean ~1.7) is the noise floor of a stack of up to 5 crossings, the
 # number quoted in the text. CFW1 should show little slip across the Tule Pond
-# windows (well under the 7 to 11 mm InSAR steps). Both Oakland windows should
-# hold a catalogued COZ1 event (Gittins et al. 2026). The joint model of
-# notebook 04 recovers about 60% of the two COZ1 creepmeter steps. Only the listed
+# windows (well under the 7 to 11 mm InSAR steps). Every Oakland window should
+# hold a catalogued COZ1 event (Gittins et al. 2026; three windows since the
+# along-trace stack of 2026-10-05: January 2019, February 2022 and the smaller
+# October 2022 surge). The joint model of notebook 04 recovers about 60% of the
+# creepmeter steps of the two LARGE COZ1 events (the two with the largest
+# creepmeter steps, asserted to be the January 2019 and February 2022 ones;
+# the recovery of every COZ1 event is registered too). Only the listed
 # creepmeter glitch days are dropped (CPP1, two days; QC figure
 # `qc05_creepmeter_glitches`), and the COZ1 creep steps are as they were
 # (asserted).
@@ -88,6 +92,7 @@ import insar_utils as utils
 from TulePond_filepaths import (common_paths, creepmeters, params, x_width,
                                 dist_min, dist_max, coh_timeseries, min_points, coh_velocity,
                                 creepmeter_glitches, gittins_window_pad_days,
+                                coz1_large_events_yr, coz1_large_tol_days,
                                 paths_out, repo_dir)
 
 import numpy as np
@@ -124,8 +129,9 @@ seed = 0
 step_check_mm = 0.1   # dropping the glitch days must leave every catalogued creep step on the daily record within this (asserted)
 qc_half_days = 15     # QC figure: days shown either side of each glitch
 
-# the InSAR stack at a creepmeter. fp_ts is indexed by LATITUDE, so these half-widths are applied
-# as km / 111.19 deg of latitude (about 1.15 km along this oblique strike per km of latitude)
+# the InSAR stack at a creepmeter. fp_ts is indexed by latitude; these half-widths are km ALONG THE TRACE
+# (utils.lat_to_km_map of each row against the creepmeter's km; until 2026-10-05 they were km of latitude,
+# about 1.2 km along this oblique strike per km of latitude)
 stack_km = 0.2        # half-window of fp_ts rows to stack at a creepmeter (matches the 400 m swath)
 stack_widen_km = 1.0  # widen to this if the 0.2 km window has < 2 usable rows (CPP1 at the frame edge)
 stack_max = 5         # cap the stack at the N nearest usable rows
@@ -160,7 +166,7 @@ onset_orange = "#E69F00"   # Okabe-Ito orange, long-dashed 0.9 pt: the InSAR ons
 
 # the step across an event window ([8], event_step): the creepmeter glitch check of [14b] and the aperture
 # ladder, which scores how much of the COZ1 creepmeter's step each aperture recovers (ladder panel D) across
-# the two Oakland InSAR onset windows of notebook 04 (read in [12])
+# the onset windows of the two LARGE Oakland events of notebook 04 (read and selected in [12])
 collar_yr = 0.75      # inter-event collar each side of a window for the local trend
 min_collar_epochs = 5   # an event is scored only with this many epochs in each collar ...
 min_fit_epochs = 12     # ... and this many finite epochs in the two collars together
@@ -174,7 +180,7 @@ cfw_edge_hours = 12   # slip across a window = median of the samples in the last
 min_edge_samples = 6  # an edge needs this many 10-minute samples (1 h of data)
 edge_search_days = 5  # if the edge is in a gap, use the nearest data within this many days
 cfw1_insar_half_km = 0.2   # the InSAR step AT CFW1 ([14b]): mean of 04's per-crossing steps within +/- this ALONG THE TRACE
-                           # of CFW1; its noise from the same mean at the two COZ1 events in independent windows of
+                           # of CFW1; its noise from the same mean at every COZ1 control event in independent windows of
                            # 2 x this along the Tule Pond section, where those events put no slip
 noise_n_trials = 40        # [14b2]: the noise of a single-interval step at CFW1 = std of the CFW1 mean step at this many trial epochs,
 noise_seed = 20261005      # drawn with this seed from the acquisition intervals at least
@@ -247,9 +253,11 @@ REG.inputs(fp_ts_file, xf_file, map_file, lengths_file, events_file, event_steps
 # robust sigma + 10 mm it replaces dropped no day here and let both through.)
 # The days dropped are printed and drawn in [6b]. The InSAR
 # "stack" at a creepmeter is the mean of the nearest usable `fp_ts` rows within
-# 0.2 km of latitude (about 230 m along strike), up to 5 rows, which is the
+# 0.2 km along the trace (`utils.lat_to_km_map`), up to 5 rows, which is the
 # like-for-like match to the 400 m transect swath. Where fewer than 2 rows are
-# usable it widens to 1 km of latitude; the printout says which station did.
+# usable it widens to 1 km; the printout says which station did. Each
+# creepmeter's km is that of the trace vertex nearest its latitude, checked
+# against the vertex nearest it in distance (within 0.15 km, asserted).
 
 # %%
 # [6]
@@ -262,19 +270,21 @@ def read_fp_ts(path):
 
 
 def stack_insar(fp_table, lat, half_km=stack_km, widen_km=stack_widen_km, n_stack=stack_max, exact=False):
-    """Mean +/- std of the fp_ts rows nearest `lat` (rows with > 50% finite epochs, at most n_stack, nearest
-    first). The rows are taken within half_km of latitude; if fewer than 2 are usable the window widens to
-    widen_km. `exact=True` (the ladder) requires n_stack usable rows inside half_km and never widens, so
-    every bin is scored on the same number of rows.
+    """Mean +/- std of the fp_ts rows nearest `lat` ALONG THE TRACE (rows with > 50% finite epochs, at most
+    n_stack, nearest first). The rows are taken within half_km along the trace (utils.lat_to_km_map of the
+    rows against that of `lat`); if fewer than 2 are usable the window widens to widen_km. `exact=True` (the
+    ladder) requires n_stack usable rows inside half_km and never widens, so every bin is scored on the same
+    number of rows.
     Returns (dates, mean, std, n_rows, half-width used in km), or None if no stack can be formed."""
     n_epochs = fp_table.shape[1]
+    row_km = to_km(fp_table.index.values)                       # fp_ts is indexed by latitude
+    centre_km = float(to_km([lat])[0])
     if exact:
         half_widths_km = [half_km]
     else:
         half_widths_km = [half_km, widen_km]
     for half_width_km in half_widths_km:
-        half_width_deg = half_width_km / 111.19                 # fp_ts is indexed by latitude
-        nearby = fp_table[(fp_table.index >= lat - half_width_deg) & (fp_table.index <= lat + half_width_deg)]
+        nearby = fp_table[np.abs(row_km - centre_km) <= half_width_km + 1e-6]
         usable = nearby[nearby.notna().sum(axis=1) > 0.5 * n_epochs]
         if len(usable) >= 2:
             break
@@ -282,7 +292,7 @@ def stack_insar(fp_table, lat, half_km=stack_km, widen_km=stack_widen_km, n_stac
         return None
     if exact and len(usable) < n_stack:
         return None
-    nearest_first = np.argsort(np.abs(usable.index.values - lat))
+    nearest_first = np.argsort(np.abs(to_km(usable.index.values) - centre_km), kind="stable")
     usable = usable.iloc[nearest_first[:n_stack]]
     stack_dates = fp_table.columns.values.astype(float)
     with warnings.catch_warnings():
@@ -291,6 +301,15 @@ def stack_insar(fp_table, lat, half_km=stack_km, widen_km=stack_widen_km, n_stac
         stack_std = np.nanstd(usable.values, axis=0)
     return stack_dates, stack_mean, stack_std, len(usable), half_width_km
 
+
+to_km = utils.lat_to_km_map(common_paths["fault_profiles"])   # latitude -> km from Point Pinole along the trace
+trace = pd.read_csv(common_paths["fault_profiles"])
+for code, lat, lon, name in creepmeters:                         # the creepmeter's km by latitude = by distance to the trace
+    trace_east_m = (trace.ft_lon.values - lon) * 111190.0 * np.cos(np.radians(lat))
+    trace_north_m = (trace.ft_lat.values - lat) * 111190.0
+    nearest_vertex_km = (len(trace) - 1 - int(np.argmin(np.hypot(trace_east_m, trace_north_m)))) * 0.1
+    assert abs(float(to_km([lat])[0]) - nearest_vertex_km) < 0.15, \
+        f"{code} at {float(to_km([lat])[0]):.1f} km by latitude but {nearest_vertex_km:.1f} km by distance to the trace"
 
 fp_ts = read_fp_ts(fp_ts_file)
 t0 = float(fp_ts.columns.min())
@@ -304,7 +323,7 @@ insar_stacks = {}
 for code, lat, lon, name in creepmeters:
     cm_data[code] = utils.daily_creepmeter(common_paths["creepmeter_dir"], code, t0, t1, creepmeter_glitches)
     stacked = stack_insar(fp_ts, lat)
-    assert stacked is not None, f"{code}: no usable fp_ts rows within {stack_widen_km} km of latitude"
+    assert stacked is not None, f"{code}: no usable fp_ts rows within {stack_widen_km} km along the trace"
     insar_stacks[code] = stacked
     cm_dates, cm_slip = cm_data[code]
     n_rows = stacked[3]
@@ -312,7 +331,7 @@ for code, lat, lon, name in creepmeters:
     if half_width_used_km == stack_km:
         widened_note = ""
     else:
-        widened_note = f" (widened to {half_width_used_km:g} km of latitude)"
+        widened_note = f" (widened to {half_width_used_km:g} km along the trace)"
     print(f"  {code} ({name}): creepmeter {len(cm_dates)} days, {cm_slip[-1]:.1f} mm total; "
           f"InSAR stack of {n_rows} rows{widened_note}")
 
@@ -497,6 +516,7 @@ def event_step(dates, cumulative, window_start, window_end):
 
 
 rows = []
+misfits = {}                              # code -> (InSAR epochs, InSAR minus creepmeter on them, mm); COZ1's is split in [14c]
 for code, lat, lon, name in creepmeters:
     cm_dates, cm_slip = cm_data[code]
     cm_step_yr = np.median(np.diff(cm_dates))
@@ -510,6 +530,7 @@ for code, lat, lon, name in creepmeters:
     st_rate, st_lo, st_hi = block_bootstrap_step(transect["dist_m"].values.astype(float), transect["fp_vel"].values.astype(float))
     cm_on_insar_dates = np.interp(insar_dates, cm_dates, cm_slip)            # creepmeter ON the SAR epochs
     misfit = insar_slip - cm_on_insar_dates
+    misfits[code] = (insar_dates, misfit)
     insar_detrended = utils.detrend(insar_dates, insar_slip)
     cm_detrended = utils.detrend(insar_dates, cm_on_insar_dates)
     both_finite = np.isfinite(insar_detrended) & np.isfinite(cm_detrended)
@@ -566,7 +587,7 @@ stats_lines = ["=" * 78, "CREEPMETER vs INSAR: CREEP-RATE AGREEMENT", "=" * 78,
                f"InSAR window {t0:.3f} to {t1:.3f} ({t1 - t0:.2f} yr); creep bin {dist_min * 1000:.0f}-{dist_max * 1000:.0f} m, "
                f"along-strike +/-{x_width * 1000:.0f} m, coherence {coh_timeseries}",
                f"velocity-field step: +/-{max_dist_m:.0f} m transects, swath +/-{swath_m:.0f} m; InSAR stack <= {stack_max} rows "
-               f"within +/-{stack_km * 1000:.0f} m of latitude",
+               f"within +/-{stack_km * 1000:.0f} m along the trace",
                f"bootstrap: {nboot} moving-block resamples (block ~{block_years:g} yr / {block_m:.0f} m), seed {seed}", "",
                "PER-STATION RATES (mm/yr) [95% CI]",
                f"{'code':5} {'creepmeter':>22} {'crossing':>22} {'step':>22}"]
@@ -607,6 +628,14 @@ print("\n".join(stats_lines))
 # d on that side are used, and the span actually measured is printed). The
 # expected slip is CFW1's own long-term rate times that span; the data column
 # is the fraction of hours inside the window with any sample.
+#
+# The Oakland (COZ1) control events are read here too: every one of them
+# (three since 2026-10-05), labelled by `onset_day`, and the two LARGE ones,
+# the two with the largest creepmeter steps (`creepmeter_step_mm`), asserted to
+# be the January 2019 and February 2022 events (`coz1_large_events_yr`, each
+# inside its onset window +/- `coz1_large_tol_days`). The large two carry the
+# paper's mean amplitude recovery ([14c]) and the ladder's step score ([20]);
+# the noise estimates use every COZ1 event ([14b], [14b2]).
 
 # %%
 # [12]
@@ -614,7 +643,23 @@ events_all = pd.read_csv(events_file)
 events_coz1 = events_all.query("segment == 'COZ1'")
 events_tulepond = events_all.query("segment == 'TULEPOND'")
 assert len(events_tulepond) == 5, f"expected the five Tule Pond events, got {len(events_tulepond)}"
-assert len(events_coz1) == 2, f"expected the two Oakland (COZ1) events of notebook 04, got {len(events_coz1)}"
+assert len(events_coz1) >= 2, f"expected at least the two large Oakland (COZ1) events of notebook 04, got {len(events_coz1)}"
+assert events_coz1.onset_day.is_unique, "two COZ1 events share an onset day: their labels would collide"
+assert (events_coz1.creepmeter_step_mm > 0).all(), \
+    f"a COZ1 control event has no forward creepmeter step: {events_coz1[['onset_day', 'creepmeter_step_mm']].values.tolist()}"
+# the two LARGE COZ1 events: the two largest creepmeter steps, which must be the two known events
+events_coz1_large = events_coz1.nlargest(2, "creepmeter_step_mm").sort_values("onset_lo")
+events_coz1_other = events_coz1.drop(events_coz1_large.index)
+if len(events_coz1_other) > 0:
+    assert events_coz1_large.creepmeter_step_mm.min() > events_coz1_other.creepmeter_step_mm.max(), \
+        "the second and third largest COZ1 creepmeter steps tie: the two large events are not defined"
+coz1_tol_yr = coz1_large_tol_days / 365.25
+for known_yr, event in zip(sorted(coz1_large_events_yr), events_coz1_large.itertuples()):
+    assert event.onset_lo - coz1_tol_yr <= known_yr <= event.onset_hi + coz1_tol_yr, (
+        f"the COZ1 event with a large creepmeter step at {event.onset_day} ({event.creepmeter_step_mm:.2f} mm) is not the known "
+        f"large event at {known_yr} (TulePond_filepaths coz1_large_events_yr)")
+print(f"COZ1 control events: " + ", ".join(f"{event.onset_day} (creepmeter {event.creepmeter_step_mm:.2f} mm)" for event in events_coz1.itertuples())
+      + f"; the two large: {events_coz1_large.onset_day.tolist()}")
 
 cfw_raw = utils.read_creepmeter_10min_raw(utils.creepmeter_file(common_paths["creepmeter_dir"], "CFW1"), date_start=t0, date_end=t1)
 cfw_dates = cfw_raw.decimal_year.values
@@ -774,9 +819,11 @@ stats_lines += [""] + gittins_lines                               # into the sta
 # `cfw1_insar_half_km` (0.2 km) along the trace of CFW1 (along-trace km from
 # `utils.lat_to_km_map`; CFW1's km from its coordinates). Its 1-sigma is the
 # noise of the same estimator: the standard deviation of the same +/-0.2 km
-# mean for the two Oakland (COZ1) control events, which put no slip on the
-# Tule Pond section, over independent 0.4 km windows along the measured Tule
-# Pond creep extent (`section_lengths.csv`); one sigma for all five events.
+# mean for every Oakland (COZ1) control event (three since 2026-10-05), which
+# put no slip on the Tule Pond section, over independent 0.4 km windows along
+# the measured Tule Pond creep extent (`section_lengths.csv`); one sigma for
+# all five events (the sigma from the two large COZ1 events alone is printed
+# beside it).
 #
 # The background against which those events stand: the CFW1 catalogue rate
 # from the first InSAR acquisition day (2016-09-03) to the end of CFW1's last
@@ -821,13 +868,13 @@ def timing_text(start, end, first_day, last_day):
 
 
 # our InSAR AT CFW1: 04's per-crossing joint-model steps within +/- cfw1_insar_half_km along the trace of CFW1
-to_km = utils.lat_to_km_map(common_paths["fault_profiles"])
+# (to_km and trace from [6])
 event_steps = pd.read_csv(event_steps_file)
 crossing_km = to_km(event_steps.lat.values)
 assert np.allclose(crossing_km, event_steps.km.values, atol=0.051), "04's km column disagrees with lat_to_km_map"
 cfw1_lat, cfw1_lon = [(lat, lon) for code, lat, lon, name in creepmeters if code == "CFW1"][0]
 cfw1_km = float(to_km(cfw1_lat)[0])
-trace = pd.read_csv(common_paths["fault_profiles"])            # check: the trace vertex nearest CFW1 by distance (100 m vertices)
+# check: the trace vertex nearest CFW1 by distance (100 m vertices)
 trace_east_m = (trace.ft_lon.values - cfw1_lon) * 111190.0 * np.cos(np.radians(cfw1_lat))
 trace_north_m = (trace.ft_lat.values - cfw1_lat) * 111190.0
 nearest_vertex_km = (len(trace) - 1 - int(np.argmin(np.hypot(trace_east_m, trace_north_m)))) * 0.1
@@ -842,9 +889,10 @@ def step_column(onset_lo):
     return column
 
 
-# the noise of a +/- cfw1_insar_half_km mean: the two COZ1 events over independent windows of the Tule Pond extent
+# the noise of a +/- cfw1_insar_half_km mean: every COZ1 control event over independent windows of the Tule Pond extent
 tulepond_extent = pd.read_csv(lengths_file).set_index("name").loc["tulepond_creep_length"]
 null_means = []
+null_is_large = []                        # the window's COZ1 event is one of the two large ones (for the comparison printed)
 window_centres = np.arange(tulepond_extent.km_lo + cfw1_insar_half_km, tulepond_extent.km_hi - cfw1_insar_half_km + 1e-6, 2 * cfw1_insar_half_km)
 for event in events_coz1.itertuples():
     steps = event_steps[step_column(event.onset_lo)].values
@@ -852,13 +900,17 @@ for event in events_coz1.itertuples():
         in_null_window = (np.abs(crossing_km - centre) <= cfw1_insar_half_km + 1e-6) & np.isfinite(steps)
         if in_null_window.sum() >= 3:
             null_means.append(float(np.mean(steps[in_null_window])))
+            null_is_large.append(event.onset_day in set(events_coz1_large.onset_day))
 assert len(null_means) >= 10, f"only {len(null_means)} COZ1 null windows for the noise of the CFW1 step"
 cfw1_insar_sigma = float(np.std(null_means, ddof=1))
+cfw1_insar_sigma_large_only = float(np.std(np.array(null_means)[np.array(null_is_large)], ddof=1))
 cfw1_insar_steps = {}                     # event year -> (mean step mm, n crossings)
 cfw1_insar_lines = [f"OUR InSAR AT CFW1 ({cfw1_km:.1f} km): mean of 04's per-crossing joint-model steps within +/-{cfw1_insar_half_km:g} km along "
-                    f"the trace; 1-sigma {cfw1_insar_sigma:.2f} mm = std of the same mean for the two COZ1 events over {len(null_means)} "
+                    f"the trace; 1-sigma {cfw1_insar_sigma:.2f} mm = std of the same mean for the {len(events_coz1)} COZ1 control events "
+                    f"({', '.join(events_coz1.onset_day)}) over {len(null_means)} "
                     f"independent {2 * cfw1_insar_half_km:g} km windows of the Tule Pond extent ({tulepond_extent.km_lo:.1f} to "
-                    f"{tulepond_extent.km_hi:.1f} km; mean {np.mean(null_means):+.2f} mm, robust sigma {utils.robust_sigma(np.array(null_means)):.2f} mm)"]
+                    f"{tulepond_extent.km_hi:.1f} km; mean {np.mean(null_means):+.2f} mm, robust sigma {utils.robust_sigma(np.array(null_means)):.2f} mm; "
+                    f"from the two large COZ1 events alone {cfw1_insar_sigma_large_only:.2f} mm, {int(np.sum(null_is_large))} windows)"]
 for event in events_tulepond.itertuples():
     steps = event_steps[step_column(event.onset_lo)].values[near_cfw1]
     steps = steps[np.isfinite(steps)]
@@ -951,7 +1003,7 @@ stats_lines += [""] + near_lines                                  # into the sta
 # it cannot be imported): constant + rate + annual sine and cosine + one
 # Heaviside step H(t > step epoch) per event, on the common-grid dates of
 # `fp_ts.csv`, fitted per crossing by least squares on the finite epochs. It
-# keeps all of 04's steps (the five Tule Pond and the two Oakland onsets,
+# keeps all of 04's steps (the five Tule Pond and every Oakland onset,
 # `creep_events.csv`, step epoch `onset_lo`) and adds, for each such Gittins
 # event, a step at the last common-grid epoch on a day before the event's start
 # date, so the step sits in the interval holding the start. That the
@@ -1107,29 +1159,76 @@ stats_lines += [""] + gittins_lines                               # into the sta
 # two large COZ1 creepmeter events the InSAR recovers, from notebook 04's
 # joint model (the InSAR amplitude `amplitude_mm` of each Oakland event against
 # the creepmeter's step `creepmeter_step_mm` over the same window, registry
-# `04_control_coz1_amp_*` and `04_control_coz1_creepmeter_*`). Read from 04's
-# `creep_events.csv` (not retyped) and checked against 04's registered values;
-# the recovery per event and its mean (~60%) are registered here.
+# `04_control_coz1_amp_<onset day>_mm` and `04_control_coz1_creepmeter_<onset
+# day>_mm`). Read from 04's `creep_events.csv` (not retyped) and checked
+# against 04's registered values. The recovery of EVERY COZ1 event is
+# registered (`05_coz1_amp_recovery_<onset day>_pct`); the mean the paper
+# quotes (~60%, `05_coz1_amp_recovery_mean_pct`) is over the two LARGE events
+# only ([12]: the two largest creepmeter steps, the January 2019 and February
+# 2022 events), the sharp steps the 6 to 12 d sampling can resolve; the
+# smaller October 2022 surge (since 2026-10-05) is a month-long creep surge
+# whose slip is spread beyond its onset window.
+#
+# Whether the InSAR deficit at COZ1 is only the events: the InSAR minus
+# creepmeter difference of [8] (the creepmeter on the InSAR epochs, the
+# station stack) accumulated BEFORE the first COZ1 event (from the start of
+# the record to the event's `onset_lo`) and AFTER it (from its `onset_hi` to
+# the end, so the later COZ1 events are in it). Each level is the median of the
+# difference over `collar_yr` (0.75 yr) of epochs: at the start, just before
+# the window, just after it, at the end.
 
 # %%
 # [14c]
 latest_registry = REG.latest().set_index("key")
 recovery_lines = ["TRANSIENT AMPLITUDE: NOTEBOOK 04 JOINT-MODEL COZ1 AMPLITUDE / CREEPMETER STEP (creep_events.csv)"]
-recovery_pct = {}
+recovery_pct = {}                        # key label (onset day, 04's: 2019_01_09) -> recovery %
+large_labels = [onset_day.replace("-", "_") for onset_day in events_coz1_large.onset_day]
 for event in events_coz1.itertuples():
-    label = f"{int(event.onset_lo)}"                                  # 04's key label: the year of the step epoch
+    label = event.onset_day.replace("-", "_")                         # 04's key label: the onset day of the event
     for column, key in (("amplitude_mm", f"04_control_coz1_amp_{label}_mm"), ("creepmeter_step_mm", f"04_control_coz1_creepmeter_{label}_mm")):
         assert key in latest_registry.index, f"{key} is not in the registry: run notebook 04"
         registered = latest_registry.loc[key]
         assert utils.render_value(getattr(event, column), int(registered["precision"])) == registered["rendered"], (
             f"{key}: creep_events.csv has {getattr(event, column)}, the registry {registered['rendered']}: 04's outputs and registry disagree")
     recovery_pct[label] = 100 * event.amplitude_mm / event.creepmeter_step_mm
-    assert 0 < recovery_pct[label] < 150, f"COZ1 {label}: recovery {recovery_pct[label]:.0f}% is outside 0 to 150%"
-    recovery_lines.append(f"  {label}: InSAR {event.amplitude_mm:.2f} mm / creepmeter {event.creepmeter_step_mm:.2f} mm = {recovery_pct[label]:.0f}%")
-assert sorted(recovery_pct) == ["2019", "2022"], f"expected the 2019 and 2022 COZ1 events, got {sorted(recovery_pct)}"
-recovery_mean_pct = float(np.mean(list(recovery_pct.values())))
+    if label in large_labels:
+        assert 0 < recovery_pct[label] < 150, f"COZ1 {event.onset_day}: recovery {recovery_pct[label]:.0f}% is outside 0 to 150%"
+        kind = "large"
+    else:
+        kind = "smaller, not in the mean"
+    recovery_lines.append(f"  {event.onset_day} ({kind}): InSAR {event.amplitude_mm:.2f} mm / creepmeter {event.creepmeter_step_mm:.2f} mm "
+                          f"= {recovery_pct[label]:.0f}%")
+assert sorted(recovery_pct) == sorted(event.onset_day.replace("-", "_") for event in events_coz1.itertuples()), "a COZ1 event has no recovery"
+recovery_mean_pct = float(np.mean([recovery_pct[label] for label in large_labels]))      # the two large events only ([12])
 assert 0 < recovery_mean_pct < 150, f"mean COZ1 recovery {recovery_mean_pct:.0f}% is outside 0 to 150%"
-recovery_lines.append(f"  mean of the two: {recovery_mean_pct:.0f}%")
+recovery_lines.append(f"  mean of the two large events ({', '.join(events_coz1_large.onset_day)}; the two largest creepmeter steps): "
+                      f"{recovery_mean_pct:.0f}%; of all {len(events_coz1)} COZ1 events {np.mean(list(recovery_pct.values())):.0f}% (not registered)")
+
+# the InSAR minus creepmeter difference at COZ1 before and after the first COZ1 event
+coz1_dates, coz1_misfit = misfits["COZ1"]
+first_coz1 = events_coz1.sort_values("onset_lo").iloc[0]
+first_coz1_label = first_coz1.onset_day.replace("-", "_")             # 04's key label: the onset day
+later_coz1_days = events_coz1.sort_values("onset_lo").onset_day.iloc[1:].tolist()
+
+
+def misfit_level(span_lo, span_hi):
+    """Median InSAR minus creepmeter difference at COZ1 over the epochs in [span_lo, span_hi] (at least 5)."""
+    in_span = (coz1_dates >= span_lo) & (coz1_dates <= span_hi) & np.isfinite(coz1_misfit)
+    assert in_span.sum() >= 5, f"only {in_span.sum()} COZ1 epochs in {span_lo:.3f}-{span_hi:.3f}"
+    return float(np.median(coz1_misfit[in_span]))
+
+
+level_start = misfit_level(coz1_dates[0], coz1_dates[0] + collar_yr)
+level_pre = misfit_level(first_coz1.onset_lo - collar_yr, first_coz1.onset_lo)
+level_post = misfit_level(first_coz1.onset_hi, first_coz1.onset_hi + collar_yr)
+level_end = misfit_level(coz1_dates[-1] - collar_yr, coz1_dates[-1])
+coz1_drift_before_mm = level_pre - level_start
+coz1_drift_after_mm = level_end - level_post
+recovery_lines.append(f"  COZ1 InSAR minus creepmeter (medians over {collar_yr:g} yr of epochs): {coz1_drift_before_mm:+.2f} mm before the "
+                      f"{first_coz1.onset_day} event ({utils.decimal_year_to_day(coz1_dates[0]).date()} to its onset_lo "
+                      f"{utils.decimal_year_to_day(first_coz1.onset_lo).date()}), {level_post - level_pre:+.2f} mm across its window, "
+                      f"{coz1_drift_after_mm:+.2f} mm after it (to {utils.decimal_year_to_day(coz1_dates[-1]).date()}, the "
+                      f"{', '.join(later_coz1_days)} events included)")
 print("\n".join(recovery_lines))
 stats_lines += [""] + recovery_lines                              # into the stats file with the rest
 
@@ -1373,13 +1472,15 @@ fig.show()
 # ## [19] The aperture ladder, from the frozen sweep
 #
 # Every cross-fault bin that was scored, re-scored here on one FIXED stack
-# (4 rows within 0.4 km of latitude of each creepmeter, no widening) so the bins
+# (4 rows within 0.4 km along the trace of each creepmeter, no widening) so the bins
 # are comparable: the five-station rate RMS (long-term agreement), the fraction
 # of the trace with data (completeness), and at COZ1 the detrended correlation
 # (event shape) and the fraction of the creepmeter's two event steps recovered
-# (event amplitude), each step measured across one of the two Oakland InSAR
-# onset windows of notebook 04 (`onset_lo` to `onset_hi`, the same detection and
-# windows as Tule Pond). Bins reaching the trace agree worst on rate (the
+# (event amplitude), each step measured across the onset window of one of the
+# two LARGE Oakland events of notebook 04 (`onset_lo` to `onset_hi`, the same
+# detection and windows as Tule Pond; the two largest creepmeter steps, [12]:
+# the smaller October 2022 COZ1 event found since 2026-10-05 is a month-long
+# surge, not a step, and its collars hold the February 2022 event). Bins reaching the trace agree worst on rate (the
 # phase-linking smoothing dilutes the step over ~55 to 65 m) but best on event
 # shape; the 30 to 150 m bin is the compromise carried forward. A station whose
 # fixed stack cannot be formed in a bin is left out of that bin's rate RMS (the
@@ -1441,14 +1542,14 @@ for set_name, inner, outer in ladder_bins:
         det_r = float(np.corrcoef(insar_detrended[both_finite], cm_detrended[both_finite])[0, 1])
         insar_steps = []
         cm_steps = []
-        for event in events_coz1.itertuples():                      # the two Oakland InSAR onset windows of notebook 04
+        for event in events_coz1_large.itertuples():                # the two LARGE Oakland events' onset windows ([12])
             insar_steps.append(event_step(insar_dates, insar_slip, event.onset_lo, event.onset_hi))
             cm_steps.append(event_step(insar_dates, cm_on_insar_dates, event.onset_lo, event.onset_hi))
         insar_steps = np.array(insar_steps)
         cm_steps = np.array(cm_steps)
         scored = np.isfinite(insar_steps) & np.isfinite(cm_steps) & (cm_steps > 0)
         if not scored.all():
-            print(f"  {sweep_tag}: {int((~scored).sum())} of the {len(events_coz1)} COZ1 events not scorable (short collars)")
+            print(f"  {sweep_tag}: {int((~scored).sum())} of the {len(events_coz1_large)} large COZ1 events not scorable (short collars)")
         if scored.any():
             step_frac = float(np.sum(insar_steps[scored]) / np.sum(cm_steps[scored]))
         resid_sd = rate_annual_residual_sd(insar_dates, insar_slip)
@@ -1560,7 +1661,7 @@ plt.show()
 
 # %%
 # [24]
-stats_lines += ["", f"APERTURE LADDER (frozen sweep at coherence {ladder_coh}, fixed {ladder_n_stack}-row stack within {ladder_stack_km} km of latitude)",
+stats_lines += ["", f"APERTURE LADDER (frozen sweep at coherence {ladder_coh}, fixed {ladder_n_stack}-row stack within {ladder_stack_km} km along the trace)",
                 ladder.drop(columns=["tag"]).round(3).to_string(index=False), "",
                 f"chosen bin {selected[0]}-{selected[1]} m by coherence threshold:", coh_table.round(3).to_string(index=False)]
 sidecar = REG.sidecar("05_validation", stats_lines)
@@ -1601,6 +1702,8 @@ REG.register("05_gittins_cfw1_window_pad_d", gittins_window_pad_days, "d", 0, wh
 for label, pct in recovery_pct.items():
     REG.register(f"05_coz1_amp_recovery_{label}_pct", pct, "pct", 0, where="M4", cell="coz1-amplitude", sidecar=sidecar)
 REG.register("05_coz1_amp_recovery_mean_pct", recovery_mean_pct, "pct", 0, where="M4", cell="coz1-amplitude", sidecar=sidecar)
+REG.register(f"05_coz1_insar_minus_cm_before_{first_coz1_label}_mm", coz1_drift_before_mm, "mm", 1, where="M4", cell="coz1-amplitude", sidecar=sidecar)
+REG.register(f"05_coz1_insar_minus_cm_after_{first_coz1_label}_mm", coz1_drift_after_mm, "mm", 1, where="M4", cell="coz1-amplitude", sidecar=sidecar)
 REG.register("05_det_rmse_min_mm", stations.det_rmse.min(), "mm", 2, where="M4", cell="noise-floor", sidecar=sidecar)
 REG.register("05_det_rmse_max_mm", stations.det_rmse.max(), "mm", 2, where="M4", cell="noise-floor", sidecar=sidecar)
 REG.register("05_noise_floor_steady_std_mm", floor_steady_std, "mm", 2, where="M4 (alternative definition)", cell="noise-floor", sidecar=sidecar)
