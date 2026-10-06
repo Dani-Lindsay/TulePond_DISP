@@ -32,8 +32,11 @@
 # 6. **Slip budget**: secular + event-driven rate (the five Tule Pond events
 #    only) against the alignment arrays (refit over the InSAR window, and their
 #    whole-record rates) and creepmeters.
-# 7. Recurrence intervals; Bo Xie's relocated seismicity and the repeating
-#    earthquakes near the section.
+# 7. Bo Xie's relocated seismicity and the repeating earthquakes near the section: how many
+#    fall within 2 km of the trace in the section hosting the events and in the 90 % band over
+#    the InSAR period. (No recurrence intervals here: the paper's interval statistics have ONE
+#    definition and one owner, notebook 11; the point-onset intervals this notebook registered until
+#    2026-10-06, `04_interval_*`, are retired.)
 #
 # PREPUB: Ported from `Hayward_DISP-S1/analysis/run12_detect_events.py`,
 # PREPUB: `run14_event_fraction.py`, `hayward_creep/plotting/plot_event_summary.py` and
@@ -1000,20 +1003,22 @@ budget["coz1"] = budget_block(f"Oakland control 75% band (its own {len(step_epoc
                               event_column="event_rate_oakland", total_column="total_oakland")
 
 # %% [markdown]
-# ## [25] Recurrence intervals, and seismicity near the section
+# ## [25] Seismicity near the section
 #
 # Seismicity is Bo Xie's GrowClust relocated catalogue (relocated plus
 # unrelocated NCSS events); repeaters are Taira GEN3 plus Waldhauser and
 # Schaff; both within 2 km of the trace and inside the InSAR window.
+#
+# The counts the discussion quotes (registered): earthquakes (all, and the relocated ones,
+# `source == "growclust"`) and repeating earthquakes within `seis_max_dist_km` of the trace,
+# from the first to the last InSAR acquisition (`t0`, `t1`), along strike (the km of the nearest
+# trace vertex) inside (a) the section hosting the events (`len_lo` to `len_hi`, the creep length of
+# [21]) and (b) the paper's peak-slip band (`band_main`, 90 %). The two repeater catalogues are
+# counted separately as well as together: they overlap in time (Waldhauser and Schaff to their end
+# year, Taira GEN3 to 2025) and may list the same earthquake, so the sum is an upper bound.
 
 # %%
 # [26]
-intervals = np.diff(step_epochs_tulepond)
-print(f"intervals between the five step epochs (yr): {np.round(intervals, 2).tolist()}")
-# point onsets, illustration only: the paper's recurrence statistics are 11's window draws (11_insar_interval_*)
-print(f"point onsets, illustration only: mean {intervals.mean():.2f} yr, sd {intervals.std(ddof=1) * 365.25:.0f} d, "
-      f"CoV {intervals.std(ddof=1) / intervals.mean():.2f} (the paper quotes 11's window-draw values)")
-
 seis = utils.load_growclust_catalog(common_paths["growclust_cat"], bbox=common_paths["aoi_bbox"])
 seis = utils.project_to_fault(seis, x_fault)
 seis = seis[(seis.dist_fault_km.abs() <= seis_max_dist_km) & (seis.YYYY >= t0) & (seis.YYYY <= t1)].copy()
@@ -1035,6 +1040,31 @@ n_cre_band = int(((cre.km >= band_lo) & (cre.km <= band_hi)).sum())
 print(f"within {seis_max_dist_km:g} km of the trace, {t0:.1f} to {t1:.1f}: {len(seis)} earthquakes ({(seis.source == 'growclust').sum()} relocated) "
       f"and {len(cre)} repeaters on the whole fault; in the Tule Pond window ({w_lo:.0f} to {w_hi:.0f} km): {n_seis_win} earthquakes, "
       f"{n_cre_win} repeaters; in the {100 * band_main:.0f}% band: {n_cre_band} repeaters")
+
+# the counts the discussion quotes: the section hosting the events and the paper's band, over the InSAR period
+band_tag = f"band{int(round(100 * band_main))}"                    # 'band90', as the other 04 keys
+seis_count_spans = {"section": (len_lo, len_hi), band_tag: (band_lo, band_hi)}
+seis_counts = {}                                                    # (span, quantity) -> count
+for span_name, (span_lo, span_hi) in seis_count_spans.items():
+    seis_in = seis[(seis.km >= span_lo) & (seis.km <= span_hi)]
+    cre_in = cre[(cre.km >= span_lo) & (cre.km <= span_hi)]
+    seis_counts[(span_name, "seis_all")] = len(seis_in)
+    seis_counts[(span_name, "seis_reloc")] = int((seis_in.source == "growclust").sum())
+    seis_counts[(span_name, "cre_all")] = len(cre_in)
+    seis_counts[(span_name, "cre_taira")] = int((cre_in.cat == "Taira26").sum())
+    seis_counts[(span_name, "cre_wald")] = int((cre_in.cat == "Waldhauser21").sum())
+    assert seis_counts[(span_name, "cre_taira")] + seis_counts[(span_name, "cre_wald")] == len(cre_in), "a repeater of neither catalogue"
+assert seis_counts[(band_tag, "cre_all")] == n_cre_band, "the band count differs from the one registered as 04_n_cre_band"
+catalogue_spans = (f"GrowClust {seis.YYYY.min():.2f}-{seis.YYYY.max():.2f}" if len(seis) else "GrowClust: none in the window",
+                   f"repeaters " + ", ".join(f"{name} {grp.YYYY.min():.2f}-{grp.YYYY.max():.2f}" for name, grp in cre.groupby("cat")))
+seis_count_lines = []
+for span_name, (span_lo, span_hi) in seis_count_spans.items():
+    seis_count_lines.append(f"{span_name} ({span_lo:.1f}-{span_hi:.1f} km), within {seis_max_dist_km:g} km of the trace, {t0:.2f}-{t1:.2f}: "
+                            f"{seis_counts[(span_name, 'seis_all')]} earthquakes ({seis_counts[(span_name, 'seis_reloc')]} relocated), "
+                            f"{seis_counts[(span_name, 'cre_all')]} repeating earthquakes (Taira GEN3 {seis_counts[(span_name, 'cre_taira')]}, "
+                            f"Waldhauser and Schaff {seis_counts[(span_name, 'cre_wald')]}; may overlap)")
+print("\n".join(seis_count_lines))
+print("events in the window by catalogue span: " + "; ".join(catalogue_spans))
 
 # %% [markdown]
 # ## [27] Figure 1 data: the rotated map, the hovmoller, the per-event profiles
@@ -1376,11 +1406,9 @@ for name, block in budget.items():
     stats_lines.append(f"   {block['name']}: {block['lo']:.1f} to {block['hi']:.1f} km n {block['n']}: secular {block['secular']:.2f}, "
                        f"event {block['event_rate']:.2f}, total {block['total']:.2f} ({block['frac_pct']:.0f}%), arrays window "
                        f"{block['aa_window_mean']:.2f} (n {block['aa_window_n']}), long-term {block['aa_longterm_mean']:.2f} (n {block['aa_n']})")
-stats_lines += ["", f"recurrence intervals (yr): {np.round(intervals, 2).tolist()}"
-                f"; point onsets, illustration only: mean {intervals.mean():.2f}, sd {intervals.std(ddof=1) * 365.25:.0f} d, "
-                f"CoV {intervals.std(ddof=1) / intervals.mean():.2f} (the paper quotes 11's window-draw values)",
-                f"seismicity (GrowClust) within {seis_max_dist_km:g} km, window {w_lo:.0f}-{w_hi:.0f} km: {n_seis_win} earthquakes, "
+stats_lines += ["", f"seismicity (GrowClust) within {seis_max_dist_km:g} km, window {w_lo:.0f}-{w_hi:.0f} km: {n_seis_win} earthquakes, "
                 f"{n_cre_win} repeaters, {n_cre_band} repeaters in the {100 * band_main:.0f}% band",
+                *seis_count_lines, "catalogue spans of the events kept: " + "; ".join(catalogue_spans),
                 f"hovmoller colour scale {vmin:.0f} to {vmax:.0f} mm"]
 sidecar = REG.sidecar("04_events", stats_lines)
 
@@ -1444,14 +1472,18 @@ for array_row in in_section.itertuples():
     REG.register(f"04_aa_{array_row.code.lower()}_window_rate_mm_yr", array_row.rate_window, "mm/yr", 2, where="P4 (refit over the InSAR window)", cell="budget", sidecar=sidecar)
     REG.register(f"04_aa_{array_row.code.lower()}_window_rate_se_mm_yr", array_row.rate_window_se, "mm/yr", 2, where="P4 (refit over the InSAR window)", cell="budget", sidecar=sidecar)
     REG.register(f"04_aa_{array_row.code.lower()}_window_n_surveys", array_row.n_window, "count", 0, where="P4 (refit over the InSAR window)", cell="budget", sidecar=sidecar)
-REG.register_many("04_interval_yr", list(intervals), "yr", 2, where="P9", cell="intervals",
-                  labels=[f"{int(first)}_{int(second)}" for first, second in zip(step_epochs_tulepond[:-1], step_epochs_tulepond[1:])], sidecar=sidecar)
-REG.register("04_interval_mean_yr", intervals.mean(), "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
-# 04_interval_sd_d and 04_interval_cov are no longer registered (2026-10-05): from point onsets they duplicated
-# 11's window-draw 11_insar_interval_sd_d / _cov, which the paper quotes; they retire at this run's render
+# (the point-onset intervals 04_interval_yr_* and 04_interval_mean_yr are no longer registered (2026-10-06): the
+# paper's interval statistics are 11's only; they retire at this run's render)
 REG.register("04_n_seis_window", n_seis_win, "count", 0, where="Fig1 caption", cell="catalogues", sidecar=sidecar)
 REG.register("04_n_cre_window", n_cre_win, "count", 0, where="Fig1 caption", cell="catalogues", sidecar=sidecar)
 REG.register("04_n_cre_band", n_cre_band, "count", 0, where="P3", cell="catalogues", sidecar=sidecar)
+# the discussion's counts: within seis_max_dist_km of the trace over the InSAR period, in the section and in the band
+for span_name in seis_count_spans:
+    REG.register(f"04_n_seis_{span_name}", seis_counts[(span_name, "seis_all")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
+    REG.register(f"04_n_seis_reloc_{span_name}", seis_counts[(span_name, "seis_reloc")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
+    REG.register(f"04_n_cre_{span_name}", seis_counts[(span_name, "cre_all")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
+    REG.register(f"04_n_cre_taira_{span_name}", seis_counts[(span_name, "cre_taira")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
+    REG.register(f"04_n_cre_wald_{span_name}", seis_counts[(span_name, "cre_wald")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
 # the COZ1 control events ([10]: the two large known ones among them), labelled by onset day: 2019_01_09, ...
 # (until 2026-10-05 by year, 04_control_coz1_*_2019 / _2022; a second 2022 event would collide; the year keys
 # retire at this run's render)
