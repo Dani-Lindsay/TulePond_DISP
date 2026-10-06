@@ -26,7 +26,7 @@
 # | S: per-event step maps | 06_event_field_geometry | `figS_event_step_maps_*` |
 # | S: creepmeter validation, aperture ladder | 05_validation | `figS_validation_*`, `figS_binning_ladder_*` |
 # | S: arrays and InSAR, threshold sweep | 09_alignment_arrays | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*` |
-# | S: rainfall conditioning | 11_forecast | `figS_precip_conditioning_*` |
+# | S: rainfall conditioning (moved from 11_forecast 2026-10-06) | 10_rain_seasonality | `figS_precip_conditioning_*` |
 #
 # (The same table is `wanted` below, which also names each figure's notebook for the staleness check.)
 #
@@ -79,7 +79,7 @@ wanted = {
     "Fig_S_binning_ladder": ("figS_binning_ladder_*.png", "05_validation"),
     "Fig_S_arrays_insar": ("figS_tulepond_arrays_insar_*.png", "09_alignment_arrays"),
     "Fig_S_hrkt_threshold": ("figS_hrkt_threshold_sweep_*.png", "09_alignment_arrays"),
-    "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "11_forecast"),
+    "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "10_rain_seasonality"),   # 10 since 2026-10-06 (the rain tests left 11)
 }
 # the repo notebooks each source notebook reads products of (audit_2026-10-05/A_dataflow.md, read/write table;
 # 01_prep_figures and 03 read only the prepared data)
@@ -91,6 +91,7 @@ reads_from = {
     "06_event_field_geometry": ["04_event_detection"],
     "07c_fig2": ["04_event_detection", "06_event_field_geometry", "07a_uniform_model", "08a_3d_model"],
     "09_alignment_arrays": ["03_creep_timeseries", "04_event_detection", "06_event_field_geometry"],
+    "10_rain_seasonality": ["03_creep_timeseries", "04_event_detection", "09_alignment_arrays"],
     "11_forecast": ["03_creep_timeseries", "04_event_detection", "09_alignment_arrays", "10_rain_seasonality"],
 }
 
