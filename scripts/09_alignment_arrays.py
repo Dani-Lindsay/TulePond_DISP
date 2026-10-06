@@ -61,7 +61,7 @@ import os
 import warnings
 
 import insar_utils as utils
-from TulePond_filepaths import common_paths, creepmeters, params, paths_out, repo_dir
+from TulePond_filepaths import common_paths, creepmeters, params, paths_out, repo_dir, aa_dense_window_days, loma_prieta_yr
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -89,11 +89,11 @@ site = "HRKT"                  # the array with the dense record
 thr_mm = 6.0                   # detection threshold: fixed excess per survey interval, chosen by eye (see the sweep)
 min_step_sigma = 2.0           # a detection is kept only if its fitted step is at least this many sigma (Dani 2026-10-02)
 n_pass = 2                     # detector passes (pass 2 uses the fitted inter-event rate)
-dense_window_days = 130        # the bimonthly era: survey intervals up to this; the detector runs only there (Dani 2026-10-02)
+dense_window_days = aa_dense_window_days   # the bimonthly era: survey intervals up to this; the detector runs only there (Dani 2026-10-02; TulePond_filepaths, shared with 10 and 11)
 n_background = 4               # columns of the joint model before the steps: constant, rate, annual sin, annual cos
 neighbour_codes = ["HAPP", "HCAM", "HPMD"]   # the other arrays surveyed every ~2 months: north (HAPP) and south (HCAM, HPMD) of the section
 zoom_t0 = 2015.0               # start of the zoomed panels
-loma_prieta = 1989.79          # 17 Oct 1989
+loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, shared with 10 and 11)
 # the six arrays across the section, north -> south; their positions (lat AND lon) are read from the archive
 # summary in [6] and checked against the mapped trace
 array_codes = ["HAPP", "HGIL", "HRKT", "HHAN", "HUNI", "HPIN"]
@@ -226,7 +226,8 @@ hrkt_dates, hrkt_slip, hrkt_n = stacks["HRKT"]
 G_hrkt = design_matrix(hrkt_dates, insar_events.onset_lo)
 hrkt_insar_steps = np.linalg.lstsq(G_hrkt, hrkt_slip, rcond=None)[0][n_background:]
 assert len(hrkt_insar_steps) == len(insar_events) and np.all(np.isfinite(hrkt_insar_steps))
-print(f"HRKT InSAR stack ({hrkt_n} crossings): event steps {np.round(hrkt_insar_steps, 1)} mm, mean {hrkt_insar_steps.mean():.1f}, median {np.median(hrkt_insar_steps):.1f}")
+print(f"HRKT InSAR stack ({hrkt_n} crossings): event steps {np.round(hrkt_insar_steps, 1)} mm, mean {hrkt_insar_steps.mean():.1f}, "
+      f"median {np.median(hrkt_insar_steps):.1f}, range {hrkt_insar_steps.min():.1f}-{hrkt_insar_steps.max():.1f} (registered beside the mean)")
 
 # %% [markdown]
 # ## [9] The arrays against the InSAR at each site
@@ -710,7 +711,8 @@ for event in hrkt_events.itertuples():
     stats_lines.append(f"  window {event.onset_lo:.2f}-{event.onset_hi:.2f} ({event.window_days:3.0f} d)  step {event.amplitude_mm:5.1f} +/- {event.amp_err:.1f} mm")
 stats_lines += [f"quiet interval {quiet_start:.2f}-{quiet_end:.2f} ({quiet_end - quiet_start:.1f} yr), {n_quiet} surveys, "
                 f"largest step {max_step_quiet:.1f} mm, spans Loma Prieta {loma_prieta}",
-                f"InSAR-era steps on the HRKT stack: mean {hrkt_insar_steps.mean():.1f}, median {np.median(hrkt_insar_steps):.1f} mm",
+                f"InSAR-era steps on the HRKT stack: mean {hrkt_insar_steps.mean():.1f}, median {np.median(hrkt_insar_steps):.1f} mm, "
+                f"range {hrkt_insar_steps.min():.1f}-{hrkt_insar_steps.max():.1f} mm (per event: {', '.join(f'{v:.1f}' for v in hrkt_insar_steps)})",
                 "", "along strike (neighbour excess inside HRKT windows):", neighbours.round(2).to_string(index=False),
                 "", "threshold sweep:", sweep.round(2).to_string(index=False)]
 sidecar = REG.sidecar("09_aa", stats_lines)
@@ -733,6 +735,8 @@ REG.register("09_hrkt_window_min_d", hrkt_events.window_days.min(), "d", 0, wher
 REG.register("09_hrkt_window_max_d", hrkt_events.window_days.max(), "d", 0, where="Fig3 caption", cell="detector", sidecar=sidecar)
 REG.register("09_hrkt_insar_step_mean_mm", hrkt_insar_steps.mean(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
 REG.register("09_hrkt_insar_step_median_mm", np.median(hrkt_insar_steps), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
+REG.register("09_hrkt_insar_step_min_mm", hrkt_insar_steps.min(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)   # the range beside the mean (2026-10-06)
+REG.register("09_hrkt_insar_step_max_mm", hrkt_insar_steps.max(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
 REG.register("09_quiet_start_yr", quiet_start, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
 REG.register("09_quiet_end_yr", quiet_end, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
 REG.register("09_quiet_max_step_mm", max_step_quiet, "mm", 1, where="P9", cell="detector", sidecar=sidecar)

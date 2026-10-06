@@ -332,9 +332,25 @@ gittins_window_pad_days = 7
 wet_season_months = (10, 4)    # (first month, last month) of the wet season, shared by 10 and 11 (Dani 2026-10-05: Oct-Apr)
 paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 11)
 model_sigma_locked = 12.0      # regularisation sigma of the selected slip model and all sensitivity runs (L-curve rule, Dani 2026-10-03)
+# The bimonthly era of the alignment arrays (09, 10, 11): a survey interval of at most this many days resolves the
+# season of an onset; 09 runs the HRKT detector only on such intervals, 10 and 11 assert that every array window is
+# this short (until 2026-10-06 typed in each notebook: 09 dense_window_days, 10 and 11 resolvable_days).
+aa_dense_window_days = 130
+# The 1989 Loma Prieta earthquake, 17 Oct 1989 local time, as a decimal year to two places (day of year 290:
+# 1989 + 289/365 = 1989.79, the convention of insar_utils.date_to_decimal_year), for the interval that spans it (09 asserts that the longest quiet HRKT
+# interval spans it; 10 saves it for Fig 3A; 11 forms the array forecasts with and without that interval).
+loma_prieta_yr = 1989.79
 
-# Date the forecast is issued from (notebook 09). Pinned so the forecast
-# numbers are reproducible; do not use "today".
+# Lake Elizabeth (Central Park, Fremont), east of the trace at the south end of the Tule Pond section: the area of
+# the mean-event VERTICAL signal the text quotes (notebook 06). Centre = the centroid of the open-water no-data hole
+# of 06's coherence-0.9 maps (lon -121.9614, lat 37.5499; read off fp_maps.npz 2026-10-06; TBC by the author on 06's
+# QC figure qc06_lake_elizabeth_vertical_area, which draws the area on the map); the area is every valid pixel
+# within lake_elizabeth_radius_m of it and east of the trace beyond 06's near-fault band.
+lake_elizabeth_lonlat = (-121.9614, 37.5499)
+lake_elizabeth_radius_m = 500.0
+
+# Date the forecast statement was first written (notebook 11; notebook 10 ends its rain series on it). Pinned so the
+# forecast numbers are reproducible; do not use "today".
 forecast_issue_date = "2026-08-25"
 # The last observation with no event, on which notebook 11 conditions the forecast: the last
 # descending acquisition of the CSLC + Dolphin extension check (extension_2026-09/RESULT.md,
@@ -342,9 +358,9 @@ forecast_issue_date = "2026-08-25"
 # notebook 11's data_end (the end of 03's fp_ts, 2026-03-21).
 forecast_last_obs_date = "2026-09-24"
 
-# Running rain totals (notebooks 10 and 11). 11 tests a grid of totals and lags before the InSAR onsets
-# (Fremont gauge); 10's event table only describes each window by the days since a 3-day total of at least
-# rain_total_mm (a description, no test uses that single value).
+# Running rain totals (notebook 10). 10 tests a grid of totals and lags before the InSAR onsets (Fremont gauge;
+# the test moved from 11 on 2026-10-06); its event table only describes each window by the days since a 3-day total
+# of at least rain_total_mm (a description, no test uses that single value).
 rain_total_days = 3        # length of the running rain total (days)
 rain_total_mm = 40.0       # 10's event-table description: days since a 3-day total of at least this (mm)
 
