@@ -326,10 +326,18 @@ plot_tests_figures.main(out_dir, os.path.join(fig_dir, "figS_pylith_recovery.png
 # squares with the run's Cd on the ramp-removed data of the reference solution, chi2(D), the
 # bracket delta chi2 <= 4 and the Mw of each D. No smoothing, no sigma: the depth the data alone
 # prefer under each covariance. Every amplitude must be positive (asserted).
+#
+# NB (2026-10-06, investigated, method NOT changed): under the nugget-only (diagonal) Cd the bracket collapses to the
+# best grid depth (`08b_depth_bracket_lo_km` = `_hi_km` = 0.40 km). The nugget Cd leaves out the correlated noise, so
+# chi2 is far above the number of samples (reduced chi2 printed and registered, `*_depth_scan_reduced_chi2`) and the
+# neighbouring grid depths (0.3, 0.5 km) lie hundreds of chi2 units above the minimum: delta chi2 <= 4 assumes a
+# calibrated chi2 and is not met by any other depth. Even scaled by the reduced chi2 (delta chi2 <= 4 x chi2_nu, printed)
+# the bracket stays one grid point. The full-Cd bracket (`08b_full_depth_bracket_*`) is the calibrated one.
 
 # %%
 ## [4]
 scans = {}
+scan_diagnosis = {}               # (medium, Cd) -> reduced chi2 at the best depth and the chi2_nu-scaled bracket (printed, see above)
 for medium, cd in RUNS:
     _, cd_data, _ = invert_tents(medium, selected_sigma(medium, cd), cd)
     chol = np.linalg.cholesky(cd_data.Cd + 1e-9 * np.eye(cd_data.Cd.shape[0]))
@@ -356,6 +364,17 @@ for medium, cd in RUNS:
     bracket = scan[scan.dchi2 <= 4]
     print(f"depth scan {medium} {cd}: best D {best.D_km:g} km ({best.slip_mm:.1f} mm, Mw {best.Mw:.2f}); delta chi2 <= 4: "
           f"{bracket.D_km.min():g}-{bracket.D_km.max():g} km, Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f}")
+    # the bracket diagnosis (markdown above): how calibrated chi2 is, and the bracket with delta chi2 scaled by chi2_nu
+    reduced_chi2 = float(best.chi2 / (cd_data.vel.size - 2))                  # two parameters: amplitude and constant
+    scaled_bracket = scan[scan.dchi2 <= 4 * reduced_chi2]
+    best_index = int(scan.chi2.idxmin())
+    neighbour_text = []
+    for neighbour in (best_index - 1, best_index + 1):
+        if 0 <= neighbour < len(scan):
+            neighbour_text.append(f"D {scan.D_km.iloc[neighbour]:g} km delta chi2 {scan.dchi2.iloc[neighbour]:.1f}")
+    scan_diagnosis[(medium, cd)] = dict(reduced_chi2=reduced_chi2, scaled_lo=float(scaled_bracket.D_km.min()), scaled_hi=float(scaled_bracket.D_km.max()))
+    print(f"    reduced chi2 at the best depth {reduced_chi2:.2f} ({cd_data.vel.size} samples); grid neighbours: {'; '.join(neighbour_text)}; "
+          f"bracket with delta chi2 <= 4 x chi2_nu ({4 * reduced_chi2:.1f}): {scaled_bracket.D_km.min():g}-{scaled_bracket.D_km.max():g} km")
 
 mpl_paper_style(base=7)
 fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.6), constrained_layout=True)
@@ -405,11 +424,10 @@ def no_decimals(value):
 
 final_file = os.path.join(dir_08c, "final_comparison.csv")
 assert os.path.exists(final_file), f"missing {final_file}: run 08c_3d_model_sensitivity"
-for field_file in ("fig2_inputs.npz", "fp_maps.npz"):                      # stale table = made before the current 06 field
-    field_path = os.path.join(field_dir, field_file)
-    assert os.path.getmtime(final_file) > os.path.getmtime(field_path), \
-        f"{final_file} ({time.ctime(os.path.getmtime(final_file))}) is older than 06's {field_file} " \
-        f"({time.ctime(os.path.getmtime(field_path))}): re-run 08c"
+# stale table = made from another 06 field: every row carries the fingerprint (sha256) of the fp_maps.npz it fits and
+# must carry the current one (asserted below). Until 2026-10-06 the table also had to be NEWER than 06's fp_maps.npz and
+# fig2_inputs.npz; a rerun of 06 that writes the same field (same fingerprint; np.savez is byte-reproducible) then failed
+# that check without any change to the field, and 08c never reads fig2_inputs.npz. The content check is the one kept.
 sensitivity = pd.read_csv(final_file)
 assert {"run", "medium", "sigma", "sigma_lcurve_pick", "field_fingerprint", "rms_W300_mm", "Mw_30gpa", "surface_pct"} <= set(sensitivity.columns), \
     f"{final_file} lacks the sigma / field provenance columns"
@@ -503,6 +521,15 @@ for medium, cd in RUNS:
                  f"W mean residual {rec.mean_res_west300_mm.min():+.2f}..{rec.mean_res_west300_mm.max():+.2f} mm; "
                  f"depth scan: best {scan.loc[scan.chi2.idxmin()].D_km:g} km, bracket {bracket.D_km.min():g}-{bracket.D_km.max():g} km "
                  f"(Mw {bracket.Mw.min():.2f}-{bracket.Mw.max():.2f})")
+    depth_error = rec.depth_10pct_km - rec.D_km
+    lines.append(f"   recovery depth error (10 % depth minus D, 0.1 km bins) {depth_error.min():+.1f} to {depth_error.max():+.1f} km over D "
+                 f"{rec.D_km.min():g}-{rec.D_km.max():g} km; depth scan reduced chi2 {scan_diagnosis[(medium, cd)]['reduced_chi2']:.2f}, "
+                 f"bracket with delta chi2 <= 4 x chi2_nu {scan_diagnosis[(medium, cd)]['scaled_lo']:g}-{scan_diagnosis[(medium, cd)]['scaled_hi']:g} km")
+    dip_text = []
+    for run_suffix, dip_name in (("", "vertical"), ("_dip80e", "80 E"), ("_dip70e", "70 E")):
+        dip_row = pylith_rows[(pylith_rows.run == f"default{run_suffix}{CD_TAG[cd]}") & (pylith_rows.medium == medium)]
+        dip_text.append(f"{dip_name} {float(dip_row.rms_mm.iloc[0]):.2f} mm")
+    lines.append("   rms by fault dip: " + ", ".join(dip_text))
 sens_sfcvm = pylith_rows[(pylith_rows.medium.str.startswith("sfcvm")) & (pylith_rows.surface == "on")]
 lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions at sigma {sigma_locked:g} on 06 field {field_fingerprint}; "
              f"SFSVM with surface constraint ({len(sens_sfcvm)} runs): "
@@ -546,6 +573,19 @@ for medium, cd in RUNS:
     REG.register(f"{key}_depth_bracket_hi_km", float(bracket.D_km.max()), "km", 2, where="M8", cell="depth scan", sidecar=sidecar)
     REG.register(f"{key}_depth_bracket_mw_lo", float(bracket.Mw.min()), "Mw", 2, where="M8", cell="depth scan", sidecar=sidecar)
     REG.register(f"{key}_depth_bracket_mw_hi", float(bracket.Mw.max()), "Mw", 2, where="M8", cell="depth scan", sidecar=sidecar)
+    # (2026-10-06) the depth error of the synthetic recovery (depth where the recovered section-mean slip falls under 10 % of
+    # its peak, minus the input depth D; 0.1 km bins) and the depth scan's chi2 calibration
+    depth_error = rec.depth_10pct_km - rec.D_km
+    REG.register(f"{key}_recovery_depth_err_min_km", float(depth_error.min()), "km", 1, where="M8", cell="recovery", sidecar=sidecar)
+    REG.register(f"{key}_recovery_depth_err_max_km", float(depth_error.max()), "km", 1, where="M8", cell="recovery", sidecar=sidecar)
+    REG.register(f"{key}_depth_scan_reduced_chi2", scan_diagnosis[(medium, cd)]["reduced_chi2"], "", 2, where="M8", cell="depth scan", sidecar=sidecar)
+    # the fault dip: rms of the vertical fault and of the 80 E / 70 E runs (08c's table, this medium and Cd)
+    for dip_tag, run_suffix in (("90", ""), ("80e", "_dip80e"), ("70e", "_dip70e")):
+        dip_row = pylith_rows[(pylith_rows.run == f"default{run_suffix}{CD_TAG[cd]}") & (pylith_rows.medium == medium)]
+        assert len(dip_row) == 1, f"default{run_suffix}{CD_TAG[cd]} / {medium}: {len(dip_row)} rows in {final_file}"
+        REG.register(f"{key}_rms_dip{dip_tag}_mm", float(dip_row.rms_mm.iloc[0]), "mm", 2, where="P7, M8", cell="dip", sidecar=sidecar)
+REG.register("08b_recovery_depth_min_km", float(min(recovery_depths)), "km", 1, where="M8", cell="recovery", sidecar=sidecar)
+REG.register("08b_recovery_depth_max_km", float(max(recovery_depths)), "km", 1, where="M8", cell="recovery", sidecar=sidecar)
 REG.register("08b_n_sensitivity_runs", int(len(pylith_rows)), "count", 0, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_mw_30gpa_min", float(sens_sfcvm.Mw_30gpa.min()), "Mw", 2, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_mw_30gpa_max", float(sens_sfcvm.Mw_30gpa.max()), "Mw", 2, where="M8", cell="sensitivity", sidecar=sidecar)

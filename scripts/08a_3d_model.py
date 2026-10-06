@@ -33,7 +33,9 @@
 # fault's top edge (`model_utils.crossing_constraint`, Dani 2026-10-02; cell [10]). The 3D model supersedes
 # the uniform one (07a) in the paper; 07a stays as the baseline it is measured against. After the
 # models: the PyLith stress drop of the selected model [15b], its Mw under each rigidity choice
-# [15c], and where the 3D medium improves the fit [15d].
+# [15c], where the 3D medium improves the fit [15d], and the numbers the text quotes about the X-X' deflections
+# of the homogeneous model (and their range over the sensitivity runs), the SFSVM boundary offset from the trace and
+# the selected model's potency above 300 and 500 m [15e].
 #
 # The **SELECTED model** (Dani, 2026-09-30): run tag `default_nuggetcd`, aligned SFCVM medium,
 # vertical fault, `default` mesh (100 m fault cells in the Tule Pond patch), order-1 elements,
@@ -72,7 +74,7 @@
 # `uncertainty_<run>_<medium>.csv` (the bootstrap, [14]).
 # **Outputs** (`outputs/08a_3d_model/`): `lcurve_<medium><tag>.csv`, `results_comparison<tag>.csv`,
 # `inversion_products<tag>.npz`, the Fig-2 products `fig2_model_row_pylith_{nuggetcd,full,nuggetcd_homog}.npz`
-# (read by `07c_fig2`), `mw_rigidity_options.csv` and `mw_range_models.csv` ([15c]), the stats sidecar
+# (read by `07c_fig2`), `mw_rigidity_options.csv` and `mw_range_models.csv` ([15c]), `xx_deflections_homog_runs.csv` ([15e]), the stats sidecar
 # `08a_3d_model_stats.txt`; `modeling_uniform/validation/csi_vs_pylith_homog.npz` ([8], [9]).
 # **Figures**: `figS_pylith_materials_sfcvm_v26` and `qc08a_materials_boundary_offset` ([3]),
 # `qc08a_mesh_fault` ([2]), `figS_pylith_validation` ([8]), `qc08a_validation_mesh` ([9]),
@@ -109,7 +111,7 @@ from scipy.spatial import cKDTree
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
 from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_inputs, paths_uniform, paths_sfcvm, paths_pylith,
-                                medium_paths, model_crs, model_sigma_locked)
+                                medium_paths, model_crs, model_sigma_locked, dist_min, dist_max)   # dist_min/max: 06's near-fault band, [15e]
 import insar_utils as utils
 from insar_utils import mpl_paper_style
 import model_utils                                  # every modelling function, once (with its source)
@@ -1342,6 +1344,144 @@ near_far["near200_share_of_reduction_pct"] = float(100 * misfit_reduction[abs_d 
 print(f"share of the total misfit reduction from samples within 200 m: {near_far['near200_share_of_reduction_pct']:.0f} %")
 
 # %% [markdown]
+# ## [15e] Numbers the text quotes: the homogeneous model's deflections at X-X', the SFSVM boundary offset, potency with depth
+#
+# 1. **Near-fault deflections at X-X' predicted by the homogeneous (uniform, 30 GPa) PyLith model**, defined as 06
+#    defines the observed ones: the median of the model's fault-parallel profile 30 to 150 m from the trace
+#    (`dist_min`, `dist_max`) minus the median of the same block 1.5 to 2 km away (`far_band_m`), on the X-X' line of
+#    [14] (the forward run of the inverted slip, every 10 m). For the selected model (nugget Cd) and the SFSVM model
+#    beside it. The range over the sensitivity runs cannot use forward runs (only the Fig-2 models have one): there the
+#    same median difference is taken on the model AT THE SAMPLES within 300 m of the X-X' line (as `figS_pylith_profile_XX`;
+#    the far band holds only 1-2 quadtree blocks, so this estimator is coarser), for the homogeneous model of: the
+#    selected and companion inversions, their L-curve grid neighbours of sigma 12 (re-inverted here), and 08c's runs
+#    with dip 80 E and 70 E, element order 2 (each with both Cd) and the `shallow` mesh (full Cd only). The same
+#    estimator is applied to the selected run, so the range is like for like. Written to `xx_deflections_homog_runs.csv`.
+# 2. **The SFSVM Hayward block boundary relative to the mapped trace**: the offset b(km) that the alignment removes
+#    (`boundary_smooth_m` of the aligned SFCVM grid, the 5-point running median that `pylith/build/sfcvm_grid.py`
+#    shifts the model by; east +), its range over the SSE section (04's creep length) and over the 90 % band.
+# 3. **Potency with depth** of the selected model: the share of the potency above 300 m and above 500 m. The tent
+#    slip is linear on each PyLith fault triangle, so each triangle is split into `n_sub` x `n_sub` sub-triangles
+#    (barycentric), the slip and depth taken at each sub-triangle's centroid; the share is the sum over those above the
+#    depth over the total (the total equals the exact tent potency, asserted).
+
+# %%
+## [15e]
+# 1) the homogeneous model's near-fault deflections at X-X'
+near_band_m = (dist_min * 1e3, dist_max * 1e3)              # 06's xfault_step_m: 30 to 150 m from the trace
+far_band_m = (far_m, cross_m)                               # 06's far_m: 1.5 to 2 km (the far field the profiles are zeroed on)
+
+
+def block_deflections(distance_m, values_mm):
+    """(west, east) near-fault deflection: median at near_band_m minus median at far_band_m on the same side (06's
+    definition of the observed block amplitudes); each band must hold at least one value (asserted)."""
+    out = []
+    for side in (-1, 1):
+        outward = side * distance_m
+        near = (outward >= near_band_m[0]) & (outward < near_band_m[1])
+        far = (outward >= far_band_m[0]) & (outward < far_band_m[1])
+        assert near.any() and far.any(), f"side {side:+d}: {near.sum()} near and {far.sum()} far values"
+        out.append(float(np.median(values_mm[near]) - np.median(values_mm[far])))
+    return tuple(out)
+
+
+forward_deflections = {}                                    # Fig-2 label -> (W, E) on the forward-run profile
+for label in FIG2_PRODUCTS:
+    forward_deflections[label] = block_deflections(fig2_products[label]["prof_X_fp_d"], fig2_products[label]["prof_X_fp_mm"])
+xx_samples = sel & np.isfinite(signed_d_km)                 # the samples within 300 m of the X-X' line ([13])
+
+
+def sample_deflections(model_mm):
+    """(west, east) near-fault deflection of a model at the samples within 300 m of the X-X' line."""
+    return block_deflections(signed_d_km[xx_samples] * 1e3, model_mm[xx_samples])
+
+
+deflection_rows = []
+for cd in CD_TAG:                                           # the selected / companion inversions and their sigma neighbours
+    lcurve_sorted = families[("homog", cd)][0].sort_values("sigma").reset_index(drop=True)
+    i_sel = int(np.nonzero(np.isclose(lcurve_sorted.sigma.values, sigma_locked))[0][0])
+    for sigma_value in lcurve_sorted.sigma.values[max(i_sel - 1, 0):i_sel + 2]:
+        if np.isclose(sigma_value, sigma_locked):
+            model_mm = models[("homog", cd)]["model"]
+            setting = "selected" if cd == SELECTED[1] else "companion"
+        else:
+            _, insar_neighbour, _ = invert_tents("homog", float(sigma_value), cd)
+            model_mm = insar_neighbour.synth.copy()
+            setting = f"sigma {sigma_value:g}"
+        west, east = sample_deflections(model_mm)
+        deflection_rows.append(dict(run=run_tag(cd), setting=setting, cd=cd, sigma=float(sigma_value), W_mm=west, E_mm=east))
+for tag, setting in (("_dip80e", "dip 80 E"), ("_dip70e", "dip 70 E"), ("_order2", "order 2"), ("_shallow", "mesh shallow")):
+    for cd in CD_TAG:
+        products_file = os.path.join(dir_08c, f"inversion_products{tag}{CD_TAG[cd]}.npz")
+        if not os.path.exists(products_file):
+            assert tag == "_shallow" and cd == "nugget", f"missing 08c product {products_file}"
+            continue                                        # the shallow mesh was run with the full Cd only (08c's table)
+        products_08c = np.load(products_file)
+        assert np.allclose(products_08c["sample_lon"], samples.lon) and np.allclose(products_08c["sample_lat"], samples.lat), \
+            f"{products_file}: another sample set"
+        settings_08c = json.loads(str(products_08c["settings"]))
+        assert settings_08c["field_fingerprint"] == field_fingerprint, f"{products_file} fits another 06 field: re-run 08c"
+        west, east = block_deflections(products_08c["signed_d_km"][xx_samples] * 1e3, products_08c["model_homog_mm"][xx_samples])
+        deflection_rows.append(dict(run=f"default{tag}{CD_TAG[cd]}", setting=setting, cd=cd, sigma=sigma_locked, W_mm=west, E_mm=east))
+deflections = pd.DataFrame(deflection_rows)
+deflections.to_csv(os.path.join(out_dir, "xx_deflections_homog_runs.csv"), index=False, float_format="%.3f")
+selected_hom_samples = deflections[deflections.setting == "selected"].iloc[0]
+deflection_ranges = {}
+for family_name, family in (("nugget", deflections[deflections.cd == "nugget"]), ("all", deflections)):
+    deflection_ranges[family_name] = dict(W_min=float(family.W_mm.min()), W_max=float(family.W_mm.max()),
+                                          E_min=float(family.E_mm.min()), E_max=float(family.E_mm.max()), n=len(family))
+print(deflections.round(2).to_string(index=False))
+deflection_lines = [f"X-X' near-fault deflection (median {near_band_m[0]:.0f}-{near_band_m[1]:.0f} m minus the same block "
+                    f"{far_band_m[0]:.0f}-{far_band_m[1]:.0f} m):"]
+for label, (west, east) in forward_deflections.items():
+    deflection_lines.append(f"   forward-run profile, {label}: W {west:+.2f} mm, E {east:+.2f} mm")
+deflection_lines.append(f"   homogeneous model at the samples within 300 m of the line ({xx_samples.sum()} samples): selected W "
+                        f"{selected_hom_samples.W_mm:+.2f}, E {selected_hom_samples.E_mm:+.2f} mm; over the runs (nugget Cd, "
+                        f"{deflection_ranges['nugget']['n']}): W {deflection_ranges['nugget']['W_min']:+.2f} to {deflection_ranges['nugget']['W_max']:+.2f}, "
+                        f"E {deflection_ranges['nugget']['E_min']:+.2f} to {deflection_ranges['nugget']['E_max']:+.2f} mm; all "
+                        f"{deflection_ranges['all']['n']}: W {deflection_ranges['all']['W_min']:+.2f} to {deflection_ranges['all']['W_max']:+.2f}, "
+                        f"E {deflection_ranges['all']['E_min']:+.2f} to {deflection_ranges['all']['E_max']:+.2f} mm")
+
+# 2) the SFSVM block boundary relative to the mapped trace, over the SSE section and the 90 % band
+band90 = section_lengths.loc["tulepond_band90"]
+boundary_km = grid["trace_km"]
+boundary_offset = {}
+for span_name, (span_lo, span_hi) in (("section", sse_km), ("band90", (float(band90.km_lo), float(band90.km_hi)))):
+    in_span = (boundary_km >= span_lo) & (boundary_km <= span_hi)
+    assert in_span.sum() >= 5, f"only {in_span.sum()} boundary points in the {span_name}"
+    smooth = grid["boundary_smooth_m"][in_span]
+    raw = grid["boundary_raw_m"][in_span]
+    boundary_offset[span_name] = dict(lo_km=span_lo, hi_km=span_hi, min_m=float(smooth.min()), max_m=float(smooth.max()),
+                                      median_m=float(np.median(smooth)), raw_min_m=float(raw.min()), raw_max_m=float(raw.max()),
+                                      east_fraction=float(np.mean(smooth > 0)))
+    deflection_lines.append(f"SFSVM boundary offset from the trace (east +), {span_name} km {span_lo:.1f}-{span_hi:.1f}: smoothed (applied) "
+                            f"{smooth.min():+.0f} to {smooth.max():+.0f} m (median {np.median(smooth):+.0f}; raw {raw.min():+.0f} to {raw.max():+.0f}); "
+                            f"east of the trace at {100 * np.mean(smooth > 0):.0f} % of the {in_span.sum()} trace points")
+
+# 3) potency with depth of the selected model
+n_sub = 20                                                  # sub-triangles per edge
+depth_thresholds_m = (300.0, 500.0)
+bary = []
+for i in range(n_sub):
+    for j in range(n_sub - i):
+        bary.append(((i + 1 / 3) / n_sub, (j + 1 / 3) / n_sub))           # centroid of an upward sub-triangle
+        if i + j < n_sub - 1:
+            bary.append(((i + 2 / 3) / n_sub, (j + 2 / 3) / n_sub))       # ... and of the downward one beside it
+bary = np.array(bary)
+bary = np.c_[bary, 1 - bary.sum(axis=1)]                     # (n_sub^2, 3) weights on the three vertices
+assert len(bary) == n_sub ** 2 and (bary > 0).all()
+slip_vertices_mm = tents.vertex_slip(models[SELECTED]["slip"])[fault_cells]      # (n_tri, 3)
+depth_vertices_m = -tri_xyz[:, :, 2]                                             # (n_tri, 3), depth + down
+sub_slip = slip_vertices_mm @ bary.T                                             # (n_tri, n_sub^2)
+sub_depth = depth_vertices_m @ bary.T
+sub_potency = sub_slip * (tri_area[:, None] / bary.shape[0]) * 1e-3              # m^3
+assert abs(sub_potency.sum() - models[SELECTED]["potency_m3"]) <= 1e-6 * models[SELECTED]["potency_m3"], "sub-triangle potency != tent potency"
+potency_above = {}
+for depth_m in depth_thresholds_m:
+    potency_above[depth_m] = float(100 * sub_potency[sub_depth < depth_m].sum() / sub_potency.sum())
+deflection_lines.append("selected model potency above " + ", ".join(f"{d:.0f} m: {v:.0f} %" for d, v in potency_above.items()))
+print("\n".join(deflection_lines))
+
+# %% [markdown]
 # ## [16] Registry -- the 3D model (the paper's slip model)
 #
 # `08a_*` = the selected model (aligned SFCVM, nugget Cd); `08a_hom_*` its homogeneous twin;
@@ -1411,6 +1551,7 @@ for name in ("near200", "beyond200", "beyond1km"):
     lines.append(f"fit {name}: n {near_far[name]['n']}, uniform {near_far[name]['rms_uniform_mm']:.3f} mm, 3D {near_far[name]['rms_3d_mm']:.3f} mm, "
                  f"{near_far[name]['drop_pct']:.1f} % lower")
 lines.append(f"share of the total misfit reduction from samples within 200 m: {near_far['near200_share_of_reduction_pct']:.1f} %")
+lines += deflection_lines
 sidecar = REG.sidecar("08a_3d_model", lines)
 for (medium, cd) in RUNS:
     key = KEY[(medium, cd)]
@@ -1461,5 +1602,19 @@ REG.register("08a_stress_drop_pylith_patch_kpa", stress_drop["sfcvm"]["patch_kpa
 REG.register("08a_stress_drop_pylith_top100m_kpa", stress_drop["sfcvm"]["top100_kpa"], "kPa", 0, where="P7, M8", cell="stress drop", sidecar=sidecar)
 REG.register("08a_stress_drop_pylith_p95_kpa", stress_drop["sfcvm"]["p95_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
 REG.register("08a_hom_stress_drop_pylith_kpa", stress_drop["homog"]["weighted_kpa"], "kPa", 0, where="M8", cell="stress drop", sidecar=sidecar)
+# [15e]: the X-X' deflections, the SFSVM boundary offset and the potency with depth (2026-10-06)
+for label, key in (("nuggetcd_homog", "08a_hom"), ("nuggetcd", "08a")):
+    REG.register(f"{key}_xx_fp_W_mm", forward_deflections[label][0], "mm", 2, where="P7", cell="deflections", sidecar=sidecar)
+    REG.register(f"{key}_xx_fp_E_mm", forward_deflections[label][1], "mm", 2, where="P7", cell="deflections", sidecar=sidecar)
+REG.register("08a_hom_xx_samples_W_mm", selected_hom_samples.W_mm, "mm", 2, where="P7", cell="deflections", sidecar=sidecar)
+REG.register("08a_hom_xx_samples_E_mm", selected_hom_samples.E_mm, "mm", 2, where="P7", cell="deflections", sidecar=sidecar)
+for family_name, family_range in deflection_ranges.items():
+    for quantity in ("W_min", "W_max", "E_min", "E_max"):
+        REG.register(f"08a_hom_xx_sens_{family_name}_{quantity}_mm", family_range[quantity], "mm", 2, where="P7", cell="deflections", sidecar=sidecar)
+for span_name, offset in boundary_offset.items():
+    REG.register(f"08a_sfcvm_boundary_{span_name}_min_m", offset["min_m"], "m", 0, where="P7", cell="materials", sidecar=sidecar)
+    REG.register(f"08a_sfcvm_boundary_{span_name}_max_m", offset["max_m"], "m", 0, where="P7", cell="materials", sidecar=sidecar)
+for depth_m, share in potency_above.items():
+    REG.register(f"08a_potency_above_{int(depth_m)}m_pct", share, "%", 0, where="P7", cell="potency with depth", sidecar=sidecar)
 REG.render()
 print("08a_3d_model complete")
