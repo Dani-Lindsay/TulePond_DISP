@@ -52,6 +52,10 @@
 #    `07a_uniform_model` and `08a_3d_model`.
 # 6. **Hand-off to Fig 2**: the maps and profiles, one file, drawn by
 #    `07c_fig2` after the slip model.
+# 7. **The mean event in numbers** (2026-10-06): the fault-parallel near-fault deflection of each
+#    block at X-X' and Y-Y', the distance from the trace beyond which the X-X' event profile stays
+#    within the far-field scatter (each side), and the vertical signal around Lake Elizabeth east of
+#    the fault, with a QC figure of that area.
 #
 # PREPUB: Ported from `Hayward_DISP-S1/modelling/m01_step_maps.py` (steps 1 to 4),
 # PREPUB: `hayward_creep/analysis/event_map_profiles.py` (decomposition, profiles) and
@@ -73,7 +77,8 @@
 # `timefunc_fit_<track>.npz` (the cached per-pixel fit), `06_event_field_stats.txt`,
 # registry rows `06_*`.
 #
-# **Figures**: `figS_event_step_maps_coh0.9` (.png and .pdf, the step-map grid, supplement).
+# **Figures**: `figS_event_step_maps_coh0.9` (.png and .pdf, the step-map grid, supplement);
+# `qc06_lake_elizabeth_vertical_area` (working: the Lake Elizabeth area of [26] on the mean-event vertical map).
 #
 # **What to check.** Near-fault LOS steps of opposite sign on the two tracks
 # (ascending negative, descending positive); the per-event asc/desc ratio is
@@ -98,7 +103,8 @@ import re
 
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, insar_dic_list, box_lonlat,
-                                coh_timeseries, az_smooth_n, dist_min, dist_max, paths_out, repo_dir)
+                                coh_timeseries, az_smooth_n, dist_min, dist_max, paths_out, repo_dir,
+                                lake_elizabeth_lonlat, lake_elizabeth_radius_m)   # the Lake Elizabeth area of [26]
 
 import numpy as np
 import pandas as pd
@@ -221,7 +227,7 @@ assert abs(asc_seam["lat_west"] - 37.6149) < 0.01 and abs(asc_seam["lat_east"] -
 zoa1_seam_lat = des_seam["intercept"] + des_seam["slope"] * (common_paths["ref_lon"] + 122.0)
 print(f"ZOA1 ({common_paths['ref_lat']} N) is {abs(common_paths['ref_lat'] - zoa1_seam_lat) * 111.2e3:.0f} m "
       f"{'north' if common_paths['ref_lat'] > zoa1_seam_lat else 'south'} of the descending seam")
-burst_lines = {}                # (slope, intercept) of each corrected seam, the form cells [14] and [26] read
+burst_lines = {}                # (slope, intercept) of each corrected seam, the form cells [14] and [30] read
 for orbit in burst_corrected:
     burst_lines[orbit] = [(seam["slope"], seam["intercept"]) for seam in burst_seam_list[orbit]]
 
@@ -248,6 +254,8 @@ event_far_m = 1500.0            # the event profile is zeroed on |x| >= this (fa
 rate_zero_m = 1000.0            # the rate profile is zeroed on the mid-point of the two block medians within this of the trace
 min_far_pixels = 20             # the event profile needs this many far-field pixels to be zeroed
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault step band, the aperture of notebook 04 (m)
+decay_bin_m = 150.0             # [26] the decay distance: the binned median of the event profile, 150 m bins outward from the
+                                # trace on each side (07c_fig2's running median, median_bin_m, the black line of Fig 2)
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
@@ -1015,7 +1023,150 @@ np.savez(f_fig2_in, provenance=utils.provenance_stamp(notebook, repo_dir), **fig
 print("wrote", f_fig2_in)
 
 # %% [markdown]
-# ## [25] Supplement: the step maps, every event and track
+# ## [25] The mean event in numbers: near-fault deflections, decay distance, the Lake Elizabeth vertical
+#
+# Three numbers the text quotes, all from the mean-event maps above (registered in [32]):
+#
+# 1. **Near-fault deflection of each block** on the FAULT-PARALLEL profiles X-X' and Y-Y' ([24]'s
+#    `blocks`, the same definition as the LOS blocks of Fig 2): the median of the pixels 30 to
+#    150 m from the trace (`xfault_step_m`) minus the median of the same block's far field
+#    (`far_m`, 1.5 to 2 km), with the bootstrap standard error over the pixels.
+# 2. **Decay distance** of the mean event on each side of X-X': how far from the trace the event
+#    deformation reaches. The fault-parallel event profile (zeroed on its far field, [22]) is binned
+#    outward from the trace in `decay_bin_m` (150 m) bins on each side, the median of each bin with
+#    at least 3 pixels (the running median Fig 2 draws). The far field of that side is its pixels at
+#    `far_m` (1.5 to 2 km), its level their median and its scatter their robust sd (1.4826 x the
+#    median absolute deviation). The decay distance is the inner edge of the first bin from which
+#    EVERY bin out to the far field (`far_m[0]`) lies within the far-field level +/- the far-field
+#    scatter: beyond it the profile stays within the scatter of the far-field pixels. Resolution:
+#    one bin, 150 m.
+# 3. **The Lake Elizabeth vertical**: the mean-event VERTICAL map (`up_evt`, [20]) over the area
+#    around Lake Elizabeth (TulePond_filepaths `lake_elizabeth_lonlat`, `lake_elizabeth_radius_m`:
+#    every valid pixel within 500 m of the lake centre that lies east of the trace beyond the near-
+#    fault band, `xfault_step_m[1]`), relative to the far field of the event profiles ([22]: pixels
+#    1.5 to 2 km from the trace, `event_far_m` to `cross_m`, on BOTH sides, here within the same
+#    +/- 500 m along strike of the lake centre). Median minus median, bootstrap standard error over
+#    the pixels (own generator, `block_seed`). The lake itself is open water (no data): the area's
+#    pixels are its shores. The same difference against each side's far field alone and against
+#    the box median is printed, so the dependence on the reference shows. [28] draws the area.
+
+# %%
+# [26]
+def decay_distance(distance, values, side):
+    """The decay distance (m) of a zeroed event profile on one side (side -1 west, +1 east): the inner edge of the
+    first decay_bin_m bin from which every bin with >= 3 pixels, out to far_m[0], has a median within the far-field
+    level +/- its robust scatter (far_m pixels of that side). Returns (distance, far level, far scatter, bin inner
+    edges, bin medians)."""
+    outward = side * distance
+    far_values = values[(outward >= far_m[0]) & (outward < far_m[1])]
+    assert far_values.size >= 50, f"only {far_values.size} far-field pixels on side {side:+d}"
+    far_level = float(np.median(far_values))
+    far_scatter = float(1.4826 * np.median(np.abs(far_values - far_level)))
+    edges = np.arange(0.0, far_m[0] + decay_bin_m / 2, decay_bin_m)
+    bin_inner = []
+    bin_median = []
+    for inner, outer in zip(edges[:-1], edges[1:]):
+        in_bin = (outward > inner) & (outward <= outer)
+        if in_bin.sum() >= 3:
+            bin_inner.append(float(inner))
+            bin_median.append(float(np.median(values[in_bin])))
+    bin_inner = np.array(bin_inner)
+    bin_median = np.array(bin_median)
+    within = np.abs(bin_median - far_level) <= far_scatter
+    assert within[-1], f"side {side:+d}: even the last bin before the far field is outside its scatter; no decay distance"
+    first_inside = len(within)
+    while first_inside > 0 and within[first_inside - 1]:      # walk inward while the bins stay inside
+        first_inside -= 1
+    return float(bin_inner[first_inside]), far_level, far_scatter, bin_inner, bin_median
+
+
+# 1) and 2): the fault-parallel profiles' block deflections ([24]) and the decay distance at X-X'
+mean_event_lines = ["mean event, fault-parallel near-fault deflection per block (near "
+                    f"{xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m minus the same block's far field {far_m[0]:.0f}-{far_m[1]:.0f} m):"]
+for name in profile_names:
+    west_block = profiles[name]["blocks"]["W"]
+    east_block = profiles[name]["blocks"]["E"]
+    mean_event_lines.append(f"   {name}-{name}': W {west_block['amp']:+.2f} +/- {west_block['se']:.2f} mm, E {east_block['amp']:+.2f} +/- {east_block['se']:.2f} mm")
+decay = {}
+for side_name, side in (("W", -1), ("E", 1)):
+    decay[side_name] = decay_distance(profiles["X"]["de"], profiles["X"]["ve"], side)
+    distance_m, far_level, far_scatter, bin_inner, bin_median = decay[side_name]
+    bin_text = []
+    for inner, median in zip(bin_inner, bin_median):
+        bin_text.append(f"{inner:.0f}:{median:+.2f}")
+    mean_event_lines.append(f"   X-X' decay distance {side_name}: {distance_m:.0f} m (far field {far_level:+.2f} +/- {far_scatter:.2f} mm; "
+                            f"bin medians, inner edge m: mm, {' '.join(bin_text)})")
+
+# 3) the Lake Elizabeth vertical
+lake_x, lake_y = (float(value) for value in to_utm.transform(*lake_elizabeth_lonlat))
+lake_distance = np.hypot(Xg - lake_x, Yg - lake_y)
+along_unit = np.array([np.sin(np.deg2rad(strike)), np.cos(np.deg2rad(strike))])      # along strike (east, north)
+lake_along = (Xg - lake_x) * along_unit[0] + (Yg - lake_y) * along_unit[1]
+lake_centre_vertex = int(tree.query([lake_x, lake_y])[1])
+lake_centre_side = float((np.array([lake_x, lake_y]) - np.array([trace_x[lake_centre_vertex], trace_y[lake_centre_vertex]])) @ normal)
+assert lake_centre_side > 0, f"the Lake Elizabeth centre {lake_elizabeth_lonlat} is not east of the trace ({lake_centre_side:.0f} m)"
+valid_up = np.isfinite(up_evt)
+lake_area = (lake_distance <= lake_elizabeth_radius_m) & (d_signed >= xfault_step_m[1]) & valid_up
+lake_far = (np.abs(d_signed) >= event_far_m) & (np.abs(d_signed) < cross_m) & (np.abs(lake_along) <= lake_elizabeth_radius_m) & valid_up
+assert lake_area.sum() >= 20 and lake_far.sum() >= 100, f"Lake Elizabeth: {lake_area.sum()} area pixels, {lake_far.sum()} far-field pixels"
+lake_rng = np.random.default_rng(block_seed)                        # its own generator, as block_amplitudes
+area_values = up_evt[lake_area]
+far_values = up_evt[lake_far]
+lake_boot = np.empty(n_boot_blocks)
+for draw in range(n_boot_blocks):
+    lake_boot[draw] = np.median(lake_rng.choice(area_values, area_values.size)) - np.median(lake_rng.choice(far_values, far_values.size))
+lake_up = dict(value=float(np.median(area_values) - np.median(far_values)), se=float(lake_boot.std()),
+               n_area=int(lake_area.sum()), n_far=int(lake_far.sum()), centre_from_trace_m=lake_centre_side)
+lake_alternatives = {"east far field only": lake_far & (d_signed > 0), "west far field only": lake_far & (d_signed < 0),
+                     "the box median": valid_up}
+alternative_text = []
+for reference_name, reference in lake_alternatives.items():
+    alternative_text.append(f"{reference_name} {np.median(area_values) - np.median(up_evt[reference]):+.2f} mm")
+mean_event_lines.append(f"Lake Elizabeth vertical (mean event): {lake_up['value']:+.2f} +/- {lake_up['se']:.2f} mm over {lake_up['n_area']} pixels within "
+                        f"{lake_elizabeth_radius_m:.0f} m of {lake_elizabeth_lonlat} (centre {lake_centre_side:.0f} m east of the trace; pixels "
+                        f">= {xfault_step_m[1]:.0f} m east of it) relative to {lake_up['n_far']} far-field pixels ({event_far_m:.0f}-{cross_m:.0f} m "
+                        f"from the trace, both sides, +/- {lake_elizabeth_radius_m:.0f} m along strike); against " + ", ".join(alternative_text))
+print("\n".join(mean_event_lines))
+
+# %% [markdown]
+# ## [27] QC figure: the Lake Elizabeth area
+#
+# The mean-event vertical map around the lake with the area of [26] (circle; its pixels as black
+# dots) and the far-field pixels it is measured against (grey dots), the trace and the X-X' line,
+# so the author can check the area (`qc06_lake_elizabeth_vertical_area`, working figure).
+
+# %%
+# [28]
+lake_region = [lake_elizabeth_lonlat[0] - 0.035, lake_elizabeth_lonlat[0] + 0.035,
+               lake_elizabeth_lonlat[1] - 0.022, lake_elizabeth_lonlat[1] + 0.022]
+cpt_dir_qc = os.path.join(out_dir, "cpt")
+os.makedirs(cpt_dir_qc, exist_ok=True)
+cpt_up = utils.write_cpt(os.path.join(cpt_dir_qc, "lake_up.cpt"), "RdBu_r", -2.0, 2.0)
+up_grid = utils.utm_to_lonlat_grid(up_evt, x0 + c0 * dx, y0 + r0 * dy, dx, dy, epsg, lake_region, 0.00015, 0.00012)
+circle_angle = np.linspace(0, 2 * np.pi, 181)
+circle_lon, circle_lat = to_ll.transform(lake_x + lake_elizabeth_radius_m * np.sin(circle_angle),
+                                         lake_y + lake_elizabeth_radius_m * np.cos(circle_angle))
+pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain", FORMAT_GEO_MAP="D")
+fig = pygmt.Figure()
+fig.basemap(region=lake_region, projection="M12c", frame=["WSne", "xa0.02f0.01", "ya0.01f0.005"])
+fig.grdimage(grid=up_grid, cmap=cpt_up, nan_transparent=True)
+fig.plot(x=lon_g[lake_far], y=lat_g[lake_far], style="c0.04c", fill="gray50")
+fig.plot(x=lon_g[lake_area], y=lat_g[lake_area], style="c0.05c", fill="black")
+fig.plot(x=circle_lon, y=circle_lat, pen="1p,black")
+fig.plot(x=x_fault.ft_lon.values, y=x_fault.ft_lat.values, pen="1p,black")
+x_line_w_lon, x_line_w_lat = to_ll.transform(*profiles["X"]["ends"][:2])
+x_line_e_lon, x_line_e_lat = to_ll.transform(*profiles["X"]["ends"][2:])
+fig.plot(x=[x_line_w_lon, x_line_e_lon], y=[x_line_w_lat, x_line_e_lat], pen="0.8p,black,4p_2p")
+fig.text(position="TL", text=f"Mean-event vertical; Lake Elizabeth area (circle, {lake_elizabeth_radius_m:.0f} m): "
+         f"{lake_up['value']:+.2f} +/- {lake_up['se']:.2f} mm vs far field (grey)", font="8p,Helvetica", justify="BL",
+         offset="0c/0.15c", no_clip=True)
+fig.colorbar(cmap=cpt_up, position="JBC+w6c/0.25c+h+o0c/0.8c+e", frame=["xa1f0.5+lVertical, mean event (mm)"])
+f_lake = os.path.join(fig_dir, "qc06_lake_elizabeth_vertical_area")
+fig.savefig(f_lake + ".png", dpi=300, transparent=False, crop="+gwhite", show=False)
+print("Saved figure to:", f_lake + ".png")
+
+# %% [markdown]
+# ## [29] Supplement: the step maps, every event and track
 #
 # Three rows (Dani 2026-10-05, the original layout): ascending after removal of
 # its burst offset (what the slip model inverts; the ascending offsets are a
@@ -1036,7 +1187,7 @@ print("wrote", f_fig2_in)
 # the steps, magma for the scatter (no blue/green).
 
 # %%
-# [26]
+# [30]
 clim = 4.0                 # step colour range +/- this (mm)
 scatter_lim = 2.0          # the scatter is ~0.5-1.5 mm near the fault; 2 mm keeps it readable
 map_w_cm = 2.3             # each map's width
@@ -1153,13 +1304,13 @@ fig.savefig(f_grid + ".pdf", transparent=False, crop="+gwhite", anti_alias=True,
 print("Saved figure to:", f_grid + ".png")
 
 # %% [markdown]
-# ## [27] REGISTER
+# ## [31] REGISTER
 #
 # The stats file `06_event_field_stats.txt` (every number above, in words) and
 # the registry rows `06_*` the paper quotes.
 
 # %%
-# [28]
+# [32]
 stats_lines = [f"06 EVENT FIELD GEOMETRY  (coherence {coh_timeseries}, box {box_lonlat}, {nr} x {nc} px)",
                f"local strike {strike:.2f} deg; LOS.strike asc {los_dot_strike_asc:+.3f} desc {los_dot_strike_desc:+.3f}, "
                f"geometric asc/desc ratio {geom_ratio:+.2f}",
@@ -1194,6 +1345,7 @@ for orbit in tracks:
                            f"event per block (near {xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m over far {far_m[0]:.0f}-{far_m[1]:.0f} m) "
                            f"W {west_block['amp']:+.2f} +/- {west_block['se']:.2f}, E {east_block['amp']:+.2f} +/- {east_block['se']:.2f} mm")
 stats_lines.append(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric {geom_ratio:+.2f})")
+stats_lines += mean_event_lines
 print("\n".join(stats_lines))
 sidecar = REG.sidecar("06_event_field", stats_lines)
 
@@ -1226,6 +1378,18 @@ for orbit in tracks:
             REG.register(f"06_{name}{name}_event_{block_name}_{orbit[:3]}_se_mm", los_profile["blocks"][block_name]["se"], "mm", 2,
                          where="Fig2", cell="los-profiles", sidecar=sidecar)
 REG.register("06_XX_event_ratio_asc_desc", xx_ratio, "", 2, where="S2", cell="los-profiles", sidecar=sidecar)
+# [26]: the fault-parallel block deflections, the decay distance at X-X' and the Lake Elizabeth vertical
+for name in profile_names:
+    for block_name in ("W", "E"):
+        REG.register(f"06_{name}{name}_fp_event_{block_name}_mm", profiles[name]["blocks"][block_name]["amp"], "mm", 2,
+                     where="P6", cell="mean-event numbers", sidecar=sidecar)
+        REG.register(f"06_{name}{name}_fp_event_{block_name}_se_mm", profiles[name]["blocks"][block_name]["se"], "mm", 2,
+                     where="P6", cell="mean-event numbers", sidecar=sidecar)
+for side_name in ("W", "E"):
+    REG.register(f"06_XX_fp_event_decay_{side_name}_m", decay[side_name][0], "m", 0, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_up_event_mm", lake_up["value"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_up_event_se_mm", lake_up["se"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_n_px", lake_up["n_area"], "count", 0, where="P6", cell="mean-event numbers", sidecar=sidecar)
 for orbit in mean_event:
     REG.register(f"06_n_px_csi_{orbit[:3]}", int(np.isfinite(mean_event[orbit]["mean"]).sum()), "count", 0, where="M4", cell="mean-event", sidecar=sidecar)
 REG.render()
