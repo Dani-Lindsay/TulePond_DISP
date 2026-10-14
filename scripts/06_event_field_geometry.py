@@ -154,6 +154,14 @@ burst_line_tol_deg = 0.0003     # ~30 m, one pixel: the seam's polygon edge must
 burst_min_pixels = 200          # finite pixels each band needs, every event: a median of fewer is not an offset
                                 # (the ascending seam runs along the box's northern edge, so its north band is clipped)
 burst_corrected = ("ascending", "descending")
+# The mosaic's seam is NOT at the polygon edge: the DISP-S1 discontinuity sits later along track on both tracks
+# (found 2026-10-08; the hand-picked descending line of 2026-08-19 had it right to 20 m). The polygon edge gives the
+# seam's orientation; its along-track position is the shift below, located at 10 m steps on the five-event mean raw
+# step maps by `drafts/06/burst_seam_locate.py` (2026-10-08: descending -690 m, 90 % plateau -700 to -660 m, the same
+# in every longitude strip and in the three events with a visible step; ascending +540 m, plateau +510 to +550 m,
+# two of three strips). Rerun that script and update these values when the products change; cell [14] checks that
+# the mean-map jump across the shifted line exceeds the jump across the polygon line.
+burst_seam_shift_m = {"ascending": 550.0, "descending": -690.0}     # m along track, north positive
 
 
 def burst_seams(static_dir, box):
@@ -612,6 +620,10 @@ else:
 # (that event's offset); every number taken from these maps is a difference
 # (east band minus west band, a profile zeroed on its far field) and the slip
 # models fit a constant per dataset, so a constant does not change them.
+#
+# 2026-10-08: the seam is the polygon line shifted along track by `burst_seam_shift_m` (located from the data by
+# drafts/06/burst_seam_locate.py): the polygon edge is not where the mosaic stitches, and the offsets measured there
+# were ~0, i.e. the fix of 2026-10-05 did nothing.
 
 # %%
 # [14]
@@ -643,7 +655,27 @@ for dic in insar_dic_list:
     step_maps_raw = step_maps.copy()
     if orbit in burst_lines:
         far_from_trace = d_trace > burst_far_m
-        for line_slope, line_lat in burst_lines[orbit]:
+        # the seam: the polygon line shifted along track by burst_seam_shift_m (see the constants above), checked on
+        # the five-event mean raw map against the polygon line itself
+        mean_raw = np.nanmean(step_maps, axis=0)
+        located = []
+        for line_slope, poly_lat in burst_lines[orbit]:
+            above_line = lat_g - line_slope * (lon_g + 122.0)
+            jumps = {}
+            for name, shift_m in (("polygon", 0.0), ("seam", burst_seam_shift_m[orbit])):
+                lat_line = poly_lat + shift_m / 111.2e3
+                north = (above_line > lat_line) & (above_line < lat_line + burst_band_deg) & far_from_trace & np.isfinite(mean_raw)
+                south = (above_line < lat_line) & (above_line > lat_line - burst_band_deg) & far_from_trace & np.isfinite(mean_raw)
+                assert min(north.sum(), south.sum()) >= burst_min_pixels, f"[{orbit}] {name} line: too few band pixels"
+                jumps[name] = float(np.median(mean_raw[north]) - np.median(mean_raw[south]))
+            print(f"  [{orbit}] seam {burst_seam_shift_m[orbit]:+.0f} m along track from the polygon line {poly_lat:.4f} N (at -122 E): "
+                  f"mean-map jump {jumps['seam']:+.2f} mm there, {jumps['polygon']:+.2f} mm at the polygon line")
+            assert abs(jumps["seam"]) > abs(jumps["polygon"]), f"[{orbit}] no discontinuity at the hard-coded seam: {jumps}"
+            located.append(dict(slope=line_slope, line_lat=poly_lat + burst_seam_shift_m[orbit] / 111.2e3, polygon_line_lat=poly_lat,
+                                seam_shift_m=burst_seam_shift_m[orbit], mean_jump_at_seam_mm=jumps["seam"], mean_jump_at_polygon_mm=jumps["polygon"]))
+        burst_lines[orbit] = [(seam["slope"], seam["line_lat"]) for seam in located]      # the data seams: the figure cell draws these
+        for seam in located:
+            line_slope, line_lat = seam["slope"], seam["line_lat"]
             above_line = lat_g - line_slope * (lon_g + 122.0)                    # > line_lat north of the burst line
             north_band = (above_line > line_lat) & (above_line < line_lat + burst_band_deg) & far_from_trace
             south_band = (above_line < line_lat) & (above_line > line_lat - burst_band_deg) & far_from_trace
@@ -669,12 +701,18 @@ for dic in insar_dic_list:
                 else:
                     step_maps[i][north_side] -= burst_offset
                 burst_log.append(dict(track=orbit, line_lat=line_lat, step_epoch=step_epoch, offset_mm=burst_offset,
-                                      n_north=n_north, n_south=n_south, fixed_side=fixed_side))
+                                      n_north=n_north, n_south=n_south, fixed_side=fixed_side,
+                                      polygon_line_lat=seam["polygon_line_lat"], seam_shift_m=seam["seam_shift_m"],
+                                      mean_jump_at_seam_mm=seam["mean_jump_at_seam_mm"], mean_jump_at_polygon_mm=seam["mean_jump_at_polygon_mm"]))
                 print(f"  [{orbit}] event {step_epoch:.2f}: offset (north - south) across the lat {line_lat:.3f} burst line "
                       f"{burst_offset:+.2f} mm removed ({n_north} / {n_south} pixels)")
     event_maps[orbit] = dict(ev=step_maps, ev_raw=step_maps_raw, ev_std=step_maps_std, rate=rate)
 if from_saved_steps:
     burst_df = pd.read_csv(os.path.join(out_dir, "burst_offsets.csv"))
+    for orbit in burst_lines:                                   # the data seams of the saved run (one per track)
+        saved_rows = burst_df[burst_df.track == orbit]
+        assert len(burst_lines[orbit]) == 1 and saved_rows.line_lat.nunique() == 1, f"[{orbit}] expected one saved seam"
+        burst_lines[orbit] = [(burst_lines[orbit][0][0], float(saved_rows.line_lat.iloc[0]))]
 else:
     burst_df = pd.DataFrame(burst_log)
     burst_df.to_csv(os.path.join(out_dir, "burst_offsets.csv"), index=False)
@@ -1325,8 +1363,9 @@ for orbit, seams in burst_seam_list.items():
         stats_lines.append(f"   {orbit} {seam['north']} / {seam['south']}: lat {seam['lat_west']:.4f} at {box_lonlat[0]} E, "
                            f"{seam['lat_east']:.4f} at {box_lonlat[2]} E; corrected: {orbit in burst_corrected}")
 for _, burst_row in burst_df.iterrows():
-    stats_lines.append(f"   burst fix {burst_row.track} lat {burst_row.line_lat:.3f} event {burst_row.step_epoch:.2f}: {burst_row.offset_mm:+.2f} mm "
-                       f"(north - south; {burst_row.n_north} / {burst_row.n_south} band pixels; {burst_row.fixed_side} side held fixed)")
+    stats_lines.append(f"   burst fix {burst_row.track} data seam {burst_row.line_lat:.4f} N at -122 E ({burst_row.seam_shift_m:+.0f} m along track from the "
+                       f"polygon line {burst_row.polygon_line_lat:.4f}; mean-map jump {burst_row.mean_jump_at_seam_mm:+.2f} vs {burst_row.mean_jump_at_polygon_mm:+.2f} mm at the polygon line) "
+                       f"event {burst_row.step_epoch:.2f}: {burst_row.offset_mm:+.2f} mm (north - south; {burst_row.n_north} / {burst_row.n_south} band pixels; {burst_row.fixed_side} side held fixed)")
 stats_lines.append(f"FP inter-event step (stacked band) {block_step(fp_rate):+.2f} mm/yr, Up {block_step(up_rate):+.2f}; "
                    f"FP mean event {block_step(fp_evt):+.2f} mm, Up {block_step(up_evt):+.2f}")
 stats_lines.append(f"profiles, near-fault steps east - west ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m), +/-{cross_m / 1e3:g} km, "
@@ -1358,7 +1397,9 @@ for _, step_row in steps_df.iterrows():
     REG.register(f"06_los_step_desc_{year_tag}_mm", step_row.descending_step_mm, "mm", 2, where="S", cell="los-steps", sidecar=sidecar)
     REG.register(f"06_step_ratio_{year_tag}", step_row.ratio_asc_desc, "", 2, where="S", cell="los-steps", sidecar=sidecar)
 for _, burst_row in burst_df.iterrows():
-    REG.register(f"06_burst_{burst_row.line_lat:.3f}_{int(burst_row.step_epoch)}_mm", burst_row.offset_mm, "mm", 2, where="S", cell="burst-fix", sidecar=sidecar)
+    REG.register(f"06_burst_{burst_row.track}_{int(burst_row.step_epoch)}_mm", burst_row.offset_mm, "mm", 2, where="S", cell="burst-fix", sidecar=sidecar)
+for track_name, track_rows in burst_df.groupby("track"):      # keys renamed 2026-10-08 (were 06_burst_<line lat>_<year>_mm; stale rows purged)
+    REG.register(f"06_burst_seam_shift_{track_name}_m", float(track_rows.seam_shift_m.iloc[0]), "m", 0, where="S", cell="burst-fix", sidecar=sidecar)
 REG.register("06_fp_rate_step_mm_yr", block_step(fp_rate), "mm/yr", 2, where="P6", cell="decompose", sidecar=sidecar)
 REG.register("06_up_rate_step_mm_yr", block_step(up_rate), "mm/yr", 2, where="S", cell="decompose", sidecar=sidecar)
 REG.register("06_fp_event_step_mm", block_step(fp_evt), "mm", 2, where="P6", cell="decompose", sidecar=sidecar)

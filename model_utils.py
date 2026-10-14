@@ -14,7 +14,7 @@ Contents, in the order the notebooks use them:
   1. Along-trace distance and the fault trace          km_from_pinole, model_trace, signed_distance_m
   2. The uniform model's fault (CSI triangles)         unrolled_mesh, wrap_fault, triangle_areas_km2
   3. The data: fault-parallel field, noise, quadtree   look_vector, decompose_fault_parallel, fault_parallel_from_steps,
-                                                       dist_to_trace, align_track, fault_parallel_dataset,
+                                                       dist_to_trace, fault_parallel_dataset,
                                                        semivariogram_model, covariance, downsample, covariance_matrix,
                                                        build_cd, quadtree_block_corners, build_sample_set,
                                                        write_points_list, samples_from_arrays
@@ -269,24 +269,13 @@ def dist_to_trace(sar, fault):
     return dist
 
 
-def align_track(sar, km_pp, creep_lo_km, creep_hi_km, align_mask_km):
-    """Far-field plane alignment: the slip section (creep_lo_km-creep_hi_km from Point Pinole) +/- align_mask_km
-    masked, a plane 1, x, y fitted to the rest by least squares and removed from the whole data set IN PLACE.
-    km_pp = km from Point Pinole of every sample. Returns the plane coefficients (mm, mm/km, mm/km).
-    Source: 07a [3] `align_track` (written for this project)."""
-    far = (km_pp < creep_lo_km - align_mask_km) | (km_pp > creep_hi_km + align_mask_km)
-    plane = np.c_[np.ones(sar.x.size), sar.x, sar.y]
-    plane_coef = np.linalg.lstsq(plane[far], sar.vel[far], rcond=None)[0]
-    sar.vel[:] = sar.vel - np.dot(plane, plane_coef)
-    return plane_coef
-
-
 def fault_parallel_dataset(fp_event, lon, lat, strike_deg, fault, frame_lonlat, swath_km, exclude_km, km_window,
-                           profile_lats, creep_lo_km, creep_hi_km, align_mask_km):
+                           profile_lats):
     """The fault-parallel field (mm) as one csi.insar data set whose look vector is the horizontal unit vector along
     the strike bearing: every finite pixel of fp_event, cut to swath_km of the trace (and beyond exclude_km of it) and
-    to the along-strike km_window (km from Point Pinole), then the far field levelled by a fitted plane
-    (align_track). Returns (sar, look, plane_coef).
+    to the along-strike km_window (km from Point Pinole). Nothing is removed from the field: the inversion's constant
+    is its only datum (a far-field plane was removed until 2026-10-08; it changed Mw by < 0.01 and is gone, Dani).
+    Returns (sar, look).
     Source: 07a [3] (CSI insar.read_from_binary; written for this project)."""
     look = look_vector(strike_deg)
     ok = np.isfinite(fp_event)
@@ -298,8 +287,7 @@ def fault_parallel_dataset(fp_event, lon, lat, strike_deg, fault, frame_lonlat, 
     km_pp = km_from_pinole(sar.lat, profile_lats)
     sar.vel[(km_pp < km_window[0]) | (km_pp > km_window[1])] = np.nan
     sar.checkNaNs()
-    plane_coef = align_track(sar, km_from_pinole(sar.lat, profile_lats), creep_lo_km, creep_hi_km, align_mask_km)
-    return sar, look, plane_coef
+    return sar, look
 
 
 def semivariogram_model(distance_km, nugget2, sill_short, range_short_km, sill_long, range_long_km):
@@ -399,24 +387,23 @@ def quadtree_block_corners(ds):
     return block_lon, block_lat
 
 
-def build_sample_set(fp_event, lon, lat, strike_deg, fault, frame_lonlat, profile_lats, creep_lo_km, creep_hi_km,
-                     swath_km, exclude_km, km_window, align_mask_km, cov_mask_km, cov_distmax_km, start_block_km,
+def build_sample_set(fp_event, lon, lat, strike_deg, fault, frame_lonlat, profile_lats,
+                     swath_km, exclude_km, km_window, cov_mask_km, cov_distmax_km, start_block_km,
                      min_block_km, nug_power):
     """One quadtree sample set of a fault-parallel field: the data set (fault_parallel_dataset), its far-field noise
     model (covariance), the distance-based quadtree (downsample) and the full data covariance of the samples
     (build_cd). 07a calls it three times: the paper's set (coherence-0.9 field, swath 4 km) and the two sensitivity
-    sets (swath 7 km; the coherence-0.7 field). Returns a dict: samples (csi.insar, Cd set), sar (the levelled pixel
-    data set), cov_p, look, plane_coef, block_lon, block_lat, n_pixels.
+    sets (swath 7 km; the coherence-0.7 field). Returns a dict: samples (csi.insar, Cd set), sar (the pixel data
+    set), cov_p, look, block_lon, block_lat, n_pixels.
     Source: 07a cells [3]-[4] (written for this project; CSI, m02 chain); replaces drafts/retired_2026-10-06/pylith/make_points_swath.py,
     which exec'd 07a."""
-    sar, look, plane_coef = fault_parallel_dataset(fp_event, lon, lat, strike_deg, fault, frame_lonlat, swath_km,
-                                                   exclude_km, km_window, profile_lats, creep_lo_km, creep_hi_km,
-                                                   align_mask_km)
+    sar, look = fault_parallel_dataset(fp_event, lon, lat, strike_deg, fault, frame_lonlat, swath_km,
+                                       exclude_km, km_window, profile_lats)
     cov_p = covariance(sar, fault, swath_km, cov_mask_km, cov_distmax_km)
     samples = downsample(sar, fault, start_block_km, min_block_km)
     build_cd(samples, cov_p, nug_power)
     block_lon, block_lat = quadtree_block_corners(samples)
-    return dict(samples=samples, sar=sar, cov_p=cov_p, look=look, plane_coef=plane_coef, block_lon=block_lon,
+    return dict(samples=samples, sar=sar, cov_p=cov_p, look=look, block_lon=block_lon,
                 block_lat=block_lat, n_pixels=int(np.isfinite(sar.vel).sum()))
 
 

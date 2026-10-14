@@ -11,7 +11,7 @@
 #
 # **What this notebook does.** Two things, in this order:
 #
-# 1. **The data side of every slip model** (cells [1]-[6]): the five-event mean fault-parallel field of 06, levelled,
+# 1. **The data side of every slip model** (cells [1]-[6]): the five-event mean fault-parallel field of 06 (no levelling),
 #    its far-field noise model, the quadtree samples and their covariance, the surface constraint, and the two
 #    sensitivity sample sets (swath 7 km; the field at map coherence 0.7). Written ONCE to
 #    `outputs/07a_uniform_model/model_data_07a.npz` (cell [6b]) and to the PyLith point lists in
@@ -32,7 +32,7 @@
 # | Data | fault-parallel mean event (06 `fp_maps.npz`, five events) | residual maps: removes the ascending east-side patch |
 # | Decomposition strike | mean local strike of the SSE section (06 `strike`, registry `06_strike_local_deg`) | 06; Dani 2026-09-28 |
 # | Coherence | 0.9 for the field | 06 `coh_maps`; Dani 2026-09-28 |
-# | Levelling | plane fitted to the far field (section ± 1 km masked) | removes a far-field tilt; the plane is printed in [3] |
+# | Levelling | none: the inversion's constant is the only datum | Dani 2026-10-08; a far-field plane (section ± 1 km masked) was removed until then, changed Mw by < 0.01, and is gone from the code |
 # | Fault | vertical, on the hand-drawn trace | dip unresolved 60°E-75°W; the PyLith dip runs in 08c |
 # | Mesh | `smooth12`: 50 m cells at the surface, x1.2 per row, 3 km | no resolution plateau (07b mesh family) |
 # | Sampling | distance-based quadtree, 2 km to one 30 m pixel | |
@@ -62,7 +62,7 @@
 # `fig07_hom_fit_maps`, `fig07_hom_slip`. **Registry keys** `07a_hom_*`.
 #
 # **What to check**
-# - [3] the levelling plane is small (tenths of a mm, mm/km).
+# - [3] the pixel count; nothing is removed from the field, so a far-field tilt is left to the residual.
 # - [4] the noise fit: a long-range sill of 0 means the noise model is a nugget plus one exponential.
 # - [6] PASS: the coherence-0.9 field rebuilt from 06's saved steps equals 06's `fp_maps.npz` exactly, and the
 #   three sample sets keep the positions the PyLith Green's functions were computed at.
@@ -134,11 +134,10 @@ swath_wide_km  = 7.0      # the swath-7 set (otherwise 07a's quadtree)
 coh_low        = coh_timeseries   # the coherence-0.7 set: 06's field at the fit mask (0.7) instead of coh_maps 0.9
 decomposition_window_px = 20      # MintPy's asc_desc2horz_vert window: 06's geom_step (the coherence-0.9 gate in [6] proves it)
 
-# levelling and surface constraint
+# surface constraint
 section_lengths = pd.read_csv(os.path.join(events_dir, "section_lengths.csv")).set_index("name")
 creep_lo_km = float(section_lengths.loc["tulepond_creep_length", "km_lo"])   # the SSE section (04)
 creep_hi_km = float(section_lengths.loc["tulepond_creep_length", "km_hi"])
-align_mask_km  = 1.0      # slip section +/- this masked for the far-field plane
 surf_floor_mm  = 0.5      # crossing-stack error floor
 surf_step_km   = 0.2
 surf_win_km    = 0.4
@@ -216,9 +215,9 @@ print(f"mesh smooth12: {len(mesh_nodes)} nodes, {len(mesh_faces)} triangles, "
 # Notebook 06's decomposition (coherence 0.9, SSE-section strike) as one
 # `csi.insar` dataset whose look vector is the horizontal unit vector along
 # the strike bearing, so right-lateral motion of the east side is positive.
-# Cut to 4 km of the trace and the along-strike window, then the far field
-# (slip section +/- 1 km masked) is levelled by a fitted plane
-# (`model_utils.fault_parallel_dataset`, inside `build_sample_set`).
+# Cut to 4 km of the trace and the along-strike window (`model_utils.fault_parallel_dataset`,
+# inside `build_sample_set`). Nothing is removed from the field: the inversion's per-dataset
+# constant is its only datum and a far-field tilt is left in the residual (Dani 2026-10-08).
 #
 # ## [4] Noise model and quadtree
 #
@@ -234,19 +233,17 @@ print(f"mesh smooth12: {len(mesh_nodes)} nodes, {len(mesh_faces)} triangles, "
 ## [3]-[4]
 fp = np.load(fp_file)
 strike_bearing = float(fp["strike"])
-sample_settings = dict(fault=fault, frame_lonlat=model_frame_lonlat, profile_lats=profile_lats, creep_lo_km=creep_lo_km,
-                       creep_hi_km=creep_hi_km, exclude_km=exclude_km, km_window=km_window, align_mask_km=align_mask_km,
+sample_settings = dict(fault=fault, frame_lonlat=model_frame_lonlat, profile_lats=profile_lats,
+                       exclude_km=exclude_km, km_window=km_window,
                        cov_mask_km=cov_mask_km, cov_distmax_km=cov_distmax_km, start_block_km=start_block_km,
                        min_block_km=min_block_km, nug_power=nug_power)
 sample_set = model_utils.build_sample_set(fp["fp_event"], fp["lon"], fp["lat"], strike_bearing, swath_km=swath_km,
                                           **sample_settings)
 sar = sample_set["sar"]
 look = sample_set["look"]
-plane_coef = sample_set["plane_coef"]
 cov_p = sample_set["cov_p"]
 samples = sample_set["samples"]
-print(f"fault-parallel field at strike {strike_bearing:.2f} deg: {sar.vel.size} pixels; "
-      f"levelling plane {plane_coef[0]:+.2f} mm, {plane_coef[1]:+.3f}, {plane_coef[2]:+.3f} mm/km")
+print(f"fault-parallel field at strike {strike_bearing:.2f} deg: {sar.vel.size} pixels (nothing removed from the field)")
 noise_model = pd.Series(dict(nugget_mm=np.sqrt(cov_p[0]), short_mm=np.sqrt(cov_p[1]),
                              short_km=cov_p[2], long_mm=np.sqrt(cov_p[3]), long_km=cov_p[4]))
 print(noise_model.round(3).to_string())
@@ -772,7 +769,7 @@ print("wrote slip_homogeneous_baseline.csv and fig2_model_row.npz")
 # %%
 ## [15]
 sidecar = REG.sidecar("07a_hom_baseline", [
-    f"configuration: fault-parallel (strike {strike_bearing:.2f}), coherence 0.9, levelled, "
+    f"configuration: fault-parallel (strike {strike_bearing:.2f}), coherence 0.9, no levelling, "
     f"smooth12, dip {dip_deg}, quadtree {min_block_km * 1000:.0f} m, surface interp, "
     f"tie {tie_depth_km * 1000:.0f} m, sigma {sigma_sel:g}, homogeneous GFs",
     f"L-curve corner sigma {sigma_corner:.1f} -> selected grid sigma {sigma_sel:g}",
