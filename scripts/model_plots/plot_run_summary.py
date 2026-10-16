@@ -233,9 +233,9 @@ def _main(tag, media, gf_dir, fig_dir, prefix):
         ax = fig.add_subplot(gs[1, 2])
         tri = mtri.Triangulation(run["imp_km"], run["imp_xyz"][:, 2] / 1e3, run["sub_faces"])
         tp = ax.tripcolor(tri, slip, shading="gouraud", cmap="magma", vmin=0, vmax=max(1.0, slip.max()))
-        ax.set_xlim(54, 65); ax.set_ylim(-1.5, 0); ax.invert_xaxis()
+        ax.set_xlim(54, 65); ax.set_ylim(-1.5, 0)          # 54 -> 65 km, north on the left, as Fig 2L (was reversed until 2026-10-16)
         ax.hlines(-0.02, SSE_KM[0], SSE_KM[1], color=OKABE["orange"], lw=6)
-        ax.set_xlabel("km from Point Pinole (orange bar: SSE section)"); ax.set_ylabel("z (km)")
+        ax.set_xlabel("km from Point Pinole, north to south (orange bar: SSE section)"); ax.set_ylabel("z (km)")
         ax.set_title(f"(e) slip, sigma {res.sigma:g}: peak {slip.max():.1f} mm", loc="left")
         fig.colorbar(tp, ax=ax, shrink=0.8, label="right-lateral slip (mm)")
         # (f) L-curve

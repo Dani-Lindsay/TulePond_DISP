@@ -63,7 +63,7 @@
 import os
 
 import insar_utils as utils
-from TulePond_filepaths import (common_paths, creepmeters, paths_out, paths_gps, des11115_dic,
+from TulePond_filepaths import (alameda_creek_trace_lonlat, lake_elizabeth_trace_lonlat, common_paths, creepmeters, paths_out, paths_gps, des11115_dic,
                                 fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km, profile_smooth_km)
 
 import numpy as np
@@ -553,6 +553,19 @@ assert abs(float(mw_harmonic.potency_m3) - float(model["potency_m3"])) <= 1e-6 *
 print(f"panel K: Mw {float(model['mw_30gpa']):.2f} (30 GPa), {mw_harmonic.Mw:.2f} (harmonic SFSVM, {mw_harmonic.mu_eff_gpa:.1f} GPa)")
 print(f"Fig 2 model row from {pylith_model} (tag {model_tag!r}); comparison {pylith_compare}")
 
+# I = the slip model PLUS the inversion's fitted constant, so that J = E - I at every quadtree sample with no other
+# adjustment (Dani 2026-10-14). CSI removes the fitted constant from the DATA (insar.removeTransformation), so 08a's
+# model_mm is the slip model alone and its data_mm the data minus the constant; the constant is the raw samples (07a's
+# model data, before any inversion) minus data_mm, one value for every sample (asserted).
+model_data_07a = np.load(os.path.join(paths_out["07a_uniform_model"], "model_data_07a.npz"))
+assert np.array_equal(model_data_07a["sample_lon"], model["sample_lon"]), "07a's model data are not on the model's samples"
+fitted_constant = model_data_07a["data_mm"] - model["data_mm"]
+assert np.ptp(fitted_constant) < 1e-6, f"the fitted constant is not one value over the samples (spread {np.ptp(fitted_constant):.2e} mm)"
+fitted_constant_mm = float(fitted_constant.mean())
+model_with_constant_mm = model["model_mm"] + fitted_constant_mm
+assert np.allclose(model_data_07a["data_mm"] - model_with_constant_mm, model["residual_mm"], atol=1e-6), "E - I != J at the samples"
+print(f"panel I: slip model + the fitted constant {fitted_constant_mm:+.2f} mm; J = E - I at every sample (PASS)")
+
 
 def profile_lines(product):
     """A model product's profiles along X-X' and Y-Y', keyed by (field, line): (distance m, mm)."""
@@ -563,7 +576,7 @@ def profile_lines(product):
     return lines_by_key
 
 
-model_lines = [(profile_lines(compare), homog_col, "Uniform"),          # no commas: GMT legend labels stop at one
+model_lines = [(profile_lines(compare), homog_col, "Homogeneous"),     # no commas: GMT legend labels stop at one ("Uniform" until Dani 2026-10-16)
                (profile_lines(model), hetero_col, "3D (SFSVM)")]
 
 # %% [markdown]
@@ -583,14 +596,21 @@ assert len(cols04) == n_mean, f"04 has {len(cols04)} Tule Pond events, 06's mean
 for column in cols04:
     assert column in crossings04.columns, f"04's crossing table lacks the Tule Pond event {column}"
 crossing_mean04 = crossings04[cols04].mean(axis=1).values
+# K is drawn UNSMOOTHED (Dani 2026-10-16): each crossing already averages +/- x_width along strike and they are 0.1 km
+# apart, so a Gaussian on top widened the edges and bridged the lake gap. The band is the standard error of the
+# five-event mean at each crossing (event-to-event sd / sqrt(5)), the uncertainty of what the model is compared with.
 k_line_km = crossings04.km.values
-k_line_mm = utils.gaussian_smooth_km(crossing_mean04, crossings04.km.values, profile_smooth_km)
-print(f"K line: {np.isfinite(crossing_mean04).sum()} crossings, Gaussian sigma {profile_smooth_km} km")
+k_line_mm = crossing_mean04
+n_events_k = crossings04[cols04].notna().sum(axis=1).values
+k_se_mm = crossings04[cols04].std(axis=1, ddof=1).values / np.sqrt(n_events_k)
+assert np.all(n_events_k[np.isfinite(crossing_mean04)] == n_mean), "a Tule Pond crossing lacks one of the five events"
+print(f"K: {np.isfinite(crossing_mean04).sum()} crossings, unsmoothed; standard error of the five-event mean, median "
+      f"{np.nanmedian(k_se_mm):.2f} mm")
 
 # %% [markdown]
 # ## [10] The model row (I-L)
 #
-# I the fault-parallel model and J the residual, each quadtree sample filled over its own
+# I the fault-parallel model (slip model + the fitted constant, so J = E - I) and J the residual, each quadtree sample filled over its own
 # block (shared colour bar right of J, on the event row's scale); K surface slip along
 # strike, the crossings (04) and the model's top-edge slip; L slip with depth on the
 # unrolled fault, top 1 km (PyLith tents: slip at the vertices, linear between them).
@@ -599,14 +619,14 @@ print(f"K line: {np.isfinite(crossing_mean04).sum()} crossings, Gaussian sigma {
 
 # %%
 ## [10]
-def model_row(fig, product, lim):
-    """Row 3 of the figure from the current origin (bottom-left of I). Leaves the origin
-    where it started."""
+def model_row(fig, product, lim, model_mm):
+    """Row 3 of the figure from the current origin (bottom-left of I). model_mm: panel I's values (the slip model plus
+    the fitted constant, [8]). Leaves the origin where it started."""
     cpt = utils.write_cpt(os.path.join(cpt_dir, "model_fp.cpt"), "RdBu_r", -lim, lim)
     # the block area on the page is the area each sample averages (equal dots over-weight
     # the many small blocks at the trace); largest first so the small near-fault blocks are on top
     block_area = np.ptp(product["block_lon"], axis=1) * np.ptp(product["block_lat"], axis=1)
-    for k, (letter, values, title) in enumerate((("I", product["model_mm"], "Model"),
+    for k, (letter, values, title) in enumerate((("I", model_mm, "Model"),
                                                  ("J", product["residual_mm"], "Residual"))):
         if k:
             fig.shift_origin(xshift=f"{Wm + gap_map}c")
@@ -614,6 +634,8 @@ def model_row(fig, product, lim):
         blocks_file = os.path.join(cpt_dir, f"blocks_{letter}.txt")
         with open(blocks_file, "w") as handle:
             for block in np.argsort(-block_area):
+                if "keep" in product.files and not bool(product["keep"][block]):
+                    continue                                   # inside the near-trace cut: not fitted, left blank (2026-10-16)
                 handle.write(f"> -Z{values[block]:.4f}\n")
                 for corner_lon, corner_lat in zip(product["block_lon"][block], product["block_lat"][block]):
                     handle.write(f"{corner_lon:.6f} {corner_lat:.6f}\n")
@@ -630,11 +652,13 @@ def model_row(fig, product, lim):
     fig.text(position="ML", text="Model (fault-parallel)", angle=90, justify="BC", offset="-0.3c/0c",
              font=heading_font, no_clip=True)
 
-    # K: surface slip along strike, the crossings (04) and the model's top edge
+    # K: surface slip along strike, the crossings (04) and the model LIKE FOR LIKE (Dani 2026-10-16): the model's cross-fault
+    # step at the samples 30-150 m either side, +/- 200 m along strike, as the crossings are measured (08a like_model_mm),
+    # unsmoothed, as the crossings (Dani 2026-10-16); the model's top-edge slip (no pixel within 30 m of the trace) is not drawn
     k_indent = 0.7                                       # room for the I/J bar label and the depth label
     Wk = W_model - k_indent
     Hk = 0.38 * Hm
-    gap_kl = 0.5
+    gap_kl = 0.75                                        # room under K for the Alameda Creek / Lake Elizabeth bars
     Hl = Hm - Hk - gap_kl
     km_view = [54.0, 65.0]
     fig.shift_origin(xshift=f"{x_prof + k_indent}c", yshift=f"{Hl + gap_kl}c")
@@ -643,20 +667,52 @@ def model_row(fig, product, lim):
     assert product_crossings.size == crossings_04.size and np.allclose(product_crossings, crossings_04, atol=1e-6), \
         "the model product's crossings are not 04's five-event means: re-run 07a / 08a"
     k_view = (k_line_km >= km_view[0]) & (k_line_km <= km_view[1])
-    highest_mm = max(np.nanmax(k_line_mm[k_view]), np.nanmax(product["surface_model_mm"]))
+    k_model_mm = np.asarray(product["like_model_mm"], float)
+    highest_mm = max(np.nanmax((k_line_mm + k_se_mm)[k_view]), np.nanmax(k_model_mm))
     slip_top = float(np.ceil(highest_mm / 2 + 1) * 2)            # the next even mm above the highest value, plus 2
     region_k = km_view + [0.0, slip_top]
     with pygmt.config(FONT_LABEL=ylabel_font):                   # the y label at the size of the profiles' y labels
         fig.basemap(region=region_k, projection=f"X{Wk}c/{Hk}c", frame=["Wsrt", "xa2f1", f"ya{slip_top / 2:g}+lmm"])
-    fig.plot(x=product["crossing_km"], y=product["crossing_mm"], style="c0.03c", fill=grey, transparency=30)
-    fig.plot(x=k_line_km, y=k_line_mm, pen="1.0p," + median_col)       # NaN in data gaps: GMT breaks the line there
-    fig.plot(x=product["surface_km"], y=product["surface_model_mm"], pen="1.0p," + model_col)
+    # the crossings are drawn only where the model's step exists too (Dani 2026-10-16): the same support on both sides of
+    # the comparison; where the model's samples (coherence 0.9) have none on one side of the trace, neither is drawn.
+    # Fig 1 shows every crossing.
+    model_of_km = {round(float(k), 3): float(v) for k, v in zip(product["like_km"], product["like_model_mm"])}
+    assert all(round(float(k), 3) in model_of_km for k in k_line_km[np.isfinite(k_line_mm)]), \
+        "a 04 crossing has no like-for-like model value at its km"
+    model_at_k = np.array([model_of_km.get(round(float(k), 3), np.nan) for k in k_line_km])
+    finite_k = np.isfinite(k_line_mm) & np.isfinite(k_se_mm) & np.isfinite(model_at_k)
+    print(f"K: {int(finite_k.sum())} of {int(np.isfinite(k_line_mm).sum())} crossings drawn (where the model's 30-150 m step exists)")
+    run_id = np.cumsum(~finite_k)                                # one band polygon per run of crossings with data
+    for r in np.unique(run_id[finite_k]):
+        idx = np.where(finite_k & (run_id == r))[0]
+        if idx.size < 2:
+            continue
+        x_band = np.r_[k_line_km[idx], k_line_km[idx][::-1]]
+        y_band = np.r_[(k_line_mm + k_se_mm)[idx], (k_line_mm - k_se_mm)[idx][::-1]]
+        fig.plot(x=x_band, y=y_band, fill="gray75", close=True)
+    fig.plot(x=k_line_km[finite_k], y=k_line_mm[finite_k], style="c0.05c", fill=median_col)
+    fig.plot(x=np.asarray(product["like_km"], float), y=k_model_mm, pen="1.0p," + model_col)   # NaN where a side has no samples: GMT breaks the line
     legend_file = os.path.join(cpt_dir, "legend_k.txt")
-    write_line_legend(legend_file, [("1.0p," + median_col, "Crossings (smoothed)"),   # no commas: GMT labels stop at one
-                                    ("1.0p," + model_col, "3D (SFSVM)")])
+    with open(legend_file, "w") as handle:                       # no commas: GMT labels stop at one
+        handle.write(f"S 0.15c c 0.08c {median_col} - 0.35c InSAR\n")   # the mean and its s.e. band: caption
+        handle.write(f"S 0.15c - 0.3c - 1.0p,{model_col} 0.35c 3D (SFSVM)\n")
     with pygmt.config(FONT_ANNOT_PRIMARY=legend_font):
-        fig.legend(spec=legend_file, position="jTL+o0.15c/0.05c", box=False)          # top left, clear of the lines (Dani 2026-10-03)
+        fig.legend(spec=legend_file, position="jTR+o0.1c/0.05c", box=False)   # top right, over the quiet south end (Dani 2026-10-16)
     fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font=panel_letter_font, no_clip=True)
+    # Alameda Creek and Lake Elizabeth on the trace (TulePond_filepaths, Dani 2026-10-16): sky-blue bars under K's x axis,
+    # named below them (Dani's sketch); the gap to L leaves room
+    mm_per_cm = slip_top / Hk
+    landmark_km = {}
+    for name, ends in (("Alameda Creek", alameda_creek_trace_lonlat), ("Lake Elizabeth", lake_elizabeth_trace_lonlat)):
+        ends_km = km_of(np.array([lat for _, lat in ends]))
+        nearest_m = [111e3 * np.min(np.hypot((prof.ft_lon - lon) * np.cos(np.radians(lat)), prof.ft_lat - lat)) for lon, lat in ends]
+        assert max(nearest_m) < 100, f"{name}: a point is {max(nearest_m):.0f} m from the fault-profile trace"
+        landmark_km[name] = ends_km
+        bar_cm = abs(ends_km[1] - ends_km[0]) * Wk / (km_view[1] - km_view[0])
+        fig.plot(data=np.array([[float(np.mean(ends_km)), -0.10 * mm_per_cm, bar_cm, 0.07]]), style="r", fill="#56B4E9",
+                 no_clip=True)                               # a rectangle symbol: GMT clips lines outside the frame, not symbols
+        fig.text(x=float(np.mean(ends_km)), y=-0.22 * mm_per_cm, text=name, font=annot_font, justify="CT", no_clip=True)
+    print("K landmarks (km from Point Pinole): " + "; ".join(f"{n} {k[0]:.1f}-{k[1]:.1f}" for n, k in landmark_km.items()))
     # no +/- in the label: the bootstrap 2-sigma understates the uncertainty, which is set by the sigma
     # choice and the SFCVM alignment; quote the range in the caption (08a registry
     # 08a_mw_30gpa_range_lo, 08a_mw_30gpa_range_hi)
@@ -688,6 +744,9 @@ def model_row(fig, product, lim):
     with pygmt.config(FONT_LABEL=ylabel_font):                   # frame on top, with the y label at the profiles' size
         fig.basemap(region=region_l, projection=proj_l, frame=["WSrt", "xa2f1", "ya0.5f0.25+lDepth (km)"])
     fig.text(position="TL", text="L", justify="BL", offset="0c/0.12c", font=panel_letter_font, no_clip=True)
+    # orientation in white on the dark slip panel (Dani 2026-10-16): km from Point Pinole grows southward
+    fig.text(position="BL", text="North", justify="BL", offset="0.12c/0.12c", font=f"{annot_font.split(',')[0]},Helvetica,white")
+    fig.text(position="BR", text="South", justify="BR", offset="-0.12c/0.12c", font=f"{annot_font.split(',')[0]},Helvetica,white")
     font_pt = colour_bar_font_pt(Hl)
     with pygmt.config(FONT_ANNOT_PRIMARY=f"{font_pt:.3g}p", FONT_LABEL=f"{font_pt:.3g}p"):
         fig.colorbar(cmap=cpt_l, position=f"x{Wk + gap_cb}c/0c+w{Hl}c/{cb_w}c+jBL",
@@ -744,7 +803,7 @@ def draw_fig2(rate_maps, event_maps, profile_set, event_label, stem, cols, ylabs
                       model_lines=lines_here)
     # row 3: the model of notebook 08a, I and J on the same colour scale as E and F
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
-    model_row(fig, model, lim_event)
+    model_row(fig, model, lim_event, model_with_constant_mm)
     fig.savefig(stem + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
     fig.savefig(stem + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
     print("Saved to:", stem + ".png")

@@ -34,9 +34,9 @@
 #
 # | Setting | Values | What it tests |
 # |---|---|---|
-# | media | `homog` (30 GPa) and `sfcvm` (SFCVM v26.0 aligned on the trace); `sfcvm_e50` / `sfcvm_w50` (the block boundary 50 m east / west) | the elastic structure |
+# | media | `homog` (30 GPa) and `sfcvm` (SFCVM v26.0 aligned on the trace); `sfcvm_e50` / `sfcvm_w50` (the block boundary 50 m east / west); `sfcvm_asis` (not shifted onto the trace, as published; 2026-10-14) | the elastic structure |
 # | Cd | `full` (07a's correlated), `nugget` (its diagonal: the selected model), `diag` (equal weights), `floor` (n_px floored at 15 or 4) | the data covariance |
-# | surface | on / off (the measured-crossing constraint) | the surface data |
+# | surface | `model_use_surface` (OFF since 2026-10-16) for every run; the `_surf` rows (full, equal, nugget Cd) turn the measured-crossing constraint ON | the surface data |
 # | mesh | `default` (100 m fault cells in the patch), `shallow` (60 m near-surface band) | the fault discretisation |
 # | dip | 90, 80 E, 70 E (top edge on the trace; SFCVM aligned to the dipping fault) | the fault dip |
 # | order | 1, 2 (quadratic solution, linear materials, no Poisson cap; Charles Williams 2026-09-30) | the element order |
@@ -77,7 +77,7 @@ import pandas as pd
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
 from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_inputs, paths_sfcvm, medium_paths,
-                                model_sigma_locked, model_crs)
+                                model_sigma_locked, model_crs, model_sigma_grid, model_use_surface, model_near_trace_cut_km)
 import insar_utils as utils
 import model_utils                                  # every modelling function, once (with its source)
 
@@ -102,30 +102,39 @@ print(f"{notebook}: products to {out_dir}; locked sigma {sigma_locked:g}")
 # %%
 ## [2]
 RUN_COLUMNS = ["tag", "media", "cd", "cd_floor", "surface", "mesh", "dip", "order", "points"]
+# the surface constraint of the default and of every run is model_use_surface (TulePond_filepaths; OFF since 2026-10-16);
+# the `_surf` rows switch it the other way (until 2026-10-16 the default was ON and these rows were `_nosurf`)
+SURF = model_use_surface
+ALT = not model_use_surface
 RUN_TABLE = [
     # tag                    media                 Cd        floor  surface  mesh       dip    order  points
-    ("",                     ("homog", "sfcvm"),   "full",   None,  True,    "default", "90",  "1",   "default"),
-    ("_nuggetcd",            ("homog", "sfcvm"),   "nugget", None,  True,    "default", "90",  "1",   "default"),
-    ("_e50",                 ("sfcvm_e50",),       "full",   None,  True,    "default", "90",  "1",   "default"),
-    ("_e50_nuggetcd",        ("sfcvm_e50",),       "nugget", None,  True,    "default", "90",  "1",   "default"),
-    ("_w50",                 ("sfcvm_w50",),       "full",   None,  True,    "default", "90",  "1",   "default"),
-    ("_w50_nuggetcd",        ("sfcvm_w50",),       "nugget", None,  True,    "default", "90",  "1",   "default"),
-    ("_diagcd",              ("homog", "sfcvm"),   "diag",   None,  True,    "default", "90",  "1",   "default"),
-    ("_floor15",             ("homog", "sfcvm"),   "floor",  15,    True,    "default", "90",  "1",   "default"),
-    ("_floor4",              ("homog", "sfcvm"),   "floor",  4,     True,    "default", "90",  "1",   "default"),
-    ("_nosurf",              ("homog", "sfcvm"),   "full",   None,  False,   "default", "90",  "1",   "default"),
-    ("_nosurf_diagcd",       ("homog", "sfcvm"),   "diag",   None,  False,   "default", "90",  "1",   "default"),
-    ("_shallow",             ("homog", "sfcvm"),   "full",   None,  True,    "shallow", "90",  "1",   "default"),
-    ("_dip80e",              ("homog", "sfcvm"),   "full",   None,  True,    "default", "80e", "1",   "default"),
-    ("_dip80e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  True,    "default", "80e", "1",   "default"),
-    ("_dip70e",              ("homog", "sfcvm"),   "full",   None,  True,    "default", "70e", "1",   "default"),
-    ("_dip70e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  True,    "default", "70e", "1",   "default"),
-    ("_swath7",              ("homog", "sfcvm"),   "full",   None,  True,    "default", "90",  "1",   "swath7"),
-    ("_swath7_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  True,    "default", "90",  "1",   "swath7"),
-    ("_order2",              ("homog", "sfcvm"),   "full",   None,  True,    "default", "90",  "2",   "default"),
-    ("_order2_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  True,    "default", "90",  "2",   "default"),
-    ("_coh07",               ("homog", "sfcvm"),   "full",   None,  True,    "default", "90",  "1",   "coh07"),
-    ("_coh07_nuggetcd",      ("homog", "sfcvm"),   "nugget", None,  True,    "default", "90",  "1",   "coh07"),
+    ("",                     ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "1",   "default"),
+    ("_nuggetcd",            ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "1",   "default"),
+    ("_e50",                 ("sfcvm_e50",),       "full",   None,  SURF,    "default", "90",  "1",   "default"),
+    ("_e50_nuggetcd",        ("sfcvm_e50",),       "nugget", None,  SURF,    "default", "90",  "1",   "default"),
+    ("_w50",                 ("sfcvm_w50",),       "full",   None,  SURF,    "default", "90",  "1",   "default"),
+    ("_w50_nuggetcd",        ("sfcvm_w50",),       "nugget", None,  SURF,    "default", "90",  "1",   "default"),
+    # the SFCVM as published, NOT shifted onto the trace (GF run gf_default_sfcvmasis, 2026-09-30; dropped then, back
+    # 2026-10-14 so the paper has numbers for rejecting it, Dani): reported on its own, not in the sensitivity range
+    ("_asis",                ("sfcvm_asis",),      "full",   None,  SURF,    "default", "90",  "1",   "default"),
+    ("_asis_nuggetcd",       ("sfcvm_asis",),      "nugget", None,  SURF,    "default", "90",  "1",   "default"),
+    ("_diagcd",              ("homog", "sfcvm"),   "diag",   None,  SURF,    "default", "90",  "1",   "default"),
+    ("_floor15",             ("homog", "sfcvm"),   "floor",  15,    SURF,    "default", "90",  "1",   "default"),
+    ("_floor4",              ("homog", "sfcvm"),   "floor",  4,     SURF,    "default", "90",  "1",   "default"),
+    ("_surf",                ("homog", "sfcvm"),   "full",   None,  ALT,     "default", "90",  "1",   "default"),
+    ("_surf_diagcd",         ("homog", "sfcvm"),   "diag",   None,  ALT,     "default", "90",  "1",   "default"),
+    ("_surf_nuggetcd",       ("homog", "sfcvm"),   "nugget", None,  ALT,     "default", "90",  "1",   "default"),   # the selected model WITH the crossing constraint
+    ("_shallow",             ("homog", "sfcvm"),   "full",   None,  SURF,    "shallow", "90",  "1",   "default"),
+    ("_dip80e",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "80e", "1",   "default"),
+    ("_dip80e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "80e", "1",   "default"),
+    ("_dip70e",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "70e", "1",   "default"),
+    ("_dip70e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "70e", "1",   "default"),
+    ("_swath7",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "1",   "swath7"),
+    ("_swath7_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "1",   "swath7"),
+    ("_order2",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "2",   "default"),
+    ("_order2_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "2",   "default"),
+    ("_coh07",               ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "1",   "coh07"),
+    ("_coh07_nuggetcd",      ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "1",   "coh07"),
 ]
 runs = pd.DataFrame(RUN_TABLE, columns=RUN_COLUMNS, dtype=object)   # object: keeps the floors as integers (None elsewhere)
 CD_TAG = {"full": "", "nugget": "_nuggetcd", "diag": "_diagcd"}
@@ -140,7 +149,7 @@ def expected_tag(row):
     for medium in row.media:
         if medium.startswith("sfcvm_"):
             tag += f"_{medium[6:]}"
-    tag += "" if row.surface else "_nosurf"
+    tag += "" if row.surface == SURF else ("_surf" if row.surface else "_nosurf")   # relative to the default (2026-10-16)
     tag += f"_floor{row.cd_floor}" if row.cd == "floor" else CD_TAG[row.cd]
     return tag
 
@@ -157,11 +166,14 @@ def gf_run_name(row, medium):
     dip_tag = "" if row.dip == "90" else f"_dip{row.dip}"
     points_tag = "" if row.points == "default" else f"_{row.points}"
     order_tag = "" if row.order == "1" else "_order2"
-    return f"gf_{row.mesh}{dip_tag}_{medium}{points_tag}{order_tag}"
+    medium_name = "sfcvmasis" if medium == "sfcvm_asis" else medium      # the unshifted run's name (pylith/README.md)
+    return f"gf_{row.mesh}{dip_tag}_{medium_name}{points_tag}{order_tag}"
 
 
 def sfcvm_grid_file(row, medium):
     """The SFCVM grid a medium's PyLith run read its rigidity from (pylith/build/sfcvm_grid.py)."""
+    if medium == "sfcvm_asis":                                            # not aligned: the grid as published
+        return os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_asis_grid.npz")
     if medium.startswith("sfcvm_"):
         return os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{medium[6:]}_grid.npz")
     dip_tag = "" if row.dip == "90" else f"_dip{row.dip}"
@@ -195,7 +207,7 @@ frame_lonlat = tuple(model_data["frame_lonlat"])
 strike_deg = float(model_data["strike_deg"])
 look = model_data["look"]
 lam_xz = tuple(model_data["lam_xz"])
-sigma_grid = [float(s) for s in model_data["sigma_grid"]]
+sigma_grid = sorted(set(float(s) for s in model_sigma_grid) | {float(model_sigma_locked)})   # the 3D-model grid (2026-10-16), not 07a's
 n_boot = int(model_data["n_boot"])
 creep_lo_km, creep_hi_km = float(model_data["creep_lo_km"]), float(model_data["creep_hi_km"])
 km_window = tuple(model_data["km_window"])
@@ -236,8 +248,8 @@ assert np.array_equal(row07["sample_lon"], model_data["sample_lon"]), "07a's fig
 # (`sigma_corner`, `sigma_lcurve_pick`) and the model is solved at the locked sigma. The CSI baseline of 07a is
 # re-scored on the default samples under the run's Cd. Where a forward run of the same mesh, medium, order and
 # points exists, G x its slip must reproduce it (superposition, `model_utils.superposition_check`).
-# NB: with the surface constraint off the L-curve misfit still adds the (predicted, not fitted) surface chi2, as the
-# driver did; only `sigma_corner` / `sigma_lcurve_pick` of the two `nosurf` runs see it.
+# The L-curve misfit is the InSAR chi2, plus the surface chi2 only in the runs that fit the surface data (until 2026-10-16
+# the predicted, unfitted surface chi2 was added in the runs without the constraint too).
 
 # %%
 ## [4]
@@ -251,7 +263,8 @@ def run_one(row):
     p = np.load(points_npz[row.points])
     setup = model_utils.tent_model_setup(run_names, points_npz[row.points], strike_deg, medium_dirs, crossings, km_window,
                                          creep_lo_km, creep_hi_km, surf_floor_mm, trace_south_north, trace_xy_m,
-                                         frame_lonlat, model_crs, profile_lats)
+                                         frame_lonlat, model_crs, profile_lats,
+                                         near_trace_cut_km=model_near_trace_cut_km, trace_km_pp=trace["km_pp"])
     tents = setup["tents"]
     print(f"run {row.tag or '(default)'}: {', '.join(run_names.values())}; {samples.vel.size} samples x {tents.n_imp} impulses; "
           f"surface constraint {setup['constraint']['vel'].size} crossings")
@@ -270,7 +283,7 @@ def run_one(row):
             return mu_mean[medium]
         return mu_mean["sfcvm"]
 
-    Cd = model_utils.data_cd(row.cd, samples, p["cov_p"], float(p["nug_power"]), floor_px=row.cd_floor)
+    Cd = model_utils.data_cd(row.cd, samples, p["cov_p"], float(p["nug_power"]), floor_px=row.cd_floor, keep=setup["keep"])
     lcurves = {}
     models = {}
     table = []
@@ -287,7 +300,7 @@ def run_one(row):
             return model_utils.invert_tents(setup["template"], samples, setup["G"][medium], Cd, setup["surface"],
                                             setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=bool(row.surface),
                                             name=f"{medium} sigma {sigma:g}")
-        lcurve = model_utils.tent_lcurve(solve, sigma_grid, tents, mu_ref, f"{row.tag or 'default'} {medium}")
+        lcurve = model_utils.tent_lcurve(solve, sigma_grid, tents, mu_ref, f"{row.tag or 'default'} {medium}", use_surface=bool(row.surface))
         corner, _, _ = model_utils.lcurve_corner(lcurve.sigma.values, np.sqrt(lcurve.chi2_total.values), lcurve.prior_norm.values)
         pick = model_utils.lcurve_pick(lcurve.sigma.values, corner)
         lcurve["corner"] = corner
@@ -299,7 +312,7 @@ def run_one(row):
         fault_model, insar_data, surface = solve(sigma_locked)
         slip = fault_model.slip[:, 0].copy()
         num = model_utils.tent_numbers(slip, insar_data, surface, tents, setup["west300"], setup["east300"],
-                                       setup["in_section_surface"], setup["denominator_mm"], mu_ref, mu_for(medium))
+                                       setup["in_section_surface"], setup["denominator_mm"], mu_ref, mu_for(medium), keep=setup["keep"])
         models[medium] = dict(slip=slip, data=insar_data.vel.copy(), model=insar_data.synth.copy(),
                               residual=insar_data.vel - insar_data.synth)
         table.append(dict(model=f"PyLith {medium}", sigma=sigma_locked, rms_mm=num["rms_mm"], rms_west300_mm=num["rms_west300_mm"],
@@ -388,12 +401,12 @@ for medium, cd in BOOT_RUNS:
 
     def solve(sigma, vel_insar=None, vel_surface=None):
         return model_utils.invert_tents(setup["template"], run["samples"], setup["G"][medium], run["Cd"], setup["surface"],
-                                        setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=True,
+                                        setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=model_use_surface,
                                         vel_insar=vel_insar, vel_surface=vel_surface, name=f"{medium} {cd} sigma {sigma:g}")
 
     def numbers(fault_model, insar_data, surface):
         return model_utils.tent_numbers(fault_model.slip[:, 0], insar_data, surface, tents, setup["west300"], setup["east300"],
-                                        setup["in_section_surface"], setup["denominator_mm"], mu_ref, run["mu_for"](medium))
+                                        setup["in_section_surface"], setup["denominator_mm"], mu_ref, run["mu_for"](medium), keep=setup["keep"])
 
     sigma = sigma_locked
     ref_fault, ref_data, ref_surface = solve(sigma)

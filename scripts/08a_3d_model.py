@@ -39,11 +39,11 @@
 #
 # The **SELECTED model** (Dani, 2026-09-30): run tag `default_nuggetcd`, aligned SFCVM medium,
 # vertical fault, `default` mesh (100 m fault cells in the Tule Pond patch), order-1 elements,
-# nugget-only diagonal data covariance, measured-crossing surface constraint ON, sigma 12 (the
-# grid value at or above the L-curve corner, 07a [9] rule; locked, `TulePond_filepaths.model_sigma_locked`,
-# asserted in [11]). Its **companion** is the same inversion with 07a's full correlated covariance (tag
+# nugget-only diagonal data covariance, NO surface constraint (`TulePond_filepaths.model_use_surface`, Dani 2026-10-16;
+# ON until then), sigma at the corner of its own L-curve on the refined 3D-model grid (locked,
+# `TulePond_filepaths.model_sigma_locked`, asserted in [11]). Its **companion** is the same inversion with 07a's full correlated covariance (tag
 # `default`). Both media (homogeneous 30 GPa and aligned SFCVM) are inverted in each, so every table carries four
-# models plus 07a's CSI baseline. The sensitivity runs (mesh, Cd floors, no surface constraint, wider swath, dip,
+# models plus 07a's CSI baseline. The sensitivity runs (mesh, Cd floors, WITH the surface constraint, wider swath, dip,
 # order 2, alignment +/- 50 m, coherence 0.7) and the bootstrap are made by `08c_3d_model_sensitivity` and drawn by
 # `08b_3d_model_tests`.
 #
@@ -111,7 +111,8 @@ from scipy.spatial import cKDTree
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
 from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_inputs, paths_uniform, paths_sfcvm, paths_pylith,
-                                medium_paths, model_crs, model_sigma_locked, dist_min, dist_max)   # dist_min/max: 06's near-fault band, [15e]
+                                medium_paths, model_crs, model_sigma_locked, model_sigma_grid, model_use_surface, model_near_trace_cut_km, dist_min, dist_max,
+                                lake_elizabeth_trace_lonlat)   # dist_min/max: 06's near-fault band, [15e]
 import insar_utils as utils
 from insar_utils import mpl_paper_style
 import model_utils                                  # every modelling function, once (with its source)
@@ -142,7 +143,7 @@ build_dir = paths_pylith["build"]
 mesh_preset = "default"                             # 100 m fault cells in km 56-63 / top 1.5 km, 250 m elsewhere on the fault
 elem_order = "1"                                    # linear elements; slip impulses are tents on the fault vertices
 points_set = "default"                              # 07a's 2386 quadtree samples (swath 4 km)
-use_surface = True                                  # measured-crossing surface constraint ON (model_utils.crossing_constraint, [10])
+use_surface = model_use_surface                     # measured-crossing surface constraint (TulePond_filepaths; OFF since 2026-10-16, Dani)
 sigma_locked = model_sigma_locked                   # the model sigma, locked for every model (Dani 2026-10-03; asserted in [11])
 media = {"homog": "mat_homog.cfg", "sfcvm": "mat_sfcvm.cfg"}     # 30 GPa / SFCVM v26.0 aligned on the trace (pylith/cfg)
 run_names = {m: f"gf_{mesh_preset}_{m}" for m in media}         # PyLith GreensFns runs (<medium>/pylith_output/<run>-*.h5)
@@ -311,6 +312,7 @@ frame_lonlat = tuple(model_data["frame_lonlat"])
 strike_bearing = float(model_data["strike_deg"])
 look = model_data["look"]
 profile_lats = pd.read_csv(common_paths["fault_profiles"]).ft_lat.values
+lake_km = np.sort(model_utils.km_from_pinole(np.array([lat for _, lat in lake_elizabeth_trace_lonlat]), profile_lats))   # Lake Elizabeth on the trace (Fig 2K bars)
 trace = model_utils.model_trace(model_data["trace_lonlat"], -90.0, 90.0, frame_lonlat, profile_lats,
                                 every_km=float(model_data["trace_every_km"]))
 trace_south_north = trace["lonlat"][np.argsort(trace["lonlat"][:, 1])]
@@ -322,7 +324,8 @@ medium_dirs = {medium: (medium_paths(medium)["pylith_output"], medium_paths(medi
 t0 = time.time()
 setup = model_utils.tent_model_setup({"sfcvm": run_names["sfcvm"], "homog": run_names["homog"]}, points_file + ".npz",
                                      strike_bearing, medium_dirs, crossings, km_window, creep_lo_km, creep_hi_km, surf_floor_mm,
-                                     trace_south_north, (trace["x_km"] * 1e3, trace["y_km"] * 1e3), frame_lonlat, CRS, profile_lats)
+                                     trace_south_north, (trace["x_km"] * 1e3, trace["y_km"] * 1e3), frame_lonlat, CRS, profile_lats,
+                                         near_trace_cut_km=model_near_trace_cut_km, trace_km_pp=trace["km_pp"])
 G = setup["G"]                              # medium -> G matrix (samples x impulses), right-lateral positive, m per m
 gnpz = setup["gnpz"]                        # medium -> the G_<run>.npz product
 tents = setup["tents"]
@@ -369,7 +372,7 @@ print("PASS: PyLith used the aligned SFCVM rigidity")
 cov_p = model_data["cov_p"]
 nug_power = float(model_data["nug_power"])
 lam_xz = tuple(model_data["lam_xz"])
-sigma_grid = [float(s) for s in model_data["sigma_grid"]]
+sigma_grid = sorted(set(float(s) for s in model_sigma_grid) | {float(sigma_locked)})   # the 3D-model grid (2026-10-16), not 07a's
 samples = model_utils.samples_from_arrays("Downsampled fault-parallel", model_data["sample_lon"], model_data["sample_lat"],
                                           model_data["sample_x_km"], model_data["sample_y_km"], model_data["data_mm"],
                                           model_data["wgt"], look, frame_lonlat, cov_p, nug_power)
@@ -678,7 +681,7 @@ print(f"surface constraint: {surface_rows['vel'].size} crossings inside the mesh
 west300, east300 = setup["west300"], setup["east300"]
 in_sec_surface = setup["in_section_surface"]
 surface_imp = tents.surface_imp
-data_covariance = {cd: model_utils.data_cd(cd, samples, cov_p, nug_power) for cd in CD_TAG}   # the two Cd treatments
+data_covariance = {cd: model_utils.data_cd(cd, samples, cov_p, nug_power, keep=setup["keep"]) for cd in CD_TAG}   # the two Cd treatments
 
 
 def invert_tents(medium, sigma, cd, vel_insar=None, vel_surface=None):
@@ -692,27 +695,28 @@ def invert_tents(medium, sigma, cd, vel_insar=None, vel_surface=None):
 def numbers(fault_model, insar_data, surface):
     """The numbers of one solution (model_utils.tent_numbers; Mw_sfcvm with the SFCVM rigidity beside the fault)."""
     return model_utils.tent_numbers(fault_model.slip[:, 0], insar_data, surface, tents, west300, east300, in_sec_surface,
-                                    section_crossing_median_mm, mu_ref, mu_fault["sfcvm"])
+                                    section_crossing_median_mm, mu_ref, mu_fault["sfcvm"], keep=setup["keep"])
 
 
 moment_magnitude = model_utils.moment_magnitude
-assert use_surface, "the selected model has the surface constraint ON; the InSAR-only run is a sensitivity case (08c)"
+print(f"surface constraint {'ON' if use_surface else 'OFF'} (model_use_surface); the other setting is 08c's `_surf` / `_nosurf` run")
 
 # %% [markdown]
 # ## [11] Sigma: the L-curve corner for each model (07a [9] rule)
 #
-# Same sigma grid, same weighted misfit sqrt(chi2 InSAR + chi2 surface) against the prior-weighted
-# roughness (`model_utils.tent_lcurve`), corner by maximum curvature of cubic splines in log sigma (end intervals
-# excluded; `model_utils.lcurve_corner`), selected = smallest grid sigma at or above the corner. Four L-curves: the
-# two media under each covariance treatment. Every model must land on the locked sigma 12 (asserted).
+# The 3D-model sigma grid (`TulePond_filepaths.model_sigma_grid`: 07a's grid with 1-wide steps from 10 to 16), the weighted
+# misfit (InSAR chi2, plus the surface chi2 only when the surface data are fitted) against the prior-weighted roughness
+# (`model_utils.tent_lcurve`), corner by maximum curvature of cubic splines in log sigma (end intervals excluded;
+# `model_utils.lcurve_corner`). The locked sigma IS the corner of the SELECTED model's L-curve, to 0.1 (asserted); every
+# model, and every 08c run, is solved at it, and each records its own corner. The locked sigma is the value on the
+# 1-wide part of the grid nearest the corner (within 0.5, asserted).
 # CHECK: each L-curve equals 08c's run of the same settings (`lcurve_<medium><tag>.csv`), made by the same
 # functions on the same products.
 #
-# Why the grid value and not the corner itself (Dani 2026-10-03, locked in): the corner is broad. For
-# the selected model it sits at sigma 10.3 on this grid and at 11.1 when steps at 7, 9, 10, 11, 13 and
-# 14 are added; solved at the corner the model has Mw30 3.747 against 3.756 at sigma 12, rms 1.36
-# against 1.35 mm, and the same surface slip (a one-off check, 2026-10-03, not part of this notebook).
-# Sigma 12, the nearest grid value above the corner, is kept for every model.
+# History: until 2026-10-16 the rule was the smallest grid value at or above the corner on 07a's coarse grid (sigma 12;
+# Dani 2026-10-03, after a one-off check that the corner itself changed Mw30 by < 0.01). On 2026-10-16, with the
+# surface constraint off, the corner moved to ~12.4 and Dani chose the refined grid and the corner itself; with the
+# 60 m near-trace cut (same day) it moved to ~15.9 (sigma 16); the cut was dropped again that night: corner 12.4, sigma 12.
 
 # %%
 ## [11]
@@ -720,11 +724,13 @@ def lcurve(medium, cd):
     """One L-curve over sigma_grid: misfit, roughness, rms and Mw30 per sigma; the corner and the selected sigma."""
     def solve(sigma):
         return invert_tents(medium, sigma, cd)
-    lcurve_table = model_utils.tent_lcurve(solve, sigma_grid, tents, mu_ref, f"{medium} {cd}")
+    lcurve_table = model_utils.tent_lcurve(solve, sigma_grid, tents, mu_ref, f"{medium} {cd}", use_surface=use_surface)
     corner, _, _ = model_utils.lcurve_corner(lcurve_table.sigma.values, np.sqrt(lcurve_table.chi2_total.values),
                                              lcurve_table.prior_norm.values)
-    selected = model_utils.lcurve_pick(lcurve_table.sigma.values, corner)
-    assert selected == sigma_locked, f"{medium} {cd}: corner {corner:.1f} now selects sigma {selected:g}, not the locked {sigma_locked:g}"
+    selected = sigma_locked                                   # every model is solved at the locked sigma
+    if (medium, cd) == SELECTED:                              # the locked sigma IS the selected model's corner, to 0.1
+        assert abs(corner - sigma_locked) <= 0.5 + 1e-9, \
+            f"the selected model's L-curve corner is now {corner:.2f}: set model_sigma_locked to the nearest 1-wide grid value"
     lcurve_table["corner"] = corner
     lcurve_table["selected"] = selected
     lcurve_table.to_csv(os.path.join(out_dir, f"lcurve_{medium}{CD_TAG[cd]}.csv"), index=False)
@@ -739,7 +745,7 @@ for medium, cd in RUNS:
     lcurve_table = families[(medium, cd)][0]
     assert np.array_equal(lcurve_08c.sigma.values, lcurve_table.sigma.values), "08c's L-curve is on another sigma grid"
     lc_diff = float(np.max(np.abs(lcurve_08c.chi2_total.values / lcurve_table.chi2_total.values - 1)))
-    assert lc_diff < 1e-9 and float(lcurve_08c.lcurve_pick.iloc[0]) == families[(medium, cd)][2], \
+    assert lc_diff < 1e-9 and abs(float(lcurve_08c.corner.iloc[0]) - families[(medium, cd)][1]) < 1e-9, \
         f"{medium} {cd}: L-curve differs from 08c's (max rel chi2 diff {lc_diff:.1e}): re-run 08c"
     print(f"PASS: {medium} {cd} L-curve equals 08c's lcurve_{medium}{CD_TAG[cd]}.csv (max rel chi2 diff {lc_diff:.1e})")
 
@@ -1068,7 +1074,7 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
                potency_2sig_m3=float(boot_2sd.potency_m3), mw_30gpa_range=np.array(mw_range), mw_30gpa_range_basis="; ".join(basis),
                mw_sfcvm_range=np.array(mw_sfcvm_range),
                provenance=f"08a_3d_model {time.strftime('%Y-%m-%d %H:%M')}: run {run_tag(cd)}, medium {medium}, PyLith GF {run_names[medium]}, "
-                          f"Cd {cd}, surface constraint ON, forward run {fwd_name}; bootstrap 2-sigma from 08c {os.path.basename(unc_file)}; "
+                          f"Cd {cd}, surface constraint {'ON' if use_surface else 'OFF'}, forward run {fwd_name}; bootstrap 2-sigma from 08c {os.path.basename(unc_file)}; "
                           f"06 field {field_fingerprint}")
     for key in crossing_keys:
         out[key] = row07[key]
@@ -1077,6 +1083,26 @@ for label, (medium, cd) in FIG2_PRODUCTS.items():
     else:
         out["sfcvm_version"] = "v26-0 aligned (rescale of the homogeneous model)"
     out.update(profiles)
+    # like for like with the crossings (Dani 2026-10-16): the model's cross-fault step at the samples, 30-150 m either side
+    # within +/- 200 m along strike, as 03/04 measure the crossings (model_utils.crossing_steps_like), compared crossing by
+    # crossing over the SSE section (no further binning: Dani 2026-10-16 late). The model's top-edge slip is not what the
+    # crossings measure (no pixel lies within 30 m of the trace).
+    like_km = np.asarray(out["crossing_km"], float)
+    out["like_km"] = like_km
+    out["like_model_mm"] = model_utils.crossing_steps_like(mdl["model"], signed_d_km, setup["sample_km_pp"], like_km)
+    out["keep"] = setup["keep"]
+    out["near_trace_cut_km"] = float(model_near_trace_cut_km)
+    misfit = out["like_model_mm"] - np.asarray(out["crossing_mm"], float)
+    in_section = (like_km >= creep_lo_km) & (like_km <= creep_hi_km) & np.isfinite(misfit)
+    at_lake = (like_km >= lake_km[0]) & (like_km <= lake_km[1])
+    assert np.any(in_section & at_lake), "no crossing along Lake Elizabeth with a model value"
+    out["like_rms_mm"] = float(np.sqrt(np.mean(misfit[in_section & ~at_lake] ** 2)))
+    out["like_rms_all_mm"] = float(np.sqrt(np.mean(misfit[in_section] ** 2)))
+    out["like_lake_mean_mm"] = float(np.mean(misfit[in_section & at_lake]))
+    out["like_n_crossings"] = int(in_section.sum())
+    print(f"{label}: model step minus crossings, {out['like_n_crossings']} crossings in km {creep_lo_km:.1f}-{creep_hi_km:.1f}: "
+          f"rms {out['like_rms_mm']:.2f} mm outside Lake Elizabeth ({out['like_rms_all_mm']:.2f} mm with it), "
+          f"mean {out['like_lake_mean_mm']:+.2f} mm along the lake (km {lake_km[0]:.1f}-{lake_km[1]:.1f})")
     np.savez(os.path.join(out_dir, f"fig2_model_row_pylith_{label}.npz"), **out)
     fig2_products[label] = out
     print(f"wrote fig2_model_row_pylith_{label}.npz: Mw30 {out['mw_30gpa']:.2f} +/- {out['mw_30gpa_2sig']:.2f} (2 sigma), "
@@ -1331,7 +1357,7 @@ print(f"the paper's SFSVM Mw (harmonic, Fig 2 K): {harmonic_row.Mw:.2f} ({harmon
 ## [15d]
 residual_3d = models[SELECTED]["residual"]
 residual_uniform = models[("homog", SELECTED[1])]["residual"]
-abs_d = np.abs(signed_d_km)
+abs_d = np.where(setup["keep"], np.abs(signed_d_km), np.nan)      # samples inside the near-trace cut take no part (2026-10-16)
 near_far = {}
 for name, mask in (("near200", abs_d <= 0.2), ("beyond200", abs_d > 0.2), ("beyond1km", abs_d > 1.0)):
     rms_uniform = float(np.sqrt(np.mean(residual_uniform[mask] ** 2)))
@@ -1517,7 +1543,7 @@ lcurve_lines = []
 for medium, cd in RUNS:
     lcurve_lines.append(f"{medium} {cd}: corner {families[(medium, cd)][1]:.1f} -> sigma {families[(medium, cd)][2]:g}")
 lines = [f"selected model: {run_tag(SELECTED[1])} / {SELECTED[0]} (vertical fault, {mesh_preset} mesh, order {elem_order}, aligned SFSVM v26-0, "
-         f"nugget Cd, surface constraint ON); companion {run_tag(COMPANION[1])} / {COMPANION[0]} (07a full Cd)",
+         f"nugget Cd, surface constraint {'ON' if use_surface else 'OFF'}); companion {run_tag(COMPANION[1])} / {COMPANION[0]} (07a full Cd)",
          f"PyLith runs: {run_names}; {n_imp} impulses on {len(fault_xyz)} fault vertices; {samples.vel.size} samples",
          f"validation (a) PyLith homog vs CSI Meade: rel rms {100 * val_a['rel_rms']:.2f} % (agreeing sides {100 * val_a['rel_rms_okside']:.2f} %, "
          f"far field {val_a['rms_diff_far_mm']:.3f} mm); (b) vs 2D screw: {100 * val_b['rel_rms']:.2f} %; "
@@ -1616,5 +1642,13 @@ for span_name, offset in boundary_offset.items():
     REG.register(f"08a_sfcvm_boundary_{span_name}_max_m", offset["max_m"], "m", 0, where="P7", cell="materials", sidecar=sidecar)
 for depth_m, share in potency_above.items():
     REG.register(f"08a_potency_above_{int(depth_m)}m_pct", share, "%", 0, where="P7", cell="potency with depth", sidecar=sidecar)
+# like for like with the crossings (2026-10-16), from the Fig 2 products ([14]): selected model and its homogeneous twin
+for label, prefix in (("nuggetcd", "08a"), ("nuggetcd_homog", "08a_hom")):
+    product = fig2_products[label]
+    for k, unit, places in (("like_rms_mm", "mm", 2), ("like_rms_all_mm", "mm", 2), ("like_lake_mean_mm", "mm", 2),
+                            ("like_n_crossings", "count", 0)):
+        REG.register(f"{prefix}_{k}", product[k], unit, places, where="P7, M8", cell="like for like", sidecar=sidecar)
+REG.register("08a_near_trace_cut_m", 1e3 * model_near_trace_cut_km, "m", 0, where="M8", cell="settings", sidecar=sidecar)
+REG.register("08a_n_samples_fitted", int(np.sum(setup["keep"])), "count", 0, where="M8", cell="settings", sidecar=sidecar)
 REG.render()
 print("08a_3d_model complete")

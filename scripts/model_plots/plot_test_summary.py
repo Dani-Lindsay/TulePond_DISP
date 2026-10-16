@@ -20,12 +20,13 @@ import matplotlib.pyplot as plt
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, REPO)
-from TulePond_filepaths import paths_out, common_paths   # noqa: E402
+from TulePond_filepaths import paths_out, common_paths, model_use_surface   # noqa: E402
 from insar_utils import mpl_paper_style                     # noqa: E402
 
 LADDER = ["default", "shallow", "floor15", "floor4", "swath7", "dip80e", "dip70e", "order2", "nosurf",
           "diagcd", "nosurf_diagcd", "nuggetcd", "swath7_nuggetcd", "dip80e_nuggetcd", "dip70e_nuggetcd", "order2_nuggetcd",
-          "e50", "w50", "e50_nuggetcd", "w50_nuggetcd", "coh07", "coh07_nuggetcd"]
+          "e50", "w50", "e50_nuggetcd", "w50_nuggetcd", "coh07", "coh07_nuggetcd", "surf", "surf_diagcd", "surf_nuggetcd",
+          "asis", "asis_nuggetcd"]
 
 
 def load_runs(gf_dir):
@@ -47,7 +48,10 @@ def load_runs(gf_dir):
     runs = runs[runs.medium != "sfcvmasis"]                                   # aligned SFCVM only (Dani)
     runs["cd"] = np.select([runs.tag.str.contains("nuggetcd"), runs.tag.str.contains("diagcd"), runs.tag.str.contains("floor")],
                            ["nugget (diagonal)", "equal weights", "full, nugget floor"], "full (correlated)")
-    runs["surface"] = np.where(runs.tag.str.contains("nosurf"), "off", "on")
+    default_surface = "on" if model_use_surface else "off"                   # tags name the deviation from the default (2026-10-16)
+    other_surface = "off" if model_use_surface else "on"
+    switched = runs.tag.str.contains("nosurf") | (runs.tag.str.contains("surf") & ~runs.tag.str.contains("nosurf"))
+    runs["surface"] = np.where(switched, other_surface, default_surface)
     runs["dip"] = np.select([runs.tag.str.contains("dip80e"), runs.tag.str.contains("dip70e")], ["80 E", "70 E"], "90")
     runs["order"] = np.where(runs.tag.str.contains("order2"), 2, 1)
     runs["label"] = runs.tag.str.replace("_", " ")
@@ -62,7 +66,10 @@ def main(gf_dir=None, out_path=None):
     selected = runs[(runs.tag == "nuggetcd") & (runs.medium == "sfcvm")].iloc[0]
     primary = runs[(runs.tag == "default") & (runs.medium == "sfcvm")].iloc[0]
     c_cd = {"full (correlated)": "#0072B2", "full, nugget floor": "#56B4E9", "nugget (diagonal)": "#D55E00", "equal weights": "#E69F00"}
-    m_med = {"homog": "o", "sfcvm": "s", "sfcvm_e50": "D", "sfcvm_w50": "D"}   # D: SFCVM boundary 50 m E / W of the trace
+    m_med = {"homog": "o", "sfcvm": "s", "sfcvm_e50": "D", "sfcvm_w50": "D",   # D: SFCVM boundary 50 m E / W of the trace
+             "sfcvm_asis": "^"}                                               # ^: the SFCVM not shifted onto the trace (2026-10-14)
+    unknown_media = sorted(set(runs.medium) - set(m_med))
+    assert not unknown_media, f"no marker for media {unknown_media}"
 
     mpl_paper_style(base=7)
     plt.rcParams.update({"axes.titlesize": 7, "axes.labelsize": 7, "legend.fontsize": 6})   # journal size whatever ran before
@@ -92,7 +99,8 @@ def main(gf_dir=None, out_path=None):
     handles = [plt.Line2D([], [], marker="o", ls="", color="0.3", label="homogeneous"), plt.Line2D([], [], marker="s", ls="", color="0.3", label="SFSVM aligned"),
                plt.Line2D([], [], marker="s", ls="", mfc="none", color="0.3", label="surface constraint off"),
                plt.Line2D([], [], marker="s", ls="", color="0.3", ms=8, label="order-2 elements"),
-               plt.Line2D([], [], marker="D", ls="", color="0.3", label="SFSVM boundary 50 m E / W")]
+               plt.Line2D([], [], marker="D", ls="", color="0.3", label="SFSVM boundary 50 m E / W"),
+               plt.Line2D([], [], marker="^", ls="", color="0.3", label="SFSVM not shifted (as published)")]
     handles += [plt.Line2D([], [], marker="s", ls="", color=c, label=k) for k, c in c_cd.items()]
     ax.legend(handles=handles, fontsize=6, loc="lower left", ncol=2)
 

@@ -331,7 +331,21 @@ gittins_window_pad_days = 7
 # Shared choices read by more than one notebook (one definition each).
 wet_season_months = (10, 4)    # (first month, last month) of the wet season, shared by 10 and 11 (Dani 2026-10-05: Oct-Apr)
 paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 11)
-model_sigma_locked = 12.0      # regularisation sigma of the selected slip model and all sensitivity runs (L-curve rule, Dani 2026-10-03)
+model_sigma_locked = 12.0      # regularisation sigma of the selected slip model and all sensitivity runs: the L-curve corner of the
+#                                selected model (3D, nugget Cd, InSAR misfit only, no extra near-trace cut): the value on the 1-wide part
+#                                of model_sigma_grid nearest the corner (12.4 -> 12, Dani 2026-10-16 late; 16 with the 60 m cut that
+#                                evening; until 2026-10-16 the grid value at or above the corner on 07a's coarse grid)
+model_sigma_grid = [4.0, 6.0, 8.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 24.0, 32.0, 40.0, 48.0, 64.0, 96.0, 128.0]
+#                              the sigma grid of the 3D-model L-curves (08a, 08b, 08c): 07a's grid plus 1-wide steps around the corner
+#                              (Dani 2026-10-16); 07a's CSI baseline keeps its own grid. model_sigma_locked is added to it if absent.
+model_near_trace_cut_km = 0.0  # 3D slip models (08a, 08b, 08c): extra near-trace exclusion of the quadtree samples. NONE (Dani 2026-10-16,
+#                                late): the samples already hold no pixel within 30 m of the trace (07a), the same inner edge as the
+#                                crossings, whose 30-150 m aperture was chosen on creepmeter agreement (05). A 60 m cut (the
+#                                phase-linking half-width) was run the same evening: better InSAR fit beyond 90 m, worse crossings at
+#                                the lake and west deflection; "slightly smoothed data beat cutting it out on an untested hunch".
+model_use_surface = False      # the measured-crossing surface constraint in the 3D slip models (08a, 08b, 08c): OFF (Dani 2026-10-16:
+#                                "adding complexity for no return": with nugget Cd the InSAR alone gives 108 % of the crossings and the
+#                                same Mw); the runs WITH it are 08c's `_surf` sensitivity rows. 07a's CSI baseline keeps its own.
 # The bimonthly era of the alignment arrays (09, 10, 11): a survey interval of at most this many days resolves the
 # season of an onset; 09 runs the HRKT detector only on such intervals, 10 and 11 assert that every array window is
 # this short (until 2026-10-06 typed in each notebook: 09 dense_window_days, 10 and 11 resolvable_days).
@@ -347,7 +361,12 @@ loma_prieta_yr = 1989.79
 # QC figure qc06_lake_elizabeth_vertical_area, which draws the area on the map); the area is every valid pixel
 # within lake_elizabeth_radius_m of it and east of the trace beyond 06's near-fault band.
 lake_elizabeth_lonlat = (-121.9614, 37.5499)
-lake_elizabeth_radius_m = 500.0
+lake_elizabeth_radius_m = 1000.0   # Dani 2026-10-14: the uplift covers ~1 km around the lake (500 m until then)
+# Where the trace crosses Alameda Creek and runs along Lake Elizabeth (Dani 2026-10-16, read off
+# hayward_fault_profiles.csv in Google Earth: (ft_lon, ft_lat) of the north and south ends); drawn as blue lines in
+# Fig 2K. The lake is also a park, where the InSAR may be noisier.
+alameda_creek_trace_lonlat = ((-121.986, 37.5751), (-121.982, 37.5687))
+lake_elizabeth_trace_lonlat = ((-121.969, 37.5497), (-121.963, 37.5433))   # south end extended (Dani 2026-10-16; was -121.964, 37.5447)
 
 # Date the forecast statement was first written (notebook 11; notebook 10 ends its rain series on it). Pinned so the
 # forecast numbers are reproducible; do not use "today".

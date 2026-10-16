@@ -1080,13 +1080,18 @@ print("wrote", f_fig2_in)
 #    one bin, 150 m.
 # 3. **The Lake Elizabeth vertical**: the mean-event VERTICAL map (`up_evt`, [20]) over the area
 #    around Lake Elizabeth (TulePond_filepaths `lake_elizabeth_lonlat`, `lake_elizabeth_radius_m`:
-#    every valid pixel within 500 m of the lake centre that lies east of the trace beyond the near-
+#    every valid pixel within the radius (1 km) of the lake centre that lies east of the trace beyond the near-
 #    fault band, `xfault_step_m[1]`), relative to the far field of the event profiles ([22]: pixels
 #    1.5 to 2 km from the trace, `event_far_m` to `cross_m`, on BOTH sides, here within the same
-#    +/- 500 m along strike of the lake centre). Median minus median, bootstrap standard error over
-#    the pixels (own generator, `block_seed`). The lake itself is open water (no data): the area's
-#    pixels are its shores. The same difference against each side's far field alone and against
-#    the box median is printed, so the dependence on the reference shows. [28] draws the area.
+#    +/- the radius along strike of the lake centre; the area stops short of that far field). Median minus
+#    median, bootstrap standard error over the pixels (own generator, `block_seed`). The lake itself is open
+#    water (no data): the area's pixels are its shores. The same difference against each side's far field
+#    alone and against the box median is printed, so the dependence on the reference shows. [28] draws the area.
+#    **The main uplift** (Dani 2026-10-14: the signal covers ~1 km around the lake, radius 1 km since then, and is
+#    patchy, so the median understates its centre): the upper quartile (75th percentile) of the area minus the far-field
+#    median, with its bootstrap standard error, and beside it the same statistic of the far field itself (its 75th
+#    percentile minus its median): what the upper quartile gives on noise alone, the number it must be read against.
+#    The bootstrap treats the pixels as independent; they are correlated over ~1 km, so both errors are lower bounds.
 
 # %%
 # [26]
@@ -1144,26 +1149,37 @@ lake_centre_vertex = int(tree.query([lake_x, lake_y])[1])
 lake_centre_side = float((np.array([lake_x, lake_y]) - np.array([trace_x[lake_centre_vertex], trace_y[lake_centre_vertex]])) @ normal)
 assert lake_centre_side > 0, f"the Lake Elizabeth centre {lake_elizabeth_lonlat} is not east of the trace ({lake_centre_side:.0f} m)"
 valid_up = np.isfinite(up_evt)
-lake_area = (lake_distance <= lake_elizabeth_radius_m) & (d_signed >= xfault_step_m[1]) & valid_up
+lake_area = (lake_distance <= lake_elizabeth_radius_m) & (d_signed >= xfault_step_m[1]) & (d_signed < event_far_m) & valid_up
 lake_far = (np.abs(d_signed) >= event_far_m) & (np.abs(d_signed) < cross_m) & (np.abs(lake_along) <= lake_elizabeth_radius_m) & valid_up
 assert lake_area.sum() >= 20 and lake_far.sum() >= 100, f"Lake Elizabeth: {lake_area.sum()} area pixels, {lake_far.sum()} far-field pixels"
+assert not (lake_area & lake_far).any(), "the Lake Elizabeth area overlaps the far field it is measured against"
 lake_rng = np.random.default_rng(block_seed)                        # its own generator, as block_amplitudes
 area_values = up_evt[lake_area]
 far_values = up_evt[lake_far]
 lake_boot = np.empty(n_boot_blocks)
+lake_boot_p75 = np.empty(n_boot_blocks)
 for draw in range(n_boot_blocks):
-    lake_boot[draw] = np.median(lake_rng.choice(area_values, area_values.size)) - np.median(lake_rng.choice(far_values, far_values.size))
-lake_up = dict(value=float(np.median(area_values) - np.median(far_values)), se=float(lake_boot.std()),
+    area_draw = lake_rng.choice(area_values, area_values.size)
+    far_median_draw = np.median(lake_rng.choice(far_values, far_values.size))
+    lake_boot[draw] = np.median(area_draw) - far_median_draw
+    lake_boot_p75[draw] = np.percentile(area_draw, 75) - far_median_draw
+far_median = float(np.median(far_values))
+lake_up = dict(value=float(np.median(area_values) - far_median), se=float(lake_boot.std()),
+               p75=float(np.percentile(area_values, 75) - far_median), p75_se=float(lake_boot_p75.std()),
+               far_p75=float(np.percentile(far_values, 75) - far_median),
                n_area=int(lake_area.sum()), n_far=int(lake_far.sum()), centre_from_trace_m=lake_centre_side)
 lake_alternatives = {"east far field only": lake_far & (d_signed > 0), "west far field only": lake_far & (d_signed < 0),
                      "the box median": valid_up}
 alternative_text = []
 for reference_name, reference in lake_alternatives.items():
-    alternative_text.append(f"{reference_name} {np.median(area_values) - np.median(up_evt[reference]):+.2f} mm")
+    alternative_text.append(f"{reference_name} {np.median(area_values) - np.median(up_evt[reference]):+.2f} mm "
+                            f"(upper quartile {np.percentile(area_values, 75) - np.median(up_evt[reference]):+.2f})")
 mean_event_lines.append(f"Lake Elizabeth vertical (mean event): {lake_up['value']:+.2f} +/- {lake_up['se']:.2f} mm over {lake_up['n_area']} pixels within "
                         f"{lake_elizabeth_radius_m:.0f} m of {lake_elizabeth_lonlat} (centre {lake_centre_side:.0f} m east of the trace; pixels "
                         f">= {xfault_step_m[1]:.0f} m east of it) relative to {lake_up['n_far']} far-field pixels ({event_far_m:.0f}-{cross_m:.0f} m "
                         f"from the trace, both sides, +/- {lake_elizabeth_radius_m:.0f} m along strike); against " + ", ".join(alternative_text))
+mean_event_lines.append(f"Lake Elizabeth main uplift (upper quartile of the area minus the far-field median): {lake_up['p75']:+.2f} +/- "
+                        f"{lake_up['p75_se']:.2f} mm; the far field's own upper quartile (noise alone) {lake_up['far_p75']:+.2f} mm")
 print("\n".join(mean_event_lines))
 
 # %% [markdown]
@@ -1195,9 +1211,9 @@ fig.plot(x=x_fault.ft_lon.values, y=x_fault.ft_lat.values, pen="1p,black")
 x_line_w_lon, x_line_w_lat = to_ll.transform(*profiles["X"]["ends"][:2])
 x_line_e_lon, x_line_e_lat = to_ll.transform(*profiles["X"]["ends"][2:])
 fig.plot(x=[x_line_w_lon, x_line_e_lon], y=[x_line_w_lat, x_line_e_lat], pen="0.8p,black,4p_2p")
-fig.text(position="TL", text=f"Mean-event vertical; Lake Elizabeth area (circle, {lake_elizabeth_radius_m:.0f} m): "
-         f"{lake_up['value']:+.2f} +/- {lake_up['se']:.2f} mm vs far field (grey)", font="8p,Helvetica", justify="BL",
-         offset="0c/0.15c", no_clip=True)
+fig.text(position="TL", text=f"Mean-event vertical, Lake Elizabeth area (circle, {lake_elizabeth_radius_m:.0f} m) vs far field (grey): "
+         f"median {lake_up['value']:+.2f} +/- {lake_up['se']:.2f} mm, upper quartile {lake_up['p75']:+.2f} +/- {lake_up['p75_se']:.2f} mm "
+         f"(noise alone {lake_up['far_p75']:+.2f})", font="8p,Helvetica", justify="BL", offset="0c/0.15c", no_clip=True)
 fig.colorbar(cmap=cpt_up, position="JBC+w6c/0.25c+h+o0c/0.8c+e", frame=["xa1f0.5+lVertical, mean event (mm)"])
 f_lake = os.path.join(fig_dir, "qc06_lake_elizabeth_vertical_area")
 fig.savefig(f_lake + ".png", dpi=300, transparent=False, crop="+gwhite", show=False)
@@ -1431,6 +1447,10 @@ for side_name in ("W", "E"):
 REG.register("06_lake_elizabeth_up_event_mm", lake_up["value"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
 REG.register("06_lake_elizabeth_up_event_se_mm", lake_up["se"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
 REG.register("06_lake_elizabeth_n_px", lake_up["n_area"], "count", 0, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_up_event_p75_mm", lake_up["p75"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_up_event_p75_se_mm", lake_up["p75_se"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_far_p75_mm", lake_up["far_p75"], "mm", 2, where="P6", cell="mean-event numbers", sidecar=sidecar)
+REG.register("06_lake_elizabeth_radius_m", lake_elizabeth_radius_m, "m", 0, where="P6", cell="mean-event numbers", sidecar=sidecar)
 for orbit in mean_event:
     REG.register(f"06_n_px_csi_{orbit[:3]}", int(np.isfinite(mean_event[orbit]["mean"]).sum()), "count", 0, where="M4", cell="mean-event", sidecar=sidecar)
 REG.render()

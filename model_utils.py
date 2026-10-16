@@ -916,7 +916,7 @@ def tent_fault_template(tents, frame_lonlat):
     return template
 
 
-def data_cd(mode, samples, cov_p, nug_power, floor_px=None):
+def data_cd(mode, samples, cov_p, nug_power, floor_px=None, keep=None):
     """The data covariance (mm^2) of one treatment of the samples:
       full   -- 07a's full correlated Cd (samples.Cd): Lohman and Simons (2005), Sudhaus and Jonsson (2009);
       nugget -- its diagonal nugget part alone, diag(Cd) - (s1 + s2) = nugget2 / n_px**nug_power (samples treated as
@@ -924,7 +924,21 @@ def data_cd(mode, samples, cov_p, nug_power, floor_px=None):
       diag   -- equal independent weights, the median of diag(Cd) (diagnostic);
       floor  -- 07a's full Cd with each block's pixel count floored at floor_px (DISP-S1 pixels inside one ~115 m
                 phase-linking window are not independent; diagnostic).
+    keep (2026-10-16): samples outside it (closer to the trace than the near-trace cut) are decoupled from every other
+    sample and given a variance 1e8 times their own, so they take no part in the fit but stay in the products.
     Source: 08a [10] `data_cd` and the driver's PYLITH_CD switch (written for this project)."""
+    Cd = _data_cd_core(mode, samples, cov_p, nug_power, floor_px)
+    if keep is not None:
+        out = ~np.asarray(keep, bool)
+        diag_out = np.diag(Cd)[out].copy()
+        Cd[out, :] = 0.0
+        Cd[:, out] = 0.0
+        Cd[out, out] = 1e8 * diag_out
+    return Cd
+
+
+def _data_cd_core(mode, samples, cov_p, nug_power, floor_px=None):
+    """data_cd without the near-trace cut (see data_cd)."""
     if mode == "full":
         return samples.Cd.copy()
     if mode == "nugget":
@@ -993,7 +1007,8 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
 
 
 def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, km_window, creep_lo_km, creep_hi_km,
-                     surf_floor_mm, trace_south_north, trace_xy_m, frame_lonlat, crs, profile_lats):
+                     surf_floor_mm, trace_south_north, trace_xy_m, frame_lonlat, crs, profile_lats, near_trace_cut_km=0.0,
+                     trace_km_pp=None):
     """Everything an inversion on PyLith Green's functions needs, for one mesh and one sample set, built from the
     products alone: the G matrix of every medium (load_G; rebuilt when the cached one was projected on another strike),
     the shared tent geometry (TentFault; asserted identical for every medium) and its CSI template, the measured-
@@ -1001,7 +1016,10 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, 
     every sample from 07a's trace and the 300 m west / east masks, the top-edge vertices of the SSE section and the
     surface % denominator. run_names: medium -> PyLith GreensFns run; medium_dirs: medium -> (pylith_output dir, gf
     dir); crossings: dict km, lat, mean_mm of 04's measured crossings (07a's model data product); trace_xy_m: 07a's
-    discretised trace in the mesh CRS (m). Returns a dict.
+    discretised trace in the mesh CRS (m). near_trace_cut_km (2026-10-16): samples closer to the trace than this are kept
+    in the products but given no weight in the fit (`keep` False; data_cd(..., keep=...)) and left out of the 300 m masks
+    and the rms; trace_km_pp (km from Point Pinole of every trace_xy_m point) gives each sample's along-strike km
+    (`sample_km_pp`, nearest trace point), for the like-for-like crossing comparison. Returns a dict.
     Source: 08a [5], [7], [10] and the driver's [5], [6], [8] (written for this project)."""
     import pyproj
     to_mesh = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
@@ -1036,24 +1054,35 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, 
     surface = surface_slip_data(constraint, surf_floor_mm, frame_lonlat)
     points = np.load(points_npz)
     signed_d_km = signed_distance_m(trace_xy_m[0], trace_xy_m[1], points["x"], points["y"]) / 1e3
-    west300 = (signed_d_km < 0) & (signed_d_km >= -0.3)                   # samples within 300 m west of 07a's trace
-    east300 = (signed_d_km > 0) & (signed_d_km <= 0.3)                    # ... and east
+    keep = np.abs(signed_d_km) >= near_trace_cut_km                        # samples that enter the fit (2026-10-16)
+    west300 = (signed_d_km < 0) & (signed_d_km >= -0.3) & keep            # fitted samples within 300 m west of 07a's trace
+    east300 = (signed_d_km > 0) & (signed_d_km <= 0.3) & keep             # ... and east
+    sample_km_pp = None
+    if trace_km_pp is not None:
+        from scipy.spatial import cKDTree
+        trace_km_pp = np.asarray(trace_km_pp, float)
+        assert trace_km_pp.size == np.asarray(trace_xy_m[0]).size, "trace_km_pp must match trace_xy_m"
+        nearest = cKDTree(np.c_[trace_xy_m[0], trace_xy_m[1]]).query(np.c_[points["x"], points["y"]])[1]
+        sample_km_pp = trace_km_pp[nearest]
     in_section_surface = (np.isin(np.arange(tents.n_imp), tents.surface_imp) & (tents.imp_km >= creep_lo_km)
                           & (tents.imp_km <= creep_hi_km))
     return dict(gnpz=gnpz, G=G, ref_medium=ref_medium, tents=tents, template=template, constraint=constraint,
                 surface=surface, G_surface=constraint["G"], denominator_mm=denominator_mm,
                 n_section_crossings=n_section_crossings, points=points, signed_d_km=signed_d_km, west300=west300,
-                east300=east300, in_section_surface=in_section_surface, to_mesh=to_mesh)
+                east300=east300, in_section_surface=in_section_surface, to_mesh=to_mesh, keep=keep,
+                near_trace_cut_km=float(near_trace_cut_km), sample_km_pp=sample_km_pp)
 
 
 def tent_numbers(slip_mm, insar_data, surface, tents, west300, east300, in_section_surface, denominator_mm,
-                 mu_ref, mu_per_triangle):
+                 mu_ref, mu_per_triangle, keep=None):
     """The numbers of one tent solution: rms of the InSAR residual (all, within 300 m west / east of the trace), chi2
     with the run's Cd, surface % (median modelled slip on the top-edge vertices of the SSE section / the median of the
     measured crossings there), potency (exact tent integral), Mw at mu_ref and with the per-triangle rigidity
     mu_per_triangle (Pa; NaN if None), mu_effective = M0 / potency, peak slip and its depth, the surface rms.
+    keep: the samples that enter the fit (setup["keep"]); rms over them only (all samples when None).
     Units: mm, m^3, GPa, m. Source: 08a [10] `numbers` (Mw: Hanks & Kanamori 1979; written for this project)."""
     res = insar_data.vel - insar_data.synth
+    fitted = np.ones(res.size, bool) if keep is None else np.asarray(keep, bool)
     pot = tents.potency_m3(slip_mm)
     if mu_per_triangle is None:
         m0_sfcvm = np.nan
@@ -1061,7 +1090,7 @@ def tent_numbers(slip_mm, insar_data, surface, tents, west300, east300, in_secti
     else:
         m0_sfcvm = tents.moment_nm(slip_mm, mu_per_triangle)
         mw_sfcvm = float(moment_magnitude(m0_sfcvm))
-    return dict(rms_mm=float(np.sqrt(np.mean(res ** 2))), rms_west300_mm=float(np.sqrt(np.mean(res[west300] ** 2))),
+    return dict(rms_mm=float(np.sqrt(np.mean(res[fitted] ** 2))), rms_west300_mm=float(np.sqrt(np.mean(res[west300] ** 2))),
                 rms_east300_mm=float(np.sqrt(np.mean(res[east300] ** 2))), chi2=float(np.dot(res, np.linalg.solve(insar_data.Cd, res))),
                 surface_pct=float(100 * np.median(slip_mm[in_section_surface]) / denominator_mm), potency_m3=pot,
                 Mw_30gpa=float(moment_magnitude(mu_ref * pot)), Mw_sfcvm=mw_sfcvm,
@@ -1070,10 +1099,11 @@ def tent_numbers(slip_mm, insar_data, surface, tents, west300, east300, in_secti
                 surf_rms_mm=float(np.sqrt(np.mean((surface.vel - surface.synth) ** 2))))
 
 
-def tent_lcurve(solve, sigma_grid, tents, mu_ref, label):
+def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, use_surface=True):
     """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data, surface), its
     InSAR and surface chi2, the prior-weighted roughness sqrt(m^T (Cm / sigma^2)^-1 m), rms, peak slip, Mw at mu_ref
-    and the solve time. Returns the table (chi2_total = InSAR + surface).
+    and the solve time. Returns the table (chi2_total = InSAR + surface when use_surface, else InSAR alone;
+    until 2026-10-16 the unfitted surface chi2 was added too).
     Source: 08a [11] `lcurve` and the driver's (07a [8] rule; Hansen 1992; written for this project)."""
     rows = []
     for sigma in sigma_grid:
@@ -1087,7 +1117,7 @@ def tent_lcurve(solve, sigma_grid, tents, mu_ref, label):
                          prior_norm=float(np.sqrt(np.dot(slip_vec, np.linalg.solve(fault_model.Cm / sigma ** 2, slip_vec)))),
                          rms_mm=float(np.sqrt(np.mean(res_insar ** 2))), peak_slip_mm=float(slip_vec.max()),
                          Mw_30=moment_magnitude(mu_ref * tents.potency_m3(slip_vec)), seconds=time.time() - t0))
-        rows[-1]["chi2_total"] = rows[-1]["chi2"] + rows[-1]["chi2_surf"]
+        rows[-1]["chi2_total"] = rows[-1]["chi2"] + (rows[-1]["chi2_surf"] if use_surface else 0.0)   # unfitted surface data do not count (2026-10-16)
         print(f"  {label} sigma {sigma:>4g}: chi2 {rows[-1]['chi2']:.0f} + {rows[-1]['chi2_surf']:.0f}, "
               f"roughness {rows[-1]['prior_norm']:.1f}, rms {rows[-1]['rms_mm']:.3f}, Mw30 {rows[-1]['Mw_30']:.2f} "
               f"({rows[-1]['seconds']:.0f} s)")
@@ -1245,3 +1275,22 @@ def ensure_product(path, recipe, cwd, allow_run, timings=None):
             timings[os.path.basename(path)] = seconds
         assert os.path.exists(path), f"{recipe} did not write {path}"
     return path
+
+
+def crossing_steps_like(values_mm, signed_d_km, sample_km_pp, crossing_km, inner_km=0.03, outer_km=0.15,
+                        half_along_km=0.2, min_per_side=3):
+    """The cross-fault step of a field at the samples, measured the way 03/04 measure the crossings (2026-10-16): for each
+    crossing km, the median of the samples inner_km to outer_km east of the trace and within +/- half_along_km along
+    strike, minus the same median west. NaN where a side has fewer than min_per_side samples. Used to compare the model
+    with the measured crossings like for like (the model's top-edge slip is not what the crossings measure)."""
+    values_mm = np.asarray(values_mm, float)
+    d = np.asarray(signed_d_km, float)
+    s_km = np.asarray(sample_km_pp, float)
+    steps = np.full(np.asarray(crossing_km).size, np.nan)
+    for i, km_c in enumerate(np.asarray(crossing_km, float)):
+        along = np.abs(s_km - km_c) <= half_along_km
+        east = along & (d >= inner_km) & (d <= outer_km) & np.isfinite(values_mm)
+        west = along & (d <= -inner_km) & (d >= -outer_km) & np.isfinite(values_mm)
+        if east.sum() >= min_per_side and west.sum() >= min_per_side:
+            steps[i] = np.median(values_mm[east]) - np.median(values_mm[west])
+    return steps

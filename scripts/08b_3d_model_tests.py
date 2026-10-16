@@ -36,7 +36,7 @@
 #    squares with the run's Cd, chi2(D), bracket delta chi2 <= 4, Mw per D.
 # 4. **Sensitivity runs** (made by 08c, read here): every other PyLith + CSI inversion of the model selection --
 #    mesh `shallow` (60 m near-surface band), Cd nugget floors 15 and 4 pixels, equal weights (`diagcd`), no surface
-#    constraint (`nosurf`), swath 7 km, dip 80 E and 70 E, order-2 elements, the SFCVM boundary 50 m east / west of
+#    constraint switched ON (`surf`; OFF in the selected model since 2026-10-16), swath 7 km, dip 80 E and 70 E, order-2 elements, the SFCVM boundary 50 m east / west of
 #    the trace (`e50`, `w50`), and the coherence-0.7 field (`coh07`), each with both media and, where run, both Cd
 #    treatments: one-page summary per run, the all-tests figure, the table and its range.
 # Every run is solved at the locked sigma (`TulePond_filepaths.model_sigma_locked`, Dani 2026-10-03), not at its own
@@ -88,7 +88,8 @@ import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
-from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_sfcvm, medium_paths, model_crs, model_sigma_locked)
+from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_sfcvm, medium_paths, model_crs, model_sigma_locked,
+                                model_sigma_grid, model_use_surface, model_near_trace_cut_km)
 import insar_utils as utils
 from insar_utils import mpl_paper_style
 import model_utils                                  # every modelling function, once (with its source)
@@ -123,7 +124,7 @@ model_data = np.load(os.path.join(dir_07a, "model_data_07a.npz"))
 frame_lonlat = tuple(model_data["frame_lonlat"])
 look = model_data["look"]
 lam_xz = tuple(model_data["lam_xz"])
-sigma_grid = [float(s) for s in model_data["sigma_grid"]]
+sigma_grid = sorted(set(float(s) for s in model_sigma_grid) | {float(model_sigma_locked)})   # the 3D-model grid (2026-10-16)
 n_boot = int(model_data["n_boot"])
 creep_lo_km, creep_hi_km = float(model_data["creep_lo_km"]), float(model_data["creep_hi_km"])
 cov_p = model_data["cov_p"]
@@ -142,27 +143,28 @@ setup = model_utils.tent_model_setup(run_names, points_npz, float(model_data["st
                                      dict(km=model_data["crossing_km"], lat=model_data["crossing_lat"], mean_mm=model_data["crossing_mean_mm"]),
                                      tuple(model_data["km_window"]), creep_lo_km, creep_hi_km, float(model_data["surf_floor_mm"]),
                                      trace["lonlat"][np.argsort(trace["lonlat"][:, 1])], (trace["x_km"] * 1e3, trace["y_km"] * 1e3),
-                                     frame_lonlat, model_crs, profile_lats)
+                                     frame_lonlat, model_crs, profile_lats,
+                                         near_trace_cut_km=model_near_trace_cut_km, trace_km_pp=trace["km_pp"])
 tents = setup["tents"]
 G = setup["G"]
 imp_km, imp_depth_km = tents.imp_km, tents.imp_depth_km
 west300, east300 = setup["west300"], setup["east300"]
 mu_sfcvm = model_utils.mu_beside_fault(os.path.join(paths_sfcvm["pylith_output"], f"{run_names['sfcvm']}-elastic_info.h5"),
                                        os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_aligned_grid.npz"), tents, "sfcvm")[0]
-data_covariance = {cd: model_utils.data_cd(cd, samples, cov_p, nug_power) for cd in CD_TAG}
+data_covariance = {cd: model_utils.data_cd(cd, samples, cov_p, nug_power, keep=setup["keep"]) for cd in CD_TAG}
 
 
 def invert_tents(medium, sigma, cd, vel_insar=None, vel_surface=None):
     """08a's inversion (model_utils.invert_tents) with its data, G and Cd; returns (fault, InSAR data, surface data)."""
     return model_utils.invert_tents(setup["template"], samples, G[medium], data_covariance[cd], setup["surface"],
-                                    setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=True,
+                                    setup["G_surface"], sigma, lam_xz, frame_lonlat, use_surface=model_use_surface,
                                     vel_insar=vel_insar, vel_surface=vel_surface, name=f"{medium} {cd} sigma {sigma:g}")
 
 
 def numbers(fault_model, insar_data, surface):
     """08a's numbers of one solution (model_utils.tent_numbers)."""
     return model_utils.tent_numbers(fault_model.slip[:, 0], insar_data, surface, tents, west300, east300,
-                                    setup["in_section_surface"], setup["denominator_mm"], mu_ref, mu_sfcvm)
+                                    setup["in_section_surface"], setup["denominator_mm"], mu_ref, mu_sfcvm, keep=setup["keep"])
 
 
 print(f"08a's setup rebuilt in {time.time() - t_setup:.0f} s: {samples.vel.size} samples x {tents.n_imp} impulses")
@@ -530,7 +532,20 @@ for medium, cd in RUNS:
         dip_row = pylith_rows[(pylith_rows.run == f"default{run_suffix}{CD_TAG[cd]}") & (pylith_rows.medium == medium)]
         dip_text.append(f"{dip_name} {float(dip_row.rms_mm.iloc[0]):.2f} mm")
     lines.append("   rms by fault dip: " + ", ".join(dip_text))
-sens_sfcvm = pylith_rows[(pylith_rows.medium.str.startswith("sfcvm")) & (pylith_rows.surface == "on")]
+# the range: the SFSVM runs with the surface constraint, the block boundary on the trace (or +/- 50 m of it). The unshifted
+# SFCVM (`sfcvm_asis`, 2026-10-14) is the alternative the selected model rejects, reported on its own below, not a sensitivity run
+default_surface = "on" if model_use_surface else "off"          # the range: runs with the selected model's surface setting
+sens_sfcvm = pylith_rows[(pylith_rows.medium.str.startswith("sfcvm")) & (pylith_rows.medium != "sfcvm_asis") & (pylith_rows.surface == default_surface)]
+unshifted_rows = pylith_rows[pylith_rows.medium == "sfcvm_asis"]
+assert len(unshifted_rows) == 2, f"expected the unshifted SFCVM run with full and nugget Cd, got {len(unshifted_rows)} rows"
+surf_nugget_rows = pylith_rows[pylith_rows.run == "default_surf_nuggetcd"]     # the selected Cd WITH the crossing constraint (2026-10-16)
+assert len(surf_nugget_rows) == 2, f"expected default_surf_nuggetcd for both media, got {len(surf_nugget_rows)} rows"
+for row in unshifted_rows.itertuples():
+    lines.append(f"   unshifted SFCVM ({row.run}): rms {row.rms_mm:.2f} mm (W300 {row.rms_W300_mm:.2f}, E300 {row.rms_E300_mm:.2f}), "
+                 f"Mw30 {row.Mw_30gpa:.2f}, surface {row.surface_pct:.0f} %")
+for row in surf_nugget_rows.itertuples():
+    lines.append(f"   nugget Cd WITH the crossing constraint ({row.medium}): rms {row.rms_mm:.2f} mm, Mw30 {row.Mw_30gpa:.2f}, "
+                 f"surface {row.surface_pct:.0f} %")
 lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions at sigma {sigma_locked:g} on 06 field {field_fingerprint}; "
              f"SFSVM with surface constraint ({len(sens_sfcvm)} runs): "
              f"Mw30 {sens_sfcvm.Mw_30gpa.min():.2f}-{sens_sfcvm.Mw_30gpa.max():.2f}, rms W300 {sens_sfcvm.rms_W300_mm.min():.2f}-{sens_sfcvm.rms_W300_mm.max():.2f} mm, "
@@ -591,5 +606,13 @@ REG.register("08b_sens_mw_30gpa_min", float(sens_sfcvm.Mw_30gpa.min()), "Mw", 2,
 REG.register("08b_sens_mw_30gpa_max", float(sens_sfcvm.Mw_30gpa.max()), "Mw", 2, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_surface_pct_min", float(sens_sfcvm.surface_pct.min()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_surface_pct_max", float(sens_sfcvm.surface_pct.max()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
+# the unshifted SFCVM (both Cd) and the selected Cd without the crossing constraint (both media), 2026-10-14
+for row in unshifted_rows.itertuples():
+    cd_key = "nugget" if row.run.endswith("_nuggetcd") else "full"
+    for col, unit, places in (("rms_mm", "mm", 2), ("rms_W300_mm", "mm", 2), ("rms_E300_mm", "mm", 2), ("Mw_30gpa", "Mw", 2), ("surface_pct", "%", 0)):
+        REG.register(f"08b_unshifted_{cd_key}_{col}", float(getattr(row, col)), unit, places, where="M8", cell="sensitivity", sidecar=sidecar)
+for row in surf_nugget_rows.itertuples():
+    for col, unit, places in (("rms_mm", "mm", 2), ("Mw_30gpa", "Mw", 2), ("surface_pct", "%", 0)):
+        REG.register(f"08b_surf_nugget_{row.medium}_{col}", float(getattr(row, col)), unit, places, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.render()
 print("08b_3d_model_tests complete")

@@ -749,7 +749,8 @@ for event in events.itertuples():
     row = dict(source=event.source, onset_lo=date_lo.date(), onset_hi=date_hi.date(), window_days=(date_hi - date_lo).days, wy=wy,
                dowy_lo=dowy_of(date_lo)[0], dowy_hi=dowy_of(date_hi)[0], wy_total_mm=float(this_year.cum.iloc[-1]),
                cum_at_lo=cum_at_lo, cum_at_hi=float(this_year.cum.asof(date_hi)), gauge=this_year.src.mode().iloc[0])
-    row["frac_at_hi"] = row["cum_at_hi"] / row["wy_total_mm"]
+    row["frac_at_lo"] = row["cum_at_lo"] / row["wy_total_mm"]      # the onset is anywhere in its window (uniform):
+    row["frac_at_hi"] = row["cum_at_hi"] / row["wy_total_mm"]      # its fraction runs from the window start to the end
     window_antecedent = antecedent.loc[date_lo:date_hi]
     for column in ("rain_30d", "max_storm_30d", "days_since_storm20"):
         row[f"{column}_min"] = float(window_antecedent[column].min())
@@ -811,7 +812,7 @@ conditioning_lines = ["", "RAINFALL CONDITIONING (per event: WY rain accumulated
 for event in event_rain.itertuples():
     conditioning_lines.append(
         f"  {event.source:<5} {event.onset_lo}..{event.onset_hi} ({event.window_days:3d} d) WY{event.wy} total {event.wy_total_mm:5.0f} mm "
-        f"(P{(wy_total_series < event.wy_total_mm).mean() * 100:2.0f}) | cum {event.cum_at_lo:4.0f}-{event.cum_at_hi:4.0f} mm, frac {event.frac_at_hi:.2f} | "
+        f"(P{(wy_total_series < event.wy_total_mm).mean() * 100:2.0f}) | cum {event.cum_at_lo:4.0f}-{event.cum_at_hi:4.0f} mm, frac {event.frac_at_lo:.2f}-{event.frac_at_hi:.2f} | "
         f"rain 30 d {event.rain_30d_min:3.0f}-{event.rain_30d_max:3.0f} mm, max {rain_total_days}-d storm {event.max_storm_30d_min:3.0f}-{event.max_storm_30d_max:3.0f} mm, "
         f"{event.days_since_storm20_min:3.0f}-{event.days_since_storm20_max:3.0f} d since >= {antecedent_storm_mm} mm storm [{event.gauge}]")
 wy_percentiles = []
@@ -822,7 +823,9 @@ conditioning_lines += [
     f"InSAR onsets: day-of-WY {insar_rain.dowy_lo.min():.0f}-{insar_rain.dowy_hi.max():.0f} ({dowy_label(insar_rain.dowy_lo.min())}-{dowy_label(insar_rain.dowy_hi.max())}), "
     f"calendar spread {calendar_spread} d",
     f"InSAR onsets: WY rain accumulated by the onset {insar_rain.cum_at_lo.min():.0f}-{insar_rain.cum_at_hi.max():.0f} mm, "
-    f"fraction of the WY total {insar_rain.frac_at_hi.min():.2f}-{insar_rain.frac_at_hi.max():.2f}",
+    f"fraction of the WY total {insar_rain.frac_at_lo.min():.2f}-{insar_rain.frac_at_hi.max():.2f} (earliest window start to latest window end)",
+    f"array onsets: the earliest window end at {aa_rain.frac_at_hi.min():.2f} of the WY total (that onset came before it), "
+    f"the latest window start at {aa_rain.frac_at_lo.max():.2f} (that onset came after it)",
     "rule A (lag after WY cumulative exceeds Y):"]
 for score in threshold_scores[threshold_scores.kind == "Y"].itertuples():
     if score.n_insar_reached < n_insar:
@@ -1035,7 +1038,7 @@ fig.savefig(f_cumulative, dpi=300)
 fig.savefig(f_cumulative.replace(".png", ".pdf"))
 print("Saved figure to:", f_cumulative)
 plt.show()
-print(f"rain accumulated at the InSAR onsets: {cum_lo:.0f} to {cum_hi:.0f} mm, {insar_rain.frac_at_hi.min():.0%} to {insar_rain.frac_at_hi.max():.0%} of the water-year total; "
+print(f"rain accumulated at the InSAR onsets: {cum_lo:.0f} to {cum_hi:.0f} mm, {insar_rain.frac_at_lo.min():.0%} to {insar_rain.frac_at_hi.max():.0%} of the water-year total; "
       f"the 3-day rain-total test (Fremont): best {best_sweep.Z_mm:.0f} mm within {best_sweep.X_d:.0f} d, hits {best_sweep.hits:.2f} of {n_insar_events} "
       f"vs {best_sweep.null_mean:.2f} for a random day in the same season, p = {best_sweep.p:.3f}, {p_search_paid:.3f} with all {n_settings} settings paid for")
 
@@ -1175,8 +1178,8 @@ summary_rows = [
     ("calendar_spread_d", calendar_spread, "d", "onset_dowy_max - onset_dowy_min"),
     ("cum_at_onset_min_mm", float(insar_rain.cum_at_lo.min()), "mm", "WY rain accumulated by the earliest window start"),
     ("cum_at_onset_max_mm", float(insar_rain.cum_at_hi.max()), "mm", "WY rain accumulated by the latest window end"),
-    ("frac_at_onset_min", float(insar_rain.frac_at_hi.min()), "1", "fraction of the WY total by the window end, min"),
-    ("frac_at_onset_max", float(insar_rain.frac_at_hi.max()), "1", "fraction of the WY total by the window end, max"),
+    ("frac_at_onset_min", float(insar_rain.frac_at_lo.min()), "1", "fraction of the WY total by the earliest window start (until 2026-10-14: window ends only)"),
+    ("frac_at_onset_max", float(insar_rain.frac_at_hi.max()), "1", "fraction of the WY total by the latest window end"),
     ("wy_percentile_min", float((wy_total_series < insar_rain.wy_total_mm.min()).mean() * 100), "pct", "percentile of the driest InSAR event year"),
     ("wy_percentile_max", float((wy_total_series < insar_rain.wy_total_mm.max()).mean() * 100), "pct", "percentile of the wettest InSAR event year"),
     ("wy_first", complete_wy[0], "wy", "first water year of the WY-total distribution"),
@@ -1266,8 +1269,11 @@ REG.register("10_insar_wy_percentile_min", (wy_total_series < insar_rain.wy_tota
 REG.register("10_insar_wy_percentile_max", (wy_total_series < insar_rain.wy_total_mm.max()).mean() * 100, "pct", 0, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_insar_cum_at_onset_min_mm", insar_rain.cum_at_lo.min(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_insar_cum_at_onset_max_mm", insar_rain.cum_at_hi.max(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_frac_at_onset_min", insar_rain.frac_at_hi.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("10_insar_frac_at_onset_min", insar_rain.frac_at_lo.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)   # window start (2026-10-14)
 REG.register("10_insar_frac_at_onset_max", insar_rain.frac_at_hi.max(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
+# the array onsets bound the fraction from both sides: one came before the earliest array window end, one after the latest start
+REG.register("10_aa_frac_at_onset_end_min", aa_rain.frac_at_hi.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("10_aa_frac_at_onset_start_max", aa_rain.frac_at_lo.max(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_ruleA_best_Y_mm", best_rule_a.thr, "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_ruleA_lag_min_d", best_rule_a.insar_lag_min, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_ruleA_lag_max_d", best_rule_a.insar_lag_max, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)

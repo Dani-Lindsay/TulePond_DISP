@@ -131,6 +131,8 @@ aa_min_surveys = 4      # an array is refit over the InSAR window only with this
 aa_min_span_yr = 5.0    # ... spanning at least this many years
 aa_max_dist_km = 2.0    # alignment arrays within this of the trace
 km_lim = (15.0, 70.0)   # x range of the supplement slip-budget figure (km from Point Pinole)
+rate_band_half_km = 0.5  # Fig 1D shading: 5-95 % of the per-crossing rates within +/- this along the trace (11 crossings) ...
+rate_band_min_n = 5      # ... drawn only where at least this many crossings have a rate (Dani 2026-10-14: shading, not dots)
 strike_map = 144.0      # page rotation of the map panel (mean strike, notebook 02)
 ref_patch_km = 5.0      # map display reference: CTM1-COZ1 patch, +/- this across the fault
 
@@ -1136,21 +1138,34 @@ hovmoller = hov_rows[:, nearest_epoch]
 hovmoller[:, np.abs(t_regular - dates[nearest_epoch]) > 9.0 / 365.25] = np.nan     # no real epoch within 9 d: blank
 grid_hov = xr.DataArray(hovmoller, coords={"y": grid, "x": t_regular}, dims=("y", "x"))
 
-# --- c) per-event cumulative slip profiles along strike, from the joint fit at every window crossing
-window_rows = np.where(in_window_rows)[0][south_to_north]
+# --- c) per-event cumulative slip profiles along strike: the per-crossing steps of the joint fit of [16] (event_fraction,
+# the same crossings and fit as D; until 2026-10-14 C refitted every window crossing with the Tule Pond steps only and a
+# looser data floor, so C kept crossings D drops), smoothed and bridged across gaps as D (Dani 2026-10-14: one scheme)
 km_window = km[in_window_rows][south_to_north]
-design_events = design(dates, step_epochs_tulepond)
-event_amp_window = np.full((window_rows.size, step_epochs_tulepond.size), np.nan)
-for i, row in enumerate(window_rows):
-    ok = np.isfinite(fp_matrix[row])
-    if ok.sum() > design_events.shape[1] + 10:
-        coef_i, *_ = np.linalg.lstsq(design_events[ok], fp_matrix[row][ok], rcond=None)
-        event_amp_window[i] = coef_i[4:]
-cum_prof = np.zeros((step_epochs_tulepond.size, window_rows.size))
-running = np.zeros(window_rows.size)
+event_amp_window = np.column_stack([event_fraction[column].values[in_window_rows][south_to_north] for column in tulepond_amp_columns])
+cum_prof = np.zeros((step_epochs_tulepond.size, km_window.size))
+running = np.zeros(km_window.size)
 for i in range(step_epochs_tulepond.size):
     running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], km_window, profile_smooth_km)))
     cum_prof[i] = running
+
+# --- d) the creep rates of D on the window, south to north: the smoothed rates bridged across gaps as C, and the 5-95 %
+# range of the per-crossing rates within +/- rate_band_half_km (NaN with fewer than rate_band_min_n crossings: not bridged,
+# so the shading shows where crossings exist)
+budget_window = slip_budget[(slip_budget.km >= w_lo) & (slip_budget.km <= w_hi)].sort_values("km")
+km_budget = budget_window.km.values
+rate_lines = {}
+rate_bands = {}
+for name in ("secular", "event_rate", "total"):
+    rate_lines[name] = interp_nan(km_budget, budget_window[f"{name}_smooth"].values)
+    per_crossing = budget_window[name].values
+    band_lo_hi = np.full((km_budget.size, 2), np.nan)
+    for j, km_j in enumerate(km_budget):
+        near = np.abs(km_budget - km_j) <= rate_band_half_km + 1e-6
+        values_near = per_crossing[near & np.isfinite(per_crossing)]
+        if values_near.size >= rate_band_min_n:
+            band_lo_hi[j] = np.percentile(values_near, [5, 95])
+    rate_bands[name] = band_lo_hi
 
 # --- the band stack's model, split into inter-event (bluish green) and event (orange) epochs for panel E
 band_main_stack = band_results[band_main]
@@ -1264,17 +1279,28 @@ with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
 
 # D) creep rates: its y axis is shared with B, so no annotation
 fig.shift_origin(xshift=f"{profile_w + gap_r}c")
-in_window_budget = (slip_budget.km >= w_lo) & (slip_budget.km <= w_hi)
 fig.basemap(region=[-1, 10, w_lo, w_hi], projection=f"X{rates_w}c/-{profile_h}c", frame=["wStr", "xa2f1+lCreep rate (mm/yr)", "ya2.5"])
 fig.plot(x=[-1, 10, 10, -1], y=[band_lo, band_lo, band_hi, band_hi], fill="gray@85", close=True)
 fig.plot(x=[0, 0], y=[w_lo, w_hi], pen="0.4p,gray70")
-fig.plot(x=slip_budget.secular[in_window_budget].values, y=slip_budget.km[in_window_budget].values, style="c0.04c", fill=green + "@70")
-fig.plot(x=slip_budget.event_rate[in_window_budget].values, y=slip_budget.km[in_window_budget].values, style="c0.04c", fill=orange + "@70")
-fig.plot(x=slip_budget.total[in_window_budget].values, y=slip_budget.km[in_window_budget].values, style="c0.04c", fill="gray50@70")
-fig.plot(x=slip_budget.secular_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.2p," + green, label="Inter-event rate")
-fig.plot(x=slip_budget.event_rate_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.2p," + orange,
-         label=f"Event-driven rate (sum of steps / {span:.1f} yr)")
-fig.plot(x=slip_budget.total_smooth[in_window_budget].values, y=slip_budget.km[in_window_budget].values, pen="1.5p,black", label="Inter-event + event-driven")
+# the 5-95 % shading, then the lines, each stacked black (bottom), green, orange (top) (Dani 2026-10-14)
+rate_style = {"total": ("gray50@70", "1.5p,black"), "secular": (green + "@75", "1.2p," + green), "event_rate": (orange + "@70", "1.2p," + orange)}
+for name in ("total", "secular", "event_rate"):
+    band_lo_hi = rate_bands[name]
+    has_band = np.isfinite(band_lo_hi[:, 0])
+    run_id = np.cumsum(np.r_[True, np.diff(has_band.astype(int)) != 0])        # one polygon per run of crossings with a band
+    for run in np.unique(run_id[has_band]):
+        in_run = has_band & (run_id == run)
+        if in_run.sum() < 2:
+            continue
+        fig.plot(x=np.r_[band_lo_hi[in_run, 0], band_lo_hi[in_run, 1][::-1]], y=np.r_[km_budget[in_run], km_budget[in_run][::-1]],
+                 fill=rate_style[name][0], close=True)
+rate_labels = {"total": "Inter-event + event-driven", "secular": "Inter-event rate", "event_rate": f"Event-driven rate (sum of steps / {span:.1f} yr)"}
+for name in ("total", "secular", "event_rate"):
+    fig.plot(x=rate_lines[name], y=km_budget, pen=rate_style[name][1])
+# legend entries in the reading order (inter-event, event-driven, sum, shading): plotted off-region, so only the legend records them
+for name in ("secular", "event_rate", "total"):
+    fig.plot(x=[-50, -49], y=[w_lo, w_lo], pen=rate_style[name][1], label=rate_labels[name])
+fig.plot(x=[-50], y=[w_lo], style="s0.2c", fill="gray50@70", label=f"5-95 % of crossings within ±{rate_band_half_km:g} km")
 arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi)]
 arrays_refit = arrays_window[arrays_window.rate_window.notna()]
 aa_grey = "gray30"                                                    # dark grey (Dani 2026-10-02): reads apart from the black total
