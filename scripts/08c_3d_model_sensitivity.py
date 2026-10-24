@@ -120,12 +120,11 @@ RUN_TABLE = [
     ("_asis",                ("sfcvm_asis",),      "full",   None,  SURF,    "default", "90",  "1",   "default"),
     ("_asis_nuggetcd",       ("sfcvm_asis",),      "nugget", None,  SURF,    "default", "90",  "1",   "default"),
     ("_diagcd",              ("homog", "sfcvm"),   "diag",   None,  SURF,    "default", "90",  "1",   "default"),
-    ("_floor15",             ("homog", "sfcvm"),   "floor",  15,    SURF,    "default", "90",  "1",   "default"),
-    ("_floor4",              ("homog", "sfcvm"),   "floor",  4,     SURF,    "default", "90",  "1",   "default"),
-    ("_surf",                ("homog", "sfcvm"),   "full",   None,  ALT,     "default", "90",  "1",   "default"),
-    ("_surf_diagcd",         ("homog", "sfcvm"),   "diag",   None,  ALT,     "default", "90",  "1",   "default"),
     ("_surf_nuggetcd",       ("homog", "sfcvm"),   "nugget", None,  ALT,     "default", "90",  "1",   "default"),   # the selected model WITH the crossing constraint
     ("_shallow",             ("homog", "sfcvm"),   "full",   None,  SURF,    "shallow", "90",  "1",   "default"),
+    ("_shallow_nuggetcd",    ("homog", "sfcvm"),   "nugget", None,  SURF,    "shallow", "90",  "1",   "default"),   # 2026-10-25: the mesh test with the selected Cd
+    # DROPPED 2026-10-25 (review of the 08 tests): _floor15 and _floor4 (at the locked sigma they reproduce the full Cd,
+    # Mw 3.55-3.57 vs 3.54) and _surf / _surf_diagcd (constraint ON with full / equal Cd: quoted nowhere; _surf_nuggetcd kept)
     ("_dip80e",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "80e", "1",   "default"),
     ("_dip80e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "80e", "1",   "default"),
     ("_dip70e",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "70e", "1",   "default"),

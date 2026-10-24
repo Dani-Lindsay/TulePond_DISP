@@ -1380,7 +1380,7 @@ print(f"share of the total misfit reduction from samples within 200 m: {near_far
 #    same median difference is taken on the model AT THE SAMPLES within 300 m of the X-X' line (as `figS_pylith_profile_XX`;
 #    the far band holds only 1-2 quadtree blocks, so this estimator is coarser), for the homogeneous model of: the
 #    selected and companion inversions, their L-curve grid neighbours of sigma 12 (re-inverted here), and 08c's runs
-#    with dip 80 E, 70 E, 80 W and 70 W (west added 2026-10-25), element order 2 (each with both Cd) and the `shallow` mesh (full Cd only). The same
+#    with dip 80 E, 70 E, 80 W and 70 W (west added 2026-10-25), element order 2 (each with both Cd) and the `shallow` mesh (both Cd since 2026-10-25). The same
 #    estimator is applied to the selected run, so the range is like for like. Written to `xx_deflections_homog_runs.csv`.
 # 2. **The SFSVM Hayward block boundary relative to the mapped trace**: the offset b(km) that the alignment removes
 #    (`boundary_smooth_m` of the aligned SFCVM grid, the 5-point running median that `pylith/build/sfcvm_grid.py`

@@ -24,7 +24,7 @@ from TulePond_filepaths import paths_out, common_paths, model_use_surface   # no
 from insar_utils import mpl_paper_style                     # noqa: E402
 
 LADDER = ["default", "shallow", "floor15", "floor4", "swath7", "dip80e", "dip70e", "dip80w", "dip70w", "order2", "nosurf",
-          "diagcd", "nosurf_diagcd", "nuggetcd", "swath7_nuggetcd", "dip80e_nuggetcd", "dip70e_nuggetcd", "dip80w_nuggetcd", "dip70w_nuggetcd", "order2_nuggetcd",
+          "diagcd", "nosurf_diagcd", "nuggetcd", "swath7_nuggetcd", "dip80e_nuggetcd", "dip70e_nuggetcd", "dip80w_nuggetcd", "dip70w_nuggetcd", "order2_nuggetcd", "shallow_nuggetcd",
           "e50", "w50", "e50_nuggetcd", "w50_nuggetcd", "coh07", "coh07_nuggetcd", "surf", "surf_diagcd", "surf_nuggetcd",
           "asis", "asis_nuggetcd"]
 DIP_SCAN = ("50e", "60e", "60w", "50w")   # 08c's homogeneous-only dip scan (2026-10-24): not drawn here

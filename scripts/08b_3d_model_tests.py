@@ -688,6 +688,14 @@ REG.register("08b_sens_mw_30gpa_min", float(sens_sfcvm.Mw_30gpa.min()), "Mw", 2,
 REG.register("08b_sens_mw_30gpa_max", float(sens_sfcvm.Mw_30gpa.max()), "Mw", 2, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_surface_pct_min", float(sens_sfcvm.surface_pct.min()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
 REG.register("08b_sens_surface_pct_max", float(sens_sfcvm.surface_pct.max()), "%", 0, where="M8", cell="sensitivity", sidecar=sidecar)
+# (2026-10-25) the same range over the runs with the SELECTED weighting only (nugget Cd): the full range above mixes Cd
+# treatments solved at the nugget model's sigma (their own L-curve corners are 30-80); Dani to choose which one the text quotes
+sens_nugget = sens_sfcvm[sens_sfcvm.Cd == "nugget"]
+assert len(sens_nugget) >= 8, f"expected the nugget-Cd SFSVM sensitivity runs, got {len(sens_nugget)}"
+for col, unit, places in (("Mw_30gpa", "Mw", 2), ("surface_pct", "%", 0), ("rms_mm", "mm", 2)):
+    REG.register(f"08b_sens_nugget_{col}_min", float(sens_nugget[col].min()), unit, places, where="M8 (choice)", cell="sensitivity", sidecar=sidecar)
+    REG.register(f"08b_sens_nugget_{col}_max", float(sens_nugget[col].max()), unit, places, where="M8 (choice)", cell="sensitivity", sidecar=sidecar)
+REG.register("08b_n_sens_nugget_runs", int(len(sens_nugget)), "count", 0, where="M8 (choice)", cell="sensitivity", sidecar=sidecar)
 # the unshifted SFCVM (both Cd) and the selected Cd without the crossing constraint (both media), 2026-10-14
 for row in unshifted_rows.itertuples():
     cd_key = "nugget" if row.run.endswith("_nuggetcd") else "full"
