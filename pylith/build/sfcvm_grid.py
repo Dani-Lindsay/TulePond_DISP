@@ -26,7 +26,7 @@ Alignment (a local cross-fault shift, dip kept):
      values are used. Each column is shifted as a whole, so the model's dip is kept.
 Material rules (documented in NOTES.md):
   - water/air/no-data (vs <= 0 or density <= 0) take the first valid value below in the same column;
-  - vs floored at vs_floor = 150 m/s (vp and density unchanged by the floor);
+  - NO vs floor (2026-10-24, Dani; was 150 m/s): the model's own values; Vs < vs_flag = 90 m/s is listed in a csv;
   - Poisson's ratio capped at 0.40: vp = min(vp, sqrt(6) vs) (vs kept); ratio vp/vs >= 1.5 asserted.
 """
 import json
@@ -62,7 +62,7 @@ CRS = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +typ
 version = "v26-0"
 model_file = os.path.join(inputs_dir, f"USGS_SFCVM_{version}", f"USGS_SFCVM_{version}_detailed.h5")
 assert os.path.exists(model_file), f"missing {model_file}"
-vs_floor, nu_cap = 150.0, 0.40
+vs_flag, nu_cap = 90.0, 0.40     # vs_flag: Vs below this is reported, NOT changed (no floor since 2026-10-24, Dani)
 vpvs_cap = np.sqrt((2 - 2 * nu_cap) / (1 - 2 * nu_cap))            # sqrt(6) for nu 0.40
 taper_full_m, taper_zero_m = 3000.0, 6000.0
 blocks_west, block_east = (22, 23), 7                               # Central Bay Block (Evergreen south of km ~65) | San Leandro
@@ -260,8 +260,19 @@ for pos in range(len(zi) - 2, -1, -1):                              # from the s
     zone[:, :, here][bad] = zone[:, :, below][bad]
     invalid[:, :, here] = invalid[:, :, here] & invalid[:, :, below]
 assert not invalid.any(), "columns with no valid SFCVM value at any depth"
-n_floor = int((vs < vs_floor).sum())
-vs = np.maximum(vs, vs_floor)
+# NO Vs floor since 2026-10-24 (Dani: the SFCVM's own low values are real, bay-margin sediment can be ~90 m/s; until then
+# vs was floored at 150 m/s, 2,502 grid points). Values under vs_flag are only REPORTED (and listed in a csv), not changed.
+n_floor = int((vs < 150.0).sum())                                   # the points the old 150 m/s floor changed
+low = vs < vs_flag
+print(f"Vs: min {vs.min():.1f} m/s; {n_floor:,} points below 150 m/s (the old floor), {int(low.sum()):,} below {vs_flag:g} m/s")
+if low.any():
+    il, jl, kl = np.nonzero(low)
+    low_table = pd.DataFrame(dict(x_m=x_axis[il], y_m=y_axis[jl], depth_m=np.maximum(-z_axis[kl], 0.0), vs_m_s=vs[low],
+                                  vp_m_s=vp[low], density=density[low], zone=zone[low]))
+    low_file = os.path.join(SPATIALDB, f"sfcvm_{version}_{tag}_vs_below_{vs_flag:g}.csv")
+    low_table.to_csv(low_file, index=False)
+    print(f"FLAG: {len(low_table):,} grid points with Vs < {vs_flag:g} m/s (min {vs.min():.1f}; depths "
+          f"{low_table.depth_m.min():.0f}-{low_table.depth_m.max():.0f} m) -> {low_file}")
 n_cap = int((vp > vpvs_cap * vs).sum())
 if nocap:
     n_cap = 0                                                       # vp as given (nu up to ~0.5 in the wet sediment)
@@ -271,7 +282,7 @@ assert np.all(vp / vs >= 1.5), f"vp/vs below 1.5: min {np.min(vp / vs):.2f}"
 nu = (vp ** 2 - 2 * vs ** 2) / (2 * (vp ** 2 - vs ** 2))
 mu = density * vs ** 2
 assert np.all(np.isfinite(mu)) and mu.min() > 0 and (nocap or nu.max() <= nu_cap + 1e-9)
-print(f"filled {n_invalid:,} water/air/no-data points from below; vs floored at {vs_floor:g} m/s at {n_floor:,} points; "
+print(f"filled {n_invalid:,} water/air/no-data points from below; no Vs floor ({n_floor:,} points below 150 m/s kept); "
       f"vp capped (nu <= {nu_cap}) at {n_cap:,} points of {vs.size:,}")
 print(f"mu: {mu.min() / 1e9:.3f}..{mu.max() / 1e9:.1f} GPa; nu {nu.min():.3f}..{nu.max():.3f}")
 
@@ -280,7 +291,7 @@ np.savez_compressed(out, x=x_axis, y=y_axis, z=z_axis, density=density.astype(np
                     vs=vs.astype(np.float32), fault_block=fault_block.astype(np.int16), zone=zone.astype(np.int16),
                     trace_km=tkm, trace_x=tx, trace_y=ty, trace_normal=normal, boundary_raw_m=b_raw,
                     boundary_smooth_m=b_smooth, shift_used_m=b_used, align=align, crs=CRS, model_file=model_file,
-                    zone_names=json.dumps(zone_names), vs_floor=vs_floor, nu_cap=(np.nan if nocap else nu_cap),
+                    zone_names=json.dumps(zone_names), vs_floor=np.nan, vs_flag=vs_flag, nu_cap=(np.nan if nocap else nu_cap),
                     taper_m=np.array([taper_full_m, taper_zero_m]), dip=dip,
                     shift_by_depth=json.dumps(shift_levels),
                     provenance=f"sfcvm_grid.py {time.strftime('%Y-%m-%d %H:%M')} ({tag}); SFCVM {version} {model_file}")

@@ -38,8 +38,8 @@
 # | Cd | `full` (07a's correlated), `nugget` (its diagonal: the selected model), `diag` (equal weights), `floor` (n_px floored at 15 or 4) | the data covariance |
 # | surface | `model_use_surface` (OFF since 2026-10-16) for every run; the `_surf` rows (full, equal, nugget Cd) turn the measured-crossing constraint ON | the surface data |
 # | mesh | `default` (100 m fault cells in the patch), `shallow` (60 m near-surface band) | the fault discretisation |
-# | dip | 90, 80 E, 70 E (top edge on the trace; SFCVM aligned to the dipping fault) | the fault dip |
-# | dip scan | 50 E, 60 E, 80 W, 70 W, 60 W, 50 W, homogeneous only (2026-10-24, Dani): with 90, 80 E, 70 E the scan 50 W-50 E; reported on its own (08a, 08b), not in the sensitivity range | can a dipping fault in a homogeneous medium fit the near-field asymmetry |
+# | dip | 90, 80 E, 70 E, 80 W, 70 W (top edge on the trace; the SFCVM is the paper's grid, laterally aligned, for every dip, 2026-10-25) | the fault dip |
+# | dip scan | 50 E, 60 E, 60 W, 50 W, homogeneous only (2026-10-24, Dani): with the dip rows above the scan 50 W-50 E; reported on its own (08a, 08b), not in the sensitivity range | can a dipping fault in a homogeneous medium fit the near-field asymmetry |
 # | order | 1, 2 (quadratic solution, linear materials, no Poisson cap; Charles Williams 2026-09-30) | the element order |
 # | points | `default` (07a's samples), `swath7`, `coh07` (07a's sensitivity sample sets) | the data selection |
 #
@@ -130,8 +130,12 @@ RUN_TABLE = [
     ("_dip80e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "80e", "1",   "default"),
     ("_dip70e",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "70e", "1",   "default"),
     ("_dip70e_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "70e", "1",   "default"),
-    ("_swath7",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "1",   "swath7"),
-    ("_swath7_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "1",   "swath7"),
+    ("_dip80w",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "80w", "1",   "default"),   # west dips, 2026-10-25
+    ("_dip80w_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "80w", "1",   "default"),
+    ("_dip70w",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "70w", "1",   "default"),
+    ("_dip70w_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "70w", "1",   "default"),
+    # ("_swath7", ...) and ("_swath7_nuggetcd", ...) DROPPED 2026-10-25 (review of the 08 tests for Dani): the 7 km swath adds
+    # only 10 samples to the 2386 (all far west), so it does not test the data selection; the coh07 rows do
     ("_order2",              ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "2",   "default"),
     ("_order2_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "2",   "default"),
     ("_coh07",               ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "1",   "coh07"),
@@ -143,16 +147,12 @@ RUN_TABLE = [
     ("_dip50e_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "50e", "1",   "default"),
     ("_dip60e",              ("homog",),           "full",   None,  SURF,    "default", "60e", "1",   "default"),
     ("_dip60e_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "60e", "1",   "default"),
-    ("_dip80w",              ("homog",),           "full",   None,  SURF,    "default", "80w", "1",   "default"),
-    ("_dip80w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "80w", "1",   "default"),
-    ("_dip70w",              ("homog",),           "full",   None,  SURF,    "default", "70w", "1",   "default"),
-    ("_dip70w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "70w", "1",   "default"),
     ("_dip60w",              ("homog",),           "full",   None,  SURF,    "default", "60w", "1",   "default"),
     ("_dip60w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "60w", "1",   "default"),
     ("_dip50w",              ("homog",),           "full",   None,  SURF,    "default", "50w", "1",   "default"),
     ("_dip50w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "50w", "1",   "default"),
 ]
-DIP_SCAN = ("50e", "60e", "80w", "70w", "60w", "50w")   # the homogeneous-only dip-scan rows (no SFCVM medium)
+DIP_SCAN = ("50e", "60e", "60w", "50w")   # the homogeneous-only dip-scan rows (no SFCVM medium)
 runs = pd.DataFrame(RUN_TABLE, columns=RUN_COLUMNS, dtype=object)   # object: keeps the floors as integers (None elsewhere)
 CD_TAG = {"full": "", "nugget": "_nuggetcd", "diag": "_diagcd"}
 
@@ -193,9 +193,11 @@ def sfcvm_grid_file(row, medium):
         return os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_asis_grid.npz")
     if medium.startswith("sfcvm_"):
         return os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{medium[6:]}_grid.npz")
-    dip_tag = "" if row.dip == "90" else f"_dip{row.dip}"
+    # the dipping faults sit in the paper's grid (the lateral alignment, model's own dip kept), 2026-10-25 (Dani): until then
+    # each dip had its own grid with the block boundary moved onto the dipping fault at every depth (a depth-varying warp
+    # of the SFCVM that folds it for west dips; retired)
     nocap_tag = "_nocap" if row.order == "2" else ""
-    return os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned{dip_tag}{nocap_tag}_grid.npz")
+    return os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned{nocap_tag}_grid.npz")
 
 
 def settings_json(row, n_samples, run_names, n_imp, field_fingerprint):

@@ -449,7 +449,7 @@ print(f"PASS: {final_file} is newer than the 06 field, every PyLith row fits fie
       f"and its default rows equal 08a's")
 # the homogeneous dip scan of 08c (2026-10-24, Dani): reported on its own in [5b], kept out of the sensitivity table's count,
 # ranges and figure (they are the paper's numbers, unchanged by the scan)
-DIP_SCAN = ("50e", "60e", "80w", "70w", "60w", "50w")
+DIP_SCAN = ("50e", "60e", "60w", "50w")             # homogeneous only; 80 W / 70 W are full sensitivity rows (2026-10-25)
 in_dip_scan = pylith_rows.run.str.contains("|".join(f"_dip{d}" for d in DIP_SCAN))
 dip_scan_rows = pylith_rows[in_dip_scan].copy()
 pylith_rows = pylith_rows[~in_dip_scan]
@@ -558,7 +558,7 @@ for ax, cd, letter in zip(axes, CD_TAG, "AB"):
 axes[0].set_ylabel("rms misfit (mm)")
 axes[0].legend(fontsize=7, loc="best")
 fig.text(0.01, -0.02, f"08c dip-scan and sensitivity rows, sigma {sigma_locked:g}, 06 field {field_fingerprint}; "
-         f"{len(dip_scan_rows) + 6} inversions", fontsize=6, color="0.4")
+         f"{len(dip_scan) } inversions", fontsize=6, color="0.4")
 dip_scan_png = os.path.join(fig_dir, "qc08b_dip_scan_homog.png")
 fig.savefig(dip_scan_png, dpi=300, bbox_inches="tight")
 plt.close(fig)
@@ -603,7 +603,7 @@ for medium, cd in RUNS:
                  f"{rec.D_km.min():g}-{rec.D_km.max():g} km; depth scan reduced chi2 {scan_diagnosis[(medium, cd)]['reduced_chi2']:.2f}, "
                  f"bracket with delta chi2 <= 4 x chi2_nu {scan_diagnosis[(medium, cd)]['scaled_lo']:g}-{scan_diagnosis[(medium, cd)]['scaled_hi']:g} km")
     dip_text = []
-    for run_suffix, dip_name in (("", "vertical"), ("_dip80e", "80 E"), ("_dip70e", "70 E")):
+    for run_suffix, dip_name in (("", "vertical"), ("_dip80e", "80 E"), ("_dip70e", "70 E"), ("_dip80w", "80 W"), ("_dip70w", "70 W")):
         dip_row = pylith_rows[(pylith_rows.run == f"default{run_suffix}{CD_TAG[cd]}") & (pylith_rows.medium == medium)]
         dip_text.append(f"{dip_name} {float(dip_row.rms_mm.iloc[0]):.2f} mm")
     lines.append("   rms by fault dip: " + ", ".join(dip_text))
@@ -676,8 +676,8 @@ for medium, cd in RUNS:
     REG.register(f"{key}_recovery_depth_err_min_km", float(depth_error.min()), "km", 1, where="M8", cell="recovery", sidecar=sidecar)
     REG.register(f"{key}_recovery_depth_err_max_km", float(depth_error.max()), "km", 1, where="M8", cell="recovery", sidecar=sidecar)
     REG.register(f"{key}_depth_scan_reduced_chi2", scan_diagnosis[(medium, cd)]["reduced_chi2"], "", 2, where="M8", cell="depth scan", sidecar=sidecar)
-    # the fault dip: rms of the vertical fault and of the 80 E / 70 E runs (08c's table, this medium and Cd)
-    for dip_tag, run_suffix in (("90", ""), ("80e", "_dip80e"), ("70e", "_dip70e")):
+    # the fault dip: rms of the vertical fault and of the 80 E / 70 E / 80 W / 70 W runs (08c's table, this medium and Cd)
+    for dip_tag, run_suffix in (("90", ""), ("80e", "_dip80e"), ("70e", "_dip70e"), ("80w", "_dip80w"), ("70w", "_dip70w")):
         dip_row = pylith_rows[(pylith_rows.run == f"default{run_suffix}{CD_TAG[cd]}") & (pylith_rows.medium == medium)]
         assert len(dip_row) == 1, f"default{run_suffix}{CD_TAG[cd]} / {medium}: {len(dip_row)} rows in {final_file}"
         REG.register(f"{key}_rms_dip{dip_tag}_mm", float(dip_row.rms_mm.iloc[0]), "mm", 2, where="P7, M8", cell="dip", sidecar=sidecar)

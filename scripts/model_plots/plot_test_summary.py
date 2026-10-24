@@ -23,11 +23,11 @@ sys.path.insert(0, REPO)
 from TulePond_filepaths import paths_out, common_paths, model_use_surface   # noqa: E402
 from insar_utils import mpl_paper_style                     # noqa: E402
 
-LADDER = ["default", "shallow", "floor15", "floor4", "swath7", "dip80e", "dip70e", "order2", "nosurf",
-          "diagcd", "nosurf_diagcd", "nuggetcd", "swath7_nuggetcd", "dip80e_nuggetcd", "dip70e_nuggetcd", "order2_nuggetcd",
+LADDER = ["default", "shallow", "floor15", "floor4", "swath7", "dip80e", "dip70e", "dip80w", "dip70w", "order2", "nosurf",
+          "diagcd", "nosurf_diagcd", "nuggetcd", "swath7_nuggetcd", "dip80e_nuggetcd", "dip70e_nuggetcd", "dip80w_nuggetcd", "dip70w_nuggetcd", "order2_nuggetcd",
           "e50", "w50", "e50_nuggetcd", "w50_nuggetcd", "coh07", "coh07_nuggetcd", "surf", "surf_diagcd", "surf_nuggetcd",
           "asis", "asis_nuggetcd"]
-DIP_SCAN = ("50e", "60e", "80w", "70w", "60w", "50w")   # 08c's homogeneous-only dip scan (2026-10-24): not drawn here
+DIP_SCAN = ("50e", "60e", "60w", "50w")   # 08c's homogeneous-only dip scan (2026-10-24): not drawn here
 
 
 def load_runs(gf_dir):
@@ -54,7 +54,7 @@ def load_runs(gf_dir):
     other_surface = "off" if model_use_surface else "on"
     switched = runs.tag.str.contains("nosurf") | (runs.tag.str.contains("surf") & ~runs.tag.str.contains("nosurf"))
     runs["surface"] = np.where(switched, other_surface, default_surface)
-    runs["dip"] = np.select([runs.tag.str.contains("dip80e"), runs.tag.str.contains("dip70e")], ["80 E", "70 E"], "90")
+    runs["dip"] = runs.tag.str.extract(r"dip(\d+)([ew])").apply(lambda m: "90" if pd.isna(m[0]) else f"{m[0]} {m[1].upper()}", axis=1)
     runs["order"] = np.where(runs.tag.str.contains("order2"), 2, 1)
     runs["label"] = runs.tag.str.replace("_", " ")
     return runs, ref_row

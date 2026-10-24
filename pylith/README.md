@@ -13,7 +13,7 @@ pylith/
                        scales, one elastic material, Dirichlet zero on the sides and bottom (free top)
     mat_homog.cfg      homogeneous medium (rho 2700, vs 3333, vp 5774: mu 30 GPa, nu 0.25); outputs -> modeling_uniform/
     mat_sfcvm*.cfg     USGS SFCVM v26.0 as a SimpleGridDB (aligned on the trace; _e50/_w50 boundary 50 m E/W;
-                       _dip80e/_dip70e/_dip80w aligned to a dipping fault; _nocap no Poisson cap; _asis not aligned;
+                       _nocap no Poisson cap; _asis not aligned;
                        _dip90v per-depth control); outputs -> modeling_SFCVM/
     gf.cfg             GreensFns + FaultCohesiveImpulses (left-lateral impulses, slip basis order 1) + OutputSolnPoints
     fwd_kin.cfg        FaultCohesiveKin, one static step, a SimpleGridDB slip patch (the validation runs)
@@ -92,9 +92,10 @@ medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G on 07a's strike) in i
 | `gf_default_sfcvm` | `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | 08a, 08b, 08c (as above) | 33 min |
 | `gf_default_sfcvm_e50` / `_w50` | `mat_sfcvm_e50.cfg` / `_w50.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | 08c (e50, w50 runs), 08a [15c] | 36 / 33 min |
 | `gf_shallow_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | | 08c (shallow) | 125 / 131 min |
-| `gf_default_dip80e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm_dip80e.cfg` | `mesh_dip80e_tet_default.msh` | `insar_points.txt` | | 08c (dip80e runs) | 34 / 34 min |
-| `gf_default_dip70e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm_dip70e.cfg` | `mesh_dip70e_tet_default.msh` | `insar_points.txt` | | 08c (dip70e runs) | 39 / 38 min |
-| `gf_default_dip<d>_homog`, d = 50e, 60e, 80w, 70w, 60w, 50w (2026-10-24) | `mat_homog.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | 08c (the homogeneous dip scan, homogeneous only) | see `runs/run_gf.log` |
+| `gf_default_dip80e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` (since 2026-10-25; was a per-dip warped grid) | `mesh_dip80e_tet_default.msh` | `insar_points.txt` | | 08c (dip80e runs) | 34 / 34 min |
+| `gf_default_dip70e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` (since 2026-10-25) | `mesh_dip70e_tet_default.msh` | `insar_points.txt` | | 08c (dip70e runs) | 39 / 38 min |
+| `gf_default_dip80w_homog` / `_sfcvm`, `gf_default_dip70w_homog` / `_sfcvm` (2026-10-25) | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | 08c (west dips) | see `runs/run_gf.log` |
+| `gf_default_dip<d>_homog`, d = 50e, 60e, 60w, 50w (2026-10-24) | `mat_homog.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | 08c (the homogeneous dip scan, homogeneous only) | see `runs/run_gf.log` |
 | `gf_default_homog_swath7` / `gf_default_sfcvm_swath7` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_swath7.txt` | | 08c (swath7 runs) | 34 / 33 min |
 | `gf_default_homog_coh07` / `gf_default_sfcvm_coh07` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | | 08c (coh07 runs) | 32 / 33 min |
 | `gf_default_homog_order2` / `gf_default_sfcvm_order2` | `mat_homog.cfg` / `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | `order2.cfg` | 08c (order2 runs) | 143 / 165 min |
@@ -123,7 +124,7 @@ has just inverted (`build/make_vertex_slip_db.py`) and asserts that the cached r
 |---|---|---|
 | `modeling_inputs/mesh/mesh_vertical_tet_<preset>.msh` | `python3 $REPO/pylith/build/generate_gmsh_vertical.py --write --preset <default/fine/shallow/coarse>` | PyLith |
 | `modeling_inputs/mesh/mesh_dip<d>_tet_default.msh` | `python3 $REPO/pylith/build/generate_gmsh_dip.py --write --preset default --dip <80e/70e/80w>` | PyLith |
-| `modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_grid.npz` (and `_asis`, `_aligned_dip<d>`, `_aligned_e50`/`_w50`, `_aligned_nocap`) | `python $REPO/pylith/build/sfcvm_grid.py [--no-align / --dip <d> / --offset 50 / --offset -50 / --no-cap]` | opera_disp_feb13 |
+| `modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_grid.npz` (and `_asis`, `_aligned_e50`/`_w50`, `_aligned_nocap`) | `python $REPO/pylith/build/sfcvm_grid.py [--no-align / --offset 50 / --offset -50 / --no-cap]` (`--dip` retired 2026-10-25: dipping faults use the paper grid) | opera_disp_feb13 |
 | `modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | `python3 $REPO/pylith/build/write_sfcvm_griddb.py modeling_SFCVM/spatialdb/sfcvm_v26-0_<tag>_grid.npz modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | PyLith |
 | `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | `python3 $REPO/pylith/build/make_impulse_db.py -4713 4380 3000 modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | PyLith |
 | `modeling_inputs/spatialdb/kin_slip_km57-61_z1000.spatialdb` | `python3 $REPO/pylith/build/make_kin_slip_db.py -1479 1943 1000 0.01 modeling_inputs/spatialdb/kin_slip_km57-61_z1000.spatialdb` | PyLith |
