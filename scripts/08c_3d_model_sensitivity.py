@@ -39,6 +39,7 @@
 # | surface | `model_use_surface` (OFF since 2026-10-16) for every run; the `_surf` rows (full, equal, nugget Cd) turn the measured-crossing constraint ON | the surface data |
 # | mesh | `default` (100 m fault cells in the patch), `shallow` (60 m near-surface band) | the fault discretisation |
 # | dip | 90, 80 E, 70 E (top edge on the trace; SFCVM aligned to the dipping fault) | the fault dip |
+# | dip scan | 50 E, 60 E, 80 W, 70 W, 60 W, 50 W, homogeneous only (2026-10-24, Dani): with 90, 80 E, 70 E the scan 50 W-50 E; reported on its own (08a, 08b), not in the sensitivity range | can a dipping fault in a homogeneous medium fit the near-field asymmetry |
 # | order | 1, 2 (quadratic solution, linear materials, no Poisson cap; Charles Williams 2026-09-30) | the element order |
 # | points | `default` (07a's samples), `swath7`, `coh07` (07a's sensitivity sample sets) | the data selection |
 #
@@ -135,7 +136,23 @@ RUN_TABLE = [
     ("_order2_nuggetcd",     ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "2",   "default"),
     ("_coh07",               ("homog", "sfcvm"),   "full",   None,  SURF,    "default", "90",  "1",   "coh07"),
     ("_coh07_nuggetcd",      ("homog", "sfcvm"),   "nugget", None,  SURF,    "default", "90",  "1",   "coh07"),
+    # the homogeneous dip scan (2026-10-24, Dani): with 90 / 80 E / 70 E above, 50 W to 50 E in 10 deg steps; homogeneous
+    # only (the SFCVM aligned to a dipping fault is warped at depth, folding at 60-50 W): reported on its own, not in the
+    # sensitivity range; no Mw(SFSVM) (no SFCVM run of these meshes)
+    ("_dip50e",              ("homog",),           "full",   None,  SURF,    "default", "50e", "1",   "default"),
+    ("_dip50e_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "50e", "1",   "default"),
+    ("_dip60e",              ("homog",),           "full",   None,  SURF,    "default", "60e", "1",   "default"),
+    ("_dip60e_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "60e", "1",   "default"),
+    ("_dip80w",              ("homog",),           "full",   None,  SURF,    "default", "80w", "1",   "default"),
+    ("_dip80w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "80w", "1",   "default"),
+    ("_dip70w",              ("homog",),           "full",   None,  SURF,    "default", "70w", "1",   "default"),
+    ("_dip70w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "70w", "1",   "default"),
+    ("_dip60w",              ("homog",),           "full",   None,  SURF,    "default", "60w", "1",   "default"),
+    ("_dip60w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "60w", "1",   "default"),
+    ("_dip50w",              ("homog",),           "full",   None,  SURF,    "default", "50w", "1",   "default"),
+    ("_dip50w_nuggetcd",     ("homog",),           "nugget", None,  SURF,    "default", "50w", "1",   "default"),
 ]
+DIP_SCAN = ("50e", "60e", "80w", "70w", "60w", "50w")   # the homogeneous-only dip-scan rows (no SFCVM medium)
 runs = pd.DataFrame(RUN_TABLE, columns=RUN_COLUMNS, dtype=object)   # object: keeps the floors as integers (None elsewhere)
 CD_TAG = {"full": "", "nugget": "_nuggetcd", "diag": "_diagcd"}
 
@@ -275,12 +292,15 @@ def run_one(row):
             elastic_info = os.path.join(medium_paths(medium)["pylith_output"], f"{run_names[medium]}-elastic_info.h5")
             mu_mean[medium] = model_utils.mu_beside_fault(elastic_info, sfcvm_grid_file(row, medium), tents, medium)[0]
     sfcvm_media = [m for m in media if m.startswith("sfcvm")]
-    assert sfcvm_media, f"run {row.tag}: no SFCVM medium for Mw(SFSVM)"
+    assert sfcvm_media or row.dip in DIP_SCAN, f"run {row.tag}: no SFCVM medium for Mw(SFSVM)"
 
     def mu_for(medium):
-        """Per-triangle rigidity of Mw(SFSVM): the medium's own, or the run's aligned SFCVM for the homogeneous model."""
+        """Per-triangle rigidity of Mw(SFSVM): the medium's own, or the run's aligned SFCVM for the homogeneous model;
+        None (Mw(SFSVM) NaN) for the homogeneous-only dip-scan rows."""
         if medium in mu_mean:
             return mu_mean[medium]
+        if not sfcvm_media:
+            return None
         return mu_mean["sfcvm"]
 
     Cd = model_utils.data_cd(row.cd, samples, p["cov_p"], float(p["nug_power"]), floor_px=row.cd_floor, keep=setup["keep"])

@@ -27,6 +27,7 @@ LADDER = ["default", "shallow", "floor15", "floor4", "swath7", "dip80e", "dip70e
           "diagcd", "nosurf_diagcd", "nuggetcd", "swath7_nuggetcd", "dip80e_nuggetcd", "dip70e_nuggetcd", "order2_nuggetcd",
           "e50", "w50", "e50_nuggetcd", "w50_nuggetcd", "coh07", "coh07_nuggetcd", "surf", "surf_diagcd", "surf_nuggetcd",
           "asis", "asis_nuggetcd"]
+DIP_SCAN = ("50e", "60e", "80w", "70w", "60w", "50w")   # 08c's homogeneous-only dip scan (2026-10-24): not drawn here
 
 
 def load_runs(gf_dir):
@@ -46,6 +47,7 @@ def load_runs(gf_dir):
     assert ref_row is not None, "results_comparison.csv (the default run) must carry the 07a CSI baseline row"
     runs = pd.concat(rows, ignore_index=True)
     runs = runs[runs.medium != "sfcvmasis"]                                   # aligned SFCVM only (Dani)
+    runs = runs[~runs.tag.str.contains("|".join(f"dip{d}" for d in DIP_SCAN))]   # the dip scan has its own figure (08b)
     runs["cd"] = np.select([runs.tag.str.contains("nuggetcd"), runs.tag.str.contains("diagcd"), runs.tag.str.contains("floor")],
                            ["nugget (diagonal)", "equal weights", "full, nugget floor"], "full (correlated)")
     default_surface = "on" if model_use_surface else "off"                   # tags name the deviation from the default (2026-10-16)

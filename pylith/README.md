@@ -94,6 +94,7 @@ medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G on 07a's strike) in i
 | `gf_shallow_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | | 08c (shallow) | 125 / 131 min |
 | `gf_default_dip80e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm_dip80e.cfg` | `mesh_dip80e_tet_default.msh` | `insar_points.txt` | | 08c (dip80e runs) | 34 / 34 min |
 | `gf_default_dip70e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm_dip70e.cfg` | `mesh_dip70e_tet_default.msh` | `insar_points.txt` | | 08c (dip70e runs) | 39 / 38 min |
+| `gf_default_dip<d>_homog`, d = 50e, 60e, 80w, 70w, 60w, 50w (2026-10-24) | `mat_homog.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | 08c (the homogeneous dip scan, homogeneous only) | see `runs/run_gf.log` |
 | `gf_default_homog_swath7` / `gf_default_sfcvm_swath7` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_swath7.txt` | | 08c (swath7 runs) | 34 / 33 min |
 | `gf_default_homog_coh07` / `gf_default_sfcvm_coh07` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | | 08c (coh07 runs) | 32 / 33 min |
 | `gf_default_homog_order2` / `gf_default_sfcvm_order2` | `mat_homog.cfg` / `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | `order2.cfg` | 08c (order2 runs) | 143 / 165 min |

@@ -1450,6 +1450,28 @@ for tag, setting in (("_dip80e", "dip 80 E"), ("_dip70e", "dip 70 E"), ("_order2
         deflection_rows.append(dict(run=f"default{tag}{CD_TAG[cd]}", setting=setting, cd=cd, sigma=sigma_locked, W_mm=west, E_mm=east))
 deflections = pd.DataFrame(deflection_rows)
 deflections.to_csv(os.path.join(out_dir, "xx_deflections_homog_runs.csv"), index=False, float_format="%.3f")
+# the homogeneous dip scan of 08c (2026-10-24, Dani): the same estimator at every dip 50 W-50 E, both Cd; its own table and
+# keys (08a_hom_xx_dipscan_*), NOT in the sensitivity ranges above (vertical, 80 E and 70 E are those rows again)
+dipscan_rows = []
+for dip in ("50w", "60w", "70w", "80w", "90", "80e", "70e", "60e", "50e"):
+    for cd in CD_TAG:
+        tag = "" if dip == "90" else f"_dip{dip}"
+        products_file = os.path.join(dir_08c, f"inversion_products{tag}{CD_TAG[cd]}.npz")
+        assert os.path.exists(products_file), f"missing 08c dip-scan product {products_file}: run 08c"
+        products_08c = np.load(products_file)
+        assert np.allclose(products_08c["sample_lon"], samples.lon) and np.allclose(products_08c["sample_lat"], samples.lat), \
+            f"{products_file}: another sample set"
+        assert json.loads(str(products_08c["settings"]))["field_fingerprint"] == field_fingerprint, f"{products_file} fits another 06 field: re-run 08c"
+        west, east = block_deflections(products_08c["signed_d_km"][xx_samples] * 1e3, products_08c["model_homog_mm"][xx_samples])
+        dipscan_rows.append(dict(dip=dip, run=f"default{tag}{CD_TAG[cd]}", cd=cd, sigma=sigma_locked, W_mm=west, E_mm=east))
+deflections_dipscan = pd.DataFrame(dipscan_rows)
+deflections_dipscan.to_csv(os.path.join(out_dir, "xx_deflections_homog_dipscan.csv"), index=False, float_format="%.3f")
+dipscan_ranges = {}
+for family_name, family in (("nugget", deflections_dipscan[deflections_dipscan.cd == "nugget"]), ("all", deflections_dipscan)):
+    dipscan_ranges[family_name] = dict(W_min=float(family.W_mm.min()), W_max=float(family.W_mm.max()),
+                                       E_min=float(family.E_mm.min()), E_max=float(family.E_mm.max()))
+print("homogeneous dip scan, X-X' deflections at the samples:")
+print(deflections_dipscan.round(2).to_string(index=False))
 selected_hom_samples = deflections[deflections.setting == "selected"].iloc[0]
 deflection_ranges = {}
 for family_name, family in (("nugget", deflections[deflections.cd == "nugget"]), ("all", deflections)):
@@ -1637,6 +1659,9 @@ REG.register("08a_hom_xx_samples_E_mm", selected_hom_samples.E_mm, "mm", 2, wher
 for family_name, family_range in deflection_ranges.items():
     for quantity in ("W_min", "W_max", "E_min", "E_max"):
         REG.register(f"08a_hom_xx_sens_{family_name}_{quantity}_mm", family_range[quantity], "mm", 2, where="P7", cell="deflections", sidecar=sidecar)
+for family_name, family_range in dipscan_ranges.items():          # the homogeneous dip scan 50 W-50 E (2026-10-24; not in the text yet)
+    for quantity in ("W_min", "W_max", "E_min", "E_max"):
+        REG.register(f"08a_hom_xx_dipscan_{family_name}_{quantity}_mm", family_range[quantity], "mm", 2, where="dip scan", cell="deflections", sidecar=sidecar)
 for span_name, offset in boundary_offset.items():
     REG.register(f"08a_sfcvm_boundary_{span_name}_min_m", offset["min_m"], "m", 0, where="P7", cell="materials", sidecar=sidecar)
     REG.register(f"08a_sfcvm_boundary_{span_name}_max_m", offset["max_m"], "m", 0, where="P7", cell="materials", sidecar=sidecar)

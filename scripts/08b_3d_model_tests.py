@@ -447,6 +447,14 @@ for cd in CD_TAG:                                                           # th
             assert abs(float(row[col].iloc[0]) - mine) <= 1e-6 * abs(mine), f"{final_file} {run_tag(cd)} / {medium} {col} differs from 08a's"
 print(f"PASS: {final_file} is newer than the 06 field, every PyLith row fits field {field_fingerprint} at sigma {sigma_locked:g}, "
       f"and its default rows equal 08a's")
+# the homogeneous dip scan of 08c (2026-10-24, Dani): reported on its own in [5b], kept out of the sensitivity table's count,
+# ranges and figure (they are the paper's numbers, unchanged by the scan)
+DIP_SCAN = ("50e", "60e", "80w", "70w", "60w", "50w")
+in_dip_scan = pylith_rows.run.str.contains("|".join(f"_dip{d}" for d in DIP_SCAN))
+dip_scan_rows = pylith_rows[in_dip_scan].copy()
+pylith_rows = pylith_rows[~in_dip_scan]
+assert (dip_scan_rows.medium == "homog").all() and len(dip_scan_rows) == 2 * len(DIP_SCAN), \
+    f"expected the homogeneous dip scan, full and nugget Cd, {2 * len(DIP_SCAN)} rows; got {len(dip_scan_rows)}"
 sensitivity["provenance"] = f"copied by 08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')} from {final_file}"
 sensitivity.to_csv(os.path.join(out_dir, "sensitivity_runs.csv"), index=False)
 show = sensitivity.drop(columns=["summary_png", "provenance", "field_fingerprint", "made"]).copy()
@@ -488,6 +496,73 @@ for tag in tags:
 all_runs = plot_test_summary.main(dir_08c, os.path.join(fig_dir, "figS_pylith_all_tests.png"))
 assert len(all_runs) == len(pylith_rows), f"all-tests figure drew {len(all_runs)} runs, the table has {len(pylith_rows)}"
 print(f"{len(summary_pages)} one-page summaries; all-tests figure on {len(all_runs)} runs")
+
+# %% [markdown]
+# ## [5b] The homogeneous dip scan, 50 W to 50 E (2026-10-24)
+#
+# Question (Dani): can a dipping fault in the homogeneous medium fit the near-field asymmetry, or does that need the 3D
+# (SFSVM) medium? The homogeneous model of 08c at every dip from 50 W to 50 E in 10 deg steps (vertical, 80 E and 70 E
+# from the sensitivity runs, the rest from the dip-scan rows), both Cd, at the locked sigma: rms over all samples and within
+# 300 m west / east of the trace. Earlier (07b, CSI, previous field, 2026-09-30) the fit improved monotonically from
+# 60 E to 50 W with no minimum. Written to `dip_scan_homog.csv` and `qc08b_dip_scan_homog.png`; registered in [6]
+# (`08b_dipscan_*`); not in the text yet.
+
+# %%
+## [5b]
+DIP_ORDER = ["50w", "60w", "70w", "80w", "90", "80e", "70e", "60e", "50e"]     # west to east
+
+
+def dip_signed_deg(dip):
+    """Tilt from vertical in degrees, east-dipping positive (90 -> 0, 80e -> +10, 50w -> -40)."""
+    return 0.0 if dip == "90" else (90.0 - float(dip[:-1])) * (1.0 if dip[-1] == "e" else -1.0)
+
+
+scan_rows = []
+for dip in DIP_ORDER:
+    for cd in CD_TAG:
+        run = f"default{'' if dip == '90' else '_dip' + dip}{CD_TAG[cd]}"
+        source = dip_scan_rows if dip in DIP_SCAN else pylith_rows
+        row = source[(source.run == run) & (source.medium == "homog")]
+        assert len(row) == 1, f"dip scan: {run} / homog: {len(row)} rows in {final_file}"
+        row = row.iloc[0]
+        scan_rows.append(dict(dip=dip, tilt_east_deg=dip_signed_deg(dip), cd=cd, run=run, rms_mm=row.rms_mm,
+                              rms_W300_mm=row.rms_W300_mm, rms_E300_mm=row.rms_E300_mm, Mw_30gpa=row.Mw_30gpa,
+                              surface_pct=row.surface_pct))
+dip_scan = pd.DataFrame(scan_rows)
+dip_scan["provenance"] = f"08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')} from {final_file}; 06 field {field_fingerprint}"
+dip_scan.to_csv(os.path.join(out_dir, "dip_scan_homog.csv"), index=False)
+dip_scan_best = {}
+for cd in CD_TAG:
+    family = dip_scan[dip_scan.cd == cd].reset_index(drop=True)
+    i_best = int(family.rms_mm.idxmin())
+    dip_scan_best[cd] = dict(dip=family.dip[i_best], tilt=family.tilt_east_deg[i_best], rms=family.rms_mm[i_best],
+                             at_edge=i_best in (0, len(family) - 1),
+                             monotonic=bool(np.all(np.diff(family.rms_mm.values) > 0) or np.all(np.diff(family.rms_mm.values) < 0)))
+    print(f"homogeneous dip scan, {cd} Cd: rms " + ", ".join(f"{d} {r:.2f}" for d, r in zip(family.dip, family.rms_mm))
+          + f" mm; best {dip_scan_best[cd]['dip']} ({dip_scan_best[cd]['rms']:.2f} mm)"
+          + (" AT THE EDGE OF THE SCAN" if dip_scan_best[cd]["at_edge"] else "")
+          + ("; monotonic across the scan" if dip_scan_best[cd]["monotonic"] else ""))
+
+mpl_paper_style(base=8)
+fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.0), sharey=True, constrained_layout=True)
+for ax, cd, letter in zip(axes, CD_TAG, "AB"):
+    family = dip_scan[dip_scan.cd == cd]
+    for col, colour, name in (("rms_mm", "#000000", "all samples"), ("rms_W300_mm", "#E69F00", "within 300 m west"),
+                              ("rms_E300_mm", "#0072B2", "within 300 m east")):           # Okabe-Ito: black, orange, blue
+        ax.plot(family.tilt_east_deg, family[col], "-o", color=colour, ms=4, lw=1.2, label=name)
+    ax.axvline(0.0, color="0.6", lw=0.6, ls=":")
+    ax.set_xticks(family.tilt_east_deg)
+    ax.set_xticklabels([d.upper().replace("90", "V") for d in family.dip], fontsize=7)
+    ax.set_xlabel("fault dip (V = vertical)")
+    ax.set_title(rf"$\bf{{{letter}}}$  homogeneous model, {cd} Cd", loc="left", fontsize=8)
+axes[0].set_ylabel("rms misfit (mm)")
+axes[0].legend(fontsize=7, loc="best")
+fig.text(0.01, -0.02, f"08c dip-scan and sensitivity rows, sigma {sigma_locked:g}, 06 field {field_fingerprint}; "
+         f"{len(dip_scan_rows) + 6} inversions", fontsize=6, color="0.4")
+dip_scan_png = os.path.join(fig_dir, "qc08b_dip_scan_homog.png")
+fig.savefig(dip_scan_png, dpi=300, bbox_inches="tight")
+plt.close(fig)
+print(f"wrote dip_scan_homog.csv and {dip_scan_png}")
 
 # %% [markdown]
 # ## [6] Summary and registry
@@ -552,6 +627,13 @@ lines.append(f"sensitivity table: {len(pylith_rows)} PyLith inversions at sigma 
              f"surface {sens_sfcvm.surface_pct.min():.0f}-{sens_sfcvm.surface_pct.max():.0f} %; "
              f"own L-curve picks {', '.join(f'{v:g}' for v in sorted(set(sens_sfcvm.sigma_lcurve_pick)))} (not used)")
 print("\n".join(lines))
+for cd in CD_TAG:                                                   # [5b] the homogeneous dip scan (2026-10-24)
+    family = dip_scan[dip_scan.cd == cd]
+    best = dip_scan_best[cd]
+    lines.append(f"homogeneous dip scan 50 W-50 E, {cd} Cd: rms " + ", ".join(f"{d} {r:.2f}" for d, r in zip(family.dip, family.rms_mm))
+                 + f" mm; W300 " + ", ".join(f"{r:.2f}" for r in family.rms_W300_mm) + "; E300 "
+                 + ", ".join(f"{r:.2f}" for r in family.rms_E300_mm) + f"; best {best['dip']}"
+                 + (" (edge of the scan)" if best["at_edge"] else "") + ("; monotonic" if best["monotonic"] else ""))
 with open(os.path.join(out_dir, "tests_summary.txt"), "w") as fh:
     fh.write(f"# 08b_3d_model_tests {time.strftime('%Y-%m-%d %H:%M')}\n" + "\n".join(lines) + "\n")
 input_files = [os.path.join(dir_07a, "model_data_07a.npz"), final_file]
@@ -614,5 +696,12 @@ for row in unshifted_rows.itertuples():
 for row in surf_nugget_rows.itertuples():
     for col, unit, places in (("rms_mm", "mm", 2), ("Mw_30gpa", "Mw", 2), ("surface_pct", "%", 0)):
         REG.register(f"08b_surf_nugget_{row.medium}_{col}", float(getattr(row, col)), unit, places, where="M8", cell="sensitivity", sidecar=sidecar)
+# [5b] the homogeneous dip scan, 50 W to 50 E (2026-10-24; not in the text yet): rms per dip, best dip as tilt from vertical (east +)
+for row in dip_scan.itertuples():
+    cd_key = "nugget" if row.cd == "nugget" else "full"
+    for col in ("rms_mm", "rms_W300_mm", "rms_E300_mm"):
+        REG.register(f"08b_dipscan_hom_{cd_key}_{row.dip}_{col}", float(getattr(row, col)), "mm", 2, where="dip scan", cell="dip scan", sidecar=sidecar)
+for cd in CD_TAG:
+    REG.register(f"08b_dipscan_hom_{cd}_best_tilt_east_deg", float(dip_scan_best[cd]["tilt"]), "deg", 0, where="dip scan", cell="dip scan", sidecar=sidecar)
 REG.render()
 print("08b_3d_model_tests complete")
