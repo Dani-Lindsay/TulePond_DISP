@@ -1242,6 +1242,34 @@ def slip_weighted_stress_drop_pa(dtau_pa, slip_m, vertex_area_m2):
     return float(np.sum(dtau_pa * weight) / np.sum(weight))
 
 
+def potency_extent(sub_potency_m3, sub_depth_m, sub_km, fraction=0.9):
+    """Depth extent w (m) and along-strike length L (km) that hold `fraction` of a slip model's potency: w = the depth
+    above which that share of the potency lies; L = the span between the (1 - fraction)/2 and (1 + fraction)/2 potency
+    quantiles along strike. Inputs are the sub-triangle potencies, depths and along-strike km of 08a [15e].
+    Source: written for this project (2026-10-25)."""
+    p = np.asarray(sub_potency_m3, float).ravel()
+    assert (p >= 0).all() and p.sum() > 0, "potency must be non-negative with a positive total"
+
+    def quantile(values, q):
+        order = np.argsort(values)
+        cum = np.cumsum(p[order]) / p.sum()
+        return float(np.asarray(values).ravel()[order][np.searchsorted(cum, q)])
+    depth, km = np.asarray(sub_depth_m, float).ravel(), np.asarray(sub_km, float).ravel()
+    w_m = quantile(depth, fraction)
+    l_km = quantile(km, 0.5 + fraction / 2) - quantile(km, 0.5 - fraction / 2)
+    assert w_m > 0 and l_km > 0
+    return w_m, l_km
+
+
+def ka_stress_drop_pa(potency_m3, w_m, l_km, mu_pa):
+    """Stress drop (Pa) of a long strike-slip fault that reaches the surface (Kanamori & Anderson 1975, Table 1, after
+    Knopoff 1958):  delta_sigma = (2 / pi) * mu * D / w,  with D = potency / (L w) the mean slip over the L x w
+    rupture. Requires L >> w (asserted L > 3 w). Source: Kanamori & Anderson (1975) BSSA 65, 1073-1095 (no DOI)."""
+    assert l_km * 1e3 > 3 * w_m, f"L ({l_km:.2f} km) not >> w ({w_m:.0f} m): the long-fault formula does not apply"
+    d_mean_m = potency_m3 / (l_km * 1e3 * w_m)
+    return float(2.0 / np.pi * mu_pa * d_mean_m / w_m), d_mean_m
+
+
 # =====================================================================================================================
 # 10. Provenance and running PyLith
 # =====================================================================================================================
