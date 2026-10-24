@@ -81,3 +81,38 @@ def test_screw_dislocation_far_and_near():
     assert np.isclose(sc.screw_dislocation_mm(10.0, 1000.0, 1e9), 0.0, atol=1e-5)
     assert np.isclose(sc.screw_dislocation_mm(10.0, 1000.0, 1e-9), 5.0, atol=1e-5)   # s/2 at the fault, east side
 
+
+
+def test_match_impulse_order_undoes_a_vertex_renumbering():
+    """Two GreensFns runs of one mesh with different MPI rank counts number the fault vertices differently
+    (2026-10-25): the match must recover the reference impulse order from coordinates alone."""
+    rng = np.random.default_rng(0)
+    fault = rng.uniform(-1000, 1000, (50, 3))
+    vertex_index = np.array([3, 7, 11, 20, 42, 5])                               # the impulse vertices of the reference run
+    perm = rng.permutation(50)                                                   # the other run's vertex numbering
+    fault_b = fault[perm]
+    inv = np.argsort(perm)
+    vertex_index_b = rng.permutation(inv[vertex_index])                          # same impulses, numbered and ordered differently
+    idx = sc.match_impulse_order(fault, vertex_index, fault_b, vertex_index_b)
+    assert np.allclose(fault_b[vertex_index_b][idx], fault[vertex_index])
+    G_b = np.arange(6)[None, :] * np.ones((4, 1))                                # column j = impulse vertex_index_b[j]
+    assert np.allclose(fault_b[vertex_index_b[G_b[0, idx].astype(int)]], fault[vertex_index])
+
+
+def test_match_impulse_order_rejects_a_different_mesh():
+    fault = np.random.default_rng(1).uniform(-1000, 1000, (20, 3))
+    other = fault.copy(); other[4] += 0.5                                        # one vertex moved 0.5 m
+    with pytest.raises(AssertionError):
+        sc.match_impulse_order(fault, np.arange(5), other, np.arange(5))
+
+
+def test_match_impulse_order_on_the_5_and_8_rank_order2_runs():
+    """The real case: gf_default_sfcvm_order2 (5 ranks, 2026-10-25) vs gf_default_homog_order2 (8 ranks, 2026-09-30)."""
+    data = os.path.expanduser("~/work/proj_TulePond_DISP")
+    a = os.path.join(data, "modeling_SFCVM", "gf", "G_gf_default_sfcvm_order2.npz")
+    b = os.path.join(data, "modeling_uniform", "gf", "G_gf_default_homog_order2.npz")
+    if not (os.path.exists(a) and os.path.exists(b)):
+        pytest.skip("order-2 G matrices not available")
+    ga, gb = np.load(a), np.load(b)
+    idx = sc.match_impulse_order(ga["fault_xyz"], ga["vertex_index"], gb["fault_xyz"], gb["vertex_index"])
+    assert np.allclose(gb["fault_xyz"][gb["vertex_index"]][idx], ga["fault_xyz"][ga["vertex_index"]], atol=1e-3)

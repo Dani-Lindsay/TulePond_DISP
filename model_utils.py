@@ -1006,12 +1006,35 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
     return fault_model, insar_data, surface
 
 
+def match_impulse_order(ref_fault_xyz, ref_vertex_index, fault_xyz, vertex_index, label="", tol_m=1e-3):
+    """Column order that puts one GreensFns run's impulses into a reference run's order, matched by COORDINATES.
+    PyLith numbers the fault vertices differently with a different number of MPI ranks, so two runs of the same mesh can
+    list the same impulses in a different order. Asserts the same fault mesh (every vertex within tol_m, one to one)
+    and the same impulse vertices; returns idx with fault_xyz[vertex_index][idx] == ref_fault_xyz[ref_vertex_index].
+    Source: written for this project (2026-10-25)."""
+    from scipy.spatial import cKDTree
+    ref_fault = np.asarray(ref_fault_xyz, float)
+    fault = np.asarray(fault_xyz, float)
+    assert fault.shape == ref_fault.shape, f"fault mesh differs ({label}: {fault.shape} vs {ref_fault.shape})"
+    d_fault, i_fault = cKDTree(fault).query(ref_fault)
+    assert d_fault.max() < tol_m and np.unique(i_fault).size == i_fault.size, \
+        f"fault mesh differs ({label}: vertex match up to {d_fault.max():.3g} m)"
+    ref_imp = ref_fault[np.asarray(ref_vertex_index)]
+    imp = fault[np.asarray(vertex_index)]
+    assert imp.shape == ref_imp.shape, f"impulse count differs ({label}: {imp.shape[0]} vs {ref_imp.shape[0]})"
+    d_imp, idx = cKDTree(imp).query(ref_imp)
+    assert d_imp.max() < tol_m and np.unique(idx).size == idx.size, f"impulse vertices differ ({label}: up to {d_imp.max():.3g} m)"
+    return idx
+
+
 def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, km_window, creep_lo_km, creep_hi_km,
                      surf_floor_mm, trace_south_north, trace_xy_m, frame_lonlat, crs, profile_lats, near_trace_cut_km=0.0,
                      trace_km_pp=None):
     """Everything an inversion on PyLith Green's functions needs, for one mesh and one sample set, built from the
     products alone: the G matrix of every medium (load_G; rebuilt when the cached one was projected on another strike),
-    the shared tent geometry (TentFault; asserted identical for every medium) and its CSI template, the measured-
+    the shared tent geometry (TentFault; the same mesh in every medium, matched by vertex coordinates since 2026-10-25
+    because PyLith's vertex numbering depends on the MPI rank count; G columns reordered to the first medium's impulse
+    order, `impulse_order`) and its CSI template, the measured-
     crossing surface constraint on the mesh top edge (crossing_constraint -> csi.surfaceslip), the signed distance of
     every sample from 07a's trace and the 300 m west / east masks, the top-edge vertices of the SSE section and the
     surface % denominator. run_names: medium -> PyLith GreensFns run; medium_dirs: medium -> (pylith_output dir, gf
@@ -1030,9 +1053,14 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, 
         gnpz[medium] = load_G(run_name, points_npz, strike_deg, pylith_output_dir, gf_dir)
         G[medium] = gnpz[medium]["G_rl_m_per_m"]
     ref_medium = list(run_names)[0]
+    # PyLith numbers the fault vertices differently with a different number of MPI ranks (2026-10-25: 5-rank and 8-rank
+    # runs of the same mesh). So the media are matched by COORDINATES, not by index: the same fault vertices (within
+    # 1 mm, one to one) and the same impulse vertices; each medium's G columns are reordered into the reference order.
+    impulse_order = {}
     for medium in run_names:
-        assert np.array_equal(gnpz[ref_medium]["vertex_index"], gnpz[medium]["vertex_index"]), "impulse order differs between media"
-        assert np.array_equal(gnpz[ref_medium]["fault_xyz"], gnpz[medium]["fault_xyz"]), "fault mesh differs between media"
+        impulse_order[medium] = match_impulse_order(gnpz[ref_medium]["fault_xyz"], gnpz[ref_medium]["vertex_index"],
+                                                    gnpz[medium]["fault_xyz"], gnpz[medium]["vertex_index"], label=medium)
+        G[medium] = G[medium][:, impulse_order[medium]]                    # columns in the reference impulse order
     tents = TentFault(gnpz[ref_medium], to_mesh, profile_lats)
     template = tent_fault_template(tents, frame_lonlat)
     # the measured crossings inside the data window; the surface % denominator from them
@@ -1066,7 +1094,7 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, 
         sample_km_pp = trace_km_pp[nearest]
     in_section_surface = (np.isin(np.arange(tents.n_imp), tents.surface_imp) & (tents.imp_km >= creep_lo_km)
                           & (tents.imp_km <= creep_hi_km))
-    return dict(gnpz=gnpz, G=G, ref_medium=ref_medium, tents=tents, template=template, constraint=constraint,
+    return dict(gnpz=gnpz, G=G, ref_medium=ref_medium, impulse_order=impulse_order, tents=tents, template=template, constraint=constraint,
                 surface=surface, G_surface=constraint["G"], denominator_mm=denominator_mm,
                 n_section_crossings=n_section_crossings, points=points, signed_d_km=signed_d_km, west300=west300,
                 east300=east300, in_section_surface=in_section_surface, to_mesh=to_mesh, keep=keep,

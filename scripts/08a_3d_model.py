@@ -1281,8 +1281,9 @@ for off, row_off in members["alignment_rows"].items():
     grid_off = os.path.join(paths_sfcvm["spatialdb"], f"sfcvm_v26-0_aligned_{off}_grid.npz")
     assert os.path.exists(grid_off), f"missing {grid_off} (the grid of the {medium_off} medium)"
     g_off = np.load(os.path.join(paths_sfcvm["gf"], f"G_{run_off}.npz"))
-    assert (np.array_equal(g_off["fault_xyz"], fault_xyz) and np.array_equal(g_off["fault_cells"], fault_cells)
-            and np.array_equal(g_off["vertex_index"], vertex_index)), f"G_{run_off}: another fault mesh or impulse order"
+    # the same fault mesh and impulses, matched by coordinates (vertex numbering depends on the MPI rank count, 2026-10-25);
+    # the slip used below comes from 08c's products, already in the reference impulse order
+    model_utils.match_impulse_order(fault_xyz, vertex_index, g_off["fault_xyz"], g_off["vertex_index"], label=f"G_{run_off}")
     _, mu_west_off, mu_east_off, rel_off = model_utils.mu_beside_fault(
         os.path.join(paths_sfcvm["pylith_output"], f"{run_off}-elastic_info.h5"), grid_off, tents, medium_off)
     assert rel_off < 0.05, f"{run_off}: PyLith's cell rigidity differs from its grid by more than 5 % (median)"
