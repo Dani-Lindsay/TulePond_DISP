@@ -952,11 +952,12 @@ def _data_cd_core(mode, samples, cov_p, nug_power, floor_px=None):
 
 
 def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, sigma, lam, frame_lonlat, use_surface=True,
-                 vel_insar=None, vel_surface=None, name="tents"):
+                 vel_insar=None, vel_surface=None, name="tents", ramp_spec="1"):
     """Right-lateral slip on the PyLith tents (mm) from the InSAR samples and, with use_surface, the crossing
     constraint: 07a's inversion (invert_triangles) with the PyLith G entered by `Fault.setGFs` instead of computed:
-    exponential prior buildCmXY(sigma, lam) on the vertex positions, one constant per dataset (csi.transformation),
-    NNLS (slip >= 0, the constants free) with multisourcesolve. Works on deep copies of the template fault, the
+    exponential prior buildCmXY(sigma, lam) on the vertex positions, one constant per dataset (csi.transformation;
+    ramp_spec for the InSAR samples, CSI polynomial terms: "1" a constant (default), "1,x,y" a plane solved jointly with slip,
+    2026-10-25; the surface data keep a constant), NNLS (slip >= 0, the constants free) with multisourcesolve. Works on deep copies of the template fault, the
     samples (Cd replaced by `Cd`) and the surface data; vel_insar / vel_surface replace their data vectors (bootstrap
     and recovery tests). With use_surface False the surface data are not inverted but still predicted (a check).
     Returns (fault, insar data, surface data), each with its synth and the fitted constant removed from vel.
@@ -978,7 +979,7 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
     else:
         solve_datas = [insar_data]
     trans = transform("ramps", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    trans.buildGFs(solve_datas, ["1"] * len(solve_datas), verbose=False)
+    trans.buildGFs(solve_datas, [str(ramp_spec)] + ["1"] * (len(solve_datas) - 1), verbose=False)
     fault_model.assembleGFs(solve_datas, slipdir="s", verbose=False)
     fault_model.assembled(solve_datas, verbose=False)
     fault_model.assembleCd(solve_datas, verbose=False)
