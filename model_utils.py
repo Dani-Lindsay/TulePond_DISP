@@ -1028,6 +1028,71 @@ def match_impulse_order(ref_fault_xyz, ref_vertex_index, fault_xyz, vertex_index
     return idx
 
 
+def analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=8, verbose=False):
+    """Homogeneous half-space Green's functions of the PyLith tents (unit right-lateral slip at one impulse vertex,
+    linear to zero at its neighbours), on the SAME fault mesh: every fault triangle touching an impulse vertex is split
+    into n_sub^2 constant-slip sub-triangles, each sub-triangle's displacement comes from CSI's triangular dislocation
+    (Meade 2007, Poisson solid, `TriangularPatches.buildGFs`), and is added to each corner tent with the tent's value at
+    the sub-triangle centroid. Exact for a half-space up to the sub-division (n_sub 8 vs 16: 0.3 %, 2026-10-25
+    tent check). Works for any dip (the triangles carry the geometry). Sign: CSI's strike-slip with the normals turned
+    east (homogeneizeStrike(0, -1)) is left-lateral for this trace, so G = -G_csi (checked against PyLith, tent check);
+    callers should still assert a uniform-slip east-minus-west step > 0. Returns G (n_samples, tents.n_imp), m per m.
+    Source: written for this project (2026-10-26), generalising order2_surface_tent_check_2026-10-25/tent_check.py."""
+    from csi import TriangularPatches, insar
+    line = insar("samples", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
+    line.read_from_binary(np.zeros(np.size(lon)), np.asarray(lon, float), np.asarray(lat, float), err=np.ones(np.size(lon)),
+                          los=np.tile(np.asarray(look, float), (np.size(lon), 1)), remove_nan=False, remove_zeros=False)
+    column_of_vertex = {int(v): c for c, v in enumerate(tents.vertex_index)}
+    sub_corners = []                                            # the n_sub^2 sub-triangles, corners in barycentric (i, j)
+    for i in range(n_sub):
+        for j in range(n_sub - i):
+            sub_corners.append(((i, j), (i + 1, j), (i, j + 1)))
+            if i + j < n_sub - 1:
+                sub_corners.append(((i + 1, j), (i + 1, j + 1), (i, j + 1)))
+    lams = np.array([[[a / n_sub, b / n_sub, 1 - (a + b) / n_sub] for a, b in sc] for sc in sub_corners])   # (n_sub^2, 3, 3)
+    assert lams.shape[0] == n_sub ** 2
+    w_corner = lams.mean(1)                                      # tent value of each corner at each sub-triangle centroid
+    pts, rows, cols, vals = [], [], [], []
+    for cell in tents.fault_cells:
+        hit = [k for k, v in enumerate(cell) if int(v) in column_of_vertex]
+        if not hit:
+            continue
+        corners = tents.fault_xyz[cell]                          # (3, 3) m, z up
+        first = len(pts) * n_sub ** 2
+        pts.append(np.einsum("sab,bc->sac", lams, corners))      # (n_sub^2, 3, 3) sub-triangle corners
+        for k in hit:
+            rows.append(first + np.arange(n_sub ** 2))
+            cols.append(np.full(n_sub ** 2, column_of_vertex[int(cell[k])]))
+            vals.append(w_corner[:, k])
+    pts = np.concatenate(pts)                                    # (n_patch, 3, 3)
+    n_patch = pts.shape[0]
+    from scipy.sparse import csr_matrix
+    W = csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n_patch, tents.n_imp))
+    assert np.all(np.asarray(W.sum(0)).ravel() > 0), "an impulse vertex touches no fault triangle"
+    G = np.zeros((np.size(lon), tents.n_imp))
+    chunk = 5000                                                 # sub-triangles per CSI fault (memory: n_samples x chunk)
+    for start in range(0, n_patch, chunk):
+        part = pts[start:start + chunk]
+        lon_v, lat_v = to_mesh.transform(part[:, :, 0].ravel(), part[:, :, 1].ravel(), direction="INVERSE")
+        flt = TriangularPatches("analytic tents", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
+        x, y = flt.ll2xy(lon_v, lat_v)
+        flt.Vertices = np.c_[x, y, -part[:, :, 2].ravel() / 1e3]   # km, depth positive
+        flt.Faces = np.arange(3 * part.shape[0]).reshape(-1, 3)
+        flt.vertices2ll()
+        flt.patch = [flt.Vertices[f] for f in flt.Faces]
+        flt.patch2ll()
+        flt.setdepth()
+        flt.homogeneizeStrike(direction=0, sign=-1.0)            # one strike direction for every sub-triangle (as tent_check)
+        flt.initializeslip()
+        flt.buildGFs(line, vertical=True, slipdir="s", verbose=False)
+        G_part = flt.G[line.name]["strikeslip"]                  # (n_samples, chunk), per unit slip
+        assert G_part.shape == (np.size(lon), part.shape[0]), f"CSI G {G_part.shape} vs {np.size(lon)} x {part.shape[0]}"
+        G += np.asarray((W[start:start + chunk].T @ G_part.T).T)
+        if verbose:
+            print(f"  analytic tents: {min(start + chunk, n_patch):,} / {n_patch:,} sub-triangles", flush=True)
+    return -G
+
+
 def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, km_window, creep_lo_km, creep_hi_km,
                      surf_floor_mm, trace_south_north, trace_xy_m, frame_lonlat, crs, profile_lats, near_trace_cut_km=0.0,
                      trace_km_pp=None):
