@@ -474,8 +474,7 @@ paths_gps = {
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
-    "07a_uniform_model", "07b_uniform_model_tests", "08a_3d_model", "08b_3d_model_tests", "08c_3d_model_sensitivity",
-    "08b_sensitivity", "07c_fig2",
+    "07a_uniform_model", "07c_fig2", "08a_3d_model", "08b_sensitivity",
     "09_alignment_arrays",
     "10_rain_seasonality", "11_forecast", "12_paper_figures")}
 # The pre-2026-09-24 names 09_seasonality_forecast and 10_paper_figures are gone:

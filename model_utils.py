@@ -28,6 +28,7 @@ Contents, in the order the notebooks use them:
                                                        match_impulse_order, analytic_tent_G, positions_fingerprint,
                                                        analytic_tent_G_cached,
                                                        tent_model_setup, tent_numbers, tent_lcurve, own_corner,
+                                                       uniform_slip_shape, uniform_slip_fit, profile_samples,
                                                        correlated_noise, materna_stress_drop_pa
   9. PyLith forward runs, materials, stress            read_forward_points, read_forward_slip, superposition_check,
                                                        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
@@ -1058,20 +1059,43 @@ def match_impulse_order(ref_fault_xyz, ref_vertex_index, fault_xyz, vertex_index
     return idx
 
 
-def analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=8, verbose=False):
+def _csi_triangle_chunk(lon_v, lat_v, depth_km_v, lon, lat, look, frame_lonlat):
+    """CSI triangular-dislocation (Meade 2007) strike-slip Green's functions of one chunk of constant-slip triangles
+    (corners lon_v, lat_v, depth_km_v, 3 per triangle, flattened) at the samples (lon, lat), projected on `look`:
+    (n_samples, n_triangles), per unit slip, CSI's sign. A separate function so chunks can run in parallel processes."""
+    from csi import TriangularPatches, insar
+    line = insar("samples", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
+    line.read_from_binary(np.zeros(np.size(lon)), np.asarray(lon, float), np.asarray(lat, float), err=np.ones(np.size(lon)),
+                          los=np.tile(np.asarray(look, float), (np.size(lon), 1)), remove_nan=False, remove_zeros=False)
+    flt = TriangularPatches("analytic tents", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
+    x, y = flt.ll2xy(lon_v, lat_v)
+    flt.Vertices = np.c_[x, y, depth_km_v]                       # km, depth positive
+    flt.Faces = np.arange(np.size(lon_v)).reshape(-1, 3)
+    flt.vertices2ll()
+    flt.patch = [flt.Vertices[f] for f in flt.Faces]
+    flt.patch2ll()
+    flt.setdepth()
+    flt.homogeneizeStrike(direction=0, sign=-1.0)                # one strike direction for every sub-triangle (as tent_check)
+    flt.initializeslip()
+    flt.buildGFs(line, vertical=True, slipdir="s", verbose=False)
+    G_part = flt.G[line.name]["strikeslip"]
+    assert G_part.shape == (np.size(lon), np.size(lon_v) // 3), f"CSI G {G_part.shape}"
+    return G_part
+
+
+def analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=8, verbose=False, n_workers=1):
     """Homogeneous half-space Green's functions of the PyLith tents (unit right-lateral slip at one impulse vertex,
     linear to zero at its neighbours), on the SAME fault mesh: every fault triangle touching an impulse vertex is split
     into n_sub^2 constant-slip sub-triangles, each sub-triangle's displacement comes from CSI's triangular dislocation
     (Meade 2007, Poisson solid, `TriangularPatches.buildGFs`), and is added to each corner tent with the tent's value at
     the sub-triangle centroid. Exact for a half-space up to the sub-division (n_sub 8 vs 16: 0.3 %, 2026-10-25
     tent check). Works for any dip (the triangles carry the geometry). Sign: CSI's strike-slip with the normals turned
-    east (homogeneizeStrike(0, -1)) is left-lateral for this trace, so G = -G_csi (checked against PyLith, tent check);
-    callers should still assert a uniform-slip east-minus-west step > 0. Returns G (n_samples, tents.n_imp), m per m.
+    east (homogeneizeStrike(0, -1)) is left-lateral for this trace, so G = -G_csi (checked against PyLith, tent check;
+    tests/test_model_utils.py); callers should still assert a uniform-slip east-minus-west step > 0. n_workers > 1 runs
+    the chunks of 5000 sub-triangles in parallel processes (same result: the chunks are summed in order).
+    Returns G (n_samples, tents.n_imp), m per m.
     Source: written for this project (2026-10-26), generalising order2_surface_tent_check_2026-10-25/tent_check.py."""
-    from csi import TriangularPatches, insar
-    line = insar("samples", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    line.read_from_binary(np.zeros(np.size(lon)), np.asarray(lon, float), np.asarray(lat, float), err=np.ones(np.size(lon)),
-                          los=np.tile(np.asarray(look, float), (np.size(lon), 1)), remove_nan=False, remove_zeros=False)
+    from scipy.sparse import csr_matrix
     column_of_vertex = {int(v): c for c, v in enumerate(tents.vertex_index)}
     sub_corners = []                                            # the n_sub^2 sub-triangles, corners in barycentric (i, j)
     for i in range(n_sub):
@@ -1096,30 +1120,29 @@ def analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=8, verbo
             vals.append(w_corner[:, k])
     pts = np.concatenate(pts)                                    # (n_patch, 3, 3)
     n_patch = pts.shape[0]
-    from scipy.sparse import csr_matrix
     W = csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n_patch, tents.n_imp))
     assert np.all(np.asarray(W.sum(0)).ravel() > 0), "an impulse vertex touches no fault triangle"
-    G = np.zeros((np.size(lon), tents.n_imp))
+    lon_all, lat_all = to_mesh.transform(pts[:, :, 0].ravel(), pts[:, :, 1].ravel(), direction="INVERSE")
+    depth_all = -pts[:, :, 2].ravel() / 1e3                      # km, depth positive
     chunk = 5000                                                 # sub-triangles per CSI fault (memory: n_samples x chunk)
-    for start in range(0, n_patch, chunk):
-        part = pts[start:start + chunk]
-        lon_v, lat_v = to_mesh.transform(part[:, :, 0].ravel(), part[:, :, 1].ravel(), direction="INVERSE")
-        flt = TriangularPatches("analytic tents", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-        x, y = flt.ll2xy(lon_v, lat_v)
-        flt.Vertices = np.c_[x, y, -part[:, :, 2].ravel() / 1e3]   # km, depth positive
-        flt.Faces = np.arange(3 * part.shape[0]).reshape(-1, 3)
-        flt.vertices2ll()
-        flt.patch = [flt.Vertices[f] for f in flt.Faces]
-        flt.patch2ll()
-        flt.setdepth()
-        flt.homogeneizeStrike(direction=0, sign=-1.0)            # one strike direction for every sub-triangle (as tent_check)
-        flt.initializeslip()
-        flt.buildGFs(line, vertical=True, slipdir="s", verbose=False)
-        G_part = flt.G[line.name]["strikeslip"]                  # (n_samples, chunk), per unit slip
-        assert G_part.shape == (np.size(lon), part.shape[0]), f"CSI G {G_part.shape} vs {np.size(lon)} x {part.shape[0]}"
-        G += np.asarray((W[start:start + chunk].T @ G_part.T).T)
-        if verbose:
-            print(f"  analytic tents: {min(start + chunk, n_patch):,} / {n_patch:,} sub-triangles", flush=True)
+    starts = list(range(0, n_patch, chunk))
+    jobs = [(lon_all[3 * s:3 * (s + chunk)], lat_all[3 * s:3 * (s + chunk)], depth_all[3 * s:3 * (s + chunk)],
+             np.asarray(lon, float), np.asarray(lat, float), np.asarray(look, float), tuple(frame_lonlat)) for s in starts]
+    G = np.zeros((np.size(lon), tents.n_imp))
+    if n_workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            results = pool.map(_csi_triangle_chunk, *zip(*jobs))
+            for start, G_part in zip(starts, results):
+                G += np.asarray((W[start:start + chunk].T @ G_part.T).T)
+                if verbose:
+                    print(f"  analytic tents: {min(start + chunk, n_patch):,} / {n_patch:,} sub-triangles", flush=True)
+    else:
+        for start, job in zip(starts, jobs):
+            G_part = _csi_triangle_chunk(*job)
+            G += np.asarray((W[start:start + chunk].T @ G_part.T).T)
+            if verbose:
+                print(f"  analytic tents: {min(start + chunk, n_patch):,} / {n_patch:,} sub-triangles", flush=True)
     return -G
 
 
@@ -1130,14 +1153,15 @@ def positions_fingerprint(lon, lat):
     return hashlib.sha256(np.c_[np.asarray(lon, np.float64), np.asarray(lat, np.float64)].tobytes()).hexdigest()[:12]
 
 
-def analytic_tent_G_cached(cache_npz, tents, lon, lat, look, frame_lonlat, to_mesh, n_sub, run_name, points_fingerprint):
+def analytic_tent_G_cached(cache_npz, tents, lon, lat, look, frame_lonlat, to_mesh, n_sub, run_name, points_fingerprint,
+                           n_workers=1):
     """analytic_tent_G, cached in cache_npz and keyed by its query: the PyLith run whose tents it uses, n_sub, the
     fingerprint of the sample point set and the impulse vertices (all asserted on reading, so a changed question can
     never be served a stale matrix). Computed (slow: ~1 h per 100,000 sub-triangles) only when the file is missing.
     Returns G (n_samples, tents.n_imp), m per m, right-lateral positive. Written for this project (2026-10-30)."""
     if not os.path.exists(cache_npz):
         t0 = time.time()
-        G = analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=n_sub, verbose=True)
+        G = analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=n_sub, verbose=True, n_workers=n_workers)
         os.makedirs(os.path.dirname(cache_npz), exist_ok=True)
         np.savez(cache_npz, G_rl_m_per_m=G, n_sub=n_sub, run_name=run_name, points_fingerprint=points_fingerprint,
                  imp_xyz=tents.imp_xyz, sample_lon=np.asarray(lon, float), sample_lat=np.asarray(lat, float),
@@ -1276,6 +1300,43 @@ def own_corner(solve, base_grid, refine_factors, tents, mu_ref, label, keep):
     assert table.sigma.values[1] < corner < table.sigma.values[-2], f"{label}: corner {corner:.2f} at the edge of the grid"
     print(f"{label}: L-curve corner {base_corner:.3f} on the base grid, {corner:.3f} after refining", flush=True)
     return float(corner), float(base_corner), table
+
+
+def uniform_slip_shape(tents, section_km, taper_km, depth_km, top_km=0.0):
+    """The slip pattern of the fixed-depth scan (register #19, #22): 1 on every impulse vertex between top_km and depth_km
+    deep (km) inside the SSE section, tapered linearly to 0 over taper_km at each end of the section (as 07b [9]), 0
+    elsewhere. With the tents this is full slip down to D, falling to zero at the next vertex row (one mesh cell).
+    Source: depth_scan_2026-10-28/depth_scan.py (written for this project)."""
+    full_lo, full_hi = section_km[0] + taper_km, section_km[1] - taper_km
+    along = np.clip(np.minimum(tents.imp_km - full_lo, full_hi - tents.imp_km) / taper_km + 1, 0, 1)
+    return along * (tents.imp_depth_km <= depth_km + 1e-6) * (tents.imp_depth_km >= top_km - 1e-6)
+
+
+def uniform_slip_fit(G, shape, data_mm, x_km, y_km, keep):
+    """One slip amplitude (mm) for a fixed slip pattern `shape` plus a plane (1, x, y), by least squares over the fitted
+    samples (`keep`) with equal weights (the locked weighting, register #6: every sample the nugget variance, so the
+    weights cancel). Returns (amplitude_mm, residual_mm = data minus the fitted pattern and plane, at every sample).
+    Source: depth_scan_2026-10-28/depth_scan.py (numpy least squares; written for this project)."""
+    keep = np.asarray(keep, bool)
+    design = np.c_[G @ shape, np.ones(data_mm.size), x_km, y_km]
+    coef, *_ = np.linalg.lstsq(design[keep], data_mm[keep], rcond=None)
+    return float(coef[0]), data_mm - design @ coef
+
+
+def profile_samples(lon, lat, line_ends_xy, epsg, half_width_m=300.0):
+    """The samples within half_width_m of a profile line (06's `prof_fp_<line>_ends`: x0, y0, x1, y1 in EPSG `epsg`, m)
+    and their distance along it (m from its first end). Returns (selected mask, along_m for every sample).
+    Source: scripts/model_plots/plot_run_summary.profile_selection (written for this project)."""
+    import pyproj
+    to_field = pyproj.Transformer.from_crs(4326, int(epsg), always_xy=True)
+    xw, yw, xe, ye = np.asarray(line_ends_xy, float)
+    unit = np.array([xe - xw, ye - yw])
+    length = float(np.linalg.norm(unit))
+    unit /= length
+    sx, sy = to_field.transform(np.asarray(lon, float), np.asarray(lat, float))
+    along = (sx - xw) * unit[0] + (sy - yw) * unit[1]
+    across = -(sx - xw) * unit[1] + (sy - yw) * unit[0]
+    return (np.abs(across) <= half_width_m) & (along >= 0) & (along <= length), along
 
 
 def correlated_noise(Cd, n_draws, seed):

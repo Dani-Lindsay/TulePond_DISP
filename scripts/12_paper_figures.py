@@ -17,7 +17,7 @@
 # | Paper figure | Made by | File stem |
 # |---|---|---|
 # | Fig 1 | 04_event_detection | `fig1_tulepond_*` |
-# | Fig 2 (fault-parallel and vertical maps and profiles, 3D model row) | 07c_fig2, from the 3D model of 08a | `fig2_fault_parallel_vertical_*_pylith_nuggetcd` |
+# | Fig 2 (fault-parallel and vertical maps and profiles, 3D model row) | 07c_fig2, from the selected model of 08a | `fig2_fault_parallel_vertical_*_selected3d` |
 # | Fig 3 (HRKT history, onsets over rainfall, repeat intervals, forecast) | 11_forecast (panels from 09, 10) | `fig3_history_forecast_*` |
 # | S: velocity chain, GNSS tie | 01_prep_figures | `figS1_velocity_chain_*`, `figS2_gnss_tie_*` |
 # | S: rate mask, acquisitions | 03_creep_timeseries | `figS_ratemask_*`, `figS_acquisitions_*` |
@@ -27,11 +27,13 @@
 # | S: creepmeter validation, aperture ladder | 05_validation | `figS_validation_*`, `figS_binning_ladder_*` |
 # | S: arrays and InSAR, threshold sweep | 09_alignment_arrays | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*` |
 # | S: rainfall conditioning (moved from 11_forecast 2026-10-06) | 10_rain_seasonality | `figS_precip_conditioning_*` |
+# | S: slip model (L-curves, slip, fit maps, profiles, Monte Carlo) | 08a_3d_model | `figS_model_*` |
+# | S: sensitivity (sweeps, fixed-depth scan, Green's-function check, semivariogram) | 08b_sensitivity | `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` |
 #
 # (The same table is `wanted` below, which also names each figure's notebook for the staleness check.)
 #
-# Not collected here (supplement candidates, copied by hand if used): the PyLith model figures
-# `figS_pylith_*` of 08a and 08b.
+# Since the rewire of 2026-10-30 the slip-model SM figures of 08a and 08b are collected too (they replace the
+# `figS_pylith_*` figures of the retired 08a / 08b and the hand-copied sweep figures).
 #
 # **Outputs**: `Figures_<date>/paper/Fig_<name>.png` and `.pdf`. No registry keys.
 #
@@ -65,7 +67,7 @@ os.makedirs(paper, exist_ok=True)
 # paper name -> (the file pattern in fig_dir, the notebook that draws it) (one entry per line)
 wanted = {
     "Fig_1": ("fig1_tulepond_*.png", "04_event_detection"),
-    "Fig_2": ("fig2_fault_parallel_vertical_*ev_pylith_nuggetcd.png", "07c_fig2"),     # the 3D (SFSVM) model, PyLith Green's functions
+    "Fig_2": ("fig2_fault_parallel_vertical_*ev_selected3d.png", "07c_fig2"),         # the selected 3D (SFSVM) model of 08a (2026-10-30)
     "Fig_3": ("fig3_history_forecast_*.png", "11_forecast"),
     "Fig_S_velocity_chain": ("figS1_velocity_chain_*.png", "01_prep_figures"),
     "Fig_S_gnss_tie": ("figS2_gnss_tie_*.png", "01_prep_figures"),
@@ -80,6 +82,15 @@ wanted = {
     "Fig_S_arrays_insar": ("figS_tulepond_arrays_insar_*.png", "09_alignment_arrays"),
     "Fig_S_hrkt_threshold": ("figS_hrkt_threshold_sweep_*.png", "09_alignment_arrays"),
     "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "10_rain_seasonality"),   # 10 since 2026-10-06 (the rain tests left 11)
+    "Fig_S_model_lcurve": ("figS_model_lcurve.png", "08a_3d_model"),
+    "Fig_S_model_slip": ("figS_model_slip.png", "08a_3d_model"),
+    "Fig_S_model_fit_maps": ("figS_model_fit_maps.png", "08a_3d_model"),
+    "Fig_S_model_profiles": ("figS_model_profiles.png", "08a_3d_model"),
+    "Fig_S_model_montecarlo": ("figS_model_montecarlo.png", "08a_3d_model"),
+    "Fig_S_sweeps": ("figS_sweeps.png", "08b_sensitivity"),
+    "Fig_S_depth_scan": ("figS_depth_scan.png", "08b_sensitivity"),
+    "Fig_S_gf_error_vs_depth": ("figS_gf_error_vs_depth.png", "08b_sensitivity"),
+    "Fig_S_semivariogram": ("figS_semivariogram.png", "08b_sensitivity"),
 }
 # the repo notebooks each source notebook reads products of (audit_2026-10-05/A_dataflow.md, read/write table;
 # 01_prep_figures and 03 read only the prepared data)
@@ -89,7 +100,10 @@ reads_from = {
     "04_event_detection": ["02_velocity_decomposition", "03_creep_timeseries"],
     "05_validation": ["02_velocity_decomposition", "03_creep_timeseries", "04_event_detection"],
     "06_event_field_geometry": ["04_event_detection"],
+    "07a_uniform_model": ["04_event_detection", "06_event_field_geometry"],
+    "08a_3d_model": ["04_event_detection", "06_event_field_geometry", "07a_uniform_model"],
     "07c_fig2": ["04_event_detection", "06_event_field_geometry", "07a_uniform_model", "08a_3d_model"],
+    "08b_sensitivity": ["07a_uniform_model", "08a_3d_model"],
     "09_alignment_arrays": ["03_creep_timeseries", "04_event_detection", "06_event_field_geometry"],
     "10_rain_seasonality": ["03_creep_timeseries", "04_event_detection", "09_alignment_arrays"],
     "11_forecast": ["03_creep_timeseries", "04_event_detection", "09_alignment_arrays", "10_rain_seasonality"],

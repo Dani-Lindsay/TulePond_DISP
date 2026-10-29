@@ -19,7 +19,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from TulePond_filepaths import paths_out, paths_inputs, paths_sfcvm, paths_uniform
+from TulePond_filepaths import data_dir, paths_out, paths_inputs, paths_sfcvm, paths_uniform
 
 # =====================================================================================================================
 # Data (register #1-#5)
@@ -112,6 +112,19 @@ mc_noise_nugget_power = 0.5   # the noise draw's covariance: model_utils.covaria
 depth_scan_taper_km = 0.5
 depth_scan_depths_km = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.25,
                         1.5, 1.75, 2.0, 2.25, 2.5, 3.0]
+
+
+# =====================================================================================================================
+# Archived sweep results (made by scripts/sensitivity/*.py; read, never re-made, by 08a's checks and 08b's figures)
+# =====================================================================================================================
+sensitivity_dir = os.path.join(data_dir, "sensitivity_2026-10-30")   # where scripts/sensitivity/*.py write (re-run 2026-10-30)
+archived = dict(
+    sensitivity_nodip=os.path.join(data_dir, "sensitivity_2026-10-27", "sensitivity_rows_nodip.csv"),
+    sensitivity_dip=os.path.join(data_dir, "sensitivity_2026-10-27", "sensitivity_rows_dip.csv"),
+    depth_scan=os.path.join(data_dir, "depth_scan_2026-10-28", "depth_scan.csv"),
+    depth_scan_noise=os.path.join(data_dir, "depth_scan_2026-10-28", "depth_scan_noise.csv"),
+    depth_scan_buried_top=os.path.join(data_dir, "depth_scan_2026-10-28", "depth_scan_buried_top.csv"),
+)
 
 
 # =====================================================================================================================

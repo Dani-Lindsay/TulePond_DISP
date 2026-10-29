@@ -54,11 +54,11 @@ def test_mosaic_products_exist():
 
 def test_paths_out_keys_are_notebooks():
     """Every outputs/<nb> key names a notebook script in scripts/ (renumbering leaves no stale key), and the
-    3D-model notebooks (08a/08b/08c) have their keys."""
+    slip-model notebooks (07a, 07c, 08a, 08b_sensitivity; rewire 2026-10-30) have their keys."""
     scripts_dir = os.path.join(fp.repo_dir, "scripts")
     for nb in fp.paths_out:
         assert os.path.exists(os.path.join(scripts_dir, nb + ".py")), f"paths_out key {nb} has no scripts/{nb}.py"
-    assert {"08a_3d_model", "08b_3d_model_tests", "08c_3d_model_sensitivity"} <= set(fp.paths_out)
+    assert {"07a_uniform_model", "07c_fig2", "08a_3d_model", "08b_sensitivity"} <= set(fp.paths_out)
 
 
 @pytest.mark.parametrize("group,key", [("inputs", "mesh"), ("inputs", "points"), ("inputs", "spatialdb"),

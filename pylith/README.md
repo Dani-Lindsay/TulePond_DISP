@@ -1,9 +1,23 @@
 # pylith/ -- the PyLith side of the 3D slip model
 
-Everything needed to remake the PyLith 5.0.2 runs behind notebooks `08c_3d_model_sensitivity`, `08a_3d_model` and
-`08b_3d_model_tests`. The notebooks never run PyLith unless `TULEPOND_RUN_PYLITH=1`; they read the run products
-from the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit) and stop with the command below
-when one is missing.
+Everything needed to remake the PyLith 5.0.2 runs behind the slip model. Since the rewire of 2026-10-30 NO notebook runs
+PyLith: `07a_uniform_model`, `08a_3d_model` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
+built from the run products in the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit). 08a's
+"PyLith files" cell lists every file of the selected run with its path. The selected run and every setting of the model
+are declared in `model_config.py` (`gf_run`, `gf_files`).
+
+**The selected run: `gf_shallow_sfcvm_order2`** (register #8-#12) = `pylithapp.cfg` + `mat_sfcvm_nocap.cfg` + `gf.cfg` +
+`order2.cfg` (Charles Williams' order-2 set-up: order-2 displacement and Lagrange multiplier, quadrature 2, materials
+order 1, slip impulses order 1), mesh `mesh_vertical_tet_shallow.msh` (60 m fault cells within 1 km of the fault in the
+top 600 m), SFSVM v26.0 aligned on the trace, no Vs floor, no Poisson cap, 5 ranks, 17 h (25-26 Oct):
+
+```bash
+cd $DATA   # the results directory
+bash $REPO/pylith/run_gf.sh gf_shallow_sfcvm_order2 mat_sfcvm_nocap.cfg modeling_inputs/mesh/mesh_vertical_tet_shallow.msh \
+     modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb 5 modeling_inputs/points/insar_points.txt order2.cfg
+```
+(queued by `run_production_2026-10-25.sh` in the results directory; log `modeling_SFCVM/runs/gf_shallow_sfcvm_order2.log`;
+done marker `runs_done_2026-10-25/gf_shallow_sfcvm_order2`.)
 
 ```
 pylith/
@@ -43,8 +57,8 @@ with `PYLITH_WORKDIR`), and every path in the cfg files and on the command line 
 | Folder | Holds | Written by |
 |---|---|---|
 | `modeling_inputs/mesh/` | `mesh_vertical_tet_<preset>.msh`, `mesh_dip<d>_tet_default.msh`, their `_fault.npz` and `_report.txt`; `trace_tmerc.txt` | `build/generate_gmsh_*.py` |
-| `modeling_inputs/points/` | the PyLith output points = the quadtree samples: `insar_points.txt` (2386, the paper's), `insar_points_swath7.txt` (2396), `insar_points_coh07.txt` (3148), each with an `.npz` carrying the data and noise model; `fig2_points_<label>.txt` (profile points + samples) | notebook 07a [6]; 08a [14] |
-| `modeling_inputs/spatialdb/` | `impulses_km54-65_z3000.spatialdb`, `kin_slip_km57-61_z1000.spatialdb` | `build/make_impulse_db.py`, `build/make_kin_slip_db.py` |
+| `modeling_inputs/points/` | the PyLith output points = the quadtree samples: `insar_points.txt` (2386, the paper's), `insar_points_coh07.txt` (3148), each with an `.npz` carrying the data and the 5 km noise model; `insar_points_swath7.txt` (2396) and `fig2_points_<label>.txt` (old order-1 runs only) | notebook 07a [6] |
+| `modeling_inputs/spatialdb/` | `impulses_km54-65_z3000.spatialdb`, `impulses_test_km58.8-59.3_z1100.spatialdb` (strip runs), `kin_slip_km57-61_z1000.spatialdb` | `build/make_impulse_db.py`, `build/make_kin_slip_db.py` |
 | `modeling_uniform/pylith_output/` | every run in the homogeneous medium (`<run>-points.h5`, `-fault.h5`, `-elastic_info.h5`, `-parameters.json`, boundary outputs) | `run_gf.sh`, `run_fwd.sh` with `mat_homog.cfg` |
 | `modeling_uniform/gf/` | `G_<run>.npz` of the homogeneous runs | `model_utils.build_G` (notebooks) |
 | `modeling_uniform/spatialdb/` | slip databases of the homogeneous forward runs (`fig2_slip_<label>.spatialdb` + `.npz`) | 08a [14], `build/make_vertex_slip_db.py` |
@@ -83,6 +97,38 @@ Apple M-series laptop (from `runs/run_gf.log`).
 
 ## The Green's-function runs (GreensFns)
 
+### The order-2 runs (2026-10-24 to 2026-10-28): the paper's model and its sensitivity rows
+
+All with `gf.cfg` + `order2.cfg`, impulses `impulses_km54-65_z3000.spatialdb`, 5 ranks, the no-cap SFSVM cfgs (no Vs
+floor). Done markers in `runs_done_2026-10-25/` (results directory); start/done times in `<medium>/runs/run_gf.log`.
+
+| Run | Material cfg | Mesh | Points | Used for | Time |
+|---|---|---|---|---|---|
+| `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | THE SELECTED MODEL (08a); sensitivity rows on the fine mesh; depth scan | 17 h |
+| `gf_shallow_dip70e_sfcvm_order2` / `_dip70w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip70{e,w}_tet_shallow.msh` (`generate_gmsh_dip.py --preset shallow`, logs `modeling_inputs/mesh/gen_dip70{e,w}_shallow_2026-10-26.log`) | `insar_points.txt` | fine-mesh dip rows (mesh cross-check of the dip sweep) | 32 / 35 h (side by side) |
+| `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | default-mesh baseline of the forward-model rows; vertical of the dip sweep | 4.2 h |
+| `gf_default_sfcvm_e50_order2` / `_w50_order2` | `mat_sfcvm_e50_nocap.cfg` / `_w50_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | SFSVM alignment +/-50 m rows | 4.5 / 4.3 h |
+| `gf_default_sfcvmasis_order2` | `mat_sfcvm_asis_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | SFSVM as is (unshifted) row | 4.8 h |
+| `gf_default_sfcvm_coh07_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | data coherence 0.7 row | 4.5 h |
+| `gf_default_dip{80e,80w,70e,70w}_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | dip sweep (default mesh) | 4.5-5 h each |
+| `gf_default_homog_order2` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Green's-function check against the analytic solution (`scripts/sensitivity/gf_check.py`, A and B) | 143 min (30 Sep) |
+| `gf_shallow_homog_order2_strip` / `gf_fine_homog_order2_strip` | `mat_homog.cfg` | `mesh_vertical_tet_shallow.msh` / `_fine.msh` | `insar_points.txt` | Green's-function check B (mesh refinement); impulses only in the strip `impulses_test_km58.8-59.3_z1100.spatialdb` | 42 / 46 min |
+
+The homogeneous comparison model of the paper is NOT a PyLith run: it is CSI's analytic solution on the same tents
+(`model_utils.analytic_tent_G`, 07a; cache `modeling_uniform/gf/G_analytic_gf_shallow_sfcvm_order2_nsub8.npz`).
+
+**Moved 2026-10-25:** every order-1 SFSVM run of the table below (`gf_default_sfcvm`, `_e50`, `_w50`, `_coh07`,
+`_swath7`, `_dip80e/70e`, `gf_shallow_sfcvm`, `gf_default_sfcvmasis`, the forward runs `fwd_fig2_*`, `fwd_traction_*`,
+`fwd_default_o2_sfcvm`) and the 150 m/s Vs-floor grids were moved to `backup_vsfloor150_2026-10-25/` in the results
+directory: they used the floored SFSVM. The current `mat_sfcvm.cfg` / `mat_sfcvm_asis.cfg` (order 1, Poisson cap 0.40)
+read the re-made grids without the floor; no run of the paper uses them.
+
+**Meshes:** `mesh_vertical_tet_{default,shallow}.msh` were generated on 29-30 Sep by the pre-tidy copy
+`drafts/pylith/generate_gmsh_vertical.py` (report headers), not by `build/generate_gmsh_vertical.py`; the presets are the
+same (`PRESETS`, l.49-58), but bit identity of the two scripts' output is not recorded.
+
+### The order-1 runs (until 2026-10-25; superseded, kept for the record)
+
 All with `gf.cfg`, impulses `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb`, 8 ranks. Products in the
 medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G on 07a's strike) in its `gf/`.
 
@@ -104,7 +150,7 @@ medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G on 07a's strike) in i
 The sample positions of every point set are asserted unchanged each time 07a rewrites them
 (`model_utils.write_points_list`): a set whose positions moved needs its GreensFns runs remade.
 
-## The forward runs (FaultCohesiveKin)
+## The forward runs (FaultCohesiveKin; order 1, superseded 2026-10-25: not used by the paper)
 
 | Run | Material cfg | Mesh | Forward cfg (+ extra) | Overrides | Ranks | Read by |
 |---|---|---|---|---|---|---|
@@ -124,6 +170,7 @@ has just inverted (`build/make_vertex_slip_db.py`) and asserts that the cached r
 |---|---|---|
 | `modeling_inputs/mesh/mesh_vertical_tet_<preset>.msh` | `python3 $REPO/pylith/build/generate_gmsh_vertical.py --write --preset <default/fine/shallow/coarse>` | PyLith |
 | `modeling_inputs/mesh/mesh_dip<d>_tet_default.msh` | `python3 $REPO/pylith/build/generate_gmsh_dip.py --write --preset default --dip <80e/70e/80w>` | PyLith |
+| `modeling_inputs/mesh/mesh_dip70{e,w}_tet_shallow.msh` (2026-10-26) | `python3 $REPO/pylith/build/generate_gmsh_dip.py --write --preset shallow --dip <70e/70w>` | PyLith |
 | `modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_grid.npz` (and `_asis`, `_aligned_e50`/`_w50`, `_aligned_nocap`) | `python $REPO/pylith/build/sfcvm_grid.py [--no-align / --offset 50 / --offset -50 / --no-cap]` (`--dip` retired 2026-10-25: dipping faults use the paper grid) | opera_disp_feb13 |
 | `modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | `python3 $REPO/pylith/build/write_sfcvm_griddb.py modeling_SFCVM/spatialdb/sfcvm_v26-0_<tag>_grid.npz modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | PyLith |
 | `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | `python3 $REPO/pylith/build/make_impulse_db.py -4713 4380 3000 modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | PyLith |
