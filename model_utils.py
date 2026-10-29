@@ -25,7 +25,8 @@ Contents, in the order the notebooks use them:
                                                        local_scatter_mm, tent_rows, crossing_constraint, surface_slip_data
   7. PyLith Green's functions -> G                     read_gf_run, trace_top, build_G, load_G
   8. The tent (vertex) parameterisation and inversion  TentFault, tent_fault_template, data_cd, invert_tents,
-                                                       match_impulse_order, analytic_tent_G, analytic_tent_G_cached,
+                                                       match_impulse_order, analytic_tent_G, positions_fingerprint,
+                                                       analytic_tent_G_cached,
                                                        tent_model_setup, tent_numbers, tent_lcurve, own_corner,
                                                        correlated_noise, materna_stress_drop_pa
   9. PyLith forward runs, materials, stress            read_forward_points, read_forward_slip, superposition_check,
@@ -1120,6 +1121,13 @@ def analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=8, verbo
         if verbose:
             print(f"  analytic tents: {min(start + chunk, n_patch):,} / {n_patch:,} sub-triangles", flush=True)
     return -G
+
+
+def positions_fingerprint(lon, lat):
+    """12-hex sha256 of a sample set's positions (lon, lat as float64): the key of every matrix computed AT the samples
+    (a rewritten point file with the same positions keeps its key). Written for this project (2026-10-30)."""
+    import hashlib
+    return hashlib.sha256(np.c_[np.asarray(lon, np.float64), np.asarray(lat, np.float64)].tobytes()).hexdigest()[:12]
 
 
 def analytic_tent_G_cached(cache_npz, tents, lon, lat, look, frame_lonlat, to_mesh, n_sub, run_name, points_fingerprint):

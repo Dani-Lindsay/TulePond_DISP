@@ -52,7 +52,7 @@ if not data_dir:
 # Figures go into a DATED directory -- bump this by hand at the start of a new
 # round of figure work. Figure filenames carry their parameters, so the date is
 # the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-10-25"   # 2026-10-25 = 3D model without the Vs floor, dipping faults in the paper SFCVM grid, homogeneous dip scan (08c 08a 08b 07c 12); 2026-10-14 = full chain 01 -> 12 (no 07b) on the relocated burst seam and with no far-field plane; 2026-10-08 = burst-seam relocation, 06 only (seam located from the data, 06 [14]); 2026-10-06 = full update on the 2026-10-05 fixes (audit, along-trace km, doy, burst seams, sigma-12 sensitivity); 2026-10-03_final = clean sweep of every notebook in order (Dani 2026-10-03); 2026-10-03 = onset-window fix + publication style pass; 2026-10-02 = manuscript-pass figure notes; 2026-09-30 = PyLith + SFCVM model set
+fig_date   = "2026-10-28"   # 2026-10-28 = the slip-model rewire (07a, 08a, 08b, 07c on the locked method, code_audit_2026-10-28); 2026-10-25 = 3D model without the Vs floor, dipping faults in the paper SFCVM grid, homogeneous dip scan (08c 08a 08b 07c 12); 2026-10-14 = full chain 01 -> 12 (no 07b) on the relocated burst seam and with no far-field plane; 2026-10-08 = burst-seam relocation, 06 only (seam located from the data, 06 [14]); 2026-10-06 = full update on the 2026-10-05 fixes (audit, along-trace km, doy, burst seams, sigma-12 sensitivity); 2026-10-03_final = clean sweep of every notebook in order (Dani 2026-10-03); 2026-10-03 = onset-window fix + publication style pass; 2026-10-02 = manuscript-pass figure notes; 2026-09-30 = PyLith + SFCVM model set
 # Figures and notebook products live with the data, not in the repo (Dani 2026-10-01): the repo is the code
 # base archived on GitHub plus the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
@@ -132,7 +132,10 @@ prep_dir   = os.path.join(data_dir, "prep_validation")
 # 2026-10-03, so its 07b_* keys would otherwise render as live. 07a_uniform_model stays (the data-prep
 # step of 08a and the CSI validation): its keys stay live.
 # ------------------------
-retired_notebooks = ("07b_uniform_model_tests",)
+# 2026-10-30 (the rewire): 07b, 08b_3d_model_tests and 08c moved to drafts/retired_2026-10-28/ with the old 07a, 07c and
+# 08a; their keys retire because their notebooks are no longer in the repo (Registry.render). The new 07a / 08a / 08b_sensitivity
+# register fresh keys.
+retired_notebooks = ("07b_uniform_model_tests", "08b_3d_model_tests", "08c_3d_model_sensitivity")
 
 # ------------------------
 # Common paths & constants
@@ -331,21 +334,8 @@ gittins_window_pad_days = 7
 # Shared choices read by more than one notebook (one definition each).
 wet_season_months = (10, 4)    # (first month, last month) of the wet season, shared by 10 and 11 (Dani 2026-10-05: Oct-Apr)
 paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 11)
-model_sigma_locked = 12.0      # regularisation sigma of the selected slip model and all sensitivity runs: the L-curve corner of the
-#                                selected model (3D, nugget Cd, InSAR misfit only, no extra near-trace cut): the value on the 1-wide part
-#                                of model_sigma_grid nearest the corner (12.4 -> 12, Dani 2026-10-16 late; 16 with the 60 m cut that
-#                                evening; until 2026-10-16 the grid value at or above the corner on 07a's coarse grid)
-model_sigma_grid = [4.0, 6.0, 8.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 24.0, 32.0, 40.0, 48.0, 64.0, 96.0, 128.0]
-#                              the sigma grid of the 3D-model L-curves (08a, 08b, 08c): 07a's grid plus 1-wide steps around the corner
-#                              (Dani 2026-10-16); 07a's CSI baseline keeps its own grid. model_sigma_locked is added to it if absent.
-model_near_trace_cut_km = 0.0  # 3D slip models (08a, 08b, 08c): extra near-trace exclusion of the quadtree samples. NONE (Dani 2026-10-16,
-#                                late): the samples already hold no pixel within 30 m of the trace (07a), the same inner edge as the
-#                                crossings, whose 30-150 m aperture was chosen on creepmeter agreement (05). A 60 m cut (the
-#                                phase-linking half-width) was run the same evening: better InSAR fit beyond 90 m, worse crossings at
-#                                the lake and west deflection; "slightly smoothed data beat cutting it out on an untested hunch".
-model_use_surface = False      # the measured-crossing surface constraint in the 3D slip models (08a, 08b, 08c): OFF (Dani 2026-10-16:
-#                                "adding complexity for no return": with nugget Cd the InSAR alone gives 108 % of the crossings and the
-#                                same Mw); the runs WITH it are 08c's `_surf` sensitivity rows. 07a's CSI baseline keeps its own.
+# The slip models' constants (sigma rule, near-trace cut, surface constraint, weighting, ...) live in model_config.py since
+# 2026-10-30 (one parameter block; model_sigma_locked, model_sigma_grid, model_near_trace_cut_km, model_use_surface removed).
 # The bimonthly era of the alignment arrays (09, 10, 11): a survey interval of at most this many days resolves the
 # season of an onset; 09 runs the HRKT detector only on such intervals, 10 and 11 assert that every array window is
 # this short (until 2026-10-06 typed in each notebook: 09 dense_window_days, 10 and 11 resolvable_days).
@@ -485,6 +475,7 @@ paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
     "07a_uniform_model", "07b_uniform_model_tests", "08a_3d_model", "08b_3d_model_tests", "08c_3d_model_sensitivity",
+    "08b_sensitivity", "07c_fig2",
     "09_alignment_arrays",
     "10_rain_seasonality", "11_forecast", "12_paper_figures")}
 # The pre-2026-09-24 names 09_seasonality_forecast and 10_paper_figures are gone:
