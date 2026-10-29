@@ -12,25 +12,29 @@ where there is none. Nothing here reads a path on its own: every file comes in a
 
 Contents, in the order the notebooks use them:
   1. Along-trace distance and the fault trace          km_from_pinole, model_trace, signed_distance_m
-  2. The uniform model's fault (CSI triangles)         unrolled_mesh, wrap_fault, triangle_areas_km2
+  2. The retired uniform model's CSI fault (07b)       unrolled_mesh, wrap_fault, triangle_areas_km2
   3. The data: fault-parallel field, noise, quadtree   look_vector, decompose_fault_parallel, fault_parallel_from_steps,
                                                        dist_to_trace, fault_parallel_dataset,
                                                        semivariogram_model, covariance, downsample, covariance_matrix,
                                                        build_cd, quadtree_block_corners, build_sample_set,
                                                        write_points_list, samples_from_arrays
-  4. The uniform model's inversion (CSI)               crossing_profile, crossing_profile_on_triangles, tie_rows,
+  4. The retired uniform model's inversion (07b)       crossing_profile, crossing_profile_on_triangles, tie_rows,
                                                        invert_triangles
   5. Magnitudes and the L-curve                        moment_magnitude, potency_from_slip, lcurve_corner, lcurve_pick
-  6. The surface constraint of the 3D model            surface_pct_denominator_mm, arc_length_on_polyline,
+  6. The surface constraint (sensitivity only)         surface_pct_denominator_mm, arc_length_on_polyline,
                                                        local_scatter_mm, tent_rows, crossing_constraint, surface_slip_data
   7. PyLith Green's functions -> G                     read_gf_run, trace_top, build_G, load_G
   8. The tent (vertex) parameterisation and inversion  TentFault, tent_fault_template, data_cd, invert_tents,
-                                                       tent_model_setup, tent_numbers, tent_lcurve
+                                                       match_impulse_order, analytic_tent_G, analytic_tent_G_cached,
+                                                       tent_model_setup, tent_numbers, tent_lcurve, own_corner,
+                                                       correlated_noise, materna_stress_drop_pa
   9. PyLith forward runs, materials, stress            read_forward_points, read_forward_slip, superposition_check,
                                                        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
                                                        screw_dislocation_mm, median_edge_length_m, vertex_areas_m2,
-                                                       slip_weighted_stress_drop_pa
+                                                       slip_weighted_stress_drop_pa, potency_extent
  10. Provenance and running PyLith                     field_fingerprint, run_logged, ensure_product
+ 11. Like-for-like crossing steps                      crossing_steps_like
+The locked settings of the paper's models are in model_config.py (one parameter block).
 """
 import copy
 import os
@@ -300,13 +304,21 @@ def semivariogram_model(distance_km, nugget2, sill_short, range_short_km, sill_l
     return nugget2 + short_term + long_term
 
 
-def covariance(sar, fault, swath_km, cov_mask_km, cov_distmax_km, npairs=300000, seed=0):
-    """Fit semivariogram_model to the far field: the pixels beyond min(cov_mask_km, 0.4 swath_km) of the trace, a
-    plane (1, x, y) removed; npairs random pixel pairs closer than min(cov_distmax_km, 4 swath_km), binned every
-    0.1 km (bins with more than 50 pairs). Returns (nugget2, sill_short, range_short_km, sill_long, range_long_km),
-    in mm^2 and km. Source: 07a [4], ported verbatim from the m02 chain (Hayward_DISP-S1; @ -> np.dot)."""
+def covariance(sar, fault, swath_km, cov_mask_km, cov_distmax_km, npairs=300000, seed=0, return_bins=False):
+    """Fit semivariogram_model to the far field: the pixels beyond cov_mask_km of the trace, a plane (1, x, y) removed;
+    npairs random pixel pairs closer than cov_distmax_km, binned every 0.1 km (bins with more than 50 pairs). Returns
+    (nugget2, sill_short, range_short_km, sill_long, range_long_km), in mm^2 and km; with return_bins also the binned
+    semivariogram as a table (bin centre km, pairs, gamma mm^2, fitted model mm^2) and the number of pixels fitted.
+    `sar` must hold pixels well beyond the mask: cov_mask_km <= 0.4 swath_km and cov_distmax_km <= 4 swath_km are
+    ASSERTED (until 2026-10-30 the mask was silently capped at 0.4 swath_km, so a 5 km mask on the 4 km model swath
+    became 1.6 km; the locked 5 km fit is made on a 15 km swath, model_config.noise_swath_km).
+    Source: 07a [4], ported from the m02 chain (Hayward_DISP-S1; @ -> np.dot)."""
+    assert cov_mask_km <= 0.4 * swath_km, (f"noise mask {cov_mask_km} km > 0.4 x the {swath_km} km swath: too few far-field pixels; "
+                                           f"build the field on a wider swath")
+    assert cov_distmax_km <= 4 * swath_km, f"pair distance {cov_distmax_km} km > 4 x the {swath_km} km swath"
     dist = dist_to_trace(sar, fault)
-    keep = (dist > min(cov_mask_km, 0.4 * swath_km)) & np.isfinite(sar.vel)
+    keep = (dist > cov_mask_km) & np.isfinite(sar.vel)
+    assert keep.sum() > 1000, f"only {keep.sum()} pixels beyond {cov_mask_km} km of the trace"
     x, y, values = sar.x[keep], sar.y[keep], sar.vel[keep]
     design = np.c_[np.ones_like(x), x, y]
     values = values - np.dot(design, np.linalg.lstsq(design, values, rcond=None)[0])
@@ -315,14 +327,16 @@ def covariance(sar, fault, swath_km, cov_mask_km, cov_distmax_km, npairs=300000,
     second = rng.integers(0, values.size, npairs)
     pair_dist = np.hypot(x[first] - x[second], y[first] - y[second])
     pair_diff = values[first] - values[second]
-    max_dist_km = min(cov_distmax_km, 4 * swath_km)
+    max_dist_km = cov_distmax_km
     in_range = (pair_dist > 0) & (pair_dist < max_dist_km)
     bins = np.arange(0, max_dist_km + 0.1, 0.1)
     bin_index = np.digitize(pair_dist[in_range], bins) - 1
     diff_in_range = pair_diff[in_range]
     gamma = np.full(len(bins) - 1, np.nan)
+    n_pairs = np.zeros(len(bins) - 1, int)
     for k in range(len(bins) - 1):
         in_bin = bin_index == k
+        n_pairs[k] = int(in_bin.sum())
         if in_bin.sum() > 50:
             gamma[k] = 0.5 * np.mean(diff_in_range[in_bin] ** 2)
     bin_centres = 0.5 * (bins[1:] + bins[:-1])
@@ -331,7 +345,11 @@ def covariance(sar, fault, swath_km, cov_mask_km, cov_distmax_km, npairs=300000,
     params, _ = curve_fit(semivariogram_model, bin_centres[fitted], gamma[fitted],
                           p0=(0.4 * sill, 0.3 * sill, 0.7, 0.5 * sill, 5.0),
                           bounds=([0, 0, 0.1, 0, 2.0], [2 * sill, 2 * sill, 2.0, 3 * sill, 50]), maxfev=20000)
-    return params
+    if not return_bins:
+        return params
+    bins_table = pd.DataFrame(dict(distance_km=bin_centres, n_pairs=n_pairs, gamma_mm2=gamma,
+                                   model_mm2=semivariogram_model(bin_centres, *params)))
+    return params, bins_table, int(keep.sum())
 
 
 def downsample(sar, fault, start_km, min_km):
@@ -861,6 +879,8 @@ class TentFault:
         self.top = top[np.argsort(top[:, 1])]                                      # ... sorted south to north (mesh y)
         top_km = km_from_pinole(to_mesh.transform(self.top[:, 0], self.top[:, 1], direction="INVERSE")[1], profile_lats)
         self.imp_km = np.interp(self.imp_xyz[:, 1], self.top[:, 1], top_km)       # km from Point Pinole of every impulse vertex
+        self.tri_km = np.interp(self.tri_cen[:, 1], self.top[:, 1], top_km)       # ... and of every triangle centroid
+        self.tri_depth_m = -self.tri_cen[:, 2]                                     # m, depth positive
         self.imp_depth_km = -self.imp_xyz[:, 2] / 1e3
         self.imp_lon, self.imp_lat = to_mesh.transform(self.imp_xyz[:, 0], self.imp_xyz[:, 1], direction="INVERSE")
         column_of_vertex = {}                                   # PyLith vertex index -> its column in G (impulse order)
@@ -891,6 +911,14 @@ class TentFault:
         slip_all = self.vertex_slip(slip_mm)
         return float(np.sum(self.tri_area * slip_all[self.fault_cells].mean(1)) * 1e-3)
 
+    def potency_depth_m(self, slip_mm, fraction):
+        """The depth (m) above which `fraction` of the potency lies (model_utils.potency_extent on the triangles: exact
+        tent potency per triangle, triangle centroid depth). Register #22: depth50 / depth90."""
+        pot_tri = self.potency_per_triangle_m3(slip_mm)
+        assert abs(pot_tri.sum() - self.potency_m3(slip_mm)) <= 1e-9 * max(1.0, self.potency_m3(slip_mm))
+        depth_m, _ = potency_extent(pot_tri, self.tri_depth_m, self.tri_km, fraction)
+        return depth_m
+
     def moment_nm(self, slip_mm, mu_per_triangle):
         """Seismic moment (N m): sum over triangles of area x mean tent slip x the triangle's rigidity (Pa)."""
         slip_all = self.vertex_slip(slip_mm)
@@ -916,20 +944,30 @@ def tent_fault_template(tents, frame_lonlat):
     return template
 
 
-def data_cd(mode, samples, cov_p, nug_power, floor_px=None, keep=None):
-    """The data covariance (mm^2) of one treatment of the samples:
-      full   -- 07a's full correlated Cd (samples.Cd): Lohman and Simons (2005), Sudhaus and Jonsson (2009);
-      nugget -- its diagonal nugget part alone, diag(Cd) - (s1 + s2) = nugget2 / n_px**nug_power (samples treated as
-                independent, weights by block size: the quadtree convention of Jonsson et al. 2002);
-      diag   -- equal independent weights, the median of diag(Cd) (diagnostic);
-      floor  -- 07a's full Cd with each block's pixel count floored at floor_px (DISP-S1 pixels inside one ~115 m
-                phase-linking window are not independent; diagnostic).
-    keep (2026-10-16): samples outside it (closer to the trace than the near-trace cut) are decoupled from every other
-    sample and given a variance 1e8 times their own, so they take no part in the fit but stay in the products.
-    Source: 08a [10] `data_cd` and the driver's PYLITH_CD switch (written for this project)."""
-    Cd = _data_cd_core(mode, samples, cov_p, nug_power, floor_px)
+def data_cd(mode, samples, cov_p, nug_power, keep=None):
+    """The data covariance (mm^2) of one treatment of the samples (n_px = the pixels each quadtree block averages, CSI's wgt):
+      nugget -- diagonal, nugget2 / n_px**nug_power: the samples treated as independent. nug_power 0 = every sample the
+                nugget variance (equal weights; THE LOCKED WEIGHTING, model_config.weighting / nugget_power, register #6);
+                0.5 = the block-size weighting used until 2026-10-25.
+      full   -- the full correlated Cd of the semivariogram (covariance_matrix with nug_power): Lohman and Simons (2005),
+                Sudhaus and Jonsson (2009); the sensitivity row.
+    The exponent is the `nug_power` ARGUMENT in both modes (until 2026-10-30 "nugget" silently took the exponent the
+    samples had been built with). keep (2026-10-16): samples outside it (closer to the trace than the near-trace cut)
+    are decoupled from every other sample and given a variance 1e8 times their own, so they take no part in the fit but
+    stay in the products. Source: 08a [10] `data_cd` (written for this project)."""
+    assert nug_power is not None and np.isfinite(float(nug_power)), "data_cd needs the nugget exponent explicitly"
+    n_px = np.asarray(samples.wgt, float)
+    assert n_px.shape == (samples.vel.size,) and np.all(n_px > 0), "the quadtree block pixel counts (wgt) are missing"
+    if mode == "nugget":
+        Cd = np.diag(float(cov_p[0]) / n_px ** float(nug_power))
+    else:
+        assert mode == "full", f"unknown Cd treatment {mode!r} (nugget | full)"
+        Cd = covariance_matrix(np.asarray(samples.x, float), np.asarray(samples.y, float), n_px, cov_p, float(nug_power))
+    assert np.all(np.diag(Cd) > 0)
     if keep is not None:
-        out = ~np.asarray(keep, bool)
+        keep = np.asarray(keep, bool)
+        assert keep.shape == (samples.vel.size,) and keep.sum() > 0
+        out = ~keep
         diag_out = np.diag(Cd)[out].copy()
         Cd[out, :] = 0.0
         Cd[:, out] = 0.0
@@ -937,43 +975,33 @@ def data_cd(mode, samples, cov_p, nug_power, floor_px=None, keep=None):
     return Cd
 
 
-def _data_cd_core(mode, samples, cov_p, nug_power, floor_px=None):
-    """data_cd without the near-trace cut (see data_cd)."""
-    if mode == "full":
-        return samples.Cd.copy()
-    if mode == "nugget":
-        Cd = np.diag(np.diag(samples.Cd) - (cov_p[1] + cov_p[3]))
-        assert np.all(np.diag(Cd) > 0)
-        return Cd
-    if mode == "diag":
-        return np.eye(samples.vel.size) * float(np.median(np.diag(samples.Cd)))
-    assert mode == "floor" and floor_px is not None, f"unknown Cd treatment {mode!r}"
-    return covariance_matrix(samples.x, samples.y, np.maximum(np.asarray(samples.wgt, float), floor_px), cov_p, nug_power)
-
-
-def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, sigma, lam, frame_lonlat, use_surface=True,
-                 vel_insar=None, vel_surface=None, name="tents", ramp_spec="1"):
-    """Right-lateral slip on the PyLith tents (mm) from the InSAR samples and, with use_surface, the crossing
-    constraint: 07a's inversion (invert_triangles) with the PyLith G entered by `Fault.setGFs` instead of computed:
-    exponential prior buildCmXY(sigma, lam) on the vertex positions, one constant per dataset (csi.transformation;
-    ramp_spec for the InSAR samples, CSI polynomial terms: "1" a constant (default), "1,x,y" a plane solved jointly with slip,
-    2026-10-25; the surface data keep a constant), NNLS (slip >= 0, the constants free) with multisourcesolve. Works on deep copies of the template fault, the
-    samples (Cd replaced by `Cd`) and the surface data; vel_insar / vel_surface replace their data vectors (bootstrap
-    and recovery tests). With use_surface False the surface data are not inverted but still predicted (a check).
-    Returns (fault, insar data, surface data), each with its synth and the fitted constant removed from vel.
-    Source: 08a [10] `invert_tents` and the driver's (CSI, Jolivet et al.; PyLith GFs as in the PyLith inversion
-    examples, examples/subduction-3d/invert_slip.py)."""
+def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, sigma, lam, frame_lonlat, use_surface=False,
+                 vel_insar=None, vel_surface=None, name="tents", ramp_spec="1,x,y"):
+    """Right-lateral slip on the PyLith tents (mm) from the InSAR samples (and, with use_surface, the crossing
+    constraint), the PyLith G entered by CSI's `Fault.setGFs`: exponential prior buildCmXY(sigma, lam) on the vertex
+    positions, the reference frame as a CSI transformation (ramp_spec, CSI polynomial terms: "1,x,y" a plane solved
+    jointly with slip = the LOCKED setting, register #7; "1" a constant = the sensitivity row; the surface data keep a
+    constant), NNLS (slip >= 0, the frame terms free) with multisourcesolve. Works on deep copies of the template fault
+    and the samples (Cd replaced by `Cd`); vel_insar replaces the data vector (the Monte Carlo). surface_template None =
+    no surface data at all (the locked model); with surface data but use_surface False they are predicted, not fitted.
+    Returns (fault, insar data, surface data or None), each data set with its synth and the fitted frame removed from vel.
+    Source: 08a [10] `invert_tents` (CSI, Jolivet et al.; PyLith GFs as in the PyLith inversion example
+    examples/subduction-3d/invert_slip.py)."""
     fault_model = copy.deepcopy(template)
     fault_model.name = name
     insar_data = copy.deepcopy(samples)
     if vel_insar is not None:
         insar_data.vel[:] = vel_insar
+    assert Cd.shape == (insar_data.vel.size, insar_data.vel.size)
     insar_data.Cd = Cd.copy()
-    surface = copy.deepcopy(surface_template)
-    if vel_surface is not None:
-        surface.vel[:] = vel_surface
     fault_model.setGFs(insar_data, strikeslip=[G_insar.copy()])     # already right-lateral positive (build_G sign)
-    fault_model.setGFs(surface, strikeslip=[G_surface])
+    surface = None
+    if surface_template is not None:
+        surface = copy.deepcopy(surface_template)
+        if vel_surface is not None:
+            surface.vel[:] = vel_surface
+        fault_model.setGFs(surface, strikeslip=[G_surface])
+    assert not (use_surface and surface is None), "use_surface needs the surface data"
     if use_surface:
         solve_datas = [insar_data, surface]
     else:
@@ -992,7 +1020,7 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
     solver.assembleGFs()
     solver.assembleCm()
     mprior = np.zeros(solver.Np)
-    ramp_idx = []                                                     # the parameters of the per-dataset constants
+    ramp_idx = []                                                     # the parameters of the reference frame
     for i, param_type in enumerate(solver.paramTypes):
         if param_type[0] == trans.name:
             ramp_idx.append(i)
@@ -1002,8 +1030,9 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
     for dataset in solve_datas:
         dataset.buildsynth([fault_model], direction="s")
         dataset.removeTransformation(trans)
-    if not use_surface:                                               # not inverted, but still predicted (a check)
+    if surface is not None and not use_surface:                       # not inverted, but still predicted (a check)
         surface.buildsynth([fault_model], direction="s")
+    assert np.all(fault_model.slip[:, 0] >= -1e-9), "negative slip out of NNLS"
     return fault_model, insar_data, surface
 
 
@@ -1093,23 +1122,43 @@ def analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=8, verbo
     return -G
 
 
-def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, km_window, creep_lo_km, creep_hi_km,
-                     surf_floor_mm, trace_south_north, trace_xy_m, frame_lonlat, crs, profile_lats, near_trace_cut_km=0.0,
-                     trace_km_pp=None):
+def analytic_tent_G_cached(cache_npz, tents, lon, lat, look, frame_lonlat, to_mesh, n_sub, run_name, points_fingerprint):
+    """analytic_tent_G, cached in cache_npz and keyed by its query: the PyLith run whose tents it uses, n_sub, the
+    fingerprint of the sample point set and the impulse vertices (all asserted on reading, so a changed question can
+    never be served a stale matrix). Computed (slow: ~1 h per 100,000 sub-triangles) only when the file is missing.
+    Returns G (n_samples, tents.n_imp), m per m, right-lateral positive. Written for this project (2026-10-30)."""
+    if not os.path.exists(cache_npz):
+        t0 = time.time()
+        G = analytic_tent_G(tents, lon, lat, look, frame_lonlat, to_mesh, n_sub=n_sub, verbose=True)
+        os.makedirs(os.path.dirname(cache_npz), exist_ok=True)
+        np.savez(cache_npz, G_rl_m_per_m=G, n_sub=n_sub, run_name=run_name, points_fingerprint=points_fingerprint,
+                 imp_xyz=tents.imp_xyz, sample_lon=np.asarray(lon, float), sample_lat=np.asarray(lat, float),
+                 provenance=f"model_utils.analytic_tent_G (CSI Meade 2007 triangular dislocations, n_sub {n_sub}) on the tents of "
+                            f"{run_name}, {time.strftime('%Y-%m-%d %H:%M')}, {(time.time() - t0) / 60:.0f} min")
+        print(f"wrote {cache_npz} ({(time.time() - t0) / 60:.0f} min)")
+    cached = np.load(cache_npz)
+    assert int(cached["n_sub"]) == n_sub and str(cached["run_name"]) == run_name, f"{cache_npz}: another n_sub or run"
+    assert str(cached["points_fingerprint"]) == points_fingerprint, f"{cache_npz}: made for another sample set"
+    assert np.allclose(cached["imp_xyz"], tents.imp_xyz, atol=1e-3), f"{cache_npz}: another impulse order or mesh"
+    assert np.array_equal(cached["sample_lon"], np.asarray(lon, float)), f"{cache_npz}: other sample positions"
+    return cached["G_rl_m_per_m"]
+
+
+def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, km_window, creep_lo_km, creep_hi_km, trace_xy_m,
+                     frame_lonlat, crs, profile_lats, near_trace_cut_km, near_field_km, trace_km_pp, crossings=None,
+                     surf_floor_mm=0.5, trace_south_north=None):
     """Everything an inversion on PyLith Green's functions needs, for one mesh and one sample set, built from the
-    products alone: the G matrix of every medium (load_G; rebuilt when the cached one was projected on another strike),
-    the shared tent geometry (TentFault; the same mesh in every medium, matched by vertex coordinates since 2026-10-25
-    because PyLith's vertex numbering depends on the MPI rank count; G columns reordered to the first medium's impulse
-    order, `impulse_order`) and its CSI template, the measured-
-    crossing surface constraint on the mesh top edge (crossing_constraint -> csi.surfaceslip), the signed distance of
-    every sample from 07a's trace and the 300 m west / east masks, the top-edge vertices of the SSE section and the
-    surface % denominator. run_names: medium -> PyLith GreensFns run; medium_dirs: medium -> (pylith_output dir, gf
-    dir); crossings: dict km, lat, mean_mm of 04's measured crossings (07a's model data product); trace_xy_m: 07a's
-    discretised trace in the mesh CRS (m). near_trace_cut_km (2026-10-16): samples closer to the trace than this are kept
-    in the products but given no weight in the fit (`keep` False; data_cd(..., keep=...)) and left out of the 300 m masks
-    and the rms; trace_km_pp (km from Point Pinole of every trace_xy_m point) gives each sample's along-strike km
-    (`sample_km_pp`, nearest trace point), for the like-for-like crossing comparison. Returns a dict.
-    Source: 08a [5], [7], [10] and the driver's [5], [6], [8] (written for this project)."""
+    products alone: the G matrix of every medium (load_G; rebuilt from the cached PyLith output when it was projected
+    on another strike), the tent geometry (TentFault; media matched by vertex COORDINATES because PyLith's vertex
+    numbering depends on the MPI rank count, each medium's G columns reordered into the first medium's impulse order)
+    and its CSI template; the signed distance (km, east +) of every sample from the model trace (`trace_xy_m`, m in the
+    mesh CRS) and its along-strike km (`sample_km_pp`, nearest trace point of `trace_km_pp`); `keep` = the samples that
+    enter the fit (|d| >= near_trace_cut_km, register #2); the near-field masks `west_near` / `east_near` = fitted
+    samples within near_field_km west / east of the trace inside the SSE section (creep_lo_km-creep_hi_km), the
+    near-field RMS of the metric policy (2026-10-28). With `crossings` (dict km, lat, mean_mm of 04's measured crossings)
+    also the measured-crossing surface constraint (`surface`, `G_surface`; off in the locked model, register #17).
+    run_names: medium -> PyLith GreensFns run; medium_dirs: medium -> (pylith_output dir, gf dir). Returns a dict.
+    Source: 08a [5], [7], [10] (written for this project)."""
     import pyproj
     to_mesh = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     gnpz = {}
@@ -1119,9 +1168,6 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, 
         gnpz[medium] = load_G(run_name, points_npz, strike_deg, pylith_output_dir, gf_dir)
         G[medium] = gnpz[medium]["G_rl_m_per_m"]
     ref_medium = list(run_names)[0]
-    # PyLith numbers the fault vertices differently with a different number of MPI ranks (2026-10-25: 5-rank and 8-rank
-    # runs of the same mesh). So the media are matched by COORDINATES, not by index: the same fault vertices (within
-    # 1 mm, one to one) and the same impulse vertices; each medium's G columns are reordered into the reference order.
     impulse_order = {}
     for medium in run_names:
         impulse_order[medium] = match_impulse_order(gnpz[ref_medium]["fault_xyz"], gnpz[ref_medium]["vertex_index"],
@@ -1129,54 +1175,48 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, crossings, 
         G[medium] = G[medium][:, impulse_order[medium]]                    # columns in the reference impulse order
     tents = TentFault(gnpz[ref_medium], to_mesh, profile_lats)
     template = tent_fault_template(tents, frame_lonlat)
-    # the measured crossings inside the data window; the surface % denominator from them
-    in_window = (crossings["km"] >= km_window[0]) & (crossings["km"] <= km_window[1])
-    km = crossings["km"][in_window]
-    lat = crossings["lat"][in_window]
-    mean_mm = crossings["mean_mm"][in_window]
-    denominator_mm = surface_pct_denominator_mm(km, mean_mm, creep_lo_km, creep_hi_km)
-    n_section_crossings = int(np.sum((km >= creep_lo_km) & (km <= creep_hi_km) & np.isfinite(mean_mm)))
-
-    def trace_lon_of_lat(lat_values):
-        return np.interp(lat_values, trace_south_north[:, 1], trace_south_north[:, 0])
-
-    def lonlat_to_mesh_xy(lon_values, lat_values):
-        return to_mesh.transform(lon_values, lat_values)
-
-    constraint = crossing_constraint(km, lat, mean_mm, trace_lon_of_lat, lonlat_to_mesh_xy, tents.imp_xyz[tents.top_order, :2],
-                                     tents.top_order, tents.n_imp, floor_mm=surf_floor_mm)
-    surface = surface_slip_data(constraint, surf_floor_mm, frame_lonlat)
     points = np.load(points_npz)
     signed_d_km = signed_distance_m(trace_xy_m[0], trace_xy_m[1], points["x"], points["y"]) / 1e3
-    keep = np.abs(signed_d_km) >= near_trace_cut_km                        # samples that enter the fit (2026-10-16)
-    west300 = (signed_d_km < 0) & (signed_d_km >= -0.3) & keep            # fitted samples within 300 m west of 07a's trace
-    east300 = (signed_d_km > 0) & (signed_d_km <= 0.3) & keep             # ... and east
-    sample_km_pp = None
-    if trace_km_pp is not None:
-        from scipy.spatial import cKDTree
-        trace_km_pp = np.asarray(trace_km_pp, float)
-        assert trace_km_pp.size == np.asarray(trace_xy_m[0]).size, "trace_km_pp must match trace_xy_m"
-        nearest = cKDTree(np.c_[trace_xy_m[0], trace_xy_m[1]]).query(np.c_[points["x"], points["y"]])[1]
-        sample_km_pp = trace_km_pp[nearest]
-    in_section_surface = (np.isin(np.arange(tents.n_imp), tents.surface_imp) & (tents.imp_km >= creep_lo_km)
-                          & (tents.imp_km <= creep_hi_km))
-    return dict(gnpz=gnpz, G=G, ref_medium=ref_medium, impulse_order=impulse_order, tents=tents, template=template, constraint=constraint,
-                surface=surface, G_surface=constraint["G"], denominator_mm=denominator_mm,
-                n_section_crossings=n_section_crossings, points=points, signed_d_km=signed_d_km, west300=west300,
-                east300=east300, in_section_surface=in_section_surface, to_mesh=to_mesh, keep=keep,
-                near_trace_cut_km=float(near_trace_cut_km), sample_km_pp=sample_km_pp)
+    keep = np.abs(signed_d_km) >= near_trace_cut_km                        # samples that enter the fit (register #2)
+    trace_km_pp = np.asarray(trace_km_pp, float)
+    assert trace_km_pp.size == np.asarray(trace_xy_m[0]).size, "trace_km_pp must match trace_xy_m"
+    nearest = cKDTree(np.c_[trace_xy_m[0], trace_xy_m[1]]).query(np.c_[points["x"], points["y"]])[1]
+    sample_km_pp = trace_km_pp[nearest]
+    in_section = (sample_km_pp >= creep_lo_km) & (sample_km_pp <= creep_hi_km)
+    west_near = keep & in_section & (signed_d_km < 0) & (signed_d_km >= -near_field_km)
+    east_near = keep & in_section & (signed_d_km > 0) & (signed_d_km <= near_field_km)
+    assert west_near.sum() >= 20 and east_near.sum() >= 20, f"near-field masks too small ({west_near.sum()}, {east_near.sum()})"
+    out = dict(gnpz=gnpz, G=G, ref_medium=ref_medium, impulse_order=impulse_order, tents=tents, template=template,
+               points=points, signed_d_km=signed_d_km, keep=keep, near_trace_cut_km=float(near_trace_cut_km),
+               sample_km_pp=sample_km_pp, in_section=in_section, west_near=west_near, east_near=east_near,
+               near_field_km=float(near_field_km), to_mesh=to_mesh, surface=None, G_surface=None)
+    if crossings is not None:                                              # the measured-crossing surface constraint (sensitivity only)
+        assert trace_south_north is not None, "the surface constraint needs the trace (south to north)"
+        in_window = (crossings["km"] >= km_window[0]) & (crossings["km"] <= km_window[1])
+
+        def trace_lon_of_lat(lat_values):
+            return np.interp(lat_values, trace_south_north[:, 1], trace_south_north[:, 0])
+
+        def lonlat_to_mesh_xy(lon_values, lat_values):
+            return to_mesh.transform(lon_values, lat_values)
+
+        constraint = crossing_constraint(crossings["km"][in_window], crossings["lat"][in_window], crossings["mean_mm"][in_window],
+                                         trace_lon_of_lat, lonlat_to_mesh_xy, tents.imp_xyz[tents.top_order, :2], tents.top_order,
+                                         tents.n_imp, floor_mm=surf_floor_mm)
+        out.update(constraint=constraint, surface=surface_slip_data(constraint, surf_floor_mm, frame_lonlat), G_surface=constraint["G"])
+    return out
 
 
-def tent_numbers(slip_mm, insar_data, surface, tents, west300, east300, in_section_surface, denominator_mm,
-                 mu_ref, mu_per_triangle, keep=None):
-    """The numbers of one tent solution: rms of the InSAR residual (all, within 300 m west / east of the trace), chi2
-    with the run's Cd, surface % (median modelled slip on the top-edge vertices of the SSE section / the median of the
-    measured crossings there), potency (exact tent integral), Mw at mu_ref and with the per-triangle rigidity
-    mu_per_triangle (Pa; NaN if None), mu_effective = M0 / potency, peak slip and its depth, the surface rms.
-    keep: the samples that enter the fit (setup["keep"]); rms over them only (all samples when None).
-    Units: mm, m^3, GPa, m. Source: 08a [10] `numbers` (Mw: Hanks & Kanamori 1979; written for this project)."""
+def tent_numbers(slip_mm, insar_data, tents, keep, west_near, east_near, mu_ref, mu_per_triangle=None):
+    """The numbers of one tent solution (the metric policy of 2026-10-28; no chi2/N anywhere): RMS of the residual
+    (plane-removed data minus model) over the FITTED samples (`keep`) and over the near-field masks west / east;
+    potency (exact tent integral, m^3); Mw at mu_ref (Pa) and with the per-triangle rigidity mu_per_triangle (Pa; NaN
+    if None), mu_effective = M0 / potency (GPa); peak slip (mm) and its depth (m); the depths above which 50 % and
+    90 % of the potency lie (m, TentFault.potency_depth_m). Mw: Hanks & Kanamori (1979). Written for this project."""
+    keep = np.asarray(keep, bool)
+    assert not np.any(np.asarray(west_near, bool) & ~keep) and not np.any(np.asarray(east_near, bool) & ~keep), \
+        "a near-field sample is not a fitted sample"
     res = insar_data.vel - insar_data.synth
-    fitted = np.ones(res.size, bool) if keep is None else np.asarray(keep, bool)
     pot = tents.potency_m3(slip_mm)
     if mu_per_triangle is None:
         m0_sfcvm = np.nan
@@ -1184,38 +1224,66 @@ def tent_numbers(slip_mm, insar_data, surface, tents, west300, east300, in_secti
     else:
         m0_sfcvm = tents.moment_nm(slip_mm, mu_per_triangle)
         mw_sfcvm = float(moment_magnitude(m0_sfcvm))
-    return dict(rms_mm=float(np.sqrt(np.mean(res[fitted] ** 2))), rms_west300_mm=float(np.sqrt(np.mean(res[west300] ** 2))),
-                rms_east300_mm=float(np.sqrt(np.mean(res[east300] ** 2))), chi2=float(np.dot(res, np.linalg.solve(insar_data.Cd, res))),
-                surface_pct=float(100 * np.median(slip_mm[in_section_surface]) / denominator_mm), potency_m3=pot,
-                Mw_30gpa=float(moment_magnitude(mu_ref * pot)), Mw_sfcvm=mw_sfcvm,
-                mu_effective_gpa=m0_sfcvm / pot / 1e9,
+    return dict(rms_mm=float(np.sqrt(np.mean(res[keep] ** 2))), rms_west_mm=float(np.sqrt(np.mean(res[west_near] ** 2))),
+                rms_east_mm=float(np.sqrt(np.mean(res[east_near] ** 2))), n_fitted=int(keep.sum()), potency_m3=pot,
+                Mw_30gpa=float(moment_magnitude(mu_ref * pot)), Mw_sfcvm=mw_sfcvm, mu_effective_gpa=m0_sfcvm / pot / 1e9,
                 peak_slip_mm=float(slip_mm.max()), peak_depth_m=float(tents.imp_depth_km[np.argmax(slip_mm)] * 1e3),
-                surf_rms_mm=float(np.sqrt(np.mean((surface.vel - surface.synth) ** 2))))
+                depth50_m=tents.potency_depth_m(slip_mm, 0.5), depth90_m=tents.potency_depth_m(slip_mm, 0.9))
 
 
-def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, use_surface=True):
-    """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data, surface), its
-    InSAR and surface chi2, the prior-weighted roughness sqrt(m^T (Cm / sigma^2)^-1 m), rms, peak slip, Mw at mu_ref
-    and the solve time. Returns the table (chi2_total = InSAR + surface when use_surface, else InSAR alone;
-    until 2026-10-16 the unfitted surface chi2 was added too).
-    Source: 08a [11] `lcurve` and the driver's (07a [8] rule; Hansen 1992; written for this project)."""
+def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, keep):
+    """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data, surface), the
+    weighted misfit chi2 of the FITTED samples (`keep`; the L-curve's x axis), the prior-weighted roughness
+    sqrt(m^T (Cm / sigma^2)^-1 m) (its y axis), the RMS of the fitted samples, peak slip, Mw at mu_ref and the solve
+    time (s). (Until 2026-10-30 the RMS included the samples of the near-trace cut.) Source: 08a [11] `lcurve`
+    (Hansen 1992; written for this project)."""
+    keep = np.asarray(keep, bool)
     rows = []
     for sigma in sigma_grid:
         t0 = time.time()
-        fault_model, insar_data, surface = solve(sigma)
-        res_insar = insar_data.vel - insar_data.synth
-        res_surface = surface.vel - surface.synth
+        fault_model, insar_data, _ = solve(sigma)
+        res = (insar_data.vel - insar_data.synth)[keep]
+        Cd_fit = insar_data.Cd[np.ix_(keep, keep)]
         slip_vec = fault_model.slip[:, 0]
-        rows.append(dict(sigma=sigma, chi2=float(np.dot(res_insar, np.linalg.solve(insar_data.Cd, res_insar))),
-                         chi2_surf=float(np.dot(res_surface, np.linalg.solve(surface.Cd, res_surface))),
-                         prior_norm=float(np.sqrt(np.dot(slip_vec, np.linalg.solve(fault_model.Cm / sigma ** 2, slip_vec)))),
-                         rms_mm=float(np.sqrt(np.mean(res_insar ** 2))), peak_slip_mm=float(slip_vec.max()),
-                         Mw_30=moment_magnitude(mu_ref * tents.potency_m3(slip_vec)), seconds=time.time() - t0))
-        rows[-1]["chi2_total"] = rows[-1]["chi2"] + (rows[-1]["chi2_surf"] if use_surface else 0.0)   # unfitted surface data do not count (2026-10-16)
-        print(f"  {label} sigma {sigma:>4g}: chi2 {rows[-1]['chi2']:.0f} + {rows[-1]['chi2_surf']:.0f}, "
-              f"roughness {rows[-1]['prior_norm']:.1f}, rms {rows[-1]['rms_mm']:.3f}, Mw30 {rows[-1]['Mw_30']:.2f} "
-              f"({rows[-1]['seconds']:.0f} s)")
+        rows.append(dict(sigma=float(sigma), chi2_fitted=float(np.dot(res, np.linalg.solve(Cd_fit, res))),
+                         roughness=float(np.sqrt(np.dot(slip_vec, np.linalg.solve(fault_model.Cm / sigma ** 2, slip_vec)))),
+                         rms_mm=float(np.sqrt(np.mean(res ** 2))), peak_slip_mm=float(slip_vec.max()),
+                         Mw_30gpa=float(moment_magnitude(mu_ref * tents.potency_m3(slip_vec))), seconds=time.time() - t0))
+        print(f"  {label} sigma {sigma:>7.3f}: chi2 {rows[-1]['chi2_fitted']:.0f}, roughness {rows[-1]['roughness']:.1f}, "
+              f"RMS {rows[-1]['rms_mm']:.3f} mm, Mw30 {rows[-1]['Mw_30gpa']:.3f} ({rows[-1]['seconds']:.0f} s)", flush=True)
     return pd.DataFrame(rows)
+
+
+def own_corner(solve, base_grid, refine_factors, tents, mu_ref, label, keep):
+    """A model's own L-curve corner (register #16), in two steps on ONE declared rule: (1) the L-curve on base_grid and
+    its corner (lcurve_corner: maximum curvature of log sqrt(chi2) vs log roughness); (2) the L-curve on base_grid
+    plus base corner x refine_factors (new sigmas only) and its corner = the model's sigma, unsnapped.
+    Returns (corner, base_corner, table of every solve, flagged `step` 1 or 2). Written for this project (2026-10-30)."""
+    base = tent_lcurve(solve, base_grid, tents, mu_ref, f"{label} [base]", keep)
+    base_corner, _, _ = lcurve_corner(base.sigma.values, np.sqrt(base.chi2_fitted.values), base.roughness.values)
+    extra = [base_corner * f for f in refine_factors if np.min(np.abs(np.asarray(base_grid) / (base_corner * f) - 1)) > 1e-6]
+    added = tent_lcurve(solve, extra, tents, mu_ref, f"{label} [refine]", keep)
+    table = pd.concat([base.assign(step=1), added.assign(step=2)]).sort_values("sigma").reset_index(drop=True)
+    corner, _, _ = lcurve_corner(table.sigma.values, np.sqrt(table.chi2_fitted.values), table.roughness.values)
+    assert table.sigma.values[1] < corner < table.sigma.values[-2], f"{label}: corner {corner:.2f} at the edge of the grid"
+    print(f"{label}: L-curve corner {base_corner:.3f} on the base grid, {corner:.3f} after refining", flush=True)
+    return float(corner), float(base_corner), table
+
+
+def correlated_noise(Cd, n_draws, seed):
+    """n_draws realisations (n_draws, n) of zero-mean Gaussian noise with covariance Cd (mm^2): Cholesky factor L of
+    Cd, noise = L z, z ~ N(0, 1) from numpy's default_rng(seed). Written for this project (Monte Carlo, register #20)."""
+    L = np.linalg.cholesky(Cd)
+    z = np.random.default_rng(seed).standard_normal((n_draws, Cd.shape[0]))
+    return z @ L.T
+
+
+def materna_stress_drop_pa(mu_pa, slip_m, half_width_m):
+    """Stress drop of a slipping patch (Pa): delta_tau = mu d / x, d the slip, x half the patch width (register #19:
+    Materna et al. 2024, SI Eq. 2, applied with d = the best uniform slip and x = half the best depth of the
+    fixed-depth scan). Written for this project; the formula as the register states it."""
+    assert mu_pa > 0 and slip_m > 0 and half_width_m > 0
+    return float(mu_pa * slip_m / half_width_m)
 
 
 # =====================================================================================================================
@@ -1353,15 +1421,6 @@ def potency_extent(sub_potency_m3, sub_depth_m, sub_km, fraction=0.9):
     l_km = quantile(km, 0.5 + fraction / 2) - quantile(km, 0.5 - fraction / 2)
     assert w_m > 0 and l_km > 0
     return w_m, l_km
-
-
-def ka_stress_drop_pa(potency_m3, w_m, l_km, mu_pa):
-    """Stress drop (Pa) of a long strike-slip fault that reaches the surface (Kanamori & Anderson 1975, Table 1, after
-    Knopoff 1958):  delta_sigma = (2 / pi) * mu * D / w,  with D = potency / (L w) the mean slip over the L x w
-    rupture. Requires L >> w (asserted L > 3 w). Source: Kanamori & Anderson (1975) BSSA 65, 1073-1095 (no DOI)."""
-    assert l_km * 1e3 > 3 * w_m, f"L ({l_km:.2f} km) not >> w ({w_m:.0f} m): the long-fault formula does not apply"
-    d_mean_m = potency_m3 / (l_km * 1e3 * w_m)
-    return float(2.0 / np.pi * mu_pa * d_mean_m / w_m), d_mean_m
 
 
 # =====================================================================================================================
