@@ -1031,16 +1031,15 @@ def project_to_fault(df, trace, lon_col="Lon", lat_col="Lat"):
 # ------------------------------
 # Provenance and the number registry
 #
-# Every number that ends up in the manuscript is registered ONCE, from the
-# notebook that computes it, into outputs/registry.csv (append-only log) and
-# rendered to outputs/registry.txt (latest value per key, grouped by notebook
-# and by where it goes in the paper). Dani copies from registry.txt into
-# Overleaf, so the row says exactly which notebook and cell produced it.
+# Every number quoted in the manuscript is registered once, by the notebook
+# that computes it, into outputs/registry.csv (an append-only log with the
+# notebook, cell, input fingerprints and git hash of each value) and written
+# to outputs/paper_numbers.md: the current value of every number, one table
+# per notebook.
 #
-# Re-running a notebook that produces the SAME numbers adds identical rows
-# and is the reproducibility proof. A run that CHANGES a registered value
-# raises RegistryConflict unless the environment variable TULEPOND_SUPERSEDE=1
-# is set, so a number cannot drift without someone deciding it should.
+# Re-running a notebook that produces the same numbers adds identical rows.
+# A run that changes a registered value raises RegistryConflict unless the
+# environment variable TULEPOND_SUPERSEDE=1 is set.
 # ------------------------------
 
 REGISTRY_COLUMNS = ["key", "value", "units", "precision", "rendered", "where",
@@ -1099,21 +1098,48 @@ def render_value(value, precision):
     return f"{float(value):.{precision}f}"
 
 
+_UNIT_LABELS = {"1": "", "count": "", "date": "", "fraction": "", "Mw": "", "pct": "%", "decyear": "decimal year",
+                "d": "days", "m3": "m^3", "sigma": "sigma"}
+_UNIT_SUFFIXES = ("_mm_yr", "_mm", "_km", "_m3", "_m", "_pct", "_mpa", "_kpa", "_gpa", "_deg", "_yr", "_days", "_d")
+
+
+def _notebook_title(notebook):
+    """'04_event_detection' -> '04 Event detection'."""
+    number, _, name = notebook.partition("_")
+    return f"{number} {name.replace('_', ' ').capitalize().replace('3d', '3D')}"
+
+
+def _quantity_label(key, units):
+    """A readable name for a registry key: notebook prefix and unit suffix dropped, underscores as spaces."""
+    name = key.partition("_")[2] or key
+    for suffix in _UNIT_SUFFIXES:
+        if name.endswith(suffix) and len(name) > len(suffix):
+            name = name[: -len(suffix)]
+            break
+    name = name.replace("_", " ")
+    return name[:1].upper() + name[1:]
+
+
+def _unit_label(units):
+    """The unit column of paper_numbers.md."""
+    return _UNIT_LABELS.get(str(units), str(units))
+
+
 class Registry:
-    """Append-only registry of manuscript numbers for ONE notebook run.
+    """Registry of the manuscript numbers of one notebook run.
 
         REG = utils.Registry("05_event_detection", common_paths, repo_dir)
         REG.inputs(path1, path2)                       # files this notebook read
         REG.register("05_n_events", 5, "count", 0, where="P3", cell="detector")
         REG.sidecar("events_stats", ["n events: 5", ...])
-        REG.render()                                   # rewrite registry.txt
+        REG.render()                                   # rewrite paper_numbers.md
     """
 
     def __init__(self, notebook, common_paths, repo_dir):
         self.notebook = notebook
         self.common_paths = common_paths
         self.csv_path = common_paths["registry_csv"]
-        self.txt_path = common_paths["registry_txt"]
+        self.numbers_path = common_paths["paper_numbers"]
         self.out_dir = os.path.join(common_paths["out_dir"], notebook)
         os.makedirs(self.out_dir, exist_ok=True)
         self.repo_dir = repo_dir
@@ -1185,59 +1211,42 @@ class Registry:
         return os.path.relpath(path, os.path.dirname(self.csv_path))
 
     def render(self):
-        """Rewrite registry.txt: latest value per key, grouped by notebook,
-        then an index grouped by manuscript location."""
-        latest = self.latest()
-        # keys whose notebook is no longer in the repo (renamed or retired) are listed apart, at the end, and are
-        # left out of the by-location index, so a stale value is never copied by mistake (Dani 2026-10-02:
-        # 10_seasonality_forecast_v2 rows sat beside 11_forecast's). registry.csv itself stays append-only.
-        current = {os.path.splitext(n)[0] for n in os.listdir(self.repo_dir) if n.endswith(".ipynb")}
-        # a key is live only if its notebook still exists AND the notebook's latest run registered it (a key the
-        # notebook no longer produces, e.g. 09's interval keys moved to 11 on 2026-10-02, is retired with it)
+        """Rewrite paper_numbers.md: the current value of every registered number, one table per notebook, in the
+        order the notebook registers them. A number is current if its notebook is in the repo, is not retired from
+        the paper (common_paths["retired_notebooks"]) and its latest run registered it; other rows of registry.csv
+        are left out of the file. Returns the path."""
         rows = pd.read_csv(self.csv_path, dtype=str)
+        rows["row"] = np.arange(len(rows))
+        latest = rows.groupby("key", as_index=False).last()
+        current = {os.path.splitext(n)[0] for n in os.listdir(self.repo_dir) if n.endswith(".ipynb")}
         last_run = rows.sort_values("timestamp").groupby("notebook")["run_id"].last()
         in_last_run = latest.apply(lambda r: r["run_id"] == last_run.get(r["notebook"]), axis=1).astype(bool)
-        # ... and that latest run must be the notebook's latest run at all: registry.csv only sees runs that registered
-        # something, so a run that registered NOTHING (01_prep_inputs since 2026-10-02) used to leave its previous
-        # run's keys live (audit A_dataflow F9). Every run writes a sidecar first; one newer than the notebook's
-        # last registered row, from a run that registered nothing, retires all of that notebook's keys.
+        # a run that wrote its sidecar but registered nothing retires all of its notebook's numbers
         silent = self._notebooks_whose_latest_run_registered_nothing(rows)
-        # ... and notebooks retired from the paper by decision (TulePond_filepaths.retired_notebooks, via
-        # common_paths): still in the repo, their keys are never live (07b, Dani 2026-10-05). A common_paths
-        # without the entry (the unit tests' temporary one) retires none.
         retired_by_decision = set(self.common_paths.get("retired_notebooks", ()))
-        for nb in sorted(retired_by_decision - current):
-            print(f"  NB: retired notebook {nb} is not in the repo any more (its keys are retired either way)")
         is_live = (latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
                    & ~latest["notebook"].isin(retired_by_decision))
-        live, retired = latest[is_live], latest[~is_live]
+        live = latest[is_live].sort_values("row")
         for nb in sorted(silent):
-            print(f"  {nb}: its latest run registered no numbers (sidecar newer than its last registry row); its keys are retired")
-        for nb in sorted(retired_by_decision):
-            print(f"  {nb}: retired from the paper (TulePond_filepaths.retired_notebooks); its "
-                  f"{int((latest['notebook'] == nb).sum())} keys are listed as RETIRED")
+            print(f"  {nb}: its latest run registered no numbers; its numbers are left out")
 
-        def lines(f, frame):
-            for nb, grp in frame.groupby("notebook"):
-                f.write(f"## {nb}\n")
-                for _, r in grp.sort_values("key").iterrows():
-                    f.write(f"{r['key']} = {r['rendered']} {r['units']} ({r['precision']} dp) -> {r['where']}"
-                            f"  [{r['cell']}; git {r['git_hash']}; {str(r['timestamp'])[:10]}]\n")
-                f.write("\n")
-        with open(self.txt_path, "w") as f:
-            f.write(f"# TulePond_DISP number registry, rendered {datetime.now():%Y-%m-%d %H:%M}\n")
-            f.write("# One line per key: key = rendered units (precision) -> where [notebook/cell; git; date]\n\n")
-            lines(f, live)
-            f.write("## By manuscript location\n")
-            for where, grp in live.groupby("where"):
-                f.write(f"{where}: " + ", ".join(f"{r['key']}={r['rendered']}" for _, r in grp.iterrows()) + "\n")
-            if len(retired):
-                f.write(f"\n# ===== RETIRED: {len(retired)} keys from notebooks no longer in the repo, retired from the paper "
-                        f"({', '.join(sorted(retired_by_decision)) or 'none'}), or not produced by their notebook's latest run "
-                        f"({', '.join(sorted(retired['notebook'].unique()))}). DO NOT QUOTE. =====\n\n")
-                lines(f, retired)
-        print(f"Rendered registry to: {self.txt_path}")
-        return self.txt_path
+        with open(self.numbers_path, "w") as f:
+            f.write("# Numbers of the paper, from the notebooks\n\n")
+            f.write(f"Written {datetime.now():%Y-%m-%d %H:%M} from the latest run of each notebook "
+                    f"({len(live)} numbers). Values are rounded to the precision each number was registered with; "
+                    "the key finds the number in its notebook and in `registry.csv` (full value, inputs, git hash).\n\n")
+            f.write("| Notebook | Numbers | Run | Git |\n|---|---:|---|---|\n")
+            for nb, grp in live.groupby("notebook"):
+                f.write(f"| [{_notebook_title(nb)}](#{nb.replace('_', '-')}) | {len(grp)} | "
+                        f"{str(grp['timestamp'].max())[:16].replace('T', ' ')} | {grp['git_hash'].iloc[-1]} |\n")
+            for nb, grp in live.groupby("notebook"):
+                f.write(f"\n<a id=\"{nb.replace('_', '-')}\"></a>\n## {_notebook_title(nb)}\n\n")
+                f.write("| Quantity | Value | Unit | Cell | Key |\n|---|---:|---|---|---|\n")
+                for _, r in grp.iterrows():
+                    f.write(f"| {_quantity_label(r['key'], r['units'])} | {r['rendered']} | {_unit_label(r['units'])} | "
+                            f"{r['cell']} | `{r['key']}` |\n")
+        print(f"Wrote the numbers to: {self.numbers_path}")
+        return self.numbers_path
 
     def _notebooks_whose_latest_run_registered_nothing(self, rows):
         """Notebooks whose newest sidecar (outputs/<notebook>/*_stats.txt with that notebook's provenance header)

@@ -122,8 +122,8 @@ model_frame_lonlat = (-121.968, 37.557)   # CSI local frame centre (lon0, lat0) 
 prep_dir   = os.path.join(data_dir, "prep_validation")
 
 # ------------------------
-# Notebooks that are not part of the paper: their registry keys are rendered in the RETIRED block of registry.txt
-# (insar_utils.Registry.render), never as current numbers. registry.csv keeps their rows (append-only).
+# Notebooks that are not part of the paper: their registry keys are left out of paper_numbers.md
+# (insar_utils.Registry.render). registry.csv keeps their rows (append-only).
 # ------------------------
 retired_notebooks = ("07b_uniform_model_tests", "08b_3d_model_tests", "08c_3d_model_sensitivity")
 
@@ -137,10 +137,10 @@ common_paths = {
     "gps_dir":    gps_dir,
 
     # The number registry: one append-only csv to which every notebook adds its
-    # manuscript numbers, plus a rendered text view. See insar_utils.Registry.
+    # manuscript numbers, plus paper_numbers.md (current values). See insar_utils.Registry.
     "registry_csv": os.path.join(out_dir, "registry.csv"),
-    "registry_txt": os.path.join(out_dir, "registry.txt"),
-    "retired_notebooks": retired_notebooks,     # their keys render as RETIRED (see above)
+    "paper_numbers": os.path.join(out_dir, "paper_numbers.md"),
+    "retired_notebooks": retired_notebooks,     # their keys are left out of paper_numbers.md (see above)
 
     # InSAR reference: every displacement/velocity product is referenced at the
     # pixel co-located with GNSS station ZOA1 (Fremont, west of the fault), so
@@ -459,7 +459,7 @@ paths_out = {nb: os.path.join(out_dir, nb) for nb in (
 def output_locations():
     """Every folder into which products, figures or model runs are written, as (name, path) pairs."""
     locations = [("fig_dir", fig_dir), ("out_dir", out_dir), ("executed_dir", executed_dir), ("registry_csv", common_paths["registry_csv"]),
-                 ("registry_txt", common_paths["registry_txt"])]
+                 ("paper_numbers", common_paths["paper_numbers"])]
     locations += [(f"paths_out[{nb}]", path) for nb, path in paths_out.items()]
     for label, group in (("paths_inputs", paths_inputs), ("paths_uniform", paths_uniform), ("paths_sfcvm", paths_sfcvm)):
         locations += [(f"{label}[{key}]", path) for key, path in group.items()]

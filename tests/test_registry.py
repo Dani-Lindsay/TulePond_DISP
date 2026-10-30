@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Tests for the number registry (insar_utils.Registry) on a temporary
-directory: append semantics, the conflict rule, the rendered text view, and
+directory: append semantics, the conflict rule, paper_numbers.md, and
 the rule that notebooks never READ the registry (they read products).
 
 Run:  pytest tests/test_registry.py -v
@@ -24,7 +24,7 @@ def paths(tmp_path):
     out = tmp_path / "outputs"
     return {"out_dir": str(out),
             "registry_csv": str(out / "registry.csv"),
-            "registry_txt": str(out / "registry.txt")}
+            "paper_numbers": str(out / "paper_numbers.md")}
 
 
 def test_register_appends_and_renders(paths, tmp_path):
@@ -39,18 +39,17 @@ def test_register_appends_and_renders(paths, tmp_path):
     assert df.loc[1, "rendered"] == "10.84"
     assert df.loc[0, "inputs"].startswith("in.csv:")
     txt = open(reg.render()).read()
-    assert "05_amp_2017_mm = 10.84 mm (2 dp) -> P3" in txt
-    assert "P3: 05_amp_2017_mm=10.84, 05_n_events=5" in txt
+    assert "| Amp 2017 | 10.84 | mm | joint-fit | `05_amp_2017_mm` |" in txt
+    assert "| N events | 5 |  | detector | `05_n_events` |" in txt
+    assert txt.index("05_n_events") < txt.index("05_amp_2017_mm")      # in the order the notebook registers them
 
 
-def test_render_puts_keys_of_missing_notebooks_apart(paths):
+def test_render_leaves_out_keys_of_missing_notebooks(paths):
     utils.Registry("05_validation", paths, REPO).register("05_n_events", 5, "count", 0, "P3", "detector")
     old = utils.Registry("99_gone_notebook", paths, REPO)                  # no 99_gone_notebook.ipynb in the repo
     old.register("99_old_value", 2.78, "yr", 2, "P10", "forecast")
     txt = open(old.render()).read()
-    index, retired = txt.split("## By manuscript location")[1].split("RETIRED")
-    assert "99_old_value" not in index and "05_n_events=5" in index
-    assert "99_old_value = 2.78 yr" in retired and "DO NOT QUOTE" in txt
+    assert "99_old_value" not in txt and "`05_n_events`" in txt
 
 
 def test_render_retires_keys_the_latest_run_no_longer_makes(paths):
@@ -59,8 +58,7 @@ def test_render_retires_keys_the_latest_run_no_longer_makes(paths):
     second = utils.Registry("05_validation", paths, REPO)                      # the next run no longer makes 05_dropped
     second.register("05_kept", 1, "count", 0, "P3", "a")
     txt = open(second.render()).read()
-    live, retired = txt.split("RETIRED")
-    assert "05_kept = 1" in live and "05_dropped" not in live and "05_dropped = 2" in retired
+    assert "`05_kept`" in txt and "05_dropped" not in txt
 
 
 def test_same_value_rerun_is_allowed_and_kept(paths):

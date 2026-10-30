@@ -1427,4 +1427,4 @@ REG.register("06_lake_elizabeth_radius_m", lake_elizabeth_radius_m, "m", 0, wher
 for orbit in mean_event:
     REG.register(f"06_n_px_csi_{orbit[:3]}", int(np.isfinite(mean_event[orbit]["mean"]).sum()), "count", 0, where="M4", cell="mean-event", sidecar=sidecar)
 REG.render()
-print("registered; see", common_paths["registry_txt"])
+print("registered; see", common_paths["paper_numbers"])

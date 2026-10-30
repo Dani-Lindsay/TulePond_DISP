@@ -420,21 +420,18 @@ def test_load_aa_is_one_day_earlier_than_the_archive_year():
 
 
 def test_render_retires_keys_of_a_run_that_registered_nothing(tmp_path):
-    """A notebook whose latest run wrote its sidecar but registered no number (01_prep_inputs since 2026-10-02)
-    has all its older keys retired; a run that wrote a sidecar AND registered keeps them live."""
+    """A notebook whose latest run wrote its sidecar but registered no number has all its older keys left out of
+    paper_numbers.md; a run that wrote a sidecar and registered keeps them."""
     repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = tmp_path / "outputs"
-    paths = {"out_dir": str(out), "registry_csv": str(out / "registry.csv"), "registry_txt": str(out / "registry.txt")}
+    paths = {"out_dir": str(out), "registry_csv": str(out / "registry.csv"), "paper_numbers": str(out / "paper_numbers.md")}
     first = utils.Registry("05_validation", paths, repo)                   # a notebook that exists in the repo
     first.sidecar("05_validation", ["first run"])
     first.register("05_kept_if_rerun", 1, "count", 0, "P3", "a")
-    live, _ = open(first.render()).read().split("## By manuscript location")
-    assert "05_kept_if_rerun = 1" in live                                   # sidecar + registration: live
+    assert "`05_kept_if_rerun`" in open(first.render()).read()              # sidecar + registration: listed
     silent = utils.Registry("05_validation", paths, repo)                  # the next run registers nothing
     silent.sidecar("05_validation", ["second run"])
-    text = open(silent.render()).read()
-    live, retired = text.split("RETIRED")
-    assert "05_kept_if_rerun" not in live and "05_kept_if_rerun = 1" in retired
+    assert "05_kept_if_rerun" not in open(silent.render()).read()
 
 
 def test_strike_frame_origin_axes_and_roundtrip():
