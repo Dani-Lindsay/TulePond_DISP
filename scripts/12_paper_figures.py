@@ -20,7 +20,7 @@
 # | Fig 3 (HRKT history, onsets over rainfall, repeat intervals, forecast) | 11_forecast (panels from 09, 10) | `fig3_history_forecast_*` |
 # | S: velocity chain, GNSS tie | 01_prep_figures | `figS1_velocity_chain_*`, `figS2_gnss_tie_*` |
 # | S: rate mask, acquisitions | 03_creep_timeseries | `figS_ratemask_*`, `figS_acquisitions_*` |
-# | S: event detection, slip budget | 04_event_detection | `figS_event_detection_*`, `figS_slip_budget_*` |
+# | S: event detection, creep rate along the fault | 04_event_detection | `figS_event_detection_*`, `figS_creep_rate_along_fault_*` |
 # | S: LOS maps and profiles per track, with the model row | 07c_fig2 | `figS_los_maps_profiles_*` |
 # | S: per-event step maps | 06_event_field_geometry | `figS_event_step_maps_*` |
 # | S: creepmeter validation, aperture ladder | 05_validation | `figS_validation_*`, `figS_binning_ladder_*` |
@@ -72,7 +72,7 @@ wanted = {
     "Fig_S_ratemask": ("figS_ratemask_*.png", "03_creep_timeseries"),
     "Fig_S_acquisitions": ("figS_acquisitions_*.png", "03_creep_timeseries"),
     "Fig_S_event_detection": ("figS_event_detection_*.png", "04_event_detection"),
-    "Fig_S_slip_budget": ("figS_slip_budget_*.png", "04_event_detection"),
+    "Fig_S_creep_rate_along_fault": ("figS_creep_rate_along_fault_*.png", "04_event_detection"),
     "Fig_S_los_maps_profiles": ("figS_los_maps_profiles_*ev.png", "07c_fig2"),
     "Fig_S_event_step_maps": ("figS_event_step_maps_*.png", "06_event_field_geometry"),
     "Fig_S_validation": ("figS_validation_*.png", "05_validation"),
