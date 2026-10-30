@@ -238,7 +238,7 @@ ax.plot(scan.D_km, scan.rms_W500_mm, "o-", color=OKABE["vermillion"], lw=lw, ms=
 ax.plot(scan.D_km, scan.rms_E500_mm, "s--", color=OKABE["blue"], lw=lw, ms=ms, mfc="white", label="East")
 ax.axhline(baseline.rms_west_mm, color=OKABE["vermillion"], ls=":", lw=lw)
 ax.axhline(baseline.rms_east_mm, color=OKABE["blue"], ls=":", lw=lw)
-ax.legend(loc="upper center", frameon=False)   # Dani 2026-10-30: no in-plot notes; the dotted lines and grey band go in the caption
+ax.legend(loc="upper right", frameon=False)   # Dani 2026-10-30: no in-plot notes (caption); West/East top right
 ax = axes[1]
 ax.plot(scan.D_km, scan.rms_all_mm, "o-", color="k", lw=lw, ms=ms)
 ax.axhline(baseline.rms_mm, color="0.4", ls=":", lw=lw)
