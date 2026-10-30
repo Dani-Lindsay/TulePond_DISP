@@ -1,56 +1,72 @@
 # %% [markdown]
-# # [1] 01 Prepared inputs
+# # 01 Prepared inputs
 #
 # ```
 # Author: Danielle Lindsay
 # Environment: opera_disp_feb13. Run time: seconds.
 # ```
 #
-# **Purpose.** This notebook regenerates the 100 m fault crossings from the
-# mapped trace and checks them against the `external_inputs/` copy read by all
-# later notebooks. It then records the inputs of the analysis and computes
-# fingerprints of the prepared products, the fault trace and the catalogues, so
-# that every registered number can be traced to the inputs that produced it.
-# The preparation chain (download and subsetting of the OPERA DISP-S1 products,
-# rebasing of the mini-stacks to one reference date with `opera-utils`, the
-# solid-earth-tide and ionosphere layers, the OPERA TROPO correction, MintPy
-# conversion, masking, the velocity fit and the GNSS tie) is in `data_prep/run00`
-# to `run05` and is described in Methods M1. Its products are archived on
-# Zenodo, so the analysis can be started at notebook 02 without re-running the
-# preparation chain.
+# **What this notebook does.**
 #
-# **Per frame** (09157 ascending track 35, 11115 descending track 42), in
-# `<frame>/mintpy/`:
-# - `timeseries_tropo.h5`: the displacement cube, troposphere-corrected,
-#   unmasked, referenced at the pixel co-located with GNSS station ZOA1 (m)
-# - `maskTempCoh_07.h5`, `_09.h5`: temporal-coherence masks at 0.7 and 0.9
-# - `velocity_masked.h5`: LOS velocity, masked at temporal coherence 0.7, ZOA1 datum
-# - `velocity_NA.h5`: the same after the GNSS tie (quadratic ramp per track, one
-#   constant per frame), North America reference frame, zero at ZOA1
-# - `geometryGeo.h5`: incidence and azimuth angles per pixel
+# 1. **Fault crossings.** Resamples the hand-mapped Hayward Fault trace at equal
+#    100 m spacing along the fault to define the crossings used by all later
+#    notebooks, and checks that the result equals the archived copy that those
+#    notebooks read (section 2).
+# 2. **Fingerprints.** Records the shape, size and a fingerprint of every
+#    prepared InSAR product, mask and mosaic, and fingerprints of the trace and
+#    the catalogues, so that every registered number can be traced to the input
+#    files that produced it (section 3).
 #
-# **Mosaics** (`mosaic_velfield/`): the two ascending frames merged, and the
-# descending frame, as `<orbit>_velocity_NA.h5` and `<orbit>_geometry.h5` on one grid.
+# The preparation chain is in `data_prep/run00` to `run05` and is described in
+# Methods M1. It downloads and subsets the OPERA DISP-S1 products (NASA/JPL/OPERA
+# 2025; Staniewicz et al. 2026), rebases the mini-stacks to one reference date
+# with `opera-utils` [citation needed], applies the solid-earth-tide and
+# ionosphere layers and the OPERA TROPO correction, converts the stacks to
+# MintPy time series (Yunjun et al. 2019), masks them, fits the velocities and
+# ties them to GNSS. Its products are archived on Zenodo, so the analysis can
+# start at notebook 02 without re-running the chain.
 #
-# **Inputs** (`external_inputs/`): the mapped fault trace and its 100 m
-# crossings, the USGS creepmeter records, the USGS alignment-array archive v3.0,
-# the Johnson et al. (2022) creep-rate compilation, the GHCN rain gauges, the
-# repeating-earthquake catalogues of T. Taira (BSL, GEN3) and of Waldhauser and
-# Schaff, the GrowClust relocated catalogue of B. Xie, and the archived
-# aperture sweep.
+# **Inputs.** Per frame (09157 ascending track 35, 11115 descending track 42),
+# in `<frame>/mintpy/`:
+# - `timeseries_tropo.h5`: the displacement cube (m), troposphere-corrected,
+#   unmasked, referenced at the pixel co-located with GNSS station ZOA1
+# - `maskTempCoh_07.h5`, `maskTempCoh_09.h5`: temporal-coherence masks at 0.7
+#   and 0.9
+# - `velocity_masked.h5`: LOS velocity, masked at temporal coherence 0.7, zero
+#   at ZOA1
+# - `velocity_NA.h5`: the same after the GNSS tie (a quadratic ramp per track
+#   and one constant per frame), in the North America reference frame, zero at
+#   ZOA1
+# - `geometryGeo.h5`: incidence and azimuth angles of every pixel
+#
+# Mosaics (`mosaic_velfield/`): the two ascending frames merged, and the
+# descending frame, as `<orbit>_velocity_NA.h5` and `<orbit>_geometry.h5` on one
+# grid.
+#
+# External inputs (`external_inputs/`): the hand-mapped fault trace and its
+# archived 100 m crossings, the USGS creepmeter records (Langbein et al. 2024),
+# the USGS alignment-array archive v3.0 (McFarland et al. 2017), the Johnson et
+# al. (2022) creep-rate compilation, the GHCN-Daily rain gauges (Menne et al.
+# 2012), the repeating-earthquake catalogues of T. Taira (BSL, GEN3) and of
+# Waldhauser and Schaff, the GrowClust relocated catalogue of B. Xie, and the
+# archived aperture sweep.
 #
 # **Outputs** (`outputs/01_prep_inputs/`): `hayward_fault_profiles.csv` (must
-# equal the `external_inputs/` copy) and `01_inputs_stats.txt` (the
-# fingerprints). This notebook registers no numbers (the acquisition counts are
-# registered per frame by 01_prep_figures and per track by 03_creep_timeseries)
-# and draws no figures (Figs. S1 and S2 are drawn by 01_prep_figures).
+# equal the archived copy) and `01_inputs_stats.txt` (the fingerprints). This
+# notebook registers no numbers. The acquisition counts are registered per
+# frame by 01_prep_figures and per track by 03_creep_timeseries.
 #
-# **Check.** The crossings cell asserts that the regenerated crossings are
-# identical to the `external_inputs/` copy and prints the number of crossings
-# and the trace length.
+# **Figures.** None. Figs. S1 and S2 are drawn by 01_prep_figures.
+#
+# **What to check.** The line printed in section 2 gives the number of trace
+# points and crossings, the trace length and the ranges of latitude and
+# cross-fault azimuth. Section 2 asserts that the regenerated crossings equal
+# the archived copy. Section 3 prints the fingerprint table.
+
+# %% [markdown]
+# ## 1. Imports and settings
 
 # %%
-# [2]
 import os
 
 import insar_utils as utils
@@ -67,39 +83,66 @@ REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(common_paths["fault_trace"], common_paths["fault_profiles"])
 
 # %% [markdown]
-# ## [3] Fault trace to 100 m crossings
+# ## 2. Fault trace to 100 m crossings
 #
-# The trace is `hayward_fault_trace_2026-07-24.kml`: hand-placed points along
-# one continuous strand, mapped in Google Earth from the USGS Quaternary fault
-# traces and the steps visible in the InSAR velocity fields. The placemark names
-# are not used; a placemark whose name is not a number is an annotation and is
-# dropped.
+# The Hayward Fault trace was re-mapped by hand on the InSAR fault-parallel
+# velocity field, following the USGS Quaternary fault traces (U.S. Geological
+# Survey and California Geological Survey 2019) and the steps visible in the
+# velocities. The hand-drawn line is stored as points in
+# `hayward_fault_trace_2026-07-24.kml` (`common_paths["fault_trace"]`). A
+# placemark whose name is not a number is an annotation; the shared reader drops
+# it and prints its name.
 #
-# This cell converts the points into `hayward_fault_profiles.csv`, the file read
-# by all later notebooks (`ft_lon, ft_lat, profile_az`, south to north):
+# This section resamples the hand-drawn line at equal 100 m spacing along the
+# fault. Each resampled point is one crossing. The steps are:
 #
-# 1. read the placemark coordinates
-# 2. order them north to south as one polyline, in UTM zone 10N metres
-# 3. resample every 100 m along the arc length
-# 4. cross-fault azimuth = bearing of the local tangent - 90 deg, pointing NE
-#    to the east side of the fault, rounded to 0.1 deg
-# 5. sort south to north
+# 1. Read the point coordinates.
+# 2. Order the points from north to south and project them to UTM zone 10N
+#    (EPSG 32610), the grid of the frames.
+# 3. Resample the line every $\Delta s$ = 100 m of arc length.
+# 4. Compute the cross-fault azimuth of each crossing from the local tangent.
+# 5. Sort the crossings from south to north and write `ft_lon, ft_lat,
+#    profile_az`.
 #
-# The result is written to the output directory and must equal the copy under
-# `external_inputs/`. To re-map the trace, edit the KML, run this cell and copy
-# the new csv over the `external_inputs/` copy. The digitising jitter at 100 m
-# spacing is retained in `profile_az`; notebooks 02 and 03 smooth it with a
-# 2.1 km rolling median.
+# With $(E_j, N_j)$ the UTM easting and northing (m) of point $j$, ordered from
+# north to south, the arc length is
+#
+# $$ s_0 = 0, \qquad s_j = \sum_{i=1}^{j} \sqrt{(E_i - E_{i-1})^2 + (N_i - N_{i-1})^2}, $$
+#
+# and the crossings lie at $s = k\,\Delta s$ ($k = 0, 1, 2, \dots$, up to the
+# end of the line), with $E$ and $N$ linearly interpolated in $s$. Ordering by
+# latitude gives a continuous line only if the trace does not double back, so
+# the path length must be less than 1.05 times the straight-line distance
+# between the two end points (asserted).
+#
+# The cross-fault azimuth of crossing $k$ is
+#
+# $$ \phi_k = \left[\operatorname{atan2}(\delta E_k, \delta N_k) - 90^\circ\right] \bmod 360^\circ, $$
+#
+# where $\delta E_k$ and $\delta N_k$ are the central differences of the
+# resampled easting and northing (one-sided at the two ends; `np.gradient`).
+# The atan2 term is the compass bearing of the local tangent (clockwise from
+# north). Because the points run from north to south, the tangent points along
+# strike to the south-east, and subtracting 90° turns it to the north-east,
+# toward the east side of the fault. $\phi_k$ is stored as `profile_az`, rounded
+# to 0.1°. It keeps the jitter of hand digitising at 100 m spacing; notebooks
+# 02, 03 and 06 smooth it with a 21-crossing (2.1 km) rolling median.
+#
+# **Check.** The regenerated crossings are compared with the archived copy
+# `external_inputs/hayward_fault_profiles.csv` (`common_paths["fault_profiles"]`),
+# which is the file that every other notebook reads. Both come from the same
+# hand-drawn trace; neither is the USGS trace. The two tables must have the same
+# shape and agree to 1e-9 in every column (asserted). To re-map the trace, edit
+# the KML, run this section and copy the new csv over the archived copy.
 
 # %%
-# [4]
-spacing_km = 0.1        # along-fault sample spacing
+spacing_km = 0.1        # along-fault sample spacing (km)
 utm_epsg = 32610        # UTM zone 10N, the grid of the frames
 
-# 1) the placemark coordinates (the shared reader drops and prints the annotation placemarks)
+# 1) the point coordinates (the shared reader drops and prints the annotation placemarks)
 trace = utils.load_trace(common_paths["fault_trace"])
 
-# 2) north -> south, one continuous polyline, in metres
+# 2) north to south, one continuous line, in metres
 trace = trace[np.argsort(-trace[:, 1])]
 to_utm = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
 to_ll = Transformer.from_crs(f"EPSG:{utm_epsg}", "EPSG:4326", always_xy=True)
@@ -107,22 +150,22 @@ easting, northing = to_utm.transform(trace[:, 0], trace[:, 1])
 
 # 3) resample every spacing_km along the arc length
 step_m = np.hypot(np.diff(easting), np.diff(northing))
-# Check: ordering by latitude assumes the trace does not double back, in which case the path length
-# is close to the end-to-end length
+# Check: the latitude ordering is valid only if the trace does not double back,
+# in which case the path length is close to the end-to-end length
 path_ratio = step_m.sum() / np.hypot(easting[-1] - easting[0], northing[-1] - northing[0])
-assert path_ratio < 1.05, f"trace path is {path_ratio:.3f} x its end-to-end length: the latitude ordering does not give a continuous polyline"
+assert path_ratio < 1.05, f"trace path is {path_ratio:.3f} x its end-to-end length: the latitude ordering does not give a continuous line"
 arc_m = np.r_[0.0, np.cumsum(step_m)]
 arc_new_m = np.arange(0.0, arc_m[-1], spacing_km * 1000.0)
 easting_new = np.interp(arc_new_m, arc_m, easting)
 northing_new = np.interp(arc_new_m, arc_m, northing)
 
-# 4) cross-fault azimuth: bearing of the local tangent (clockwise from north) - 90, pointing to the east side
+# 4) cross-fault azimuth: bearing of the local tangent (clockwise from north) minus 90, toward the east side
 d_easting, d_northing = np.gradient(easting_new), np.gradient(northing_new)
 cross_az = (np.degrees(np.arctan2(d_easting, d_northing)) - 90.0) % 360.0
 lon_new, lat_new = to_ll.transform(easting_new, northing_new)
 profiles = pd.DataFrame({"ft_lon": lon_new, "ft_lat": lat_new, "profile_az": np.round(cross_az, 1)})
 
-# 5) south -> north, and save
+# 5) south to north, and save
 profiles = profiles.sort_values("ft_lat").reset_index(drop=True)
 profiles_file = os.path.join(paths_out[notebook], "hayward_fault_profiles.csv")
 profiles.to_csv(profiles_file, index=False)
@@ -131,23 +174,25 @@ print(f"{len(trace)} trace points -> {len(profiles)} crossings every {spacing_km
       f"profile_az {profiles.profile_az.min():.1f} to {profiles.profile_az.max():.1f} deg")
 print("Saved crossings to:", profiles_file)
 
-# Check: the result must equal the copy under external_inputs/ read by the other notebooks
+# Check: the result must equal the archived copy under external_inputs/ that the other notebooks read
 inputs_copy = pd.read_csv(common_paths["fault_profiles"])
 same = profiles.shape == inputs_copy.shape and np.allclose(profiles.values, inputs_copy.values, atol=1e-9)
 print(f"identical to {common_paths['fault_profiles']}: {same}")
-assert same, "the regenerated crossings differ from external_inputs/hayward_fault_profiles.csv: the trace or the code has changed"
+assert same, "the regenerated crossings differ from the archived external_inputs/hayward_fault_profiles.csv: the trace or the code has changed"
 trace_note = f"   fault trace: {len(trace)} KML points -> {len(profiles)} crossings at {spacing_km} km; regenerated copy identical"
 
 # %% [markdown]
-# ## [5] Fingerprints of the prepared inputs
+# ## 3. Fingerprints of the prepared inputs
 #
-# The shape, size and fingerprint of every frame product, mask and mosaic, and
-# the fingerprints of the trace and the catalogues, are written to
-# `01_inputs_stats.txt`, so that each registry row can be traced to its input
-# files.
+# For every frame product, mask and mosaic, and for the trace, the crossings
+# and the catalogues, the main dataset shape, the file size and a fingerprint
+# are written to `01_inputs_stats.txt`, so that each registry row can be traced
+# to its input files. The fingerprint (`utils.file_fingerprint`) is the first
+# 12 hexadecimal characters of the SHA-256 hash of the file. Files larger than
+# 256 MiB are hashed on their size and their first and last 4 MiB only, and the
+# fingerprint is then prefixed with `~`.
 
 # %%
-# [6]
 dataset_of = {"ts_file": "timeseries", "vel_file": "velocity", "vel_NA_file": "velocity", "geo_file": "height"}   # the main dataset of each product
 lines = ["01 PREPARED INPUTS (fingerprints)", trace_note]
 for dic in insar_dic_list:
