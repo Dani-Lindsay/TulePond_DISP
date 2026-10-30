@@ -2,77 +2,77 @@
 # # [1] 03 Cross-fault creep time series
 #
 # ```
-# Created on Wed Sep 23 2026
-# @author: daniellelindsay
-# Run in opera_disp_feb13. ~15 min per track for the time-series read, the rest seconds.
+# Author: Danielle Lindsay
+# Environment: opera_disp_feb13. Run time: ~15 min per track for the time-series read; the remaining cells take seconds.
 # ```
 #
-# **The method.** At every 100 m crossing of the mapped Hayward trace:
+# **Method.** Following Li et al. (2023), at every 100 m crossing of the mapped
+# Hayward trace:
 #
-# 1. take the InSAR pixels in a box perpendicular to the LOCAL strike:
-#    within `x_width` along the fault and between `dist_min` and `dist_max`
-#    from the trace, on each side (`w_subset`, `e_subset`)
-# 2. median of the west pixels and median of the east pixels at every date
-#    (`w_avg`, `e_avg`)
+# 1. select the InSAR pixels in a box oriented by the local strike: within
+#    `x_width` along the fault and between `dist_min` and `dist_max` from the
+#    trace, on each side (`w_subset`, `e_subset`)
+# 2. take the median of the west pixels and the median of the east pixels at
+#    every date (`w_avg`, `e_avg`)
 # 3. `west_east_ts = e_avg - w_avg`, in LOS mm
 #
-# That is the whole thing. The difference cancels the reference datum and the
-# per-date common-mode noise (Methods M3). It is done separately for the
-# ascending (09157) and descending (11115) frames. Only crossings that both
-# tracks cover go on to the common grid; the south end is where the ascending
-# frame stops (~37.486 N), the north end is Point Pinole.
+# The difference removes the reference datum and the per-date common-mode
+# noise (Methods M3). It is computed separately for the ascending (09157) and
+# descending (11115) frames. Only crossings covered by both tracks are kept on
+# the common grid; the southern limit is the edge of the ascending frame and
+# the northern limit is Point Pinole.
 #
-# PREPUB: (Old_WD2TB_PhD/Scripts/fault_creeprate_itterate_segments.py and the AGU_extract_creep_rates_*.py scripts)
+# **Additional steps**, each in its own section below:
 #
-# **The four additions the paper needs**, each in its own section below:
+# - a per-pixel rate mask: a pixel whose LOS rate departs from the median rate
+#   of its own side at that crossing by more than 3 robust standard deviations
+#   is rejected (landslides, quarries, edges; Fig. S3)
+# - a common date grid: each track is interpolated onto the union of dates,
+#   only across gaps shorter than 45 days (Fig. S4)
+# - the ascending + descending decomposition into fault-parallel (FP) and
+#   vertical (Up) components, with the local strike and the local incidence and
+#   azimuth at each crossing; `fp_ts.csv` is the input to notebooks 04, 05, 09
+#   and 11
+# - a crossing-level landslide flag: a crossing whose FP rate departs from a
+#   21-crossing running median by more than 3 robust standard deviations is
+#   removed from every product
 #
-# - a per-pixel RATE MASK: a pixel whose LOS rate is > 3 robust sigma from the
-#   median rate of ITS OWN SIDE at that crossing is a landslide, quarry or edge
-#   and is dropped (Fig S3)
-# - a COMMON DATE GRID: each track interpolated onto the union of dates, only
-#   across gaps shorter than 45 days (Fig S4)
-# - the asc + desc DECOMPOSITION into fault-parallel (FP) and vertical (Up)
-#   with the local strike and the local incidence / azimuth of each crossing;
-#   `fp_ts.csv` is THE input to 04, 05, 09 and 11
-# - a crossing-level LANDSLIDE FLAG: a crossing whose FP rate is > 3 robust
-#   sigma from a 21-crossing running median is dropped from every product
-#
-# **Geometry** (definitions from MintPy `utils0.enu2los`; check there, not here):
+# **Geometry** (definitions from MintPy `utils0.enu2los`):
 #
 # ```
 # inc_angle  - incidence angle of the LOS vector, measured from vertical
-# az_angle   - azimuth of the LOS vector FROM THE GROUND TO THE SATELLITE, measured
-#              from north, ANTI-CLOCKWISE positive.  head_angle = 90 - az_angle.
-#              Ours: ascending  ~100 (flies N10W, looks east, sits WEST of the pixel)
-#                    descending ~260 (flies S10E, looks west, sits EAST of the pixel)
+# az_angle   - azimuth of the LOS vector from the ground to the satellite, measured
+#              from north, anticlockwise positive.  head_angle = 90 - az_angle.
+#              Ascending  ~100 (heading N10W, looking east, satellite west of the pixel)
+#              Descending ~260 (heading S10E, looking west, satellite east of the pixel)
 # profile_az - the cross-fault direction of each crossing, compass bearing clockwise
-#              from north, pointing to the EAST side (~54).  strike = profile_az + 90 (~144, SE)
+#              from north, pointing to the east side.  strike = profile_az + 90 (SE)
 # ```
 #
 # **Inputs**: per track `timeseries_tropo.h5`, `velocity_masked.h5`,
 # `geometryGeo.h5` and `maskTempCoh_07.h5`; `hayward_fault_profiles.csv`; the
-# USGS creepmeter records (the creepmeter CHECK only).
+# USGS creepmeter records (creepmeter comparison only).
 #
 # **Outputs** (`outputs/03_creep_timeseries/`):
-# - per track: `creep_ts_LOS_<track>.csv` (lat x decimal-year matrix, mm LOS),
-#   `creep_geom_<track>.csv` (mean incidence / azimuth of the pixels used at
-#   each crossing; the decomposition uses them crossing by crossing),
-#   `creep_params_<track>.json` (the reuse key), `rate_deviation_<track>.csv`
+# - per track: `creep_ts_LOS_<track>.csv` (latitude x decimal-year matrix, mm
+#   LOS), `creep_geom_<track>.csv` (mean incidence and azimuth of the pixels
+#   used at each crossing, for the decomposition), `creep_params_<track>.json`
+#   (the reuse key), `rate_deviation_<track>.csv`
 # - common grid: `asc_los_interp.csv`, `desc_los_interp.csv`, `fp_ts.csv`, `up_ts.csv`
 # - along-fault rates: `creep_rate_fp.csv`, `creep_rate_up.csv`; `decompose_params.json`
 # - `03_creep_stats.txt` and the registry rows `03_*`
 #
-# **Figures**: S3 `figS_ratemask_<params>_nsigma3` (the rate mask), S4
-# `figS_acquisitions_<params>_gap45d` (real versus interpolated epochs), and the
-# QC plots `qc03_profile_azimuth_smooth21` (trace azimuth) and
+# **Figures**: Fig. S3 `figS_ratemask_<params>_nsigma3` (the rate mask), Fig. S4
+# `figS_acquisitions_<params>_gap45d` (acquired versus interpolated epochs), and
+# the quality-control plots `qc03_profile_azimuth_smooth21` (trace azimuth) and
 # `qc03_creep_rate_profile_<params>` (along-fault creep rate).
 #
-# **What to check when you run it.** Rate-mask sigma ~0.55 mm/yr on both
-# tracks, ~6 % of pixels rejected; 439 common dates, 291 with both tracks real;
-# 71 of 610 crossings landslide-flagged; median FP creep rate ~4.7 mm/yr. The
-# crossing at CFW1 redone by hand must equal the extracted series (asserted).
-# CFW1's crossing rate (~6.8 mm/yr) beside the creepmeter's (~7.0 mm/yr) is
-# printed for reading, not asserted.
+# **Checks.** The crossing at CFW1, recomputed step by step, must equal the
+# extracted series (asserted). The printed output and the sidecar list the
+# rate-mask standard deviation and rejected percentage per track, the number of
+# common dates and of dates acquired on both tracks, the number of
+# landslide-flagged crossings, the median FP creep rate, and the InSAR and
+# creepmeter rates at each creepmeter (printed, not asserted).
 
 # %%
 # [2]
@@ -89,14 +89,15 @@ import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
 import h5py                                      # MintPy HDF5 products
 from pyproj import Transformer                   # lon/lat -> UTM
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt                  # Figures
 
 # %% [markdown]
 # ## [3] Paths and parameters
 #
-# The aperture, mask and smoothing choices come from `TulePond_filepaths.py`
-# so every notebook uses the same values (reasons in the assumptions
-# register). The few below are used only here.
+# The aperture, mask and smoothing settings are read from
+# `TulePond_filepaths.py`, so that every notebook uses the same values
+# (justifications in `assumptions_register.md`). The parameters below are used
+# only in this notebook.
 
 # %%
 # [4]
@@ -106,10 +107,10 @@ fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-utm_epsg = 32610         # UTM 10N, the grid the frames live on
+utm_epsg = 32610         # UTM zone 10N, the grid of the frames
 trend_window = 21        # crossings (~2 km) in the running median used to flag landslide crossings
-trend_nsigma = 3.0       # a crossing whose FP rate departs from that trend by more than this is dropped
-s1b_death = 2021.98      # Sentinel-1B failed 2021-12-23 (decimal year 2021.975, kept here as 2021.98): 6-day sampling ends (Fig S4)
+trend_nsigma = 3.0       # a crossing whose FP rate departs from that trend by more than this (robust sigma) is dropped
+s1b_death = 2021.98      # Sentinel-1B failure, 2021-12-23 (decimal year 2021.975, rounded to 2021.98): end of 6-day sampling (Fig S4)
 
 print(f"aperture {dist_min * 1000:.0f}-{dist_max * 1000:.0f} m, along-strike +/-{x_width * 1000:.0f} m, "
       f"min {min_points} px per side, coherence {coh_timeseries}, rate mask {rate_nsigma:g} sigma")
@@ -130,13 +131,13 @@ REG.inputs(*input_files)
 #
 # `hayward_fault_profiles.csv` is the mapped trace resampled every 100 m
 # (built in notebook 01 from the KML): `ft_lon, ft_lat, profile_az`, south to
-# north, `profile_az` the cross-fault azimuth pointing to the east side.
+# north, where `profile_az` is the cross-fault azimuth pointing to the east
+# side.
 #
-# The raw azimuth carries the 100 m jitter of hand digitising (a few kinks of
-# 10-20 degrees). A 21-crossing (2.1 km) rolling median removes the kinks and
-# keeps the real bends of the trace; the same smoothing is used in notebook 02.
-# At Tule Pond it changes the band rates by ~0.2 mm/yr and the event steps by
-# ~0.1 mm and does not move the section ends (checked 2026-09-23).
+# The raw azimuth includes the jitter of hand digitising at 100 m spacing. A
+# 21-crossing (2.1 km) rolling median removes the digitising kinks and retains
+# the bends of the trace; the same smoothing is used in notebook 02. The
+# figure shows the raw and smoothed azimuth along the fault.
 
 # %%
 # [6]
@@ -174,26 +175,21 @@ plt.show()
 # %% [markdown]
 # ## [7] Functions
 #
-# Only what is used for both tracks. `get_window_points` returns, for the
-# coherent pixels in a small window around one crossing, `p` (across the
-# fault, positive to the east side) and `q` (along the fault) in km, computed
-# in UTM. The window is small because the displacement cube is 13 GB per track
-# and is read one window at a time. Its half-width is the smallest number of
-# pixels that holds the whole `dist_max` x `x_width` box at any orientation:
-# the box corners are hypot(dist_max, x_width) = 250 m from the crossing, so
-# 10 pixels (300 m) each way, 21 x 21 pixels per crossing. This is NOT a
-# selection; any window that contains the box gives the same answer.
-# `get_fault_pairs` splits the pixels into the west and east sides.
-#
-# PREPUB: `get_fault_pairs` is unchanged from the 2025 scripts. `get_window_points` replaces the
-# PREPUB: `pygmt.project` call of those scripts and returns the same `p` and `q`; at the CFW1
-# PREPUB: crossing the two routes pick the same pixels (checked 2026-09-23).
+# `get_window_points` returns, for the coherent pixels in a window around one
+# crossing, `p` (across the fault, positive toward the east side) and `q`
+# (along the fault) in km, computed in UTM. The displacement cube (13 GB per
+# track) is read one window at a time. The window half-width is the smallest
+# number of pixels that contains the whole `dist_max` x `x_width` box at any
+# orientation: the box corners are hypot(dist_max, x_width) from the crossing,
+# plus one pixel. The window does not select pixels; any window that contains
+# the box gives the same result. `get_fault_pairs` splits the pixels into the
+# west and east sides.
 
 # %%
 # [8]
 def read_insar_data(dic):
     """Geometry, coherence mask, velocity (mm/yr), dates and the grid of one
-    track. The displacement cube is NOT loaded: `ts` is the open h5py dataset
+    track. The displacement cube is not loaded: `ts` is the open h5py dataset
     and is read per crossing window. Close `ts_h5` when done."""
     print(f"Loading {dic['ORBIT_DIRECTION']} {dic['Frame']}")
     with h5py.File(dic["geo_file"], "r") as hf:
@@ -232,9 +228,9 @@ def get_window_points(insar, easting_0, northing_0, az):
     # so the pixel under the crossing is found by inverting that.
     col_centre = int(round((easting_0 - insar["x_first"]) / insar["x_step"]))
     row_centre = int(round((northing_0 - insar["y_first"]) / insar["y_step"]))
-    # The square of +/- win pixels around it (300 m, enough to hold the whole dist_max x x_width
-    # box whatever its orientation), clipped at the frame edge. Nothing is selected here; the
-    # selection is the p, q filter below and get_fault_pairs. Fewer than 3 pixels a side means
+    # The square of +/- win pixels around it (large enough to contain the whole dist_max x x_width
+    # box at any orientation), clipped at the frame edge. No pixels are selected here; the
+    # selection is the p, q filter below and get_fault_pairs. Fewer than 3 pixels on a side means
     # the crossing is off the frame.
     row_min = max(0, row_centre - insar["win"])
     row_max = min(insar["length"], row_centre + insar["win"] + 1)
@@ -244,7 +240,6 @@ def get_window_points(insar, easting_0, northing_0, az):
         return None
     # easting and northing of every pixel in the window, then the distance of each pixel from the
     # crossing along the cross-fault azimuth (p) and along the fault (q)
-    # (the pygmt.project step of the 2025 scripts)  # PREPUB
     cols, rows = np.meshgrid(np.arange(col_min, col_max), np.arange(row_min, row_max))
     easting = insar["x_first"] + cols * insar["x_step"]
     northing = insar["y_first"] + rows * insar["y_step"]
@@ -279,37 +274,31 @@ def read_creep_ts(path):
 #
 # Two loops over the crossings per track.
 #
-# **Loop 1: the pixel pairs and the rate mask.** At every crossing take the
-# window, split it into `w_subset` and `e_subset`, and note every pixel's LOS
-# rate as its deviation from the median rate of ITS OWN side. Fault creep is a
-# difference BETWEEN sides so it does not enter, and the pooled deviations are
-# centred on zero along the whole fault. One robust sigma per track sets the
-# cut.
+# **Loop 1: pixel pairs and the rate mask.** At every crossing the window is
+# read and split into `w_subset` and `e_subset`, and the LOS rate of every
+# pixel is expressed as its deviation from the median rate of its own side.
+# Fault creep is a difference between the two sides and therefore does not
+# enter these deviations, and the pooled deviations are centred on zero along
+# the whole fault. One robust standard deviation per track sets the cut.
 #
-# **Loop 2: the difference.** Drop the pixels beyond the cut, read the
-# displacement cube in the crossing's window, median each side per date, and
-# difference east minus west. The mean incidence and azimuth of the pixels
-# used are kept for the decomposition.
+# **Loop 2: the difference.** Pixels beyond the cut are removed, the
+# displacement cube is read in the window of the crossing, the median of each
+# side is taken per date, and the east minus west difference is formed. The
+# mean incidence and azimuth of the pixels used are saved for the
+# decomposition.
 #
-# The cube read takes ~15 min per track, so if the per-track files are already
-# on disk with the same reuse key the track is skipped and the mask numbers are
-# recomputed from the saved deviations. The key is the parameters plus the
-# identity of the inputs: the dates of the time series and the fingerprints of
-# the time series, velocity, geometry, coherence mask and fault crossings. A
-# data refresh, a re-mask or a re-mapped trace therefore forces a re-run;
-# delete the files to force one by hand.
+# The cube read takes ~15 min per track. If the per-track files are already on
+# disk with the same reuse key, the extraction of that track is skipped and the
+# mask statistics are recomputed from the saved deviations. The reuse key
+# consists of the parameters and the identity of the inputs: the dates of the
+# time series and the fingerprints of the time series, velocity, geometry,
+# coherence mask and fault crossings. A change in the data, the mask or the
+# trace therefore forces a re-run; deleting the files also forces a re-run.
 
 # %%
 # [10]
 params_now = dict(coh=coh_timeseries, dist_min=dist_min, dist_max=dist_max, x_width=x_width,
                   min_points=min_points, rate_nsigma=rate_nsigma)
-
-# PREPUB-START: history of why the reuse key includes the data
-# A data refresh adds epochs to timeseries_tropo.h5 while every parameter stays the same, so
-# keying on parameters alone silently reused the previous extraction: on 2026-09-28 the
-# March-2026 run rebuilt fp_ts.csv from September LOS series and every product downstream
-# inherited the old dates.
-# PREPUB-END
 
 
 def ts_data_key(dic):
@@ -336,7 +325,7 @@ for dic in insar_dic_list:
     params_file = os.path.join(out_dir, f"creep_params_{track}.json")
     dev_file = os.path.join(out_dir, f"rate_deviation_{track}.csv")
 
-    # ---------- already on disk with this reuse key? then only the mask numbers
+    # ---------- already on disk with this reuse key: recompute only the mask statistics
     cache_key = dict(params_now)
     cache_key.update(ts_data_key(dic))
     saved_key = None
@@ -375,7 +364,7 @@ for dic in insar_dic_list:
     sigma = utils.robust_sigma(rate_dev)
     rate_cut = rate_nsigma * sigma
 
-    # ---------- Loop 2: drop the fast pixels, read the cube, median each side, east - west
+    # ---------- Loop 2: drop the pixels beyond the cut, read the cube, median of each side, east - west
     print(f"[{track}] loop 2: reading the cube at {len(pairs)} crossings ...")
     creep_ts = {}               # ft_lat -> east - west LOS (mm) at every date
     geometry = {}               # ft_lat -> (mean inc, mean azi) of the pixels used
@@ -430,13 +419,13 @@ for dic in insar_dic_list:
                              n_px=rate_dev.size, max_dev=float(np.abs(rate_dev).max()))
 
 # %% [markdown]
-# ## [11] CHECK: one crossing by hand
+# ## [11] Check: one crossing recomputed step by step
 #
-# The crossing at CFW1's latitude is redone on the ascending track at the last
-# epoch, step by step, so the median difference is visible without the loop:
-# take the window, split it into west and east, drop the pixels beyond the
-# track's rate cut, and difference the side medians. The result must equal the
-# value in `creep_ts_LOS_ascending.csv` (to 1e-3 mm).
+# The crossing at the latitude of CFW1 is recomputed on the ascending track at
+# the last epoch, step by step outside the loop: the window is read and split
+# into west and east, the pixels beyond the rate cut of the track are removed,
+# and the side medians are differenced. Check: the result equals the value in
+# `creep_ts_LOS_ascending.csv` to 1e-3 mm.
 
 # %%
 # [12]
@@ -464,18 +453,18 @@ by_hand = east_median - west_median
 from_file = read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_ascending.csv")).loc[cfw1_crossing["ft_lat"]].iloc[-1]
 print(f"crossing at CFW1's latitude, {cfw1_crossing.ft_lat:.4f} N ({cfw1_crossing.km:.1f} km), ascending, last epoch:")
 print(f"   {len(w_subset)} west px, {len(e_subset)} east px; after the rate mask {len(w_keep)} west, {len(e_keep)} east")
-print(f"   east median - west median by hand = {by_hand:.3f} mm;  in creep_ts_LOS_ascending.csv = {from_file:.3f} mm")
-assert abs(by_hand - from_file) < 1e-3, "the crossing redone by hand differs from the extracted series"
-print("PASS: the extraction loop is the four steps above")
+print(f"   east median - west median, recomputed = {by_hand:.3f} mm;  in creep_ts_LOS_ascending.csv = {from_file:.3f} mm")
+assert abs(by_hand - from_file) < 1e-3, "the recomputed crossing differs from the extracted series"
+print("Check passed: the extraction loop reproduces the step-by-step computation")
 print(points.head())
 
 # %% [markdown]
 # ## [13] Figure S3: the rate mask
 #
-# The pooled deviation population per track on a log count axis, with the
-# cut. The tail beyond the cut is what is rejected: landslides, quarries and
-# their edges. The core is kept whatever the local creep rate, because creep is
-# a difference between sides and never enters a within-side deviation.
+# The pooled deviation population per track on a logarithmic count axis, with
+# the cut. Pixels in the tails beyond the cut are rejected. Because creep is a
+# difference between the two sides, it does not enter a within-side deviation,
+# so the cut does not depend on the local creep rate.
 
 # %%
 # [14]
@@ -511,18 +500,18 @@ plt.show()
 # %% [markdown]
 # ## [15] Common date grid
 #
-# The decomposition needs both tracks at the same epochs. Each crossing is
-# interpolated against its REAL acquisition dates onto the union of both
-# tracks' dates within their overlap, but only across gaps shorter than
-# `max_interp_gap_days` (45 d): that bridges the 6, 12 and 24 day sampling and
-# a few missed acquisitions, and leaves the two genuine 2018 ascending breaks
-# (72 and 84 d) as NaN. Nothing is extrapolated. Only crossings on both
-# tracks are kept (the ascending frame sets the south end).
+# The decomposition requires both tracks at the same epochs. Each crossing is
+# interpolated from its acquisition dates onto the union of the dates of both
+# tracks within their common time span, only across gaps shorter than
+# `max_interp_gap_days` (45 d), which bridges the 6, 12 and 24 day sampling
+# intervals and isolated missed acquisitions. Longer gaps are left as NaN, and
+# no values are extrapolated. Only crossings present on both tracks are kept (the ascending
+# frame sets the southern limit).
 
 # %%
 # [16]
 def interp_to_dates(target_dates, dates, values):
-    """One crossing's series onto target_dates against its real dates. NaN
+    """One crossing's series onto target_dates from its acquisition dates. NaN
     inside gaps longer than max_interp_gap_days and outside the observed range."""
     out = np.full(len(target_dates), np.nan)
     ok = np.isfinite(values)
@@ -530,9 +519,9 @@ def interp_to_dates(target_dates, dates, values):
         return out
     dates, values = dates[ok], values[ok]
     interp = np.interp(target_dates, dates, values)
-    left = np.clip(np.searchsorted(dates, target_dates, side="right") - 1, 0, len(dates) - 1)   # real date at or before
-    right = np.clip(left + 1, 0, len(dates) - 1)                                                # real date after
-    is_real = np.isclose(target_dates, dates[left], rtol=0, atol=0.5 / 365.25)                  # a real acquisition
+    left = np.clip(np.searchsorted(dates, target_dates, side="right") - 1, 0, len(dates) - 1)   # acquisition date at or before
+    right = np.clip(left + 1, 0, len(dates) - 1)                                                # acquisition date after
+    is_real = np.isclose(target_dates, dates[left], rtol=0, atol=0.5 / 365.25)                  # an acquisition date
     #                                       (rtol=0: on decimal years the default rtol=1e-5 alone is ~7 days)
     gap_days = (dates[right] - dates[left]) * 365.25
     inside = (target_dates >= dates[0] - 0.5 / 365.25) & (target_dates <= dates[-1] + 0.5 / 365.25)
@@ -562,7 +551,7 @@ for name, los in (("asc", asc_los), ("desc", desc_los)):
     los_interp[name].index.name = "lat"
 print(f"common grid: {len(lats)} crossings x {len(common_dates)} dates, {grid_start:.3f} to {grid_end:.3f}")
 
-# which epochs are REAL on each track (an acquisition within half a day) and which are interpolated
+# which epochs are acquired on each track (an acquisition within half a day) and which are interpolated
 real = {}
 for name, los in (("asc", asc_los), ("desc", desc_los)):
     dates = los.columns.values.astype(float)
@@ -577,17 +566,16 @@ print(f"both tracks real at {both_real.sum()} epochs; interpolated: asc {(~real[
 # %% [markdown]
 # ## [17] Decompose each crossing into fault-parallel and vertical
 #
-# Per crossing, with the LOCAL viewing geometry of that crossing: its own
-# incidence and azimuth on each track (the mean over the pixels used at that
-# crossing, saved in `creep_geom_<track>.csv`) and its LOCAL strike (smoothed
-# cross-fault azimuth + 90). Along the fault the incidence varies by ~1.7 deg
-# (ascending) and ~2.9 deg (descending); a single mean per track would change FP
-# by less than 1 %, but every time-series product here uses local geometry.
-# (Dani 2026-10-03: local strike and geometry for anything built on the time
-# series; an averaged strike only where the velocity FIELDS are decomposed.)
+# Each crossing is decomposed with its local viewing geometry: its incidence
+# and azimuth on each track (the mean over the pixels used at that crossing,
+# saved in `creep_geom_<track>.csv`) and its local strike (smoothed cross-fault
+# azimuth + 90 deg). The local strike and geometry are used for all products
+# derived from the time series; the mean strike is used only for the
+# decomposition of the velocity fields (notebook 02). The printed output lists
+# the range of incidence and azimuth along the fault on each track.
 #
 # `utils.decompose_asc_desc` solves $[d_{asc}, d_{desc}]^T = G\,[U, FP]^T$ by
-# least squares at every epoch (the design matrix is pinned by the tests). FP
+# least squares at every epoch (the design matrix is covered by the tests). FP
 # is positive along the strike bearing, so right-lateral creep is positive.
 
 # %%
@@ -640,15 +628,14 @@ print(utils.design_matrix_up_fp([crossing_inc["asc"][mid], crossing_inc["desc"][
 # %% [markdown]
 # ## [19] Along-fault creep rate and the crossing-level landslide flag
 #
-# A linear rate per crossing (`np.polyfit`). The pixel
-# rate mask removes landslide EDGES, but a landslide that dominates one side IS
-# that side's median; such crossings stand out as spikes against the smooth
-# along-fault trend. Crossings more than `trend_nsigma` robust sigma from a
-# 21-crossing running median are dropped from every product. The surviving
-# profile is smoothed with a 0.5 km Gaussian that preserves the gaps
-# (`utils.gaussian_smooth_km`; sigma in km along the trace, from `km_of`).
-#
-# PREPUB: (`np.polyfit`, as in the 2025 scripts)
+# A linear rate is fitted per crossing (`np.polyfit`). The pixel rate mask
+# removes pixels whose rate departs from the median of their side; a landslide
+# that covers most of one side defines that side's median and is not removed
+# by it. Crossings whose FP rate departs from a 21-crossing running median by
+# more than `trend_nsigma` robust standard deviations are therefore removed
+# from every product. The remaining profile is smoothed with a gap-preserving
+# Gaussian of 0.5 km standard deviation (`utils.gaussian_smooth_km`; sigma in
+# km along the trace, from `km_of`).
 
 # %%
 # [20]
@@ -709,17 +696,14 @@ with open(os.path.join(out_dir, "decompose_params.json"), "w") as fh:
 print("Saved fp_ts.csv, up_ts.csv, the interpolated LOS matrices and the rate profiles to:", out_dir)
 
 # %% [markdown]
-# ## [23] CHECK: the creep rate at the creepmeters
+# ## [23] Creep rate at the creepmeters
 #
-# The FP rate of the crossing at each creepmeter's latitude against the
-# instrument's rate over the same window (the full comparison is notebook 05).
-# A comparison only: the two rates are computed independently and nothing is
-# fitted, scaled or offset to make one match the other (the InSAR is tied to
-# GNSS in the preparation chain, never to the creepmeters).
-# The rates are printed only, no tolerance is asserted: the agreement is read
-# off the validation figure of notebook 05, where the values are written on.
-# COZ1 is the known exception (the InSAR misses part of its two large creep
-# events). The one assert is that the crossing at CFW1 has a rate at all.
+# The FP rate of the crossing at the latitude of each creepmeter and the
+# creepmeter rate over the same time window are printed side by side (the full
+# comparison is in notebook 05). The two rates are computed independently;
+# nothing is fitted, scaled or offset between them (the InSAR is tied to GNSS
+# in the preparation chain, not to the creepmeters). No tolerance is asserted.
+# Check: the crossing at CFW1 has a finite FP rate.
 
 # %%
 # [24]
@@ -738,11 +722,11 @@ for code, cm_lat, cm_lon, cm_name in creepmeters:
 assert np.isfinite(insar_rate_at["CFW1"]), "the crossing at CFW1 has no FP rate (dropped or flagged)"
 
 # %% [markdown]
-# ## [25] QC figure: the along-fault creep-rate profile
+# ## [25] Quality-control figure: the along-fault creep-rate profile
 #
-# Raw per-crossing rates (grey), flagged crossings (vermillion), the smoothed
-# profile (black) and the creepmeter rates (blue). North (Point Pinole) on the
-# left.
+# Per-crossing rates (grey), flagged crossings (vermillion), the smoothed
+# profile (black) and the creepmeter rates (blue). North (Point Pinole) is on
+# the left.
 
 # %%
 # [26]
@@ -770,14 +754,13 @@ fig.savefig(f_qc.replace(".png", ".pdf"))
 plt.show()
 
 # %% [markdown]
-# ## [27] Figure S4: real versus interpolated epochs
+# ## [27] Figure S4: acquired versus interpolated epochs
 #
-# Which track is measured and which is filled in at each epoch of the common
-# grid. Before both orbits reached 6-day sampling they shared few dates, so
-# nearly every early epoch has one track interpolated. The 6-day start dates and
-# the window when both were acquired on the same days are computed from the
-# acquisition lists, not assumed; so is the share of all interpolated epochs
-# (both tracks) that fall before that window starts (registered).
+# For each epoch of the common grid, whether each track is acquired or
+# interpolated. The start of sustained 6-day sampling on each track and the
+# window in which both tracks were acquired on the same dates are computed
+# from the acquisition lists, as is the share of all interpolated epochs (both
+# tracks) that fall before that window starts (registered).
 
 # %%
 # [28]
@@ -815,8 +798,8 @@ sameday_start = max(sixday_asc, sixday_desc, main_interp_block_end(common_dates,
                     main_interp_block_end(common_dates, real["desc"]))
 sameday_start = float(common_dates[common_dates > sameday_start].min())
 in_window = (common_dates >= sameday_start) & (common_dates <= s1b_death)
-# where the interpolation sits: the share of all interpolated epochs (both tracks together) before the
-# same-day window starts (the text: "most interpolated values fall before <that month>")
+# the share of all interpolated epochs (both tracks together) before the same-day window starts
+# (quoted in Methods M3 and the Fig. S4 caption)
 n_interp = int((~real["asc"]).sum() + (~real["desc"]).sum())
 n_interp_before = int((~real["asc"] & (common_dates < sameday_start)).sum() + (~real["desc"] & (common_dates < sameday_start)).sum())
 assert n_interp > 0, "no interpolated epoch on either track"
@@ -850,7 +833,7 @@ print("Saved figure to:", figS4)
 plt.show()
 
 # %% [markdown]
-# ## [29] REGISTER
+# ## [29] Register
 #
 # The sidecar `03_creep_stats.txt` and the registry rows `03_*`.
 

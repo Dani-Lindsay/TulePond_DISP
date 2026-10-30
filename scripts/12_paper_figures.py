@@ -1,18 +1,17 @@
 # %% [markdown]
-# # [1] 12 The paper figures, collected
+# # [1] 12 Paper figures
 #
 # ```
-# Created on Mon Sep 21 2026
-# @author: daniellelindsay
-# Run in opera_disp_feb13. Seconds.
+# Author: Danielle Lindsay
+# Environment: opera_disp_feb13. Run time: seconds.
 # ```
 #
-# **What this notebook does.** Each paper figure is drawn by the notebook that
-# computes its content, so the numbers on the figure and in the registry come
-# from one place. This notebook only collects the current versions under the
-# names the manuscript uses (`Figures_<date>/paper/Fig_N.png`) and lists which
-# notebook made each, so the Overleaf figure folder can be refreshed in one
-# step and every file is traceable.
+# **Purpose.** Each paper figure is drawn by the notebook that computes its
+# content, so that the numbers on the figure and in the registry come from the
+# same source. This notebook copies the current version of each figure to the
+# name used in the manuscript (`Figures_<date>/paper/Fig_N.png`) and lists the
+# notebook that made it, so that the manuscript figure folder can be updated in
+# one step and every file is traceable.
 #
 # | Paper figure | Made by | File stem |
 # |---|---|---|
@@ -26,29 +25,28 @@
 # | S: per-event step maps | 06_event_field_geometry | `figS_event_step_maps_*` |
 # | S: creepmeter validation, aperture ladder | 05_validation | `figS_validation_*`, `figS_binning_ladder_*` |
 # | S: arrays and InSAR, threshold sweep | 09_alignment_arrays | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*` |
-# | S: rainfall conditioning (moved from 11_forecast 2026-10-06) | 10_rain_seasonality | `figS_precip_conditioning_*` |
+# | S: rainfall conditioning | 10_rain_seasonality | `figS_precip_conditioning_*` |
 # | S: slip model (L-curves, slip, fit maps, profiles, Monte Carlo) | 08a_3d_model | `figS_model_*` |
 # | S: sensitivity (sweeps, fixed-depth scan, Green's-function check, semivariogram) | 08b_sensitivity | `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` |
 #
-# (The same table is `wanted` below, which also names each figure's notebook for the staleness check.)
-#
-# Since the rewire of 2026-10-30 the slip-model SM figures of 08a and 08b are collected too (they replace the
-# `figS_pylith_*` figures of the retired 08a / 08b and the hand-copied sweep figures).
+# The same table is the dictionary `wanted` below, which also names the source
+# notebook of each figure for the staleness check.
 #
 # **Outputs**: `Figures_<date>/paper/Fig_<name>.png` and `.pdf`. No registry keys.
 #
-# **What to check.** Every row prints `<- <source file>` and the run of the notebook that made it.
-# The cell stops if a figure is missing, or if a pattern matches more than one file (so a stale
-# variant is never picked), or if a figure is STALE (Dani 2026-10-05: a stale Fig 2 must never be
-# collected):
-# - older than the start of its source notebook's latest run (the earliest cell start recorded in
-#   the executed `<notebook>.ipynb`, as `run_all.sh` / nbconvert write it; the run must be top to
-#   bottom), or
-# - its source notebook's latest run started before the latest run of a notebook it reads ended
-#   (`reads_from`, from the read/write table of audit_2026-10-05/A_dataflow.md): e.g. 08a rerun
-#   but 07c not, or 07c failed (nbconvert does not save a failed notebook, so its record stays old).
-# A figure written AFTER its notebook's recorded run (a run from the .py outside nbconvert) is
-# accepted and flagged.
+# **Checks.** Every row prints `<- <source file>` and the run time of the
+# notebook that made it. The cell stops if a figure is missing, if a pattern
+# matches more than one file (so that an outdated variant is never selected),
+# or if a figure is stale, defined as either:
+# - older than the start of the latest run of its source notebook (the
+#   earliest cell start recorded in the executed `<notebook>.ipynb`, as written
+#   by `run_all.sh` / nbconvert; the run must be top to bottom), or
+# - from a source notebook whose latest run started before the latest run of
+#   a notebook it reads had ended (`reads_from`), for example when 08a has been
+#   re-run but 07c has not, or when 07c failed (nbconvert does not save a failed
+#   notebook, so its record is not updated).
+# A figure written after the recorded run of its notebook (a run of the .py
+# outside nbconvert) is accepted and flagged.
 
 # %%
 # [2]
@@ -64,10 +62,10 @@ fig_dir = common_paths["fig_dir"]
 paper = os.path.join(fig_dir, "paper")
 os.makedirs(paper, exist_ok=True)
 
-# paper name -> (the file pattern in fig_dir, the notebook that draws it) (one entry per line)
+# paper name -> (file pattern in fig_dir, notebook that draws it)
 wanted = {
     "Fig_1": ("fig1_tulepond_*.png", "04_event_detection"),
-    "Fig_2": ("fig2_fault_parallel_vertical_*ev_selected3d.png", "07c_fig2"),         # the selected 3D (SFSVM) model of 08a (2026-10-30)
+    "Fig_2": ("fig2_fault_parallel_vertical_*ev_selected3d.png", "07c_fig2"),         # the selected 3D (SFSVM) model of 08a
     "Fig_3": ("fig3_history_forecast_*.png", "11_forecast"),
     "Fig_S_velocity_chain": ("figS1_velocity_chain_*.png", "01_prep_figures"),
     "Fig_S_gnss_tie": ("figS2_gnss_tie_*.png", "01_prep_figures"),
@@ -81,7 +79,7 @@ wanted = {
     "Fig_S_binning_ladder": ("figS_binning_ladder_*.png", "05_validation"),
     "Fig_S_arrays_insar": ("figS_tulepond_arrays_insar_*.png", "09_alignment_arrays"),
     "Fig_S_hrkt_threshold": ("figS_hrkt_threshold_sweep_*.png", "09_alignment_arrays"),
-    "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "10_rain_seasonality"),   # 10 since 2026-10-06 (the rain tests left 11)
+    "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "10_rain_seasonality"),
     "Fig_S_model_lcurve": ("figS_model_lcurve.png", "08a_3d_model"),
     "Fig_S_model_slip": ("figS_model_slip.png", "08a_3d_model"),
     "Fig_S_model_fit_maps": ("figS_model_fit_maps.png", "08a_3d_model"),
@@ -92,8 +90,8 @@ wanted = {
     "Fig_S_gf_error_vs_depth": ("figS_gf_error_vs_depth.png", "08b_sensitivity"),
     "Fig_S_semivariogram": ("figS_semivariogram.png", "08b_sensitivity"),
 }
-# the repo notebooks each source notebook reads products of (audit_2026-10-05/A_dataflow.md, read/write table;
-# 01_prep_figures and 03 read only the prepared data)
+# the repository notebooks whose products each source notebook reads
+# (01_prep_figures and 03 read only the prepared data)
 reads_from = {
     "01_prep_figures": [],
     "03_creep_timeseries": [],
@@ -151,7 +149,7 @@ for name, (pattern, source_notebook) in wanted.items():
     assert len(hits) == 1, f"{name}: {len(hits)} files match {pattern}: {hits}"
     source = hits[0]
     run_start, run_end = runs[source_notebook]
-    # the source notebook ran after everything it reads, and the figure is from that run (not older)
+    # Check: the source notebook ran after every notebook it reads, and the figure was written by that run
     for upstream in reads_from[source_notebook]:
         if runs[upstream][1] > run_start:
             stale.append(f"{name}: {source_notebook} last ran {run_start:%Y-%m-%d %H:%M}Z, before {upstream} finished "
@@ -169,7 +167,7 @@ for name, (pattern, source_notebook) in wanted.items():
             note = f"  [written after the recorded run of {source_notebook}: a run outside nbconvert]"
     print(f"{name:26s} <- {os.path.basename(source)}  ({source_notebook}, run {run_start:%Y-%m-%d %H:%M}Z){note}")
 assert not missing, f"paper figures missing in {fig_dir}: {missing}"
-assert not stale, "STALE paper figures, not collected:\n  " + "\n  ".join(stale)
+assert not stale, "Stale paper figures, not collected:\n  " + "\n  ".join(stale)
 for name, (pattern, source_notebook) in wanted.items():
     source = glob.glob(os.path.join(fig_dir, pattern))[0]
     for extension in (".png", ".pdf"):

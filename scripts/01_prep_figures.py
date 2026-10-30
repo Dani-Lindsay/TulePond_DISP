@@ -14,39 +14,32 @@
 # # [1] 01 Prep figures: the velocity chain (Fig. S1) and the GNSS tie (Fig. S2)
 #
 # ```
-# Created on Tue Sep 29 2026
-# @author: daniellelindsay
-# Run in opera_disp_feb13. About 5 minutes (the troposphere column reads each TROPO.h5 once).
+# Author: Danielle Lindsay
+# Environment: opera_disp_feb13. Run time: about 5 minutes (the troposphere column reads each TROPO.h5 once).
 # ```
 #
-# **What this notebook does.** Draws the two supplement figures that document
-# the prepared velocity fields, from the products `data_prep/run04` and `run05`
-# wrote (the September 2026 refresh, acquisitions to 27 March 2026), and
-# registers the numbers their captions and Methods M1 quote. Nothing here
-# changes a product.
+# **Purpose.** This notebook draws the two supplementary figures that document
+# the prepared velocity fields, from the products written by `data_prep/run04`
+# and `run05` (acquisitions to 27 March 2026), and registers the numbers quoted
+# in their captions and in Methods M1. No product is modified.
 #
-# The troposphere column is the velocity of `TROPO.h5` itself. run04's velocity
-# fit is a straight line through every date (`polynomial 1`, no excluded
+# The troposphere column is the velocity of `TROPO.h5`. The velocity fit of
+# run04 is a straight line through every date (`polynomial 1`, no excluded
 # dates), and a straight-line fit is linear in the data, so
-# velocity(ts - TROPO) - velocity(ts) = -velocity(TROPO) exactly. Two asserts
-# hold this up: TROPO.h5 must carry the same dates as the time series, and the
-# CHECK cell refits run04's velocity from `timeseries_tropo.h5` with the same
+# velocity(ts - TROPO) - velocity(ts) = -velocity(TROPO) exactly. Two checks
+# test this: TROPO.h5 must carry the same dates as the time series, and the
+# check cell refits the run04 velocity from `timeseries_tropo.h5` with the same
 # straight-line weights.
 #
-# Science style: Helvetica, bold capital panel letters, 7 pt text, 18.3 cm
-# wide, colour-blind-safe colour maps (cividis for the data density, not
-# viridis).
-#
-# PREPUB: Ported from `Hayward_DISP-S1/plotting/figS1_processing.py` and `figS2_gnss_tie.py`
-# PREPUB: (July 2026 data). The old script differenced `velocity_notropo.h5`, which run04 no
-# PREPUB: longer writes (the July copy was moved to `MISC_2026-09-28/` as stale).
+# Figure style (Science): Helvetica, bold capital panel letters, 7 pt text,
+# 18.3 cm wide, colour-blind-safe colour maps (cividis for the data density).
 #
 # **Inputs**: for each frame (09156, 09157, 11115), in `<frame>/mintpy/`:
 # `avgSpatialCoh.h5`, `timeseries_density.h5`, `timeseries_tropo.h5`,
 # `velocity_masked.h5`, `velocity_NA.h5`, `TROPO.h5`; the water mask of the
-# larger ascending frame's stack (`<frame>_stack.nc`); `GPS/09157_enu_NA.csv`
-# (the reference station position); run05's `GPS/gps_insar_validation.csv`;
-# and the grid helpers of `data_prep/run04_velocity.py`.
+# stack of the larger ascending frame (`<frame>_stack.nc`); `GPS/09157_enu_NA.csv`
+# (the reference station position); `GPS/gps_insar_validation.csv` from run05;
+# and the grid functions of `data_prep/run04_velocity.py`.
 #
 # **Outputs**: `outputs/01_prep_figures/01_prep_figures_stats.txt` (layer
 # ranges, clipping, GNSS tie, frame overlap) and the colour tables in
@@ -57,11 +50,11 @@
 # **Figures**: `Figures_<date>/figS1_velocity_chain_coh<c>_vel<v>_ramp<r>.png/.pdf`
 # (Fig. S1) and `figS2_gnss_tie_coh<c>_nasc<n>_ndesc<n>.png/.pdf` (Fig. S2).
 #
-# **What to check when you run it.** The CHECK cell passes (refit minus run04
-# below 1e-3 mm/yr on every frame); the clipped percentages in the sidecar are
-# small; GNSS RMSE about 1.5 -> 0.8 mm/yr ascending and 1.0 -> 0.7 mm/yr
-# descending; the 09156 - 09157 overlap has a median near 0.03 and an RMS
-# near 1.15 mm/yr.
+# **Checks.** The check cell asserts that the refit minus the run04 velocity is
+# below 1e-3 mm/yr on every frame. The sidecar lists the percentage of pixels
+# clipped by the fixed colour limits, the GNSS RMSE before and after the ramp
+# for each orbit, and the median and RMS of the 09156 - 09157 overlap
+# difference.
 
 # %%
 # [2]
@@ -75,7 +68,7 @@ from TulePond_filepaths import common_paths, coh_velocity, frames, paths_gps, re
 import numpy as np                              # Matrix calculations
 import pandas as pd                             # Tables
 import h5py                                     # MintPy HDF5 products
-import xarray as xr                             # the rebased stack (water mask)
+import xarray as xr                             # rebased stack (water mask)
 import pyproj                                   # lon/lat <-> UTM
 import pygmt                                    # Fig. S1 maps
 import matplotlib.pyplot as plt                 # Fig. S2
@@ -83,7 +76,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.ticker import MaxNLocator
 
 sys.path.insert(0, os.path.join(repo_dir, "data_prep"))
-from run04_velocity import COH_VELOCITY, frame_grid, union_grid, place   # the grids run04 mosaicked on
+from run04_velocity import COH_VELOCITY, frame_grid, union_grid, place   # the grids used for the run04 mosaics
 
 notebook = "01_prep_figures"
 REG = utils.Registry(notebook, common_paths, repo_dir)
@@ -94,24 +87,24 @@ MM = 1000.0
 # %% [markdown]
 # ## [3] Parameters and inputs
 #
-# - `ramp_lim`: one symmetric colour limit for BOTH correction columns
-#   (troposphere and GNSS ramp), so the two can be compared directly.
-# - the velocity limit is the 98th percentile of |v| over both orbits, rounded
-#   up, never per panel: ascending and descending differ in size and nothing may
-#   autoscale.
-# - `ref_half`: half-window (pixels) for the value at the reference station,
-#   a median over ~330 m because the reference pixel itself can be masked.
-# - `nodata_rgb`: the grey behind the velocity and correction panels, so
-#   nodata reads grey and white reads as zero.
-# - `row_chunk`: rows of TROPO.h5 read at a time (memory only, no effect on
+# - `ramp_lim`: one symmetric colour limit for both correction columns
+#   (troposphere and GNSS ramp), so that the two are drawn on the same scale.
+# - The velocity colour limit is the 98th percentile of |v| over both orbits,
+#   rounded up, and is shared by all velocity panels.
+# - `ref_half`: half-width (pixels) of the window for the value at the
+#   reference station, a median over ~330 m, because the reference pixel itself
+#   can be masked.
+# - `nodata_rgb`: the grey background of the velocity and correction panels,
+#   so that nodata is grey and zero is white.
+# - `row_chunk`: rows of TROPO.h5 read at a time (memory only; no effect on
 #   the numbers).
-# - `n_check_pixels`: pixels per frame refitted in the CHECK cell.
-# - the Fig. S2 colours: before the ramp grey, after the ramp Okabe-Ito blue;
-#   the overlap map sits on a sea / land base.
+# - `n_check_pixels`: pixels per frame refitted in the check cell.
+# - Fig. S2 colours: grey before the ramp, Okabe-Ito blue after the ramp; the
+#   overlap map is drawn on a sea / land base.
 #
-# The reference station position is read from the screened GNSS table, and
-# run04's coherence threshold must equal the one in `TulePond_filepaths.py`.
-# Every input file is fingerprinted here so each registry row carries them.
+# The reference station position is read from the screened GNSS table, and the
+# run04 coherence threshold must equal the one in `TulePond_filepaths.py`.
+# Every input file is fingerprinted here and recorded with each registry row.
 
 # %%
 # [4]
@@ -119,7 +112,7 @@ ramp_lim = 1.0               # mm/yr, both correction columns
 ref_half = 5                 # pixels
 nodata_rgb = "204/204/204"   # 0.8 grey behind the velocity/correction panels
 row_chunk = 200              # rows of TROPO.h5 read at a time (~0.7 GB)
-n_check_pixels = 50          # pixels per frame refitted in the CHECK cell
+n_check_pixels = 50          # pixels per frame refitted in the check cell
 c_before = "0.55"            # S2: before the ramp, grey
 c_after = "#0072B2"          # S2: after the ramp, Okabe-Ito blue
 sea_land = ["#cfe0ee", "#b0b0b0"]   # S2 overlap base: water_mask 0 = sea, 1 = land
@@ -150,8 +143,8 @@ REG.inputs(*input_files)
 # ## [5] Acquisitions per frame (Methods M1)
 #
 # The number of dates and the first and last date of each frame, read from
-# the time series the velocities were fitted to. The dates are kept for the
-# TROPO.h5 date check and the CHECK cell below.
+# the time series to which the velocities were fitted. The dates are kept for
+# the TROPO.h5 date check and the check cell below.
 
 # %%
 # [6]
@@ -177,22 +170,22 @@ print(acquisitions.to_string(index=False))
 # %% [markdown]
 # ## [7] Fig. S1 layers, per frame
 #
-# Six layers on each frame's own grid:
+# Six layers on the grid of each frame:
 # 1. OPERA average temporal coherence (`avgSpatialCoh.h5`)
 # 2. data density, the fraction of epochs with a valid value
 # 3. the LOS velocity before the tie (`velocity_masked.h5`, coherence 0.7, ZOA1 datum)
-# 4. the change the troposphere correction made to the velocity, -velocity(TROPO)
-# 5. the GNSS ramp run05 applied, `velocity_NA - velocity_masked` (not refitted
-#    here: this is exactly the correction that was applied)
-# 6. (formed after the mosaic) the final velocity, 3 + 5
+# 4. the change in velocity due to the troposphere correction, -velocity(TROPO)
+# 5. the GNSS ramp applied by run05, `velocity_NA - velocity_masked` (read
+#    from the products, not refitted)
+# 6. (formed after the mosaic) the final velocity, layer 3 + layer 5
 #
-# Exact zeros in a MintPy velocity are nodata (the fit writes 0 where it had
-# nothing to fit) and become NaN.
+# Exact zeros in a MintPy velocity file are nodata (the fit writes 0 where no
+# data were available) and are set to NaN.
 #
-# The straight-line slope is written out in two small functions: the time
-# axis in decimal years (MintPy's convention, year + (day of year - 1) /
-# 365.25) and the least-squares slope weights, w = (t - mean t) / sum((t -
-# mean t)^2), so that slope = sum(w * y).
+# The straight-line slope is computed by two functions: the time axis in
+# decimal years (the MintPy convention, year + (day of year - 1) / 365.25) and
+# the least-squares slope weights, w = (t - mean t) / sum((t - mean t)^2), so
+# that slope = sum(w * y).
 
 # %%
 # [8]
@@ -218,12 +211,12 @@ def slope_weights(times):
 
 def tropo_velocity(path, ts_dates):
     """Straight-line slope (mm/yr) of TROPO.h5 at every pixel, the same
-    all-dates fit run04's timeseries2velocity makes, read in row chunks.
+    all-dates fit as timeseries2velocity in run04, read in row chunks.
     TROPO.h5 must carry exactly the dates of the time series (`ts_dates`)."""
     with h5py.File(path, "r") as f:
         tropo_dates = [d.decode() for d in f["date"][:]]
         assert tropo_dates == ts_dates, (f"{path}: TROPO.h5 has {len(tropo_dates)} dates, the time series "
-                                         f"{len(ts_dates)}; the troposphere column would not be the applied correction")
+                                         f"{len(ts_dates)}; the troposphere column would differ from the applied correction")
         weights = slope_weights(decimal_years(tropo_dates))
         n_rows = f["timeseries"].shape[1]
         out = np.empty(f["timeseries"].shape[1:], dtype="float32")
@@ -242,11 +235,11 @@ for frame_id, paths in frames.items():
     with h5py.File(os.path.join(mintpy_dir, "timeseries_density.h5"), "r") as f:
         density = f["timeseriesDensity"][:]
     orig = read_velocity(paths["velocity_masked"])
-    # velocity(ts - TROPO) - velocity(ts) = -velocity(TROPO); shown on the velocity-mask pixels only
+    # velocity(ts - TROPO) - velocity(ts) = -velocity(TROPO); shown on the pixels of the velocity mask only
     tropo_slope = tropo_velocity(os.path.join(mintpy_dir, "TROPO.h5"), dates_by_frame[frame_id])
     tropo = np.where(np.isfinite(orig), -tropo_slope, np.nan)
-    # not zeroed per frame: run05 fits one quadratic per track plus a constant per
-    # frame, and the difference of the per-frame constants is a real inter-frame offset
+    # not zeroed per frame: run05 fits one quadratic per track plus one constant per
+    # frame, and the difference of the per-frame constants is an inter-frame offset
     ramp = read_velocity(paths["velocity_NA"]) - orig
     if grid["orbit"] not in layers_by_orbit:
         layers_by_orbit[grid["orbit"]] = []
@@ -254,16 +247,16 @@ for frame_id, paths in frames.items():
     print(f"{frame_id} ({grid['orbit']}): {np.isfinite(orig).sum()} velocity pixels")
 
 # %% [markdown]
-# ## [9] CHECK: the straight-line fit reproduces run04's velocity
+# ## [9] Check: the straight-line fit reproduces the run04 velocity
 #
-# The troposphere column rests on run04's velocity being an ordinary
-# straight-line fit through every date. This cell tests that directly: at
-# `n_check_pixels` random pixels of each frame it fits the same straight line
-# (`slope_weights` on the time-series dates) to `timeseries_tropo.h5` and
-# compares with `velocity_masked.h5`. Inside the velocity mask run04 fitted
-# exactly that series (the referenced time series minus TROPO), so the two
-# must agree to float precision. A failure means run04's fit is not the one
-# the troposphere column assumes.
+# The troposphere column requires the run04 velocity to be an ordinary
+# straight-line fit through every date. At `n_check_pixels` random pixels of
+# each frame this cell fits the same straight line (`slope_weights` on the
+# time-series dates) to `timeseries_tropo.h5` and compares the result with
+# `velocity_masked.h5`. Inside the velocity mask run04 fitted this series (the
+# referenced time series minus TROPO), so the two must agree to float
+# precision. Check: maximum |refit - run04 velocity| < 1e-3 mm/yr on every
+# frame.
 
 # %%
 # [10]
@@ -281,17 +274,18 @@ for frame_id, paths in frames.items():
             refit = float(np.sum(weights * series_mm))
             largest_diff = max(largest_diff, abs(refit - float(velocity_run04[row, col])))
     print(f"{frame_id}: straight-line refit minus run04 velocity at {n_check_pixels} pixels, max |diff| {largest_diff:.2e} mm/yr")
-    assert largest_diff < 1e-3, f"{frame_id}: run04's velocity is not the straight-line fit of timeseries_tropo.h5"
-print("PASS: run04's velocity is the straight-line fit, so -velocity(TROPO) is the applied correction")
+    assert largest_diff < 1e-3, f"{frame_id}: the run04 velocity is not the straight-line fit of timeseries_tropo.h5"
+print("Check passed: the run04 velocity is the straight-line fit, so -velocity(TROPO) is the applied correction")
 
 # %% [markdown]
-# ## [11] Mosaic same-orbit frames and reference the corrections at ZOA1
+# ## [11] Mosaic the frames of each orbit and reference the corrections at ZOA1
 #
-# The two ascending frames go onto run04's union grid, the larger frame first;
-# a pixel is taken from the first frame whose COHERENCE is finite there (its
-# footprint), since density is a finite 0 outside the footprint. The two
-# correction columns are then referenced at ZOA1: a uniform offset changes no
-# gradient and no creep rate, and would otherwise swamp the +/-1 mm/yr scale.
+# The two ascending frames are placed on the run04 union grid, the larger frame
+# first; each pixel is taken from the first frame whose coherence is finite
+# there (its footprint), because density is a finite 0 outside the footprint.
+# The two correction columns are then referenced at ZOA1. A uniform offset
+# changes neither the velocity gradients nor the creep rates, and is removed so
+# that the corrections can be shown on the +/-1 mm/yr scale.
 
 # %%
 # [12]
@@ -311,7 +305,7 @@ def zero_at_ref(arr, grid):
     row_lo = max(ref_row_index - ref_half, 0)
     col_lo = max(ref_col_index - ref_half, 0)
     window = arr[row_lo:ref_row_index + ref_half + 1, col_lo:ref_col_index + ref_half + 1]
-    assert np.isfinite(window).any(), "reference station falls outside the valid data"
+    assert np.isfinite(window).any(), "the reference station falls outside the valid data"
     return arr - np.nanmedian(window)
 
 
@@ -356,7 +350,7 @@ vel_lim = float(np.ceil(np.percentile(np.abs(np.concatenate(all_velocities)), 98
 print(f"velocity colour limit +/-{vel_lim:g} mm/yr, correction limit +/-{ramp_lim:g} mm/yr")
 
 # %% [markdown]
-# ## [13] What the fixed colour limits clip (sidecar)
+# ## [13] Pixels clipped by the fixed colour limits (sidecar)
 #
 # Per orbit and layer: the minimum, maximum, RMS and the percentage of pixels
 # beyond the colour limit. The troposphere RMS per orbit is registered.
@@ -380,16 +374,16 @@ print("\n".join(lines))
 # %% [markdown]
 # ## [15] Fig. S1: the velocity chain, one row per orbit direction
 #
-# pygmt, north up in lon/lat. Each mosaic is resampled to a regular lon/lat grid by nearest pixel
-# (`utils.utm_to_lonlat_grid`, no interpolation) at ~100 m, finer than a
-# printed pixel of a 2.7 cm panel at 600 dpi (the PNG is 600 dpi). The velocity and correction panels sit
-# on grey so nodata reads grey and white reads as zero; ZOA1 is the black
-# square; a 10 km scale bar in C and I. One colour bar per column.
+# Drawn with pygmt, north up in lon/lat. Each mosaic is resampled to a regular
+# lon/lat grid at ~100 m by nearest pixel (`utils.utm_to_lonlat_grid`, no
+# interpolation), finer than a printed pixel of a 2.7 cm panel at 600 dpi (the
+# PNG is written at 600 dpi). The velocity and correction panels have a grey
+# background, so that nodata is grey and zero is white; ZOA1 is the black
+# square; a 10 km scale bar is drawn in panels C and I. One colour bar per
+# column.
 #
-# GMT shrinks the fonts of a short colour bar (a 2 cm bar prints 12p as ~6p,
-# tested 2026-09-29), so the bars are drawn with 12p to print at ~6p.
-#
-# PREPUB: (Dani 2026-09-29: pygmt for anything with a map.)
+# GMT reduces the font size of a short colour bar (on a 2 cm bar a 12p font
+# prints at ~6p), so the colour bars are drawn with 12p fonts to print at ~6p.
 
 # %%
 # [16]
@@ -451,7 +445,7 @@ for i, orbit in enumerate(merged):
         fig.grdimage(grid=grid, cmap=cpts[j], nan_transparent=True)
         if column["grey"]:
             fig.plot(x=[ref_lon], y=[ref_lat], style="s0.12c", fill="black", pen="0.3p,white")
-        if j == 2:     # the 10 km scale bar, on the velocity-before-tie panels (C and I)
+        if j == 2:     # 10 km scale bar, on the velocity-before-tie panels (C and I)
             fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"], map_scale="jBL+w10k+o0.15c/0.15c")
         else:
             fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"])
@@ -477,12 +471,12 @@ print("wrote", f_s1 + ".png")
 # %% [markdown]
 # ## [17] Fig. S2 data: the GNSS tie per station
 #
-# run05's per-station table, pooled by orbit. A station sampled in both
-# ascending frames is averaged to one row (the two share a track and look
-# geometry), so the panels count unique STATIONS. Both axes are referenced to
-# ZOA1 (its absolute LOS is subtracted); this shifts the axes only, and leaves
-# every residual and RMSE unchanged. The RMSE is in-sample, before and after
-# the ramp; run05's sidecar carries the leave-one-out numbers.
+# The per-station table of run05, pooled by orbit. A station sampled in both
+# ascending frames is averaged to one row (the two frames share a track and
+# look geometry), so the panels count unique stations. Both axes are referenced
+# to ZOA1 (its absolute LOS velocity is subtracted); this shifts the axes only
+# and leaves every residual and RMSE unchanged. The RMSE is in-sample, before
+# and after the ramp; the run05 sidecar lists the leave-one-out values.
 
 # %%
 # [18]
@@ -518,9 +512,9 @@ print(pd.DataFrame(tie_stats).T.round(3))
 # %% [markdown]
 # ## [19] Fig. S2 data: the two ascending frames where they overlap
 #
-# An internal check that uses no GNSS: 09156 minus 09157 velocity (both
-# untied, coherence 0.7, ZOA1 datum) on the larger frame's grid, with that
-# frame's water mask as a land/sea base.
+# An internal comparison independent of GNSS: the 09156 minus 09157 velocity
+# (both before the tie, coherence 0.7, ZOA1 datum) on the grid of the larger
+# frame, with the water mask of that frame as a land/sea base.
 
 # %%
 # [20]
@@ -585,12 +579,11 @@ print("\n".join(lines[-4:]))
 # %% [markdown]
 # ## [21] Fig. S2: GNSS against InSAR, residuals, and the frame overlap
 #
-# matplotlib. Top row: GNSS against InSAR LOS velocity for each orbit (before
-# the ramp open grey, after blue), and the overlap map with the GNSS stations.
-# Bottom row: the residual distributions and the overlap distribution. One
-# scatter span and one set of histogram bins for both orbits.
-#
-# PREPUB: (Dani 2026-09-29: S2 may stay matplotlib.)
+# Drawn with matplotlib. Top row: GNSS against InSAR LOS velocity for each
+# orbit (before the ramp, open grey; after the ramp, blue), and the overlap map
+# with the GNSS stations. Bottom row: the residual distributions and the
+# overlap distribution. The scatter span and the histogram bins are shared by
+# both orbits.
 
 # %%
 # [22]

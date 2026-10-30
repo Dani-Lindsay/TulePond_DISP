@@ -2,49 +2,49 @@
 # # [1] 02 Velocity decomposition: fault-parallel and vertical velocity maps
 #
 # ```
-# Created on Wed Sep 23 2026
-# @author: daniellelindsay
-# Run in opera_disp_feb13 (MintPy importable, pygmt). Seconds.
+# Author: Danielle Lindsay
+# Environment: opera_disp_feb13 (MintPy, pygmt). Run time: seconds.
 # ```
 #
-# **What this notebook does.** Takes the GNSS-tied ascending and descending
-# velocity mosaics (`mosaic_velfield/<orbit>_velocity_NA.h5`, made by
-# `data_prep/run04` and `run05` and fingerprinted in notebook 01) and solves, pixel by pixel, for the fault-parallel (FP) and
-# vertical (Up) velocity. The solve is MintPy's own `asc_desc2horz_vert`, with
-# the mean strike of the mapped Hayward trace as the horizontal direction. All
-# horizontal motion is assumed fault-parallel, the standard two-look
-# assumption (Methods M2).
+# **Purpose.** This notebook takes the GNSS-tied ascending and descending
+# velocity mosaics (`mosaic_velfield/<orbit>_velocity_NA.h5`, written by
+# `data_prep/run04` and `run05` and fingerprinted in notebook 01) and solves,
+# pixel by pixel, for the fault-parallel (FP) and vertical (Up) velocity. The
+# solve uses `asc_desc2horz_vert` from MintPy, with the mean strike of the
+# mapped Hayward trace as the horizontal direction. All horizontal motion is
+# assumed to be fault-parallel (the standard two-look assumption; Methods M2).
 #
-# **Geometry** (definitions from MintPy `utils0.enu2los`; check there, not here):
+# **Geometry** (definitions from MintPy `utils0.enu2los`):
 #
 # ```
 # inc_angle  - incidence angle of the LOS vector, measured from vertical
-# az_angle   - azimuth of the LOS vector FROM THE GROUND TO THE SATELLITE, measured
-#              from north, ANTI-CLOCKWISE positive.  head_angle = 90 - az_angle.
-#              Ours: ascending  ~100 (flies N10W, looks east, sits WEST of the pixel)
-#                    descending ~260 (flies S10E, looks west, sits EAST of the pixel)
-# strike     - compass bearing clockwise from north = profile_az + 90 (~144, SE).
-#              MintPy's horz_az_angle is anti-clockwise, so the strike enters as -strike
-#              (pinned by tests/test_insar_utils.py).
+# az_angle   - azimuth of the LOS vector from the ground to the satellite, measured
+#              from north, anticlockwise positive.  head_angle = 90 - az_angle.
+#              Ascending  ~100 (heading N10W, looking east, satellite west of the pixel)
+#              Descending ~260 (heading S10E, looking west, satellite east of the pixel)
+# strike     - compass bearing clockwise from north = profile_az + 90 (SE).
+#              horz_az_angle in MintPy is anticlockwise, so the strike enters as -strike
+#              (tested in tests/test_insar_utils.py).
 # ```
 #
 # **Outputs** (`outputs/02_velocity_decomposition/`):
 # - `fp_velocity_map.h5` with datasets `fp_velocity` and `up_velocity` (mm/yr)
-# - `fp_velocity.h5`, `up_velocity.h5` as MintPy velocity files and their `.grd`
-#   versions from `save_gmt.py`, for GMT / QGIS
+# - `fp_velocity.h5`, `up_velocity.h5` as MintPy velocity files, and their
+#   `.grd` versions from `save_gmt.py`, for GMT / QGIS
 # - `fp_velocity_xfault_swath200m_dist1000m.csv`: the cross-fault transects at
 #   the five creepmeters
 # - `02_velocity_stats.txt` and the registry rows `02_*`
 #
-# **Figures** (working figures, not paper figures): the rotated FP / Up velocity
-# maps `qc02_velocity_maps_rotated_*` and the five transects `qc02_transects_*`.
-# The map product `fp_velocity_map.h5` is what 04 (the Fig 1 map), 05 and 09 read.
+# **Figures** (quality-control figures, not paper figures): the rotated FP / Up
+# velocity maps `qc02_velocity_maps_rotated_*` and the five transects
+# `qc02_transects_*`. The map product `fp_velocity_map.h5` is read by 04 (the
+# Fig. 1 map), 05 and 09.
 #
-# **What to check when you run it.** CHECK 1 re-derives the decomposition at
-# random pixels with our own design matrix and compares with MintPy's numbers;
-# CHECK 2 asserts a positive (right-lateral) fault-crossing step at all five
-# creepmeters (CFW1's step, ~6.6 mm/yr, is compared with its creepmeter in
-# notebook 05).
+# **Checks.** Check 1 re-derives the decomposition at random pixels with an
+# independent design matrix and compares it with the MintPy result (assert:
+# maximum difference < 1e-3 mm/yr). Check 2 asserts a positive (right-lateral)
+# fault-parallel step across the trace at all five creepmeters; the step at
+# CFW1 is compared with the creepmeter in notebook 05.
 
 # %%
 # [2]
@@ -59,10 +59,10 @@ import pandas as pd                              # Tables
 import h5py                                      # MintPy HDF5 products
 import pyproj                                    # lon/lat -> UTM
 import xarray as xr                              # gridded arrays for pygmt
-import matplotlib.pyplot as plt                  # quick-look plots
+import matplotlib.pyplot as plt                  # quick-look and transect plots
 import pygmt                                     # publication maps
 import mintpy
-from mintpy.asc_desc2horz_vert import asc_desc2horz_vert   # THE decomposition, MintPy's own
+from mintpy.asc_desc2horz_vert import asc_desc2horz_vert   # the decomposition (MintPy)
 
 # %% [markdown]
 # ## [3] Paths and parameters
@@ -76,10 +76,10 @@ os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
 
-geom_step = 20        # MintPy medians the geometry in windows of this many pixels (its default)
+geom_step = 20        # window (pixels) over which MintPy takes the median geometry (MintPy default)
 swath_m = 200.0       # transects: along-fault half-width of the swath (m)
 max_dist_m = 1000.0   # transects: cross-fault half-extent (m)
-n_check = 200         # pixels re-derived by hand in CHECK 1
+n_check = 200         # pixels re-derived independently in check 1
 rng = np.random.default_rng(0)
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
@@ -88,9 +88,9 @@ REG.inputs(paths_mosaic["ascending"]["vel_NA_file"], paths_mosaic["ascending"]["
            common_paths["fault_profiles"])
 
 # %% [markdown]
-# ## [5] Load InSAR: the two velocity mosaics and their geometry
+# ## [5] Load the two velocity mosaics and their geometry
 #
-# Both orbits are on the SAME 30 m UTM grid (EPSG 32610), so no resampling is
+# Both orbits are on the same 30 m UTM grid (EPSG 32610), so no resampling is
 # needed and a pixel in the ascending map is the same ground pixel in the
 # descending map. Velocities are stored in m/yr and converted to mm/yr on
 # loading (`unit = 1000`).
@@ -114,19 +114,19 @@ for orbit in ("ascending", "descending"):
     print(f"   velocity valid {100 * np.isfinite(vel).mean():.1f}%, median {np.nanmedian(vel):+.2f} mm/yr, "
           f"incidence {np.nanmin(inc[inc > 0]):.1f} to {np.nanmax(inc):.1f} deg, azimuth median {np.nanmedian(azi[inc > 0]):.1f} deg")
 
-# the two grids must be the same grid
+# Check: the two grids must be identical
 attrs = insar["ascending"]["attrs"]
 for key in ("X_FIRST", "Y_FIRST", "X_STEP", "Y_STEP", "WIDTH", "LENGTH", "EPSG", "REF_LAT", "REF_LON"):
     assert attrs[key] == insar["descending"]["attrs"][key], f"asc/desc grids differ in {key}"
 assert attrs["EPSG"] == "32610" and float(attrs["X_STEP"]) == 30.0, "expected a 30 m UTM zone 10 grid"
 assert insar["ascending"]["vel"].shape == insar["ascending"]["inc"].shape, "geometry grid differs from velocity grid"
 
-# the ground -> satellite vector points WEST for ascending and EAST for descending
+# Check: the ground -> satellite vector points west for ascending and east for descending
 inc_asc, azi_asc = insar["ascending"]["inc"], insar["ascending"]["azi"]
 inc_desc, azi_desc = insar["descending"]["inc"], insar["descending"]["azi"]
 los_vector_asc = utils.los_unit_vector(np.nanmedian(inc_asc[inc_asc > 0]), np.nanmedian(azi_asc[inc_asc > 0]))
 los_vector_desc = utils.los_unit_vector(np.nanmedian(inc_desc[inc_desc > 0]), np.nanmedian(azi_desc[inc_desc > 0]))
-assert los_vector_asc[0] < 0 < los_vector_desc[0], "look directions are not asc-west / desc-east: check the azimuth convention"
+assert los_vector_asc[0] < 0 < los_vector_desc[0], "look directions are not ascending-west / descending-east: check the azimuth convention"
 print("median LOS unit vectors (E, N, U): asc", los_vector_asc.round(3), " desc", los_vector_desc.round(3))
 
 # %% [markdown]
@@ -136,7 +136,6 @@ print("median LOS unit vectors (E, N, U): asc", los_vector_asc.round(3), " desc"
 
 # %%
 # [8]
-# quick look: both LOS velocity mosaics on their native grid
 fig, axes = plt.subplots(1, 2, figsize=(9, 5), sharex=True, sharey=True)
 for ax, orbit in zip(axes, ("ascending", "descending")):
     im = ax.imshow(insar[orbit]["vel"], cmap="RdBu_r", vmin=-10, vmax=10, interpolation="none")
@@ -147,15 +146,15 @@ fig.colorbar(im, ax=axes, shrink=0.6, label="mm/yr")
 plt.show()
 
 # %% [markdown]
-# ## [9] Fault trace: the one strike that enters the decomposition
+# ## [9] Fault trace: the single strike used in the decomposition
 #
-# `hayward_fault_profiles.csv` is the mapped trace every 100 m (built in
-# notebook 01): `ft_lon, ft_lat, profile_az`, `profile_az` the cross-fault
-# azimuth pointing to the east side. The 21-crossing (2.1 km) rolling median
-# removes the digitising kinks and keeps the real bends (the same smoothing as
-# notebook 03). A raster row has no tectonic meaning, so ONE strike, the mean of
-# the smoothed local strike, is used for the whole map; where the local strike
-# matters (the creep time series) notebook 03 applies it crossing by crossing.
+# `hayward_fault_profiles.csv` is the mapped trace sampled every 100 m (built
+# in notebook 01): `ft_lon, ft_lat, profile_az`, where `profile_az` is the
+# cross-fault azimuth pointing to the east side. A 21-crossing (2.1 km) rolling
+# median removes the digitising kinks and retains the bends of the trace (the
+# same smoothing as in notebook 03). One strike, the mean of the smoothed local
+# strike, is used for the whole map; notebook 03 uses the local strike at each
+# crossing for the creep time series.
 
 # %%
 # [10]
@@ -167,10 +166,10 @@ strike = float(np.nanmean(x_fault["strike"]))
 print(f"trace: {len(x_fault)} crossings, latitude {x_fault.ft_lat.min():.3f} to {x_fault.ft_lat.max():.3f}")
 print(f"local strike ranges {np.nanmin(x_fault.strike):.1f} to {np.nanmax(x_fault.strike):.1f} deg")
 print(f"mean strike used for the map: {strike:.2f} deg (compass bearing, clockwise from north)")
-assert 130 < strike < 160, "the Hayward strikes ~N36W; a mean strike outside 130-160 means the trace file is wrong"
+assert 130 < strike < 160, "the Hayward Fault strikes ~N36W; a mean strike outside 130-160 deg indicates an error in the trace file"
 
 # %% [markdown]
-# ## [11] RUN: MintPy's two-look decomposition
+# ## [11] Two-look decomposition (MintPy)
 #
 # `asc_desc2horz_vert` solves, in windows of `geom_step` x `geom_step` pixels
 # with the window-median geometry,
@@ -181,7 +180,7 @@ assert 130 < strike < 160, "the Hayward strikes ~N36W; a mean strike outside 130
 #    \begin{bmatrix} v_{FP} \\ v_{U} \end{bmatrix} $$
 #
 # with $\alpha_h$ = `-strike`. Pixels missing on either track are set to NaN on
-# both so the solve never mixes a valid value with a zero.
+# both, so that a valid value is never combined with a zero.
 
 # %%
 # [12]
@@ -203,17 +202,17 @@ print(f"FP velocity: {100 * np.isfinite(fp_vel).mean():.1f}% valid, median {np.n
 print(f"Up velocity: median {np.nanmedian(up_vel):+.2f} mm/yr, 5-95% {np.nanpercentile(up_vel, 5):+.2f} to {np.nanpercentile(up_vel, 95):+.2f}")
 
 # %% [markdown]
-# ## [13] CHECK 1: re-derive the decomposition by hand at random pixels
+# ## [13] Check 1: independent re-derivation of the decomposition at random pixels
 #
-# MintPy is a black box to the reader, so the solve is redone at `n_check`
-# random pixels with `utils.design_matrix_up_fp` (our own, tested design
-# matrix) and `numpy.linalg.solve`, using the same window-median geometry
-# MintPy uses. Agreement to 1e-3 mm/yr (float32 storage) means our convention
-# and MintPy's are the same thing.
+# The solve is repeated at `n_check` random pixels with
+# `utils.design_matrix_up_fp` (the design matrix of this repository, covered by
+# the tests) and `numpy.linalg.solve`, using the same window-median geometry as
+# MintPy. Check: the two agree to 1e-3 mm/yr (float32 storage), which verifies
+# that the sign and azimuth conventions are the same.
 
 # %%
 # [14]
-# MintPy returns NaN where a window has no valid geometry; report, then compare only where it returned a number
+# MintPy returns NaN where a window has no valid geometry; report the count, then compare only where it returned a value
 lost = both & ~np.isfinite(fp_vel)
 print(f"pixels valid on both tracks but NaN after the solve: {lost.sum()} ({100 * lost.sum() / both.sum():.2f}%)")
 
@@ -231,29 +230,30 @@ for row, col in zip(rows[pick], cols[pick]):
     diff_up.append(up_hand - up_vel[row, col])
 diff_fp, diff_up = np.array(diff_fp), np.array(diff_up)
 
-print(f"hand solve minus MintPy at {n_check} pixels: FP max |diff| {np.abs(diff_fp).max():.2e} mm/yr, "
+print(f"independent solve minus MintPy at {n_check} pixels: FP max |diff| {np.abs(diff_fp).max():.2e} mm/yr, "
       f"Up max |diff| {np.abs(diff_up).max():.2e} mm/yr")
-assert np.abs(diff_fp).max() < 1e-3 and np.abs(diff_up).max() < 1e-3, "our design matrix and MintPy disagree"
-print("PASS: MintPy's decomposition equals ours (same convention, same numbers)")
+assert np.abs(diff_fp).max() < 1e-3 and np.abs(diff_up).max() < 1e-3, "the independent design matrix and MintPy disagree"
+print("Check passed: the MintPy decomposition equals the independent solve")
 
 # %% [markdown]
-# ## [15] CHECK 2: the sign and size of the fault-parallel step at the creepmeters
+# ## [15] Check 2: sign and size of the fault-parallel step at the creepmeters
 #
-# Right-lateral creep means the EAST block moves south-east relative to the
-# west block. FP is positive along the strike bearing (south-east), so the east
-# side of the trace must be MORE positive than the west side. At each
-# creepmeter a cross-fault transect is cut from the FP map (points every 30 m
-# within +/- `swath_m` along the fault and +/- `max_dist_m` across, each taking
-# the value of the pixel under it, so a pixel can be sampled twice; centred on
-# the trace point at the creepmeter's latitude) and fitted with
-# `v = a + b d + step H(d > 0)`: the step is the creep rate seen by the
-# velocity field, to compare with the creepmeter (CFW1 7.0 mm/yr).
+# Right-lateral creep moves the east block south-east relative to the west
+# block. FP is positive along the strike bearing (south-east), so the east side
+# of the trace has the more positive FP velocity. At each creepmeter a
+# cross-fault transect is sampled from the FP map: points every 30 m within
+# +/- `swath_m` along the fault and +/- `max_dist_m` across it, centred on the
+# trace point at the latitude of the creepmeter, each point taking the value of
+# the pixel beneath it (so a pixel can be sampled twice). The transect is
+# fitted with `v = a + b d + step H(d > 0)`; the step is the fault-crossing
+# creep rate in the velocity field, compared with the creepmeter rate in
+# notebook 05. Check: the step is positive at every creepmeter.
 
 # %%
 # [16]
 def step_fit(dist, vel):
     """v = a + b*d + step*[d > 0]; the step is the fault-crossing creep rate.
-    Solved by least squares (three unknowns, so linregress alone cannot do it)."""
+    Solved by least squares for the three unknowns."""
     G = np.column_stack([np.ones_like(dist), dist, (dist > 0).astype(float)])
     a, b, step = np.linalg.lstsq(G, vel, rcond=None)[0]
     return step, a + b * dist + step * (dist > 0)
@@ -296,19 +296,19 @@ print("fault-parallel velocity step across the trace (east minus west, mm/yr):")
 for code, cm_lat, cm_lon, name in creepmeters:
     transect = x_fault_transects[x_fault_transects.code == code]
     step, _ = step_fit(transect.dist_m.values, transect.fp_vel.values)
-    # the simplest route to the same number: median of the near-field east side minus the west side
+    # alternative estimate for comparison: median of the near-field east side minus the west side
     east = transect[(transect.dist_m > 0) & (transect.dist_m <= 300)].fp_vel.median()
     west = transect[(transect.dist_m < 0) & (transect.dist_m >= -300)].fp_vel.median()
     steps[code] = step
     print(f"  {code}: step fit {step:5.2f}   |   median(east 0-300 m) - median(west) = {east - west:5.2f}")
-    assert step > 0, f"{code}: negative step means the east block moves NW: the sign convention is wrong"
-print("PASS: every creepmeter site shows a right-lateral (positive) step")
+    assert step > 0, f"{code}: a negative step means the east block moves NW: check the sign convention"
+print("Check passed: the step is positive (right-lateral) at every creepmeter")
 
 # %% [markdown]
 # ## [17] Save the maps: MintPy files, GMT grids, and the combined product
 #
 # `fp_velocity.h5` and `up_velocity.h5` are written as MintPy velocity files
-# (attributes grafted from the mosaic), so MintPy's own tools work on them, and
+# (attributes copied from the mosaic), so that MintPy tools can read them, and
 # converted to `.grd` with `save_gmt.py` for GMT and QGIS. The combined
 # `fp_velocity_map.h5` carries both datasets and the strike used.
 
@@ -335,12 +335,12 @@ print(f"Saved FP + Up maps to: {map_h5}")
 # ## [19] Figure: the rotated velocity maps
 #
 # The maps are drawn in the strike-rotated frame used throughout the paper:
-# `u` runs along the mean strike from Point Pinole (0 km) increasing SOUTH, `v`
-# is the cross-fault distance with the EAST side positive. Nothing is bent: the
-# raster is looked up (nearest neighbour, no interpolation, so masked
-# landslides stay masked) at the rotated grid points, and the curved trace is
-# drawn on top. The panel is Cartesian km at true aspect, so the scale bar is
-# exact.
+# `u` runs along the mean strike from Point Pinole (0 km), increasing to the
+# south, and `v` is the cross-fault distance, positive on the east side. The
+# raster is sampled by nearest-neighbour lookup at the rotated grid points (no
+# interpolation, so masked pixels remain masked), and the curved trace is drawn
+# on top. The panel is in Cartesian km at true aspect, so the scale bar applies
+# everywhere in the panel.
 
 # %%
 # [20]
@@ -348,7 +348,7 @@ print(f"Saved FP + Up maps to: {map_h5}")
 strike_rad = np.deg2rad(strike)
 along_e, along_n = np.sin(strike_rad), np.cos(strike_rad)
 cross_e, cross_n = -np.cos(strike_rad), np.sin(strike_rad)
-# the trace in that frame; u zero at Point Pinole (the northern end), v zero at the trace's median offset
+# the trace in that frame; u zero at Point Pinole (the northern end), v zero at the median cross-fault offset of the trace
 trace_u = x_fault["easting"].values * along_e + x_fault["northing"].values * along_n
 trace_v = x_fault["easting"].values * cross_e + x_fault["northing"].values * cross_n
 pinole = int(np.argmax(x_fault["ft_lat"].values))
@@ -385,8 +385,8 @@ map_half_km = 8.0
 ref_patch_km = 5.0    # display reference: mean over the CTM1-COZ1 fault-straddling patch, +/- this across the fault
 fp_rot = rotated_map(fp_vel, -3.0, u_south + 3.0, map_half_km)
 up_rot = rotated_map(up_vel, -3.0, u_south + 3.0, map_half_km)
-# for DISPLAY only (the saved maps keep the ZOA1 datum): subtract the mean of a fault-straddling
-# patch between CTM1 and COZ1, as the legacy figure does, so the fault sits at zero, blue west, red east
+# for display only (the saved maps keep the ZOA1 datum): subtract the mean of a fault-straddling
+# patch between CTM1 and COZ1, so that the colour scale is centred on the fault
 u_lo, u_hi = sorted([u_creepmeter["CTM1"], u_creepmeter["COZ1"]])
 for name, grid in (("FP", fp_rot), ("Up", up_rot)):
     ref = float(np.nanmean(grid.sel(x=slice(u_lo, u_hi), y=slice(-ref_patch_km, ref_patch_km)).values))
@@ -396,8 +396,9 @@ for name, grid in (("FP", fp_rot), ("Up", up_rot)):
 # %% [markdown]
 # ## [21] Draw the two rotated maps
 #
-# Fault-parallel (A) and vertical (B), at journal width and true aspect, with a
-# 10 km scale bar and the creepmeters as ticks on the trace.
+# Fault-parallel (A) and vertical (B) velocity, at journal width and true
+# aspect, with a 10 km scale bar and the creepmeters marked as ticks on the
+# trace.
 
 # %%
 # [22]
@@ -452,10 +453,8 @@ fig.show()
 # %% [markdown]
 # ## [23] Figure: the five creepmeter transects
 #
-# Grey points are the samples in the 400 m swath, the line is the step fit.
-# The step at CFW1 (Fremont) is the number compared with the creepmeter in
-# notebook 05; here it is a sanity check that the decomposition produced
-# right-lateral creep of the right size everywhere along the fault.
+# Grey points are the samples in the 400 m swath; the line is the step fit.
+# The step at CFW1 (Fremont) is compared with the creepmeter in notebook 05.
 
 # %%
 # [24]
@@ -479,7 +478,9 @@ fig.savefig(f_transects.replace(".png", ".pdf"))
 plt.show()
 
 # %% [markdown]
-# ## [25] REGISTER
+# ## [25] Register
+#
+# The sidecar `02_velocity_stats.txt` and the registry rows `02_*`.
 
 # %%
 # [26]
@@ -490,7 +491,7 @@ lines = [
     f"pixels valid on both tracks: {both.sum()} ({100 * both.mean():.1f}%)",
     f"FP velocity median {np.nanmedian(fp_vel):+.2f} mm/yr, 5-95% {np.nanpercentile(fp_vel, 5):+.2f} to {np.nanpercentile(fp_vel, 95):+.2f}",
     f"Up velocity median {np.nanmedian(up_vel):+.2f} mm/yr, 5-95% {np.nanpercentile(up_vel, 5):+.2f} to {np.nanpercentile(up_vel, 95):+.2f}",
-    f"hand re-derivation at {n_check} px: max |diff| FP {np.abs(diff_fp).max():.1e}, Up {np.abs(diff_up).max():.1e} mm/yr",
+    f"independent re-derivation at {n_check} px: max |diff| FP {np.abs(diff_fp).max():.1e}, Up {np.abs(diff_up).max():.1e} mm/yr",
     "",
     "cross-fault FP velocity step at the creepmeters (east - west, mm/yr):",
 ] + [f"  {code}: {steps[code]:.2f}" for code in steps] + [
