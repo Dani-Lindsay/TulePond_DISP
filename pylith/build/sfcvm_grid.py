@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """
-USGS SFCVM v26.0 sampled onto an axis-aligned, non-uniform grid in the mesh CRS, ALIGNED so that the model's
+USGS SFCVM v26.0 sampled onto an axis-aligned, non-uniform grid in the mesh CRS, aligned so that the model's
 Hayward fault (the boundary between SFCVM fault blocks 22 "Central Bay Block" and 7 "San Leandro") at the
 surface lies on the mapped creeping trace (the PyLith mesh fault). Written as an .npz; write_sfcvm_griddb.py
 (PyLith env) turns it into a spatialdata SimpleGridDB with spatialdata's own writer.
 
-Run in opera_disp_feb13:  python pylith/build/sfcvm_grid.py [--no-align | --dip 80e]  -> <model_sfcvm_dir>/spatialdb/
-  --offset 50 (2026-09-30): alignment sensitivity, the surface boundary is put 50 m EAST of the trace (-50: west)
-  --dip 80e (2026-09-30): align to the DIPPING mesh fault of generate_gmsh_dip.py: at every depth level the block
-  boundary (found at that depth, nearest the fault's position depth/tan(dip) on the dipping side) is moved onto the
-  fault, so the material contrast sits on the fault at all depths (the vertical alignment shifts columns whole).
+Run in opera_disp_feb13:  python pylith/build/sfcvm_grid.py [--no-align] [--no-cap] [--offset <m>] [--dip <d>]
+  -> <model_sfcvm_dir>/spatialdb/sfcvm_v26-0_<tag>_grid.npz
+  --no-align: the model as is (sensitivity test)
+  --no-cap: no Poisson cap (the grids of the order-2 runs, including the preferred model)
+  --offset 50: alignment sensitivity, the surface boundary is put 50 m east of the trace (-50: west)
+  --dip 80e: align to the dipping mesh fault of generate_gmsh_dip.py: at every depth level the block boundary
+  (found at that depth, nearest the fault's position depth/tan(dip) on the dipping side) is moved onto the fault,
+  so the material contrast sits on the fault at all depths (the vertical alignment shifts columns whole). Not used
+  by the order-2 runs, whose dipping faults use the vertically aligned grid.
 
-Reader: the h5py GeoModelGrids logic of drafts/07/sfcvm_extract_dense.py (get_model_values: model CRS from
-attrs["crs"], subtract origin, rotate by y_azimuth, depth d -> logical z = -d (topography squash neglected),
-four resolution blocks, nearest grid point), vectorised by reading each block's bounding slab once.
+Reader: the GeoModelGrids HDF5 layout of the SFCVM (get_model_values: model CRS from attrs["crs"], subtract
+origin, rotate by y_azimuth, depth d -> logical z = -d (topography squash neglected), four resolution blocks,
+nearest grid point), read with h5py and vectorised by reading each block's bounding slab once.
 
 Alignment (a local cross-fault shift, dip kept):
   1. b(km): at every trace point (100 m, km 50-69 from Point Pinole) the {22|23}|7 block boundary at the surface
@@ -24,15 +28,16 @@ Alignment (a local cross-fault shift, dip kept):
      distance, east +) and n_p (unit normal) belong to the nearest trace point: taper = 1 within 3 km of the
      trace, falling linearly to 0 at 6 km (so the far field is the unshifted model); beyond the trace ends the end
      values are used. Each column is shifted as a whole, so the model's dip is kept.
-Material rules (documented in NOTES.md):
+Material rules:
   - water/air/no-data (vs <= 0 or density <= 0) take the first valid value below in the same column;
-  - NO vs floor (2026-10-24, Dani; was 150 m/s): the model's own values; Vs < vs_flag = 90 m/s is listed in a csv;
-  - Poisson's ratio capped at 0.40: vp = min(vp, sqrt(6) vs) (vs kept); ratio vp/vs >= 1.5 asserted.
+  - no Vs floor: the model's own values; Vs < vs_flag = 90 m/s is listed in a csv;
+  - without --no-cap, Poisson's ratio is capped at 0.40: vp = min(vp, sqrt(6) vs) (vs kept); vp/vs >= 1.5 asserted.
+Source: USGS San Francisco Bay region 3D seismic velocity model (SFCVM) v26.0, detailed model (GeoModelGrids HDF5).
 """
 import json
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 import os
 import sys
 import time
@@ -53,7 +58,7 @@ align = "--no-align" not in sys.argv
 dip = sys.argv[sys.argv.index("--dip") + 1] if "--dip" in sys.argv else "90"     # e.g. 80e: align to the DIPPING mesh fault
 assert dip in ("90", "90v") or (dip[:-1].isdigit() and dip[-1] in "ew"), f"--dip {dip!r}"   # 90v: vertical, per-depth alignment
 assert align or dip == "90"
-nocap = "--no-cap" in sys.argv                                    # no Poisson cap (order-2 runs; Charles Williams 2026-09-30)
+nocap = "--no-cap" in sys.argv                                    # no Poisson cap (the order-2 runs)
 offset_m = float(sys.argv[sys.argv.index("--offset") + 1]) if "--offset" in sys.argv else 0.0   # alignment sensitivity: the
 assert align or offset_m == 0.0                                    # boundary placed offset_m EAST (+) of the trace instead of on it
 off_tag = "" if offset_m == 0.0 else (f"_e{abs(offset_m):g}" if offset_m > 0 else f"_w{abs(offset_m):g}")
@@ -62,7 +67,7 @@ CRS = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +typ
 version = "v26-0"
 model_file = os.path.join(inputs_dir, f"USGS_SFCVM_{version}", f"USGS_SFCVM_{version}_detailed.h5")
 assert os.path.exists(model_file), f"missing {model_file}"
-vs_flag, nu_cap = 90.0, 0.40     # vs_flag: Vs below this is reported, NOT changed (no floor since 2026-10-24, Dani)
+vs_flag, nu_cap = 90.0, 0.40     # vs_flag: Vs below this is reported, not changed (no Vs floor)
 vpvs_cap = np.sqrt((2 - 2 * nu_cap) / (1 - 2 * nu_cap))            # sqrt(6) for nu 0.40
 taper_full_m, taper_zero_m = 3000.0, 6000.0
 blocks_west, block_east = (22, 23), 7                               # Central Bay Block (Evergreen south of km ~65) | San Leandro
@@ -81,7 +86,7 @@ def axis(fine_lo, fine_hi, d_fine, half, growth=1.4, d_max=4000.0):
 
 
 grid_half = 51e3                                  # 1 km beyond the 50 km domain: with materials of basis order 1 the
-                                                  # db is queried AT the boundary vertices (2026-09-30; older grids: 50 km)
+                                                  # db is queried at the boundary vertices
 x_axis = axis(-3500.0, 2500.0, 50.0, grid_half)   # fine box: the trace in km 55-64 is at x -2700..2200 m
 y_axis = axis(-4000.0, 3600.0, 50.0, grid_half)   # km ~55.3-63.6
 z_axis = -np.r_[np.arange(0, 500, 25), np.arange(500, 1500, 50), np.arange(1500, 3000, 100),
@@ -90,7 +95,7 @@ z_axis = np.unique(np.r_[z_axis, 100.0])          # +100 m level above the flat 
 print(f"grid: {x_axis.size} x {y_axis.size} x {z_axis.size} = {x_axis.size * y_axis.size * z_axis.size:,} points; "
       f"x {x_axis.min():.0f}..{x_axis.max():.0f}, y {y_axis.min():.0f}..{y_axis.max():.0f}, z {z_axis.min():.0f}..{z_axis.max():.0f}")
 
-# ------------------------------------------------------------------ SFCVM reader (drafts/07/sfcvm_extract_dense.py)
+# ------------------------------------------------------------------ SFCVM reader (GeoModelGrids layout)
 model = h5py.File(model_file, "r")
 attrs = model.attrs
 crs_wkt = attrs["crs"] if isinstance(attrs["crs"], str) else attrs["crs"].decode()
@@ -138,7 +143,7 @@ def sample(mx, my, depth):
 
 # ------------------------------------------------------------------ the mapped trace (the mesh fault) in the mesh CRS
 profiles = pd.read_csv(common_paths["fault_profiles"])
-km_pp = (len(profiles) - 1 - np.arange(len(profiles))) * 0.1       # km from Point Pinole (07 [2])
+km_pp = (len(profiles) - 1 - np.arange(len(profiles))) * 0.1       # km from Point Pinole (as model_utils.km_from_pinole)
 keep = (km_pp >= 50.0 - 1e-9) & (km_pp <= 69.0 + 1e-9)
 to_mesh = pyproj.Transformer.from_crs("EPSG:4326", CRS, always_xy=True)
 tx, ty = to_mesh.transform(profiles.ft_lon.values[keep], profiles.ft_lat.values[keep])
@@ -260,9 +265,9 @@ for pos in range(len(zi) - 2, -1, -1):                              # from the s
     zone[:, :, here][bad] = zone[:, :, below][bad]
     invalid[:, :, here] = invalid[:, :, here] & invalid[:, :, below]
 assert not invalid.any(), "columns with no valid SFCVM value at any depth"
-# NO Vs floor since 2026-10-24 (Dani: the SFCVM's own low values are real, bay-margin sediment can be ~90 m/s; until then
-# vs was floored at 150 m/s, 2,502 grid points). Values under vs_flag are only REPORTED (and listed in a csv), not changed.
-n_floor = int((vs < 150.0).sum())                                   # the points the old 150 m/s floor changed
+# No Vs floor: the SFCVM's own values are used (bay-margin sediment can be ~90 m/s). Values under vs_flag are only
+# reported (and listed in a csv), not changed.
+n_floor = int((vs < 150.0).sum())                                   # the points a 150 m/s floor would change (reported)
 low = vs < vs_flag
 print(f"Vs: min {vs.min():.1f} m/s; {n_floor:,} points below 150 m/s (the old floor), {int(low.sum()):,} below {vs_flag:g} m/s")
 if low.any():

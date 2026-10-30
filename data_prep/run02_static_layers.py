@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
-
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/run02_static_layers.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
+@author: Danielle Lindsay
 
 Per-frame geometry layers + a shared DEM, the two inputs the tropospheric
 correction (run03) and the MintPy conversion (run04) need:
@@ -18,12 +12,12 @@ correction (run03) and the MintPy conversion (run04) need:
 3) Per frame: resample DEM + geometry onto that frame's stack grid, and build
    the 3-band los_enu.tif that run04's converter expects
 
-Two deliberate choices, both of which the obvious one-liner gets wrong:
+Two choices:
 
 * Bursts are selected by AOI intersection, not by frame. A DISP-S1 frame has
   ~27 CSLC bursts and a small AOI touches only a few; fetching by frame_id
   would download them all.
-* The DEM is ELLIPSOIDAL. OPERA TROPO's height coordinate is "Height above
+* The DEM is ellipsoidal. OPERA TROPO's height coordinate is "Height above
   ellipsoid WGS84" and tropo-apply interpolates the delay cube onto the DEM
   surface across that axis; a geoid-referenced DEM would bias the delay.
 
@@ -34,6 +28,8 @@ Output per frame:  <frame>/geometry/  dem.tif, los_east.tif, los_north.tif,
 Shared:            <data_dir>/dem_glo30.tif
 
 Run in the conda environment. Earthdata credentials in ~/.netrc.
+Source: OPERA CSLC-S1-STATIC layers (ASF) and the Copernicus GLO-30 DEM, read and
+stitched with opera-utils.
 """
 import os
 import sys
@@ -70,7 +66,7 @@ LAYERS = ["los_east", "los_north", "layover_shadow_mask"]
 STITCHED_LAYERS = ["los_east", "los_north", "incidence_angle", "layover_shadow_mask"]
 
 # opera_utils.stitching shells out to `gdal_merge.py`, which lives in the conda
-# env's bin/ but is not on PATH for a subprocess unless we put it there.
+# env's bin/ but is not on PATH for a subprocess unless it is added here.
 _ENV_BIN = os.path.join(os.path.dirname(os.path.dirname(sys.executable)), "bin")
 if _ENV_BIN not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _ENV_BIN + os.pathsep + os.environ.get("PATH", "")
@@ -93,8 +89,7 @@ def derive_incidence(geo_dir):
 
     OPERA los_east/los_north are the ground-to-satellite unit vector
     components, so up = sqrt(1 - e^2 - n^2) and incidence = arccos(up).
-    This convention is pinned by the projection tests -- do not substitute
-    another; it was the source of a previous 90-degree projection bug.
+    This convention is the one tested in tests/test_insar_utils.py.
     """
     e_p = os.path.join(geo_dir, "los_east.tif")
     n_p = os.path.join(geo_dir, "los_north.tif")
@@ -167,11 +162,11 @@ def build_dem(bbox, out_path):
     Stitched with a small buffer beyond the AOI: the DEM is a rectangle in
     EPSG:4326 but the stack grid is a rectangle in UTM, and the two are
     rotated relative to each other, so an exactly-AOI-sized DEM leaves
-    wedge-shaped nodata at the corners of the UTM grid -- pixels that would
-    then get no tropospheric delay at all.
+    wedge-shaped nodata at the corners of the UTM grid (pixels that would
+    then get no tropospheric delay).
 
-    NOT reprojected to UTM here: each frame's dem.tif is one reprojection from
-    this master straight onto that frame's stack grid, so elevations are only
+    Not reprojected to UTM here: each frame's dem.tif is one reprojection from
+    this DEM straight onto that frame's stack grid, so elevations are
     resampled once.
     """
     from dem_stitcher import stitch_dem
@@ -193,10 +188,10 @@ def stack_grid(paths):
     """(crs, transform, width, height) of this frame's rebased stack.
 
     The stack is the authoritative grid: it is what the displacement lives on
-    and what the correction is ultimately subtracted from. It does NOT match
-    the stitched geometry grid, so everything that has to combine with
-    displacement is resampled onto it here, once, rather than silently at use
-    time. xarray x/y are pixel CENTRES; a rasterio transform wants the corner.
+    and what the correction is subtracted from. It does not match the
+    stitched geometry grid, so everything that has to combine with
+    displacement is resampled onto it here, once. xarray x/y are pixel
+    centres; a rasterio transform takes the corner.
     """
     import xarray as xr
     from rasterio.transform import from_origin
@@ -254,7 +249,7 @@ def build_los_enu(geo_dir):
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# Main
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
     from shapely.geometry import box
@@ -265,13 +260,13 @@ if __name__ == '__main__':
         bbox = frame_bbox[frame]
         build_geometry(frame, box(*bbox), bbox, paths['dir'])
 
-    # 2) One master DEM for the whole AOI
+    # 2) One DEM for the whole AOI
     master_dem = os.path.join(data_dir, "dem_glo30.tif")
     print("\n=== DEM (master, fetched once for the whole AOI) ===")
     build_dem(common_paths['aoi_bbox'], master_dem)
 
     # 3) Per frame: put DEM + geometry on that frame's stack grid.
-    #    Names are not cosmetic: run04's converter globs geometry/ for
+    #    The names matter: run04's converter globs geometry/ for
     #    `*dem.tif`, `*los_enu.tif`, `*layover_shadow_mask.tif`, so every file
     #    at that level must be on the stack grid; stitched-grid intermediates
     #    stay one level down in geometry/stitched/.
@@ -282,7 +277,7 @@ if __name__ == '__main__':
         sdir = os.path.join(gdir, "stitched")
         # DEM: genuine reprojection (4326 -> stack UTM grid) -> bilinear.
         match_to_grid(master_dem, grid, os.path.join(gdir, "dem.tif"), "bilinear")
-        # Geometry: stitched on the same UTM zone and offset by an EXACT integer
+        # Geometry: stitched on the same UTM zone and offset by an exact integer
         # number of pixels, so this is a lossless crop/pad -> nearest keeps the
         # values untouched.
         for lyr in STITCHED_LAYERS:

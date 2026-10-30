@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Kinematic (FaultCohesiveKin) slip database for the forward validation runs: uniform RIGHT-lateral slip
-(final_slip_left_lateral = -slip, PyLith's left-lateral with this mesh's fault orientation; the sign was derived
-in build_G.py: right-lateral = -1 x left-lateral) where y_lo <= y <= y_hi and z >= -depth, 0 elsewhere.
+Kinematic (FaultCohesiveKin) slip database for the forward validation runs: uniform right-lateral slip
+(final_slip_left_lateral = -slip, PyLith's left-lateral with this mesh's fault orientation; the sign is the one
+model_utils.build_G derives: right-lateral = -1 x left-lateral) where y_lo <= y <= y_hi and z >= -depth, 0 elsewhere.
 Written with spatialdata's SimpleGridAscii writer, queried "nearest" (grid lines 0.5 m either side of each edge).
 Run in the PyLith env:  python3 make_kin_slip_db.py <y_lo> <y_hi> <depth_m> <slip_m> <out.spatialdb>
 """
 import sys
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 
 import numpy as np
 from spatialdata.geocoords.CSGeo import CSGeo

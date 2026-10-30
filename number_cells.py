@@ -1,5 +1,6 @@
-"""Number every cell of a jupytext percent-format script in order: markdown headings get
-'## [n] Title', code cells get a first line '# [n]'. Re-runnable: existing [n] tags are replaced."""
+"""Number every cell of a jupytext percent-format script in order: the first heading of a markdown cell
+becomes '## [n] Title', and code cells get a first line '# [n]'. Existing [n] tags are replaced, so the
+script can be re-run. Usage: python number_cells.py <script.py> [...]. Source: written for this project."""
 import re, sys
 for path in sys.argv[1:]:
     lines = open(path).read().split("\n")
@@ -11,14 +12,14 @@ for path in sys.argv[1:]:
             out.append(line)
             i += 1
             if "[markdown]" in line:
-                # tag the first heading line of the cell
+                # copy the lines of the markdown cell
                 while i < len(lines) and not lines[i].startswith("# %%"):
                     m = re.match(r"^(# #+ )(\[\d+\] )?(.*)$", lines[i])
                     if m and not any(l.startswith("# %%") or re.match(r"^# #+ \[\d+\] ", l) for l in out[len(out) - (i - (i)):]):
                         pass
                     out.append(lines[i])
                     i += 1
-                # find the first heading in this cell's block and tag it
+                # tag the first heading of the cell
                 start = len(out) - 1
                 while start >= 0 and not out[start].startswith("# %%"):
                     start -= 1
@@ -28,7 +29,7 @@ for path in sys.argv[1:]:
                         out[j] = f"{m.group(1)}[{n}] {m.group(2)}"
                         break
             else:
-                # drop an existing tag line, then insert the new one
+                # replace an existing tag line with the new one
                 if i < len(lines) and re.match(r"^# \[\d+\]$", lines[i]):
                     i += 1
                 out.append(f"# [{n}]")

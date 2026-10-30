@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
-
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/run03_tropo.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
+@author: Danielle Lindsay
 
 OPERA TROPO zenith-delay correction, per frame:
 
@@ -15,13 +9,13 @@ OPERA TROPO zenith-delay correction, per frame:
 2) Query CMR once for the whole range; keep the 6-hourly granules bracketing
    each acquisition (TROPO is at 00/06/12/18 UTC; S1 over the Bay Area is
    ~02:07 UTC ascending, ~14:07 UTC descending)
-3) `crop_tropo`: subset each granule to the AOI over HTTPS -- nothing large is
-   downloaded; each ~2 GB granule is subset lazily before it is loaded
+3) `crop_tropo`: subset each granule to the AOI over HTTPS; each ~2 GB granule
+   is subset lazily before it is loaded
 4) `apply_tropo`: interpolate the delay cube onto the frame's DEM surface and
    project into line of sight with the per-pixel incidence angle
 
-`opera_utils.tropo` does the physics but takes a FILE OF URLS and does not
-query CMR; finding the granule list is the only infrastructure here.
+`opera_utils.tropo` computes the correction but takes a file of URLs and does
+not query CMR; this script builds the granule list.
 
 The DEM must be ellipsoidal and on the frame's stack grid (run02): the delay
 cube's height axis is "height above ellipsoid WGS84".
@@ -34,6 +28,8 @@ Output per frame:  <frame>/tropo/cropped/      cropped+time-interpolated TROPO
                    <frame>/tropo/corrections/  per-date LOS correction GeoTIFFs
 
 Run in the conda environment. Earthdata credentials in ~/.netrc.
+Source: OPERA L4 TROPO-ZENITH v1 (ASF, found via NASA CMR); opera_utils.tropo
+(crop_tropo, apply_tropo).
 """
 import glob
 import json
@@ -147,7 +143,7 @@ def write_url_list(dts, out_path):
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# Main
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
     from opera_utils.tropo import apply_tropo, crop_tropo
@@ -174,7 +170,7 @@ if __name__ == '__main__':
             continue
 
         # 2) Crop to the AOI (lazy HTTPS subset; ~40 MB per date is a generous
-        #    estimate -- the disk check catches a full volume, not the last MB)
+        #    estimate: the disk check catches a full volume, not the last MB)
         utils.require_disk_space(tdir, 0.040 * len(dts), f"{frame} tropo ({len(dts)} dates)")
         print(f"    cropping to {bbox} (height_max {HEIGHT_MAX} m, {NUM_WORKERS} workers)")
         crop_tropo(tropo_urls_file=Path(urls_file), datetimes=dts,

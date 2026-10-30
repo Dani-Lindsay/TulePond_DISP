@@ -1,7 +1,7 @@
 #!/bin/bash
 # One PyLith forward run (FaultCohesiveKin: a prescribed static slip, one time step), in the PyLith 5.0.2 bundle, made
 # from the results directory: the validation runs (fwd_kin.cfg: 10 mm on km 57-61, top 1 km) and the forward runs of an
-# inverted slip model (fwd_kin_simpledb.cfg with its slip database; notebook 08a [14], [15b]).
+# inverted slip model (fwd_kin_simpledb.cfg with its slip database, build/make_vertex_slip_db.py).
 # Usage:
 #   bash pylith/run_fwd.sh <name> <mat cfg> <mesh> <nprocs> <fwd cfg> [<extra cfg> ...] [--<pylith option>=<value> ...]
 #     <mat cfg>, <fwd cfg>, <extra cfg>   files of pylith/cfg (e.g. order2_fwd.cfg after fwd_kin.cfg)
@@ -9,7 +9,7 @@
 #     --options     passed to pylith as they are (e.g. the points file, the slip database, the fault observer fields)
 # e.g. bash pylith/run_fwd.sh fwd_default_homog mat_homog.cfg modeling_inputs/mesh/mesh_vertical_tet_default.msh 2 fwd_kin.cfg
 # Writes <name>-points.h5, -fault.h5, ... into the medium's pylith_output/ (set by the material cfg); the log to
-# <medium>/runs/<name>.log. About 2 min on 2 ranks (validation runs), 4 ranks for the Fig-2 forward runs.
+# <medium>/runs/<name>.log. About 2 min on 2 ranks for an order-1 run on the default mesh.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 NAME=$1; MAT=$2; MESH=$3; NP=$4; shift 4

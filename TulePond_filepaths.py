@@ -1,47 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Sep 21 2026
+@author: Danielle Lindsay
 
-@author: daniellelindsay
+TulePond_filepaths.py: central file paths and shared constants of the TulePond_DISP
+repository ("Predictable Slow Slip Events on the Hayward Fault").
 
-Central file paths and shared constants for the TulePond_DISP publication
-repository ("Predictable Surface Slow Slip Events on the Hayward Fault").
+Every notebook imports its paths from here. To run the repository elsewhere, set the
+environment variable TULEPOND_DATA_DIR (or edit `data_dir`) to the folder holding the
+Zenodo deposit (the MintPy products written by the OPERA DISP-S1 preparation chain,
+see notebook 01).
 
-Every notebook imports from here, so the whole repo runs after editing ONE
-line: point `data_dir` at the folder holding the Zenodo download (the MintPy
-products written by the OPERA DISP-S1 preparation chain, see notebook 01).
-
-Layout follows NC_ALOS-2: this file owns WHERE things are, insar_utils.py
-owns HOW the shared maths is done, and the numbered notebooks own WHAT is
-done in what order.
+This file holds the paths and shared constants, insar_utils.py and model_utils.py the
+shared functions, model_config.py the settings of the slip models, and the numbered
+notebooks the order of the analysis.
 """
 import os
 
-# The repo itself: the code only. Every product, figure and model run is written into data_dir (the Zenodo
-# results directory), never inside the repo: asserted at the end of this file (`assert_outside_repo`) and by
-# tests/test_filepaths.py (2026-10-06).
+# The repository holds the code only. Every product, figure and model run is written into data_dir (the results
+# directory), never inside the repository: asserted at the end of this file (`assert_outside_repo`) and by
+# tests/test_filepaths.py.
 repo_dir = os.path.dirname(os.path.abspath(__file__))
 
 # ------------------------
-# Data root -- one repo, two laptops: TULEPOND_DATA_DIR if set, else the
-# proj_TulePond_DISP folder where it exists, else the repo itself (the second
-# laptop keeps the inputs inside the repo; since 2026-10-06 assert_outside_repo
-# stops there: set TULEPOND_DATA_DIR to a data folder outside the repo). No per-machine edits.
+# Data root: TULEPOND_DATA_DIR if set, else the proj_TulePond_DISP folder where it
+# exists, else the repository itself (which assert_outside_repo rejects: set
+# TULEPOND_DATA_DIR to a data folder outside the repository).
 #
-# proj_TulePond_DISP (2026-09-30) holds ONLY what this repo reads, in the
-# layout Zenodo will carry:
+# The data root holds what this repository reads, in the layout of the Zenodo deposit:
 #   09156/ 09157/ 11115/   the DISP-S1 frames (data, stack, tropo, mintpy) from data_prep/run01-04
 #   mosaic_velfield/       the tied same-orbit velocity + geometry mosaics (run04 step 6, run05)
 #   external_inputs/       fault trace, arrays, creepmeters, GHCN, catalogues, qfaults, USGS SFCVM v26
 #   GPS/                   the screened UNR series and the run05 tie table
 #   prep_validation/       run05's GNSS-tie record and run20's rain tables
-#   aperture_sweep/        the frozen aperture sweep notebook 04 loads (Hayward_DISP-S1/analysis/run11)
+#   aperture_sweep/        the archived aperture sweep that notebook 04 reads
 #   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07a), impulse and test-slip dbs
-#   modeling_uniform/      the HOMOGENEOUS (30 GPa) PyLith runs: G matrices, run outputs, slip dbs, the CSI validation products
-#   modeling_SFCVM/        the USGS SFCVM PyLith runs: material grids and dbs (aligned, +/- 50 m, dip, no-cap), G matrices, run outputs
+#   modeling_uniform/      the homogeneous (30 GPa) PyLith runs and the analytic (CSI) Green's functions: G matrices, run
+#                          outputs, slip dbs, the CSI validation products
+#   modeling_SFCVM/        the USGS SFCVM PyLith runs: material grids and dbs (aligned, +/- 50 m, as is, no Poisson cap),
+#                          G matrices, run outputs
 #   outputs/<notebook>/    every notebook's own products (the selected models, the sensitivity tables, the registry)
-# Everything else of the older proj_HaywardCreep working tree stays there, untouched.
 # ------------------------
 data_dir = os.environ.get("TULEPOND_DATA_DIR", "")
 if not data_dir:
@@ -49,25 +47,25 @@ if not data_dir:
     if not os.path.isdir(data_dir):
         data_dir = repo_dir
 
-# Figures go into a DATED directory -- bump this by hand at the start of a new
-# round of figure work. Figure filenames carry their parameters, so the date is
-# the review snapshot, not the identity of a figure (NC_ALOS-2 convention).
-fig_date   = "2026-10-28"   # 2026-10-28 = the slip-model rewire (07a, 08a, 08b, 07c on the locked method, code_audit_2026-10-28); 2026-10-25 = 3D model without the Vs floor, dipping faults in the paper SFCVM grid, homogeneous dip scan (08c 08a 08b 07c 12); 2026-10-14 = full chain 01 -> 12 (no 07b) on the relocated burst seam and with no far-field plane; 2026-10-08 = burst-seam relocation, 06 only (seam located from the data, 06 [14]); 2026-10-06 = full update on the 2026-10-05 fixes (audit, along-trace km, doy, burst seams, sigma-12 sensitivity); 2026-10-03_final = clean sweep of every notebook in order (Dani 2026-10-03); 2026-10-03 = onset-window fix + publication style pass; 2026-10-02 = manuscript-pass figure notes; 2026-09-30 = PyLith + SFCVM model set
-# Figures and notebook products live with the data, not in the repo (Dani 2026-10-01): the repo is the code
-# base archived on GitHub plus the parameter files needed to regenerate everything.
+# Figures go into a dated directory, Figures_<fig_date>. Figure filenames carry their parameters; the date
+# identifies the run of the figure set.
+fig_date   = "2026-10-28"
+# Figures and notebook products are written with the data, not into the repository: the repository holds the code
+# and the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
 out_dir    = os.path.join(data_dir, "outputs")
-executed_dir = os.path.join(data_dir, "executed")   # run_all.sh: the HTML copy of every executed notebook (until 2026-10-06 in the repo)
+executed_dir = os.path.join(data_dir, "executed")   # run_all.sh: the HTML copy of every executed notebook
 inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
 # ------------------------
-# The slip models (notebooks 07a, 08a, 08b, 08c) and their PyLith runs (pylith/, README there). Three folders,
-# separated by what they hold (Dani 2026-10-06):
+# The slip models (notebooks 07a, 08a, 08b and scripts/sensitivity/) and their PyLith runs (pylith/, README there).
+# Three folders:
 #   modeling_inputs/   shared by both media: the gmsh meshes and fault geometry, the quadtree sample sets written by
 #                      07a (the PyLith output points), the impulse and test-slip spatial databases
-#   modeling_uniform/  the homogeneous medium (mu 30 GPa, nu 0.25): its PyLith runs, G matrices, slip databases of
-#                      its forward runs, and the CSI-vs-PyLith validation products (08a)
-#   modeling_SFCVM/    the USGS SFCVM medium: its material grids and databases (aligned, +/- 50 m, dipping, no Poisson
+#   modeling_uniform/  the homogeneous medium (mu 30 GPa, nu 0.25): its PyLith runs, G matrices (including the analytic
+#                      CSI Green's functions of the homogeneous comparison model), slip databases of its forward runs,
+#                      and the CSI-vs-PyLith validation products
+#   modeling_SFCVM/    the USGS SFCVM medium: its material grids and databases (aligned, +/- 50 m, as is, no Poisson
 #                      cap), its PyLith runs, G matrices and slip databases
 # The PyLith runs are made from data_dir (pylith/run_gf.sh, run_fwd.sh); the cfg files in pylith/cfg give every path
 # relative to it, and each material cfg names its own medium folder as the output directory.
@@ -91,6 +89,7 @@ paths_inputs = {
 
 
 def _medium_paths(root):
+    """The folder set of one elastic medium under `root`: G matrices, PyLith output, spatial databases, run logs."""
     return {
         "root":          root,
         "gf":            os.path.join(root, "gf"),             # G_<run>.npz: the fault-parallel G matrices (model_utils.build_G)
@@ -114,27 +113,18 @@ def medium_paths(medium):
     return paths_sfcvm
 
 
-# Constants of the slip models shared by 07a, 08a, 08b and 08c (one definition each).
+# Constants of the slip models shared by 07a, 08a, 08b and scripts/sensitivity/ (one definition each).
 model_crs = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +type=crs"   # PyLith mesh CRS (m)
 model_frame_lonlat = (-121.968, 37.557)   # CSI local frame centre (lon0, lat0) = the mesh CRS origin (the creep-section centre)
 # QC products of the data_prep chain (station residuals, the prep-side rain
-# tables). Deliberately NOT under a second `outputs/`: the only `outputs/` in
-# this project is the repo's, written by the notebooks. Nothing in notebooks
-# 01-11 reads these; they are the prep chain's own record.
+# tables), kept apart from the notebooks' `outputs/`. No notebook reads them;
+# they are the record of the preparation chain.
 prep_dir   = os.path.join(data_dir, "prep_validation")
 
 # ------------------------
-# Notebooks retired from the paper: still in the repo (and runnable), but their registry keys are rendered in
-# the RETIRED block of registry.txt (insar_utils.Registry.render), never as live numbers. registry.csv keeps
-# their rows (append-only).
-# 07b_uniform_model_tests: the uniform-model CSI side checks (depth scan, synthetic recovery, ...) are no
-# longer part of the paper (Dani 2026-10-05: the model is PyLith only) and 07b was not re-run after
-# 2026-10-03, so its 07b_* keys would otherwise render as live. 07a_uniform_model stays (the data-prep
-# step of 08a and the CSI validation): its keys stay live.
+# Notebooks that are not part of the paper: their registry keys are rendered in the RETIRED block of registry.txt
+# (insar_utils.Registry.render), never as current numbers. registry.csv keeps their rows (append-only).
 # ------------------------
-# 2026-10-30 (the rewire): 07b, 08b_3d_model_tests and 08c moved to drafts/retired_2026-10-28/ with the old 07a, 07c and
-# 08a; their keys retire because their notebooks are no longer in the repo (Registry.render). The new 07a / 08a / 08b_sensitivity
-# register fresh keys.
 retired_notebooks = ("07b_uniform_model_tests", "08b_3d_model_tests", "08c_3d_model_sensitivity")
 
 # ------------------------
@@ -146,9 +136,8 @@ common_paths = {
     "inputs_dir": inputs_dir,
     "gps_dir":    gps_dir,
 
-    # The number registry: ONE append-only csv that every notebook adds its
-    # manuscript numbers to, plus a rendered text view for copying into the
-    # manuscript. See insar_utils.Registry.
+    # The number registry: one append-only csv to which every notebook adds its
+    # manuscript numbers, plus a rendered text view. See insar_utils.Registry.
     "registry_csv": os.path.join(out_dir, "registry.csv"),
     "registry_txt": os.path.join(out_dir, "registry.txt"),
     "retired_notebooks": retired_notebooks,     # their keys render as RETIRED (see above)
@@ -165,14 +154,14 @@ common_paths = {
     "date_end":   "2026-03-27",
 
     # Re-mapped fault trace (single continuous strand, variable local strike;
-    # from USGS Quaternary faults + steps visible in the velocity fields) and
-    # the 100 m crossings derived from it (791 points, Point Pinole -> 37.41 N).
+    # from the USGS Quaternary fault database and the steps in the velocity
+    # fields) and the crossings derived from it every 100 m (Point Pinole -> 37.41 N).
     "fault_trace":    os.path.join(inputs_dir, "hayward_fault_trace_2026-07-24.kml"),
     "fault_profiles": os.path.join(inputs_dir, "hayward_fault_profiles.csv"),
     "qfaults_dir":    os.path.join(inputs_dir, "qfaults"),
 
-    # USGS creepmeters: instrument locations + the .10min records (the .10min.gz
-    # copies are the refreshed ones; insar_utils.creepmeter_file prefers them).
+    # USGS creepmeters: instrument locations and the .10min records
+    # (insar_utils.creepmeter_file prefers the .10min.gz copies).
     "creepmeter_locations": os.path.join(inputs_dir, "creepmeter_locations.csv"),
     "creepmeter_dir":       os.path.join(inputs_dir, "creepmeter_data"),
     # Gittins et al. 2026, Seismica 5(2), doi:10.26443/seismica.v5i2.2818: the
@@ -191,16 +180,16 @@ common_paths = {
     "creep_rates_Johnson22": os.path.join(
         inputs_dir, "SRL-2022186_Supplement_FINAL_2023_CREEP_Dataset.csv"),
 
-    # NOAA GHCN-daily rain gauges near Tule Pond (downloaded once; the csv
-    # files in ghcn_dir are the frozen inputs of notebook 09).
+    # NOAA GHCN-daily rain gauges near Tule Pond (the csv files in ghcn_dir are
+    # the archived inputs of notebook 10).
     "ghcn_dir": os.path.join(inputs_dir, "GHCN_daily"),
     # the ACWD indicator wells (levels) and their positions (public registers; see the file header)
     "acwd_dir": os.path.join(inputs_dir, "ACWD_water_well_data"),
     "well_locations": os.path.join(inputs_dir, "ACWD_water_well_data", "well_locations.csv"),
 
     # Seismicity / repeating-earthquake catalogues.
-    # T. Taira's HFRC linkage-cluster catalogue, GEN3 (1984 to end-2025), the
-    # most reliable coherence threshold (coh >= 0.97). Whitespace columns:
+    # T. Taira's HFRC linkage-cluster catalogue, GEN3 (1984 to end-2025), at the
+    # coherence threshold coh >= 0.97. Whitespace columns:
     # YYYY.dec Lat Lon Depth cumD(cm) EVID CSID Mag D(cm).
     "CRE_Taira": os.path.join(inputs_dir, "CRE_cat", "CRE_Taira26_GEN3",
                               "HFRC.freq8.0-24.0Hz_maxdist5.0_coh9700_linkage_cluster.txt"),
@@ -208,137 +197,123 @@ common_paths = {
     "CRE_Wald": os.path.join(inputs_dir, "CRE_cat", "CRE_Waldhauser21", "waldhauser_shaff_repeaters.txt"),
     # Area of interest (W, S, E, N) the catalogues are clipped to
     "aoi_bbox": (-122.494468, 37.269677, -121.711070, 38.10),
-    # Frame 09156 covers only the northern half of the AOI; opera-utils errors
-    # if asked for pixels outside a frame's footprint, so it is clipped to its
-    # own (data_prep/run01, run02, run03).
+    # Frame 09156 covers only the northern half of the AOI; opera-utils fails
+    # when asked for pixels outside a frame's footprint, so it is clipped to its
+    # own footprint (data_prep/run01, run02, run03).
     "aoi_bbox_09156": (-122.495, 37.270, -121.711, 37.719),
-    # DOWNLOAD window for 09157 and 11115 (data_prep/run01 only): aoi_bbox
-    # nudged 34 m west and 32 m north. opera-utils subsets by row/column, and
+    # Download window for 09157 and 11115 (data_prep/run01 only): aoi_bbox
+    # shifted 34 m west and 32 m north. opera-utils subsets by row/column, and
     # `_get_rowcol_slice` converts the bbox corners with `lonlat_to_rowcol` on
-    # the stack's FIRST product; that conversion moved by one pixel between the
-    # 2026-07 download and the 2026-09 refresh, so the bbox that gave a
-    # 2333 x 3048 window in July now gives 2332 x 3049. Mixing windows makes
-    # disp-s1-reformat fail (run01's grid check catches it). This bbox
-    # reproduces the archive window exactly for BOTH frames, so new granules
-    # land on the existing grid and run02's geometry stays valid. Each nudge
-    # sits mid-way across its one-pixel band, ~15 m from either edge; the
-    # lattice is unchanged (x, y = 15 mod 30), so these are the same ground
-    # pixels. Kept separate from aoi_bbox so the science AOI (catalogue
-    # clipping in notebook 04, the GNSS ROI in run00, the TROPO crop in run03,
-    # which pads 0.3 deg anyway) is untouched by a download-side fix.
+    # the stack's first product; that conversion differs by one pixel between
+    # downloads, which changes the window size (2333 x 3048 vs 2332 x 3049).
+    # Mixed windows make disp-s1-reformat fail (run01's grid check detects it).
+    # This bbox reproduces the archive window for both frames, so all granules
+    # lie on the same grid and run02's geometry applies. Each shift lies
+    # mid-way across its one-pixel band, ~15 m from either edge; the pixel
+    # lattice is unchanged (x, y = 15 mod 30). Kept separate from aoi_bbox so
+    # the analysis AOI (catalogue clipping in notebook 04, the GNSS ROI in
+    # run00, the TROPO crop in run03) is unaffected.
     "aoi_bbox_disp": (-122.494858, 37.269967, -121.711070, 38.10),
-    # Bo Xie's GrowClust relocated catalogue for the Hayward area (2000-2025),
-    # relocated PLUS unrelocated NCSS events, one row per event
+    # GrowClust relocated catalogue of the Hayward area (2000-2025, B. Xie),
+    # relocated and unrelocated NCSS events, one row per event
     "growclust_cat": os.path.join(inputs_dir, "Bo_growclust", "hayward_growclust_catalog_relocated_plus_unrelocated.csv"),
 
-    # Frozen outputs of the aperture sweep made by Hayward_DISP-S1/analysis/
-    # run11b_sweep_ladder.py (July/August 2026). Notebook 05 READS these; it
-    # does not re-run the sweep (Dani, 2026-09-21).
+    # Archived outputs of the cross-fault aperture sweep. Notebook 05 reads
+    # these; it does not re-run the sweep.
     "sweep_dir": os.path.join(data_dir, "aperture_sweep"),
 
-    # Written by the data_prep chain, read by nobody in notebooks 01-11:
-    # run05's per-station GNSS/InSAR residuals, and run20's prep-side rain
-    # tables (notebook 09 builds its own composite from `ghcn_dir`).
+    # Written by the data_prep chain and not read by the notebooks: run05's
+    # per-station GNSS/InSAR residuals, and run20's prep-side rain tables
+    # (notebook 10 builds its own composite from `ghcn_dir`).
     "validation_dir": os.path.join(prep_dir, "validation"),
     "precip_dir":     os.path.join(prep_dir, "precip"),
 }
 
 # ------------------------
-# Analysis constants -- the choices a reviewer could ask about.
-# Each has a one-line reason; assumptions_register.md carries the full audit.
+# Analysis constants, each with a one-line reason.
 # ------------------------
-unit = 1000            # 1000 = displacement products are in m, we work in mm
+unit = 1000            # displacement products are in m; the analysis is in mm
 
-# Cross-fault aperture for the creep time series (the "narrow" stream). The
-# bin was chosen on creepmeter agreement in the aperture sweep (notebook 05).
+# Cross-fault aperture for the creep time series. The bin was chosen by
+# agreement with the creepmeters in the aperture sweep (notebook 05).
 dist_min = 0.03        # km, inner edge: bins touching the trace under-read the step
 dist_max = 0.15        # km, outer edge: beyond ~150 m the step is diluted by off-fault strain
-x_width  = 0.20        # km, half width ALONG strike of each crossing window
+x_width  = 0.20        # km, half width along strike of each crossing window
 min_points = 5         # minimum valid pixels per side (a 60 m bin at 30 m pixels)
-coh_timeseries = 0.7   # temporal-coherence mask for the creep time series (ONE stream everywhere, Dani 2026-09-21:
-#                        0.7 keeps 609 crossings against 480 at 0.9, finds the same five Tule Pond events, and costs
-#                        0.1 mm/yr on the creepmeter rate RMS; the frozen sweep shows the threshold is second order)
+coh_timeseries = 0.7   # temporal-coherence mask for the creep time series (one threshold for every notebook)
 coh_velocity   = 0.7   # temporal-coherence mask for velocity maps and the GNSS tie
 rate_nsigma = 3.0      # near-fault rate mask: reject pixels > 3 robust sigma from their side's median
 az_smooth_n = 21       # crossings in the rolling median of the local strike (2.1 km)
 max_interp_gap_days = 45   # interpolate asc/desc onto common dates only across gaps shorter than this
 rate_smooth_km = 0.5   # Gaussian smoothing of the along-fault rate profile
-profile_smooth_km = 0.2    # Gaussian sigma of the drawn along-strike slip profiles: Fig 1C per event, Fig 1D rates, Fig 2K mean event (Dani 2026-10-03: 0.2 km)
+profile_smooth_km = 0.2    # Gaussian sigma of the drawn along-strike slip profiles: Fig 1C per event, Fig 1D rates, Fig 2K mean event
 
 # Along-strike parameter string that goes into every product and figure name
 # (NC_ALOS-2 convention: the filename tells you what was run).
 params = f"ap{int(dist_min*1000)}-{int(dist_max*1000)}m_coh{coh_timeseries}_mp{min_points}_sw{int(x_width*1000)}m"
 
 # The Tule Pond section (Fremont; between Alameda Creek and Lake Elizabeth) and
-# the Oakland COZ1 section used ONLY as the detector's positive control.
+# the Oakland COZ1 section used only as the detector's positive control.
 segments = {
     "TULEPOND": {"label": "Tule Pond",      "lat": 37.5570, "lat_lo": 37.50, "lat_hi": 37.60},
     "COZ1":     {"label": "Oakland (COZ1)", "lat": 37.7500, "lat_lo": 37.68, "lat_hi": 37.82},
 }
-# The two LARGE Oakland (COZ1) creep events the control must find (notebooks 04 and 05): a decimal year inside
-# each one's InSAR onset window (the COZ1 creepmeter's Jan 2019 event, catalogued from 2019-01-11, and its
+# The two large Oakland (COZ1) creep events the positive control must detect (notebooks 04 and 05): a decimal year
+# inside each one's InSAR onset window (the COZ1 creepmeter's Jan 2019 event, catalogued from 2019-01-11, and its
 # Feb 2022 surge, from 2022-02-14; Gittins et al. 2026). 04 asserts that each lies in exactly one COZ1 onset
 # window (widened by coz1_large_tol_days each side) and 05 that they are the two COZ1 events with the largest
-# creepmeter steps. The control may find more: since the along-trace stack (2026-10-05) it also finds the
-# Oct 2022 COZ1 surge (Dani 2026-10-05: kept, the third control event), so COZ1 events are labelled by their
-# onset day (`onset_day` in creep_events.csv), not by year.
+# creepmeter steps. The control also detects the Oct 2022 COZ1 surge, so COZ1 events are labelled by their onset
+# day (`onset_day` in creep_events.csv), not by year.
 coz1_large_events_yr = (2019.02, 2022.13)
 coz1_large_tol_days = 12.0     # one long (12 d) acquisition interval
 
-# Box for the per-pixel event maps (notebook 06) and the slip model (07):
+# Box for the per-pixel event maps (notebook 06) and the slip models (07a, 08a):
 # W, S, E, N in degrees, around the Tule Pond section.
 box_lonlat = (-122.10, 37.46, -121.84, 37.65)
 
 # Fig 2 map window (notebook 06), also drawn as the "Tule Pond" outline on the Fig 1
 # map (notebook 04): centred on the trace at fig2_map_centre_km from Point Pinole,
 # +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km)
-# north-south, as the draft (10.4 x 12 km).
+# north-south (10.4 x 12 km).
 fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km = 59.5, 5.2, 0.8
 
 # The five USGS creepmeters, north -> south: (code, lat, lon, name).
-# Instrument locations from Langbein et al. (2024); single source of truth.
+# Instrument locations from Langbein et al. (2024).
 creepmeters = [("CPP1", 37.9895,  -122.3559,  "Pinole Point"),
                ("CTM1", 37.8439,  -122.2273,  "Temescal"),
                ("COZ1", 37.7535,  -122.1505,  "Oakland Zoo"),
                ("CHP1", 37.66274, -122.0740,  "Palisade Street"),
                ("CFW1", 37.53237, -121.95230, "Fremont")]
 
-# Creepmeter glitch days (insar_utils.daily_creepmeter, notebooks 04 and 05), found by inspection
-# (Dani 2026-10-05: drop only the listed days, no automatic filter; QC figure qc05_creepmeter_glitches
-# from notebook 05). (code, first day, last day, reason). Days are CALENDAR days: the USGS day-of-year is
-# 1-based (1 January 00:00 = doy 1.000) and the readers convert it so (insar_utils.creepmeter_decimal_year,
-# 2026-10-05). Both days were found and first listed in the old reader convention (doy / days, one day late:
-# 2017-05-19 and 2018-02-13) and moved back one day with that fix; the raw samples are at CPP1 doy 138.50 and
-# 138.54 of 2017 (18 May 12:00 and 13:00) and doy 43.33 of 2018 (12 Feb 08:00). daily_creepmeter asserts that
-# each listed day is in the record. The five records over the InSAR window (2016-09 to 2026-03) were
-# screened for days whose mean departs from the median of their 10-minute samples by > 0.2 mm or from a
-# 15-day running median by > 0.3 mm, and for offsets across data gaps; only these two are glitches (COZ1's
-# two flagged days are creep events inside the day). The whole-record 6-sigma + 10 mm cut it replaces
-# dropped no day in that window and did not catch these.
+# Creepmeter glitch days (insar_utils.daily_creepmeter, notebooks 04 and 05), identified by inspection; only the
+# listed days are dropped (no automatic filter; QC figure qc05_creepmeter_glitches from notebook 05).
+# (code, first day, last day, reason). Days are calendar days: the USGS day-of-year is 1-based (1 January 00:00 =
+# doy 1.000) and the readers convert it accordingly (insar_utils.creepmeter_decimal_year). The raw samples are at
+# CPP1 doy 138.50 and 138.54 of 2017 (18 May 12:00 and 13:00) and doy 43.33 of 2018 (12 Feb 08:00).
+# daily_creepmeter asserts that each listed day is in the record. The five records over the InSAR window (2016-09
+# to 2026-03) were screened for days whose mean departs from the median of their 10-minute samples by > 0.2 mm or
+# from a 15-day running median by > 0.3 mm, and for offsets across data gaps; only these two days are glitches
+# (COZ1's two flagged days are creep events within the day).
 creepmeter_glitches = [
     ("CPP1", "2017-05-18", "2017-05-18", "two 10-min samples at -283.7 mm (~340 mm below the record) pull the daily mean down 4.8 mm"),
     ("CPP1", "2018-02-12", "2018-02-12", "one 10-min sample at -283.7 mm (~350 mm below the record) pulls the daily mean down 2.4 mm"),
 ]
-# Checked and NOT listed: CTM1 around 2025.3-2025.5. Its record is smooth there; the drop-and-recover in the
-# cumulative panel of Fig S validation is one InSAR epoch (2025-04-01, ~5.6 mm below its neighbours), as is
-# the dip at CHP1 in 2021-10 (2021-10-25, ~7.5 mm). Both are InSAR, not creepmeter (QC figure, last panels).
+# Not listed: CTM1 around 2025.3-2025.5 and CHP1 in 2021-10, where the creepmeter records are smooth; the departures
+# in the cumulative panel of the validation figure are single InSAR epochs (2025-04-01 and 2021-10-25).
 
-# Catalogued creepmeter events (Gittins et al. 2026) in notebook 05: used for TIMING only (Dani 2026-10-05:
-# the catalogue-amplitude score, InSAR step / catalogued slip of every event >= 2 mm, is retired; the
-# amplitude statement uses notebook 04's joint-model COZ1 steps against the creepmeter's).
-# The catalogue is not drawn on Fig S validation (Dani 2026-10-05: it goes into a table in the text); 05
-# lists every CFW1 catalogue event that overlaps a Tule Pond InSAR onset window widened by this many days
-# on each side (outputs/05_validation/cfw1_gittins_near_windows.csv, the table's source).
+# Catalogued creepmeter events (Gittins et al. 2026) are used in notebook 05 for timing only (amplitudes are compared
+# with notebook 04's joint-model COZ1 steps). 05 lists every CFW1 catalogue event that overlaps a Tule Pond InSAR
+# onset window widened by this many days on each side (outputs/05_validation/cfw1_gittins_near_windows.csv, the
+# source of the table in the text).
 gittins_window_pad_days = 7
 
 # Shared choices read by more than one notebook (one definition each).
-wet_season_months = (10, 4)    # (first month, last month) of the wet season, shared by 10 and 11 (Dani 2026-10-05: Oct-Apr)
+wet_season_months = (10, 4)    # (first month, last month) of the wet season (Oct-Apr), shared by 10 and 11
 paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 11)
-# The slip models' constants (sigma rule, near-trace cut, surface constraint, weighting, ...) live in model_config.py since
-# 2026-10-30 (one parameter block; model_sigma_locked, model_sigma_grid, model_near_trace_cut_km, model_use_surface removed).
+# The settings of the slip models (sigma rule, near-trace cut, surface constraint, weighting, ...) are in model_config.py.
 # The bimonthly era of the alignment arrays (09, 10, 11): a survey interval of at most this many days resolves the
 # season of an onset; 09 runs the HRKT detector only on such intervals, 10 and 11 assert that every array window is
-# this short (until 2026-10-06 typed in each notebook: 09 dense_window_days, 10 and 11 resolvable_days).
+# this short.
 aa_dense_window_days = 130
 # The 1989 Loma Prieta earthquake, 17 Oct 1989 local time, as a decimal year to two places (day of year 290:
 # 1989 + 289/365 = 1989.79, the convention of insar_utils.date_to_decimal_year), for the interval that spans it (09 asserts that the longest quiet HRKT
@@ -347,38 +322,37 @@ loma_prieta_yr = 1989.79
 
 # Lake Elizabeth (Central Park, Fremont), east of the trace at the south end of the Tule Pond section: the area of
 # the mean-event VERTICAL signal the text quotes (notebook 06). Centre = the centroid of the open-water no-data hole
-# of 06's coherence-0.9 maps (lon -121.9614, lat 37.5499; read off fp_maps.npz 2026-10-06; TBC by the author on 06's
-# QC figure qc06_lake_elizabeth_vertical_area, which draws the area on the map); the area is every valid pixel
-# within lake_elizabeth_radius_m of it and east of the trace beyond 06's near-fault band.
+# of 06's coherence-0.9 maps (lon -121.9614, lat 37.5499, read from fp_maps.npz; drawn on 06's QC figure
+# qc06_lake_elizabeth_vertical_area); the area is every valid pixel within lake_elizabeth_radius_m of it and east of
+# the trace beyond 06's near-fault band.
 lake_elizabeth_lonlat = (-121.9614, 37.5499)
-lake_elizabeth_radius_m = 1000.0   # Dani 2026-10-14: the uplift covers ~1 km around the lake (500 m until then)
-# Where the trace crosses Alameda Creek and runs along Lake Elizabeth (Dani 2026-10-16, read off
-# hayward_fault_profiles.csv in Google Earth: (ft_lon, ft_lat) of the north and south ends); drawn as blue lines in
-# Fig 2K. The lake is also a park, where the InSAR may be noisier.
+lake_elizabeth_radius_m = 1000.0   # m: radius of the area around the lake
+# Where the trace crosses Alameda Creek and runs along Lake Elizabeth ((ft_lon, ft_lat) of the north and south ends,
+# read from hayward_fault_profiles.csv in Google Earth); drawn as lines in Fig 2K.
 alameda_creek_trace_lonlat = ((-121.986, 37.5751), (-121.982, 37.5687))
-lake_elizabeth_trace_lonlat = ((-121.969, 37.5497), (-121.963, 37.5433))   # south end extended (Dani 2026-10-16; was -121.964, 37.5447)
+lake_elizabeth_trace_lonlat = ((-121.969, 37.5497), (-121.963, 37.5433))
 
-# Date the forecast statement was first written (notebook 11; notebook 10 ends its rain series on it). Pinned so the
-# forecast numbers are reproducible; do not use "today".
+# Issue date of the forecast (notebook 11; notebook 10 ends its rain series on it). Fixed so that the forecast
+# numbers are reproducible.
 forecast_issue_date = "2026-08-25"
 # The last observation with no event, on which notebook 11 conditions the forecast: the last
-# descending acquisition of the CSLC + Dolphin extension check (extension_2026-09/RESULT.md,
-# 2026-10-05; ascending ends 2026-09-12). The paper's InSAR record itself still ends at
-# notebook 11's data_end (the end of 03's fp_ts, 2026-03-21).
+# descending acquisition of the CSLC + Dolphin extension of the time series (ascending ends
+# 2026-09-12). The paper's InSAR record ends at notebook 11's data_end (the end of 03's fp_ts).
 forecast_last_obs_date = "2026-09-24"
 
-# Running rain totals (notebook 10). 10 tests a grid of totals and lags before the InSAR onsets (Fremont gauge;
-# the test moved from 11 on 2026-10-06); its event table only describes each window by the days since a 3-day total
-# of at least rain_total_mm (a description, no test uses that single value).
+# Running rain totals (notebook 10). 10 tests a grid of totals and lags before the InSAR onsets (Fremont gauge); its
+# event table describes each window by the days since a 3-day total of at least rain_total_mm (a description only;
+# no test uses that single value).
 rain_total_days = 3        # length of the running rain total (days)
 rain_total_mm = 40.0       # 10's event-table description: days since a 3-day total of at least this (mm)
 
 # ------------------------
 # Per-track paths: one ascending frame (09157, track 35) and one descending
-# frame (11115, track 42). Same key vocabulary for both, so notebooks loop
-# `for dic in insar_dic_list:` instead of writing everything twice.
+# frame (11115, track 42), with the same keys, so notebooks loop
+# `for dic in insar_dic_list:`.
 # ------------------------
 def _track_paths(frame, orbit, path):
+    """Analysis paths and metadata of one DISP-S1 frame (frame id, orbit direction, relative orbit number)."""
     fdir = os.path.join(data_dir, frame)
     mdir = os.path.join(fdir, "mintpy")
     return {
@@ -387,12 +361,11 @@ def _track_paths(frame, orbit, path):
         "Frame":    frame,           # OPERA DISP-S1 frame id
         "Platform": "Sentinel-1",
         "mintpy_dir":   mdir,
-        "geometry_dir": os.path.join(fdir, "geometry"),   # OPERA los_east/los_north tifs (ground truth for the LOS convention test)
+        "geometry_dir": os.path.join(fdir, "geometry"),   # OPERA los_east/los_north tifs (reference for the LOS convention test)
         # OPERA CSLC-S1-STATIC files of the bursts covering box_lonlat (notebook 06 reads their
         # 'identification/bounding_polygon' to place the burst seams): 09157 T035-073249-IW2/-IW3 and
-        # T035-073250-IW2, 11115 T042-088917-IW3 and T042-088918-IW3, copied 2026-10-05 from
-        # proj_HaywardCreep_bad/<frame>/static_lyrs. data_prep/run02 deletes the static files it downloads
-        # into this folder after stitching: re-copy them if run02 is rerun.
+        # T035-073250-IW2, 11115 T042-088917-IW3 and T042-088918-IW3. data_prep/run02 deletes the static files it
+        # downloads into this folder after stitching, so these files must be restored if run02 is rerun.
         "static_dir":   os.path.join(fdir, "static_lyrs"),
         "geo_file":    os.path.join(mdir, "geometryGeo.h5"),      # incidenceAngle, azimuthAngle, height
         "ts_file":      os.path.join(mdir, "timeseries_tropo.h5"),  # tropo-corrected, unmasked, referenced at ZOA1
@@ -402,8 +375,6 @@ def _track_paths(frame, orbit, path):
         # 0.7 is coh_timeseries and coh_velocity: the creep time series, the per-pixel
         # step fits, the velocity fields and the GNSS tie. 0.9 is coh_maps: notebook
         # 06's per-pixel event maps, the cross-fault profiles and the decomposed field.
-        # (0.8 was dropped 2026-09-28 -- no notebook ever selected it and run04 stopped
-        # writing it, so the path resolved to a stale July product.)
         "mask_file":    {c: os.path.join(mdir, f"maskTempCoh_{int(round(c * 10)):02d}.h5") for c in (0.9, 0.7)},
     }
 
@@ -412,16 +383,17 @@ des11115_dic = _track_paths("11115", "descending", "042")
 insar_dic_list = [asc09157_dic, des11115_dic]
 
 # ------------------------
-# Frame paths for the DATA PREPARATION chain (`data_prep/run00` to `run05`).
+# Frame paths for the data preparation chain (`data_prep/run00` to `run05`).
 #
-# A separate view of the same data from `insar_dic_list` above, for two
-# reasons: the prep chain works on THREE frames (09156 is merged with 09157
-# into the ascending mosaic, and has no analysis view of its own), and it needs
-# the raw and intermediate paths -- the downloaded granules, the rebased stack,
-# the geometry and troposphere directories -- that the notebooks never read.
+# A separate view of the same data from `insar_dic_list` above, because the
+# preparation chain works on three frames (09156 is merged with 09157 into the
+# ascending mosaic and has no analysis view of its own) and needs the raw and
+# intermediate paths (the downloaded granules, the rebased stack, the geometry
+# and troposphere directories) that the notebooks do not read.
 # The notebooks use `insar_dic_list`; only `data_prep/` uses this.
 # ------------------------
 def _prep_paths(frame):
+    """Paths of one DISP-S1 frame used by the data preparation chain (raw, intermediate and MintPy products)."""
     fdir = os.path.join(data_dir, frame)
     mdir = os.path.join(fdir, "mintpy")
     return {
@@ -477,18 +449,15 @@ paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "07a_uniform_model", "07c_fig2", "08a_3d_model", "08b_sensitivity",
     "09_alignment_arrays",
     "10_rain_seasonality", "11_forecast", "12_paper_figures")}
-# The pre-2026-09-24 names 09_seasonality_forecast and 10_paper_figures are gone:
-# 09 split into 10_rain_seasonality and 11_forecast, and the paper-figure collector
-# moved to 11. The superseded notebooks are kept under drafts/originals/.
 
 
 # ------------------------
-# Nothing is written inside the repo (Dani 2026-10-06): every folder a notebook, a model run or a figure writes into
-# must resolve OUTSIDE repo_dir. On a machine whose data sit inside the repo (the data_dir fallback above), set
+# Nothing is written inside the repository: every folder a notebook, a model run or a figure writes into must
+# resolve outside repo_dir. On a machine whose data sit inside the repository (the data_dir fallback above), set
 # TULEPOND_DATA_DIR to a folder outside it.
 # ------------------------
 def output_locations():
-    """Every folder products, figures or model runs are written into, as (name, path) pairs."""
+    """Every folder into which products, figures or model runs are written, as (name, path) pairs."""
     locations = [("fig_dir", fig_dir), ("out_dir", out_dir), ("executed_dir", executed_dir), ("registry_csv", common_paths["registry_csv"]),
                  ("registry_txt", common_paths["registry_txt"])]
     locations += [(f"paths_out[{nb}]", path) for nb, path in paths_out.items()]
@@ -499,7 +468,7 @@ def output_locations():
 
 
 def assert_outside_repo():
-    """Fail if any output location resolves inside the repo."""
+    """Fail (AssertionError) if any output location resolves inside the repository."""
     repo_real = os.path.realpath(repo_dir)
     for name, path in output_locations():
         real = os.path.realpath(path)

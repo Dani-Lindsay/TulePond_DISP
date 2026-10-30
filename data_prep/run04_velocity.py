@@ -1,40 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
-
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/run04_velocity.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
+@author: Danielle Lindsay
 
 MintPy conversion, referencing, masking, TROPO correction and velocity,
 per frame, then a same-orbit mosaic:
 
 1) `disp_nc_to_mintpy`: rebased stack -> mintpy/timeseries.h5 (+ geometry)
-2) Reference every frame at the SAME ground point, the pixel co-located with
+2) Reference every frame at the same ground point, the pixel co-located with
    GNSS ZOA1, so InSAR and GNSS share a datum before the tie (run05)
-3) Masks: unbroken record; temporal coherence 0.7 (velocity path) and 0.9
-   (creep time-series path, applied in the analysis stage)
+3) Masks: unbroken record; temporal coherence 0.7 (velocity path, and the
+   creep time series of the analysis stage) and 0.9 (the per-pixel event maps
+   of the analysis stage); both are written as maskTempCoh_07/09.h5
 4) TROPO correction via diff.py; velocity via timeseries2velocity.py
 5) Mosaic same-orbit frames (09156 + 09157) onto one union grid
 
 The processing order is fixed by three constraints:
 
-1. reference_point BEFORE zero-filling: MintPy's 3D path subtracts the
+1. reference_point before zero-filling: MintPy's 3D path subtracts the
    reference value from every pixel including zeros, so filling first would
    be undone.
-2. Zero-fill WHOLE pixels only: MintPy's no-data convention is 0 and
+2. Zero-fill whole pixels only: MintPy's no-data convention is 0 and
    timeseries2velocity has no NaN switch. A pixel zeroed for part of its
-   record would read as "snapped back to reference and froze" -- a fabricated
-   signal. Velocity pixels are therefore required to have an unbroken record.
+   record would read as a return to the reference value, which is not a
+   measured signal. Velocity pixels are therefore required to have an
+   unbroken record.
 3. TROPO after masking: diff.py preserves no-data zeros through the
    subtraction.
 
-The creep analysis reads `timeseries_tropo.h5` (corrected, UNMASKED -- the
-0.9 coherence mask is applied per pixel in the analysis stage, and NaN in the
-rebased stack is monotonic, so partial records stay honest there).
+The creep analysis reads `timeseries_tropo.h5` (corrected, unmasked: the
+temporal-coherence masks are applied per pixel in the analysis stage, and NaN
+in the rebased stack is monotonic, so partial records are kept as NaN).
 
 Output per frame:  <frame>/mintpy/  timeseries.h5, timeseries_tropo.h5,
                    velocity_mintpy.h5, velocity_masked.h5, maskRecord.h5,
@@ -43,6 +39,8 @@ Mosaics:           <data_dir>/mosaic/<orbit>_velocity[_masked].h5,
                    <orbit>_geometry.h5
 
 Run in the conda environment (MintPy CLI tools on PATH).
+Source: MintPy (Yunjun et al. 2019): disp_nc_to_mintpy (opera-utils),
+reference_point.py, diff.py, timeseries2velocity.py.
 """
 import glob
 import os
@@ -66,7 +64,7 @@ from tropo_to_mintpy import build as build_tropo_h5
 # User parameters
 # ---------------------------------------------------------------------------
 COH_VELOCITY   = 0.7    # temporal-coherence mask for the velocity / GNSS-tie path
-COH_TIMESERIES = 0.9    # stricter mask for the creep time series (analysis stage)
+COH_TIMESERIES = 0.9    # stricter mask written for the analysis stage (notebook 06's per-pixel maps)
 RELIABILITY_THRESHOLD = 0.9   # disp_nc_to_mintpy recommended-mask reliability
 
 ref_lat = common_paths['ref_lat']    # ZOA1: shared reference pixel for all frames
@@ -109,15 +107,13 @@ def stack_dates(stack_path):
 
 def ensure_mintpy(paths):
     """Convert the rebased stack unless mintpy/timeseries.h5 already covers the
-    SAME dates.
+    same dates.
 
-    The check is on the DATES, not on the file existing. A data refresh adds
+    The check is on the dates, not on the file existing: a data refresh adds
     epochs to the stack and leaves the previous timeseries.h5 in place, and
-    skipping on existence alone then carried the OLD dates through the masks,
-    TROPO.h5, the velocity fit and the mosaics -- while the script exited
-    cleanly. Found on the March-2026 refresh, which built 344-epoch products
-    from a 359-epoch stack. `_write_hdf5` opens with mode "w", so rebuilding
-    simply overwrites; nothing has to be deleted first.
+    skipping on existence alone would carry the previous dates through the
+    masks, TROPO.h5, the velocity fit and the mosaics. `_write_hdf5` opens with
+    mode "w", so rebuilding overwrites; nothing has to be deleted first.
     """
     from opera_utils.disp.mintpy import disp_nc_to_mintpy
     ts = paths['timeseries']
@@ -141,16 +137,16 @@ def ensure_mintpy(paths):
 
 def read_coherence(mdir):
     """average_temporal_coherence, via the copy disp_nc_to_mintpy writes.
-    Note this is a HARMONIC mean over every 15th epoch, not a plain average."""
+    This is a harmonic mean over every 15th epoch, not a plain average."""
     with h5py.File(os.path.join(mdir, "avgSpatialCoh.h5"), "r") as f:
         return f[list(f.keys())[0]][:]
 
 
 def record_mask(ts_path):
-    """True where the pixel has an UNBROKEN record (valid in every epoch).
+    """True where the pixel has an unbroken record (valid in every epoch).
 
-    NaN in the rebased stack is monotonic -- it only ever begins at a
-    ministack reference crossover and never recovers -- so this equals
+    NaN in the rebased stack is monotonic (it only begins at a ministack
+    reference crossover and never recovers), so this equals
     "valid at the last epoch", and intermediate densities carry no meaning.
     """
     with h5py.File(ts_path, "r") as f:
@@ -215,13 +211,13 @@ def apply_mask_to_velocity(vel_path, keep, out_path):
 # ---------------------------------------------------------------------------
 # The two ascending frames (09156 + 09157, same track) share the ZOA1 reference
 # pixel and the same look geometry, and their grids share the 30 m UTM lattice,
-# so the merge is a pure integer index copy with NO resampling (asserted below).
+# so the merge is an integer index copy with no resampling (asserted below).
 # The lone descending frame is copied through, so downstream always reads one
 # file per orbit direction from mosaic/.
 
 def frame_grid(mdir):
     """Grid description of one frame from its timeseries.h5 attributes.
-    X_FIRST/Y_FIRST are the coordinates of the first pixel CORNER."""
+    X_FIRST/Y_FIRST are the coordinates of the first pixel corner."""
     with h5py.File(os.path.join(mdir, "timeseries.h5"), "r") as f:
         a = f.attrs
         return dict(x0=float(a["X_FIRST"]), y0=float(a["Y_FIRST"]),
@@ -232,7 +228,7 @@ def frame_grid(mdir):
 
 def union_grid(grids):
     """Smallest grid on the shared pixel lattice containing every frame.
-    Y_STEP is negative, so the top edge is the MAX y0."""
+    Y_STEP is negative, so the top edge is the maximum y0."""
     dx, dy = grids[0]["dx"], grids[0]["dy"]
     x0 = min(g["x0"] for g in grids)
     y0 = max(g["y0"] for g in grids)
@@ -313,7 +309,7 @@ def merge_frames():
     """Merge each orbit direction's frames into mosaic/<orbit>_*.h5.
 
     geometryGeo is merged alongside the velocities so the decomposition can
-    read PER-PIXEL incidence and azimuth on the same union grid, instead of a
+    read per-pixel incidence and azimuth on the same union grid, instead of a
     track-mean constant.
     """
     groups = defaultdict(list)
@@ -342,7 +338,7 @@ def merge_frames():
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# Main
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
 
@@ -354,10 +350,10 @@ if __name__ == '__main__':
         ts = ensure_mintpy(paths)
         meta0 = grid_meta(ts)
 
-        # 2) Reference at ZOA1 (constraint 1: BEFORE any zero-filling).
+        # 2) Reference at ZOA1 (constraint 1: before any zero-filling).
         #    Idempotent: referencing zeroes the ref pixel's series and MintPy
-        #    treats 0 as no-data, so a second run would reject the pixel --
-        #    skip if already referenced (delete timeseries.h5 to move it).
+        #    treats 0 as no-data, so a second run would reject the pixel;
+        #    skipped if already referenced (delete timeseries.h5 to move it).
         if "REF_Y" not in meta0:
             print(f"    reference_point.py at ZOA1 {ref_lat}, {ref_lon}")
             sh("reference_point.py", ts, "-l", ref_lat, "-L", ref_lon)
@@ -386,10 +382,10 @@ if __name__ == '__main__':
         print("    diff.py <- TROPO.h5")
         sh("diff.py", msk, os.path.join(mdir, "TROPO.h5"), "-o", vel_in)
 
-        # corrected, UNMASKED time series for the creep analysis stage.
+        # corrected, unmasked time series for the creep analysis stage.
         # Rebuilt whenever its dates differ from timeseries.h5's: on a refresh
-        # the old file is still here and is exactly what notebooks 03 and 06
-        # read, so skipping on existence alone would hand them stale data.
+        # the previous file is still here and is what notebooks 03 and 06
+        # read, so skipping on existence alone would pass them stale data.
         tropo_ts = paths['timeseries_tropo']
         if os.path.exists(tropo_ts) and h5_dates(tropo_ts) == h5_dates(ts):
             print(f"    timeseries_tropo.h5 already covers {len(h5_dates(ts))} epochs")

@@ -11,7 +11,8 @@
 #        modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb 8 modeling_inputs/points/insar_points.txt
 # Writes <name>-points.h5, -fault.h5, -elastic_info.h5, -parameters.json (+ the boundary outputs) into the medium's
 # pylith_output/; the PyLith log to <medium>/runs/<name>.log and one start/done line to <medium>/runs/run_gf.log.
-# About 33 min for the 2386 samples on 8 ranks (Apple M-series). See pylith/README.md for every run of the paper.
+# Run times range from about 30 min (order 1, default mesh, 8 ranks) to about 35 h (order 2, shallow mesh, 5 ranks) on an
+# Apple M-series laptop. See pylith/README.md for every run.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_common.sh"
 NAME=$1; MAT=$2; MESH=$3; IMP=$4; NP=$5; PTS=$6; shift 6

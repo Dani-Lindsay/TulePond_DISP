@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Sep 21 2026
+@author: Danielle Lindsay
 
-@author: daniellelindsay
+insar_utils.py: shared helper functions of the TulePond_DISP repository: reading and writing MintPy HDF5
+products, dates, the LOS projection conventions, the along-fault distance axis and the rotated fault maps,
+statistics, creepmeter and catalogue readers, and the provenance and number-registry helpers.
 
-Shared helper functions for the TulePond_DISP publication repository.
-
-This file owns HOW the shared maths is done (NC_ALOS-2 layout): reading and
-writing MintPy HDF5 products, dates, the LOS projection conventions, the
-along-fault distance axis, robust statistics, creepmeter readers, and the
-number registry that every notebook appends its manuscript numbers to.
-
-Only functions that MORE THAN ONE notebook uses live here. Anything that one
-notebook does on its own is written out in that notebook so it can be read
-top to bottom. Every function here is short and has a test in tests/.
+Functions used by a single notebook are written in that notebook; the functions here are shared by several
+notebooks or scripts. Most have a test in tests/.
 
 Sections
     run_command          run a MintPy / GMT command-line tool and print it
-    Date-time            decimal years
+    Disk space, dates    disk-space check before downloads; decimal years
     Read-Write           h5py readers and writers for MintPy files
     Projections          LOS unit vector, fault-parallel design matrix, decomposition
-    Along-fault axis     km from Point Pinole along the mapped trace; the map strike frame (u, v)
-    Statistics           robust sigma, detrend, linear rate with std_err
-    Creepmeters          USGS .10min reader; the daily glitch-filtered record
+    pygmt helpers        resampling to lon/lat grids, map sizes, colour tables
+    Along-fault axis     km from Point Pinole along the mapped trace; the map strike frame (u, v); the fault map panel
+    Figure style         matplotlib paper style, panel titles, pygmt labels
+    Statistics           robust sigma, detrend, linear rate, along-trace smoothing, annual-increment rate
+    Creepmeters          USGS .10min reader; the daily record with listed glitch days removed
+    Catalogues           seismicity, repeating-earthquake and alignment-array readers
     Provenance/Registry  git hash, file fingerprints, the registry class
+    Fault trace          KML / text trace reader
 """
 import csv
 import hashlib
@@ -47,12 +45,13 @@ import pyproj                      # lon/lat <-> UTM for the strike frame (strik
 
 
 def run_command(cmd):
-    """Run a MintPy or GMT command-line tool from THIS python environment and
-    print the command first, so the notebook output records exactly what ran.
+    """Run a MintPy or GMT command-line tool (cmd: list of program and arguments)
+    from the running Python environment, printing the command first so the
+    notebook output records what ran.
 
-    The tool is looked up next to the running python (the env's bin/), which
-    avoids the wrong-environment problem we hit with `conda activate` in
-    non-interactive shells.
+    The tool is looked up next to the running Python (the environment's bin/),
+    so the tool of the same environment is used in non-interactive shells.
+    Raises CalledProcessError on a non-zero exit. Source: written for this project.
     """
     import sys
     env_bin = os.path.dirname(sys.executable)
@@ -64,20 +63,17 @@ def run_command(cmd):
 
 
 # ------------------------------
-# Date-time
+# Disk space and date-time
 # ------------------------------
 
-RESERVE_GB = 50.0      # never plan to eat into the last this-many GB of disk
+RESERVE_GB = 50.0      # GB of free disk space that a download must leave untouched
 
 
 def require_disk_space(path, need_gb, what=""):
-    """Abort unless `path` has room for `need_gb` plus a safety reserve.
-
-    A download that fills the disk does not just fail, it takes the machine
-    down with it, so the big-download scripts in `data_prep/` check space up
-    front and refuse to start rather than dying halfway through. `need_gb` is a
-    rough estimate; the check catches "this was never going to fit", not the
-    last megabyte.
+    """Exit (SystemExit) unless the disk holding `path` has room for `need_gb`
+    (GB, an estimate of the job size) plus RESERVE_GB; `what` names the job in
+    the message. Returns True otherwise. The download scripts in `data_prep/`
+    call it before starting. Source: written for this project.
     """
     total, used, free = (x / 1e9 for x in shutil.disk_usage(path))
     label = f" for {what}" if what else ""
@@ -90,11 +86,14 @@ def require_disk_space(path, need_gb, what=""):
 
 
 def date_to_decimal_year(date_input, format_str=None):
-    """Convert a date (str, bytes, or datetime) to a decimal year.
+    """Convert a date (str, bytes, or datetime) to a decimal year
+    (1 January 00:00 = year + 0).
 
     Uses the exact length of the year in seconds (leap years handled), so a
     date and its decimal year round-trip to the second. MintPy stores dates as
-    bytes b'20160717'; those are accepted directly.
+    bytes b'20160717'; those are accepted directly. Strings are parsed with
+    `format_str`, or as YYYY-MM-DD, MM/DD/YYYY or YYYYMMDD when it is None.
+    Source: written for this project.
     """
     if isinstance(date_input, bytes):
         date_input = date_input.decode("utf-8")
@@ -121,7 +120,7 @@ def date_to_decimal_year(date_input, format_str=None):
 
 
 def decimal_year_to_date(dec_year):
-    """Inverse of date_to_decimal_year, to the nearest second."""
+    """Inverse of date_to_decimal_year, to the nearest second. Returns a datetime."""
     year = int(np.floor(dec_year))
     start_of_year = datetime(year=year, month=1, day=1)
     start_of_next_year = datetime(year=year + 1, month=1, day=1)
@@ -133,7 +132,7 @@ def decimal_year_to_day(dec_year):
     """The calendar day nearest to a decimal year, as a Timestamp at midnight.
 
     Acquisition dates are whole days but their decimal years are stored rounded (2017.0986 is
-    6 Feb 2017 less 16 minutes), so cutting the time off would give the day before; rounding gives
+    6 Feb 2017 less 16 minutes), so truncating the time would give the day before; rounding gives
     the acquisition day."""
     return pd.Timestamp(decimal_year_to_date(dec_year)).round("D")
 
@@ -149,8 +148,8 @@ def load_h5_attrs(h5_file):
 
 
 def load_h5_data(h5_file, dataset, to_mm=False):
-    """Read ONE 2-D dataset from a MintPy file as float64, with zeros set to
-    NaN (MintPy writes 0 for no-data). `to_mm=True` multiplies by 1000.
+    """Read one 2-D dataset from a MintPy file as float64, with zeros set to
+    NaN (MintPy writes 0 for no-data). `to_mm=True` multiplies by 1000 (m to mm).
 
     Returns (array, attrs).
     """
@@ -183,7 +182,8 @@ def grid_coords(attrs):
 
 
 def lonlat_grid(attrs):
-    """2-D longitude and latitude arrays for a UTM-gridded MintPy product."""
+    """2-D longitude and latitude arrays (deg) for a UTM-gridded MintPy product
+    (EPSG from attrs, default 32610)."""
     import pyproj
     epsg = int(attrs.get("EPSG", 32610))
     x, y = grid_coords(attrs)
@@ -194,11 +194,11 @@ def lonlat_grid(attrs):
 
 
 def write_new_h5(data, out_file, src_file, dataset="velocity", extra_attrs=None):
-    """Write a 2-D array to a NEW MintPy-style HDF5 file, grafting every
-    attribute from `src_file` so MintPy tools (save_gmt.py, view.py) still
-    work on the product. `extra_attrs` are added on top (provenance).
+    """Write a 2-D array to a new MintPy-style HDF5 file, copying every
+    attribute from `src_file` so that MintPy tools (save_gmt.py, view.py)
+    read the product. `extra_attrs` are added on top (provenance).
 
-    NaN is written as 0 to match MintPy's no-data convention.
+    NaN is written as 0 to match MintPy's no-data convention. Returns out_file.
     """
     arr = np.array(data, dtype=np.float32)
     arr[~np.isfinite(arr)] = 0.0
@@ -217,19 +217,20 @@ def write_new_h5(data, out_file, src_file, dataset="velocity", extra_attrs=None)
 # ------------------------------
 # Projections
 #
-# Conventions (MintPy / OPERA), verified against OPERA's own los_east and
+# Conventions (MintPy / OPERA), tested against OPERA's own los_east and
 # los_north rasters in tests/test_insar_utils.py:
 #   inc_deg  incidence angle of the LOS vector, measured from vertical
-#   azi_deg  azimuth of the GROUND -> SATELLITE LOS vector, from north,
-#            ANTI-CLOCKWISE positive. Ours: ascending ~100 (satellite to the
-#            west), descending ~260 (satellite to the east).
-#   strike   compass bearing, from north, CLOCKWISE positive. Hayward ~144.
-# Mixing the anti-clockwise azimuth with the clockwise bearing is the
-# 90-degree bug that once made ascending creep 2x too small; keep them apart.
+#   azi_deg  azimuth of the ground -> satellite LOS vector, from north,
+#            anticlockwise positive. Tracks used here: ascending ~100
+#            (satellite to the west), descending ~260 (satellite to the east).
+#   strike   compass bearing, from north, clockwise positive. Hayward ~144.
+# The LOS azimuth (anticlockwise) and the strike bearing (clockwise) use
+# opposite conventions and must not be mixed.
 # ------------------------------
 
 def los_unit_vector(inc_deg, azi_deg):
-    """Unit vector (E, N, U) of the LOS direction from the GROUND to the SATELLITE."""
+    """Unit vector (E, N, U) of the LOS direction from the ground to the satellite,
+    from the incidence and azimuth angles (deg, MintPy convention above)."""
     inc, azi = np.deg2rad(inc_deg), np.deg2rad(azi_deg)
     return np.array([
         -np.sin(inc) * np.sin(azi),   # East
@@ -239,8 +240,8 @@ def los_unit_vector(inc_deg, azi_deg):
 
 
 def horizontal_unit_vector(bearing_deg):
-    """Unit vector (E, N, 0) of a horizontal direction given as a COMPASS
-    BEARING clockwise from north (0 = N, 90 = E, 180 = S, 270 = W)."""
+    """Unit vector (E, N, 0) of a horizontal direction given as a compass
+    bearing in deg clockwise from north (0 = N, 90 = E, 180 = S, 270 = W)."""
     b = np.deg2rad(bearing_deg)
     return np.array([np.sin(b), np.cos(b), 0.0])
 
@@ -251,7 +252,9 @@ def design_matrix_up_fp(inc_deg, azi_deg, strike_deg):
         d_los_i = U * (L_i . up) + FP * (L_i . strike_hat)
 
     Assumes all horizontal motion is fault-parallel (the two-look assumption).
-    Returns G with shape (n_tracks, 2), columns [U, FP].
+    Angles in deg (incidence, azimuth as los_unit_vector; strike as a compass
+    bearing). Returns G with shape (n_tracks, 2), columns [U, FP].
+    Source: written for this project.
     """
     inc_deg = np.atleast_1d(inc_deg)
     azi_deg = np.atleast_1d(azi_deg)
@@ -270,12 +273,12 @@ def decompose_asc_desc(d_asc, d_desc, inc_asc_deg, azi_asc_deg,
     """Decompose ascending + descending LOS series into vertical (U) and
     fault-parallel (FP), solving the 2x2 system per epoch by least squares.
 
-    d_asc / d_desc must be LOS values on a COMMON set of epochs. FP is positive
+    d_asc / d_desc must be LOS values on a common set of epochs. FP is positive
     along `strike_deg`: with strike ~144 (S36E), the east block moving SE
-    relative to the west block (right-lateral Hayward creep) gives POSITIVE FP
-    when the series is (east side - west side).
+    relative to the west block (right-lateral Hayward creep) gives positive FP
+    when the series is (east side - west side). Angles in deg.
 
-    Returns (U, FP), each the length of the input series.
+    Returns (U, FP), each the length of the input series, in the units of the input.
     """
     G = design_matrix_up_fp([inc_asc_deg, inc_desc_deg],
                             [azi_asc_deg, azi_desc_deg], strike_deg)
@@ -310,7 +313,8 @@ def utm_to_lonlat_grid(arr, x0, y0, dx, dy, epsg, region, dlon, dlat):
 
 
 def utm_grid_region(x0, y0, dx, dy, width, length, epsg):
-    """[W, E, S, N] in lon/lat enclosing a north-up UTM raster."""
+    """[W, E, S, N] in lon/lat (deg) enclosing a north-up UTM raster (x0, y0 the
+    corner of the first pixel, dx, dy the pixel size in m, width x length pixels)."""
     from pyproj import Transformer
     xs = [x0, x0 + width * dx]; ys = [y0, y0 + length * dy]
     lon, lat = Transformer.from_crs(epsg, 4326, always_xy=True).transform(
@@ -331,8 +335,9 @@ def gmt_map_size(region, projection):
 
 
 def write_cpt(path, cmap_name, vmin, vmax, n=64):
-    """Write a GMT colour table sampled from a matplotlib colormap, so the
-    pygmt figures use the same colours as the matplotlib QC plots. Returns path."""
+    """Write a GMT colour table with n slices between vmin and vmax sampled from
+    a matplotlib colormap, so that the pygmt figures use the same colours as
+    the matplotlib figures. Returns path."""
     import matplotlib.pyplot as plt
     cm_ = plt.get_cmap(cmap_name)
     edges = np.linspace(vmin, vmax, n + 1)
@@ -350,13 +355,13 @@ def write_cpt(path, cmap_name, vmin, vmax, n=64):
 # ------------------------------
 
 def along_fault_km(ft_lon, ft_lat):
-    """Along-fault distance of every trace vertex, in km, with ZERO AT POINT
-    PINOLE (the northern end = the LAST row of hayward_fault_profiles.csv) and
-    increasing SOUTHWARD, the published along-fault convention.
+    """Along-fault distance of every trace vertex (ft_lon, ft_lat in deg, south
+    to north), in km, with zero at Point Pinole (the northern end = the last
+    row of hayward_fault_profiles.csv) and increasing southward, the published
+    along-fault convention.
 
-    Summed segment by segment along the curved trace with a geodesic, not
-    projected onto a straight line (the strand bends up to 1.1 km off any
-    straight line, which would compress the southern half by ~0.4 km).
+    Summed segment by segment along the curved trace with geodesic distances
+    (geopy), not projected onto a straight line. Source: written for this project.
     """
     ft_lon = np.asarray(ft_lon, dtype=float)
     ft_lat = np.asarray(ft_lat, dtype=float)
@@ -370,9 +375,9 @@ def along_fault_km(ft_lon, ft_lat):
 
 
 def lat_to_km_map(profiles_csv):
-    """Return a function lat -> km from Point Pinole, by nearest trace vertex.
-    The trace is sampled at 100 m so km = (n-1 - index) * 0.1 to within 10 m
-    (pinned by tests/test_filepaths.py)."""
+    """Return a function lat (deg) -> km from Point Pinole, by nearest vertex of
+    the trace in profiles_csv (column ft_lat). The trace is sampled every 100 m,
+    so km = (n-1 - index) * 0.1 to within 10 m (tested in tests/test_filepaths.py)."""
     prof = pd.read_csv(profiles_csv)
     plat = prof["ft_lat"].to_numpy(float)
     km = (len(plat) - 1 - np.arange(len(plat))) * 0.1
@@ -380,10 +385,11 @@ def lat_to_km_map(profiles_csv):
 
 
 def strike_frame(epsg, strike_deg, trace_lon, trace_lat):
-    """The straight strike frame the map panels of notebooks 04 and 05 are drawn
-    in: u along the strike from Point Pinole (km, + toward the strike bearing,
-    i.e. south-east), v across the fault (km, + to the north-east = the east
-    side), both in the UTM zone `epsg`.
+    """The straight strike frame of the rotated map panels (notebooks 04, 05
+    and 09): u along the strike from Point Pinole (km, positive toward the
+    strike bearing, i.e. south-east), v across the fault (km, positive to the
+    north-east = the east side), both in the UTM zone `epsg`; strike_deg is a
+    compass bearing (deg), trace_lon / trace_lat the trace vertices (deg).
 
     Unit vectors in (east, north): along = (sin s, cos s), across = (-cos s, sin s)
     for the compass strike s. The origin of u is the northern end of the trace
@@ -415,8 +421,8 @@ def to_uv(frame, lon, lat):
 
 
 def uv_to_lonlat(frame, u_km, v_km):
-    """Strike-frame km (u along, v across; see strike_frame) -> (lon, lat), for
-    the few things defined in the frame (map corners, ticks, brackets)."""
+    """Strike-frame km (u along, v across; see strike_frame) -> (lon, lat) in deg,
+    for the map elements defined in the frame (map corners, ticks, brackets)."""
     u_m = np.asarray(u_km, float) * 1e3 + frame["u_origin"]
     v_m = np.asarray(v_km, float) * 1e3 + frame["v_origin"]
     easting = u_m * frame["along_e"] + v_m * frame["cross_e"]
@@ -424,7 +430,7 @@ def uv_to_lonlat(frame, u_km, v_km):
     return frame["from_utm"].transform(easting, northing)
 
 
-# The rotated fault maps (04 Fig 1A, the 05 and 09 supplements) all show the same rectangle of the strike frame
+# The rotated fault maps (04 Fig 1A, the 05 and 09 supplementary figures) all show the same rectangle of the strike frame
 FAULT_MAP_U_KM = (-3.0, 70.0)     # along strike: from 3 km north of Point Pinole to just south of CFW1
 FAULT_MAP_HALF_KM = 10.9          # across the fault, each side (3.4 cm wide for 73 km tall at true scale)
 
@@ -447,8 +453,8 @@ def fault_map_corners(frame):
 
 
 def creepmeter_u_km(frame, trace_lon, trace_lat, creepmeters):
-    """Where each creepmeter sits along the rotated fault maps: u (km) of the trace vertex nearest it.
-    The instruments sit on the trace to within a few tens of metres. creepmeters is the
+    """Position of each creepmeter along the rotated fault maps: u (km) of the trace vertex nearest to it.
+    The instruments lie on the trace to within a few tens of metres. creepmeters is the
     TulePond_filepaths list of (code, lat, lon, name). Returns ({code: u km}, {code: distance to that vertex, m})."""
     trace_u_km, trace_v_km = to_uv(frame, trace_lon, trace_lat)
     u_by_code = {}
@@ -462,10 +468,11 @@ def creepmeter_u_km(frame, trace_lon, trace_lat, creepmeters):
 
 
 def utm_grid_to_lonlat(values, x_first, x_step, y_first, y_step, to_utm, corners, lon_step=0.00035, lat_step=0.00028):
-    """A UTM-gridded field looked up on a regular lon/lat grid that covers the map corners (plus 0.01 deg),
-    nearest UTM pixel, NaN off the UTM grid (GMT draws regular lon/lat grids). x_first/y_first are the
-    pixel-centre coordinates of the first column/row, x_step/y_step the pixel size (y_step < 0 for north-up).
-    Returns (lon_axis, lat_axis, values on the lon/lat grid, lat x lon)."""
+    """A UTM-gridded field sampled on a regular lon/lat grid (lon_step, lat_step in deg) that covers the map corners
+    (plus 0.01 deg), by nearest UTM pixel, NaN off the UTM grid (GMT draws regular lon/lat grids). x_first/y_first
+    are the pixel-centre coordinates of the first column/row (m), x_step/y_step the pixel size (m; y_step < 0 for
+    north-up); to_utm is a pyproj transformer lon/lat -> UTM. Returns (lon_axis, lat_axis, values on the lon/lat grid,
+    lat x lon)."""
     lat_axis = np.arange(corners[:, 1].min() - 0.01, corners[:, 1].max() + 0.01, lat_step)
     lon_axis = np.arange(corners[:, 0].min() - 0.01, corners[:, 0].max() + 0.01, lon_step)
     lon_grid, lat_grid = np.meshgrid(lon_axis, lat_axis)
@@ -481,10 +488,10 @@ def utm_grid_to_lonlat(values, x_first, x_step, y_first, y_step, to_utm, corners
 def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creepmeters, sse_u_km,
                     letter="A", title="Hayward Fault", colorbar_frame=None, extra_symbols=(), extra_labels=()):
     """Draw the rotated fault map of Fig 1A at the current origin of a pygmt figure. The same panel is used
-    by 04 (Fig 1A), 05 (the validation supplement) and 09 (the alignment-array supplement), so all three
-    look alike; only the field, its colours, the extra symbols and the panel letter differ.
+    by 04 (Fig 1A), 05 (the validation supplementary figure) and 09 (the alignment-array supplementary
+    figure); only the field, its colours, the extra symbols and the panel letter differ.
 
-    What it draws, in this order: the field `grid` (an xarray lon/lat grid covering fault_map_corners) in
+    It draws, in this order: the field `grid` (an xarray lon/lat grid covering fault_map_corners) in
     the colour table `cpt`; the mapped trace; the extra symbols and their labels (lists of keyword dicts
     for fig.plot and text_backed); the creepmeter codes on the west side; the SSE extent bracket on the
     east side, from sse_u_km[0] to sse_u_km[1] (km along the strike frame) with its label; the city
@@ -495,7 +502,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
 
     The map is GMT's oblique Mercator with its x axis along strike - 90 deg, so the fault runs up the
     page with north at the top, at true scale: the height is map_h_cm and the width follows from it.
-    Fonts and frame pens are the caller's pygmt.config. Returns the map width in cm."""
+    Fonts and frame pens are the caller's pygmt.config. Returns the map width in cm.
+    Source: written for this project (pygmt)."""
     import pygmt
     region, (lon_c, lat_c), corners = fault_map_corners(frame)
     u_north, u_south = FAULT_MAP_U_KM
@@ -514,8 +522,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     print(f"map panel {map_w_cm:.2f} x {map_h_cm:.2f} cm at true scale")
 
     fig.basemap(region=region, projection=projection, frame=["lrtb"])
-    fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True, interpolation="c")   # -nc: bicubic when GMT resamples the grid
-    #                                                                              to the page (display only, the grid is the data)
+    fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True, interpolation="c")   # -nc: bicubic resampling to the page (display only)
     fig.plot(x=trace_lon, y=trace_lat, pen="0.6p,black")
     for symbol in extra_symbols:                           # e.g. 09's alignment arrays, under the creepmeter labels
         fig.plot(**symbol)
@@ -558,8 +565,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
                  font="9p,Helvetica", no_clip=True)
     fig.basemap(region=region, projection=projection, frame=["lrtb"], map_scale="jBL+w5k+o0.3c/0.4c")   # frame on top, scale bar
 
-    # distance from Point Pinole down the left edge: the map's vertical IS the strike frame u (true scale), so a
-    # linear axis over the same box reads u directly. Checked: GMT's own page y of the creepmeters must match the
+    # distance from Point Pinole down the left edge: the map's vertical axis is the strike frame u (true scale), so a
+    # linear axis over the same box reads u directly. Asserted: GMT's own page y of the creepmeters matches the
     # linear axis to 0.02 cm.
     creepmeter_lonlat = []
     creepmeter_axis_y = []                                 # where the linear axis puts each creepmeter (cm from the map bottom)
@@ -581,16 +588,16 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
 
 
 # ------------------------------
-# Statistics
+# Figure style
 # ------------------------------
 
 def register_helvetica_faces():
     """Make Helvetica's bold and oblique faces available to matplotlib.
 
-    matplotlib registers only the FIRST face of a .ttc collection, so macOS's
-    Helvetica.ttc gives it Helvetica Regular alone and a bold panel letter
-    would silently render regular. The other faces are extracted once (with
-    fontTools, which matplotlib ships) into the matplotlib config directory
+    matplotlib registers only the first face of a .ttc collection, so macOS's
+    Helvetica.ttc provides Helvetica Regular alone and a bold panel letter
+    would render in the regular face. The other faces are extracted once (with
+    fontTools, a matplotlib dependency) into the matplotlib config directory
     and registered. Returns True when Helvetica Bold is available."""
     import matplotlib
     from matplotlib import font_manager as fm
@@ -616,7 +623,8 @@ def register_helvetica_faces():
 def mpl_paper_style(base=8):
     """Matplotlib settings for the paper figures: Helvetica (the font of the
     pygmt figures; Arial if its bold face cannot be registered), `base` pt
-    text, and TrueType (Type 42) embedding so PDF text stays editable."""
+    text, and TrueType (Type 42) embedding so PDF text stays editable.
+    Returns the resulting rcParams as a dict."""
     import matplotlib
     family = "Helvetica" if register_helvetica_faces() else "Arial"
     matplotlib.rcParams.update({
@@ -627,14 +635,14 @@ def mpl_paper_style(base=8):
         # mathtext ($\\sigma$, $\\pm$, the bold panel letters) in the same face, not DejaVu
         "mathtext.fontset": "custom", "mathtext.rm": family, "mathtext.it": f"{family}:italic",
         "mathtext.bf": f"{family}:bold", "mathtext.default": "regular",
-        # legends sit on a white box so no line runs through their text (Science figure check, 2026-09-29)
+        # legends sit on a white box so no line runs through their text
         "legend.frameon": True, "legend.facecolor": "white", "legend.edgecolor": "none", "legend.framealpha": 0.85,
         "legend.fontsize": max(base - 2, 6),
     })
     return dict(matplotlib.rcParams)
 
 
-# Okabe-Ito colour-blind-safe categorical colours (no blue/green pair: Dani cannot tell them apart)
+# Okabe-Ito colour-blind-safe categorical colours (Okabe & Ito 2008); no blue/green pairs
 okabe_ito = ["#0072B2", "#E69F00", "#D55E00", "#CC79A7", "#000000", "#56B4E9", "#F0E442"]
 
 
@@ -646,16 +654,21 @@ def panel_title(ax, letter, text="", size=7):
 
 
 def text_backed(fig, transparency=30, **kw):
-    """A pygmt map label on a translucent white box with CRISP text: GMT applies the
-    transparency to the glyphs as well as the box, so the label is drawn twice,
-    first with the box and the transparency, then again with neither."""
+    """A pygmt map label on a translucent white box with opaque text: GMT applies the
+    transparency (percent) to the glyphs as well as the box, so the label is drawn
+    twice, first with the box and the transparency, then again with neither.
+    kw: the arguments of pygmt Figure.text."""
     fig.text(fill="white", transparency=transparency, **kw)
     fig.text(**kw)
 
 
+# ------------------------------
+# Statistics
+# ------------------------------
+
 def robust_sigma(x):
     """Robust standard deviation via the median absolute deviation
-    (1.4826 * MAD). Insensitive to the outlier tail a plain std is inflated by."""
+    (1.4826 * MAD) of the finite values; NaN if there are none."""
     x = np.asarray(x, float)
     x = x[np.isfinite(x)]
     if x.size == 0:
@@ -677,7 +690,8 @@ def detrend(t, y):
 
 def linear_rate(t, y):
     """Linear rate by scipy.stats.linregress, ignoring NaN.
-    Returns (slope, intercept, std_err, n) -- the rate and its standard error."""
+    Returns (slope, intercept, std_err, n): the rate, intercept, the standard error
+    of the rate, and the number of finite samples (NaN values with fewer than 3)."""
     t = np.asarray(t, float)
     y = np.asarray(y, float)
     m = np.isfinite(t) & np.isfinite(y)
@@ -688,17 +702,15 @@ def linear_rate(t, y):
 
 
 def gaussian_smooth_km(x, km_of_x, sigma_km):
-    """NaN-aware, gap-preserving Gaussian smoothing ALONG THE TRACE. `km_of_x`
+    """NaN-aware, gap-preserving Gaussian smoothing along the trace. `km_of_x`
     is the along-trace km of each sample (km from Point Pinole, e.g. from
     `lat_to_km_map`), in fault order (strictly monotonic). The samples are
     placed on a regular grid of their median spacing (the 100 m crossings), so
-    a missing crossing is a hole in the grid, not a closer neighbour, and
-    sigma_km is a true along-trace width. (Until 2026-10-05 the spacing came
-    from the LATITUDES at 1 deg = 111.19 km: along the ~144 deg strike every
-    width was ~1.2x the stated one; audit C_parameters #8.) Weights are
-    renormalised over the finite neighbours; NaN where fewer than 15 % of the
-    kernel weight is data, and NaN wherever the input is NaN. Used by 03, 04
-    (Fig 1C) and 07c (Fig 2K)."""
+    a missing crossing is a gap in the grid, not a closer neighbour, and
+    sigma_km (km) is a true along-trace width. Weights are renormalised over
+    the finite neighbours; NaN where less than 15 % of the kernel weight is
+    data, and NaN wherever the input is NaN. Used by notebooks 03, 04 (Fig 1C)
+    and 07c (Fig 2K). Source: written for this project (scipy gaussian_filter1d)."""
     x = np.asarray(x, float)
     km_of_x = np.asarray(km_of_x, float)
     assert km_of_x.shape == x.shape, f"km_of_x {km_of_x.shape} does not match x {x.shape}"
@@ -706,7 +718,7 @@ def gaussian_smooth_km(x, km_of_x, sigma_km):
     step_km = np.diff(km_of_x)
     assert (step_km > 0).all() or (step_km < 0).all(), "km_of_x is not strictly monotonic: samples must be in fault order"
     spacing_km = float(np.median(np.abs(step_km)))
-    # the crossings are 0.1 km apart; a spacing of ~0.001 means LATITUDES were passed (the old signature)
+    # the crossings are 0.1 km apart; a spacing of ~0.001 means latitudes were passed instead of km
     assert 0.02 <= spacing_km <= 2.0, (f"median spacing {spacing_km:.4g} km is not an along-trace spacing: pass km "
                                        f"(utils.lat_to_km_map), not latitude")
     node = np.round((km_of_x - km_of_x.min()) / spacing_km).astype(int)
@@ -728,9 +740,9 @@ def annual_increment_rate(t, y):
     """Rate and 1-sigma of a continuous record (creepmeter) from its slip gained
     in each whole year from the first sample: rate = mean(dy), sigma =
     std(dy, ddof=1) / sqrt(n). Daily samples are not independent (episodic
-    creep), so linregress's std_err (~0.01 mm/yr) understates the uncertainty;
-    one-year blocks are treated as the independent samples instead.
-    Returns (rate, sigma, n_years)."""
+    creep), so the standard error of a linear regression understates the
+    uncertainty; one-year increments are treated as the independent samples.
+    t in decimal years. Returns (rate, sigma, n_years), in units of y per year."""
     t = np.asarray(t, float)
     y = np.asarray(y, float)
     m = np.isfinite(t) & np.isfinite(y)
@@ -746,20 +758,18 @@ def annual_increment_rate(t, y):
 # ------------------------------
 
 def creepmeter_file(creepmeter_dir, code):
-    """Path to a creepmeter record, preferring the refreshed `.10min.gz`
-    (read transparently by pandas) over a stale uncompressed `.10min`."""
+    """Path to the record of creepmeter `code`, preferring the `.10min.gz` file
+    (read directly by pandas) over an uncompressed `.10min` file."""
     gz = os.path.join(creepmeter_dir, code.lower() + ".10min.gz")
     return gz if os.path.exists(gz) else os.path.join(creepmeter_dir, code.lower() + ".10min")
 
 
 def creepmeter_decimal_year(year, doy):
     """Decimal year of USGS creepmeter samples. The fractional day-of-year is
-    1-BASED: 1 January 00:00 is doy 1.000 (`cfw1.10min.gz`: the first sample of
+    1-based: 1 January 00:00 is doy 1.000 (`cfw1.10min.gz`: the first sample of
     2020 is `2020 1.000000000`, the last of 2019 `2019 365.993055556`), so the
     time is year + (doy - 1) / days in the year, the convention of
-    `date_to_decimal_year` (1 January = year + 0). Until 2026-10-05 the readers
-    used doy / days, which put every creepmeter time one day late (audit
-    A_dataflow F4)."""
+    `date_to_decimal_year` (1 January = year + 0)."""
     year = np.asarray(year)
     doy = np.asarray(doy, float)
     is_leap = ((year % 4 == 0) & (year % 100 != 0)) | (year % 400 == 0)
@@ -770,12 +780,14 @@ def creepmeter_decimal_year(year, doy):
 
 def read_creepmeter_10min(filepath, date_start=None, date_end=None):
     """Read a USGS creepmeter `.10min`/`.10min.gz` file (whitespace columns:
-    year, fractional 1-based day-of-year, slip_mm; no header) into DAILY means
-    with columns ['decimal_year', 'slip_mm'], zeroed to the first day. The
-    decimal year of a day is its first sample's (`creepmeter_decimal_year`).
+    year, fractional 1-based day-of-year, slip_mm; no header) into daily means
+    with columns ['decimal_year', 'slip_mm'], zeroed to the first day, between
+    date_start and date_end (decimal years, optional). The decimal year of a
+    day is that of its first sample (`creepmeter_decimal_year`).
 
     The published values are already divided by cos(30 deg) at source, i.e.
-    they are right-lateral fault-parallel slip; no obliquity correction here.
+    they are right-lateral fault-parallel slip; no obliquity correction is
+    applied here.
     """
     df = pd.read_csv(filepath, sep=r"\s+", usecols=[0, 1, 2], header=None,
                      names=["year", "doy", "slip_mm"])
@@ -785,8 +797,8 @@ def read_creepmeter_10min(filepath, date_start=None, date_end=None):
     if date_end is not None:
         df = df[df["decimal_year"] <= date_end]
     df = df.reset_index(drop=True)
-    # Group on the INTEGER day: the doy column is fractional (one value per
-    # 10-minute sample), so grouping on it directly would average nothing.
+    # Group on the integer day: the doy column is fractional (one value per
+    # 10-minute sample).
     df["doy_int"] = df["doy"].astype(int)
     df_daily = df.groupby(["year", "doy_int"], as_index=False).agg(
         {"decimal_year": "first", "slip_mm": "mean"})
@@ -802,8 +814,9 @@ def daily_creepmeter(creepmeter_dir, code, t_start, t_end, glitches):
     `glitches` is the explicit list in TulePond_filepaths (creepmeter_glitches):
     (code, first day, last day, reason) rows, days as 'YYYY-MM-DD' calendar
     days (the day of a daily mean is the floor of its decimal year, which with
-    the 1-based day-of-year handled is the calendar day of its samples). No automatic filter: only those days are dropped, and each
-    listed day inside the window must be in the record. Prints the days dropped.
+    the 1-based day-of-year conversion is the calendar day of its samples).
+    Only the listed days are dropped (no automatic filter), and each listed
+    day inside the window must be in the record. Prints the days dropped.
     Returns (decimal_year, slip_mm) as two arrays."""
     cm = read_creepmeter_10min(creepmeter_file(creepmeter_dir, code), date_start=t_start, date_end=t_end)
     dates = cm["decimal_year"].values
@@ -832,15 +845,11 @@ def daily_creepmeter(creepmeter_dir, code, t_start, t_end, glitches):
     return dates, slip - slip[0]
 
 
-# ------------------------------
-# Catalogues (seismicity and repeating earthquakes), used by 05 and 10
-# ------------------------------
-
 def read_creepmeter_10min_raw(filepath, date_start=None, date_end=None):
     """The same USGS `.10min` file at its native 10-minute sampling (no daily
-    averaging): columns ['decimal_year', 'slip_mm'], as published. Used where a
-    creep-event STEP has to be measured (steps take hours; daily means smear
-    them across two days)."""
+    averaging): columns ['decimal_year', 'slip_mm'], as published, between
+    date_start and date_end (decimal years, optional). Used where a creep-event
+    step is measured (steps take hours; daily means spread them across two days)."""
     df = pd.read_csv(filepath, sep=r"\s+", usecols=[0, 1, 2], header=None,
                      names=["year", "doy", "slip_mm"])
     df["decimal_year"] = creepmeter_decimal_year(df["year"].to_numpy(), df["doy"].to_numpy())   # 1-based doy
@@ -851,6 +860,10 @@ def read_creepmeter_10min_raw(filepath, date_start=None, date_end=None):
     return df[["decimal_year", "slip_mm"]].reset_index(drop=True)
 
 
+# ------------------------------
+# Catalogues (seismicity, repeating earthquakes, alignment arrays)
+# ------------------------------
+
 def _decimal_year_from_ymdhms(yr, mo, dy, hr, mn, sc):
     """Vectorised decimal year from year/month/day/hour/minute/second columns."""
     t = pd.to_datetime(dict(year=yr, month=mo, day=dy, hour=hr, minute=mn), errors="coerce") + pd.to_timedelta(sc, unit="s")
@@ -860,10 +873,11 @@ def _decimal_year_from_ymdhms(yr, mo, dy, hr, mn, sc):
 
 
 def load_growclust_catalog(path, bbox=None):
-    """Bo Xie's GrowClust catalogue (2000-2025), relocated PLUS unrelocated:
-    latitude/longitude/depth_km hold the relocation where the event clustered
-    (nbranch > 1) and the NCSS location otherwise. Returns the common schema
-    YYYY, Lon, Lat, Depth, Mag, evID, source; clipped to bbox (W, S, E, N)."""
+    """GrowClust relocated catalogue of the Hayward area (2000-2025, B. Xie),
+    relocated and unrelocated events: latitude/longitude/depth_km hold the
+    relocation where the event clustered (nbranch > 1) and the NCSS location
+    otherwise. Returns the common schema YYYY (decimal year), Lon, Lat, Depth
+    (km), Mag, evID, source; clipped to bbox (W, S, E, N, deg) if given."""
     df = pd.read_csv(path)
     need = ["yr", "mon", "day", "hr", "min", "sec", "latitude", "longitude", "depth_km", "magnitude", "evid", "nbranch"]
     missing = [c for c in need if c not in df.columns]
@@ -882,20 +896,21 @@ def load_growclust_catalog(path, bbox=None):
 
 
 def load_aa(aa_dir, code):
-    """One USGS Bay Area alignment array (v3.0 archive): decimal year, cumulative
-    dextral movement (mm), its std (mm), sorted by year. Two file layouts exist.
+    """One USGS Bay Area alignment array `code` (v3.0 archive in aa_dir): decimal
+    year, cumulative dextral movement (mm), its standard deviation (mm), sorted
+    by year. Two file layouts exist.
 
-    The archive's decimal year (`Measurement_yr`, or `Year` in the old layout) is
-    year + doy / days with a 1-BASED day of year (HRKT `1979.726, 9/22/1979`:
-    265/365), so it is one day late against `date_to_decimal_year` (1 January =
-    year + 0) and the InSAR epochs (audit B_conventions F3). One day (1 / days in
-    that year) is taken off here: year + (doy - 1) / days. The survey-date column
-    (`Measurement_date`, or the third column of the old layout) is the check: over
-    each file the median of (archive year - date) must lie within 0.5 to 1.5 d
-    (asserted, so an archive re-issued in the other convention fails loud). Rows
-    where the corrected year and the date still disagree by more than 1.5 d are
-    inconsistencies inside the archive (one of the two mistyped, e.g. HAPP 2024.68
-    against 10/5/2024); they keep the archive's year and are printed."""
+    The archive's decimal year (`Measurement_yr`, or `Year` in the older layout)
+    is year + doy / days with a 1-based day of year (HRKT `1979.726, 9/22/1979`:
+    265/365), so it is one day late relative to `date_to_decimal_year`
+    (1 January = year + 0) and the InSAR epochs. One day (1 / days in that year)
+    is subtracted here: year + (doy - 1) / days. The survey-date column
+    (`Measurement_date`, or the third column of the older layout) is used as a
+    check: over each file the median of (archive year - date) must lie within
+    0.5 to 1.5 d (asserted, so an archive issued in the other convention fails).
+    Rows where the corrected year and the date still disagree by more than 1.5 d
+    are inconsistencies within the archive (e.g. HAPP 2024.68 against 10/5/2024);
+    they keep the archive's year and are printed."""
     d = pd.read_csv(os.path.join(aa_dir, f"{code}.csv"), encoding="latin-1")
     d = d.rename(columns={c: c.replace("\xa0", " ").strip() for c in d.columns})
     if "Measurement_yr" in d.columns:
@@ -934,15 +949,17 @@ def load_aa(aa_dir, code):
 
 
 def load_aa_summary(aa_summary, fault="Hayward"):
-    """The archive's summary table (site, lon, lat, long-term rates, record span)."""
+    """The alignment-array archive's summary table (site, lon, lat, long-term
+    rates, record span), rows of `fault` only."""
     s = pd.read_csv(aa_summary, encoding="latin-1")
     s.columns = [("site_code" if c.endswith("site_code") else c.replace("\xa0", " ").strip()) for c in s.columns]
     return s[s["fault"] == fault].reset_index(drop=True)
 
 
 def load_cre_taira(path):
-    """T. Taira's HFRC linkage-cluster repeating-earthquake catalogue (GEN3).
-    Whitespace (or comma) separated: YYYY Lat Lon Depth cumD(cm) EVID CSID Mag D(cm)."""
+    """Repeating-earthquake catalogue of T. Taira (BSL), HFRC linkage clusters,
+    GEN3. Whitespace (or comma) separated: YYYY Lat Lon Depth cumD(cm) EVID CSID
+    Mag D(cm). Returns YYYY, Lon, Lat, Depth, Mag, seqID, cat."""
     names = ['YYYY', 'Lat', 'Lon', 'Depth', 'cumD(cm)', 'EVID', 'CSID', 'Mag', 'D(cm)']
     rows = []
     with open(path) as fh:
@@ -968,7 +985,8 @@ def load_cre_taira(path):
 
 def load_cre_waldhauser(path):
     """Waldhauser & Schaff (2021) repeaters: '#' sequence headers (last field =
-    sequence id) followed by one line per event; 39-line file header."""
+    sequence id) followed by one line per event; 39-line file header. Returns
+    YYYY, Lon, Lat, Depth, Mag, seqID, cat."""
     columns = ['YR', 'MO', 'DY', 'HR', 'MN', 'SC', 'DAYS', 'Lat', 'Lon', 'Depth', 'EX', 'EY', 'EZ',
                'MAG', 'DMAG', 'DMAGE', 'CCm', 'evID', 'seqID']
     rows, seq = [], None
@@ -992,8 +1010,9 @@ def load_cre_waldhauser(path):
 
 
 def project_to_fault(df, trace, lon_col="Lon", lat_col="Lat"):
-    """Add `dist_fault_km` (signed, + east) and `ft_lat` (latitude of the
-    nearest trace vertex) to a catalogue, on a local tangent plane."""
+    """Add `dist_fault_km` (signed, east positive) and `ft_lat` (latitude of the
+    nearest trace vertex) to a catalogue, on a local tangent plane. trace: a
+    DataFrame with ft_lon, ft_lat running south to north. Returns a copy."""
     lat0 = float(trace.ft_lat.mean())
     kx, ky = 111.195 * np.cos(np.radians(lat0)), 111.195
     tx, ty = trace.ft_lon.to_numpy() * kx, trace.ft_lat.to_numpy() * ky
@@ -1254,11 +1273,11 @@ class Registry:
 
 
 # ---------------------------------------------------------------------------
-# Fault trace file reader -- ported VERBATIM from
-# Hayward_DISP-S1/analysis/run07_fault_profiles.py (notebook 07 port round,
-# 2026-09-25); the hand-drawn trace KML is read the same way everywhere.
+# Fault trace file reader (written for this project); the hand-drawn trace
+# KML is read with this function everywhere.
 # ---------------------------------------------------------------------------
 def _is_number(s):
+    """True if `s` converts to a float."""
     try:
         float(s)
         return True
@@ -1267,7 +1286,7 @@ def _is_number(s):
 
 
 def load_trace(path):
-    """Vertices of the trace as one (N, 2) lon/lat array.
+    """Vertices of the trace as one (N, 2) lon/lat array (deg).
 
     KML of Points: hand-edited crossing placemarks; placemarks whose name is
     not a number (annotations like "multi-splay zone") are dropped.

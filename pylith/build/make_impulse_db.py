@@ -3,16 +3,16 @@
 Impulse-region spatial database for pylith.faults.FaultCohesiveImpulses: amplitude 1 m of left-lateral slip where
 y_lo <= y <= y_hi and z >= -depth (the rest of the fault gets 0, i.e. no impulse = locked), written with
 spatialdata's own SimpleGridAscii writer (the pattern of PyLith examples/poroelastic-outerrise-2d/simplegriddb_writer.py).
-The fault is near-vertical and runs roughly N-S in the mesh frame, so an along-strike window is a y window
-(km 54 at y = 4380 m, km 65 at y = -4713 m; trace in mesh/trace_tmerc.txt).
+The fault runs roughly N-S in the mesh frame, so an along-strike window is a y window (km 54 at y = 4380 m,
+km 65 at y = -4713 m; trace in mesh/trace_tmerc.txt).
 
 Run in the PyLith env:  python3 make_impulse_db.py <y_lo> <y_hi> <depth_m> <out.spatialdb>
 The database is queried with the default "nearest"; grid lines 0.5 m either side of each edge make the edge sharp.
 """
 import sys
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 
 import numpy as np
 from spatialdata.geocoords.CSGeo import CSGeo

@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Aug 25 2026
+@author: Danielle Lindsay
 
-@author: daniellelindsay (with Claude)
+Daily precipitation at the Tule Pond section from NOAA GHCN-daily rain gauges
+(the variable and file names use the section's earlier name, Parkmont), for the
+comparison of creep-event timing with rainfall.
 
-Daily precipitation at the Parkmont segment from NOAA GHCN-daily rain gauges,
-for the hydrological conditioning of creep-event timing (run22) and the
-precipitation columns on the onset-seasonality figure.
-
-No single gauge covers the whole 1979-2026 event record next to Parkmont
+No single gauge covers the whole 1979-2026 event record next to the section
 (37.56 N, -121.97 E):
   FREMONT (USC00043244, 4 km W)       1996-06 - present, closest, >=95% complete
   NEWARK (USC00046144, 7 km SW)       1906 - 2021-01-15, 97% complete
@@ -17,50 +15,43 @@ No single gauge covers the whole 1979-2026 event record next to Parkmont
   LIVERMORE (USC00044997)             1903 - present, 24 km NE (Livermore Valley)
   SAN JOSE (USW00023293)              1998 - present, 22 km S
   OAKLAND MUSEUM (USC00046336)        1970 - present, 37 km NW, gaps in 2017/18
-The COMPOSITE series takes, day by day, the first gauge that reports in the
-order Fremont > Newark > Hayward Air Terminal: Fremont covers the whole
-InSAR era and back to WY1997 with no splice, Newark carries the dense
-alignment-array era (1979-1996), Hayward fills the few gaps. The stats file
-quotes the gauge-to-gauge water-year ratios over the overlaps so the splice
-is documented; daily values are NOT rescaled, so storm-size thresholds keep
-their gauge meaning. All other stations are carried as columns for
-sensitivity tests.
+The composite series takes, day by day, the first gauge that reports in the
+order Fremont > Newark > Hayward Air Terminal: Fremont covers the InSAR era
+and back to WY1997 with no splice, Newark covers the alignment-array era
+(1979-1996), and Hayward fills the remaining gaps. The stats file lists the
+gauge-to-gauge water-year ratios over the overlaps so the splice is
+documented; daily values are not rescaled. The other stations are carried as
+columns for sensitivity tests.
 
-No hill gauge exists (Dani's question, 2026-08-25): the GHCN inventory has
-nothing on the Mission Peak side of the segment with a usable record --
-CALAVERAS RSVR (USC00041281) ran 1959-1977 only, and the CoCoRaHS gauge
-FREMONT 3.7 NE (US1CAAL0024, 1.9 km from the segment at the foot of the
-hills, 2014-) reports on only 13-85 days a year with water-year totals
-inconsistent with every neighbour, so it is not used. A hills series would
-have to come from a gridded product (PRISM 4 km) or the Alameda County
-ALERT gauges (CDEC), neither in GHCN.
+No gauge in the GHCN inventory on the Mission Peak side of the section has a
+usable record: CALAVERAS RSVR (USC00041281) ran 1959-1977 only, and the
+CoCoRaHS gauge FREMONT 3.7 NE (US1CAAL0024, 2014-) reports on few days per
+year, so it is not used.
 
-OBSERVATION-TIME OFFSET: the COOP gauges (USC ids: Newark, Livermore,
+Observation-time offset: the COOP gauges (USC ids: Newark, Livermore,
 Oakland Museum) are read by an observer in the morning and GHCN dates the
 24-h total by the day the reading is made, whereas the airport ASOS gauges
-(USW ids) are midnight-to-midnight. Against Hayward Air Terminal, Newark's
-storm-day totals correlate at r = 0.52 when moved one day EARLIER and at
-0.04 as published (2026-08-25 check), so those COOP series are shifted back
-one day here to put every gauge on the same calendar basis. The Fremont
-COOP is the exception: it correlates with Hayward at zero lag (r = 0.49 vs
-0.11 shifted) and with Newark at -1 d, i.e. it is already on the midnight
-basis, and is left unshifted. Residual
-half-day ambiguity remains for the COOP era and gauge-to-gauge storm-day
-correlation is only ~0.5-0.7 even when aligned, so storms are identified
-over 3-7 day windows downstream, never single days.
+(USW ids) are midnight-to-midnight. The lag was set from the correlation of
+storm-day totals with Hayward Air Terminal at lags 0 and -1 d: Newark,
+Livermore and Oakland Museum are shifted back one day to put every gauge on
+the same calendar basis; the Fremont COOP gauge correlates best at zero lag
+and is left unshifted. A residual half-day ambiguity remains for the COOP
+gauges, so storms are identified over multi-day windows downstream, not
+single days.
 
 Water year: Oct 1 - Sep 30, named by the calendar year in which it ends
 (WY2017 = Oct 2016 - Sep 2017); day-of-water-year 1 = Oct 1.
 
 Downloads (once) from
   https://www.ncei.noaa.gov/data/global-historical-climatology-network-daily/access/{ID}.csv
-into inputs/GHCN_daily; re-run with --refresh to update to the present.
+into common_paths['ghcn_dir']; re-run with --refresh to update to the present.
 GHCN PRCP is stored in tenths of a millimetre; converted to mm here.
 
-Output:  outputs/precip/parkmont_daily_precip.csv   (date, decyear, wy, dowy,
-                                                     prcp_mm, src, per-station)
-         outputs/precip/parkmont_wateryear_totals.csv
-         outputs/precip/precip_station_stats.txt
+Output (common_paths['precip_dir']):
+         parkmont_daily_precip.csv   (date, decyear, wy, dowy, prcp_mm, src, per-station mm)
+         parkmont_wateryear_totals.csv
+         precip_station_stats.txt
+Source: NOAA NCEI GHCN-daily (Menne et al. 2012); written for this project.
 """
 import os
 import sys
@@ -87,7 +78,7 @@ STATIONS = {                       # id: (short name, role, day shift)
     "USC00046336": ("OAKLAND_MUS", "alt", -1),     # COOP
 }
 COMPOSITE = ["FREMONT", "NEWARK", "HAYWARD_AT"]    # priority order
-PARKMONT = (37.557, -121.970)       # segment centre (lat, lon)
+PARKMONT = (37.557, -121.970)       # Tule Pond section centre (lat, lon)
 T0 = "1978-10-01"                    # start of WY1979: first HRKT survey 1979.7
 
 

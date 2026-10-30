@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Write the SFCVM grid (sfcvm_grid.py .npz) as a spatialdata SimpleGridDB (density, vs, vp) with spatialdata's own
-SimpleGridAscii writer, in the mesh CRS (CSGeo, same PROJ string as the mesh).  Run in the PyLith env:
+Write the SFCVM grid (sfcvm_grid.py .npz) as a spatialdata SimpleGridDB (density kg/m^3, vs and vp m/s) with
+spatialdata's own SimpleGridAscii writer, in the mesh CRS (CSGeo, same PROJ string as the mesh).  Run in the PyLith env:
     python3 write_sfcvm_griddb.py spatialdb/sfcvm_v26-0_aligned_grid.npz spatialdb/mat_sfcvm_v26-0_aligned.spatialdb
 """
 import sys
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 import time
 
 import numpy as np

@@ -1,51 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
-
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/run05_GPS_InSAR_validation.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
+@author: Danielle Lindsay
 
 Tie the InSAR velocity fields to GNSS and validate the tie:
 
 1) Sample the InSAR velocity within 150 m of every screened GNSS station and
    project that station's ENU velocity into LOS with the incidence/azimuth of
-   its OWN pixels (a frame-mean geometry would work against a spatially
-   varying correction)
+   its own pixels (not a frame-mean geometry)
 2) Reference the GNSS LOS to ZOA1, the station the InSAR is referenced at, so
    GNSS and InSAR share a datum and the fit targets ramp + scatter only
-3) Per TRACK group (frames sharing a track share look geometry): fit a shared
+3) Per track group (frames sharing a track share look geometry): fit a shared
    quadratic surface + one constant per frame
 4) Apply the ramp only if it passes two gates: leave-one-out RMSE improves by
-   >= 10%, and it does not add an inter-frame offset beyond what the 604k-
-   pixel frame overlap allows
-5) Write velocity_NA.h5 per frame (zero at ZOA1) and mosaic per orbit --
+   >= 10%, and it does not add an inter-frame offset beyond what the frame
+   overlap allows
+5) Write velocity_NA.h5 per frame (zero at ZOA1) and mosaic per orbit:
    mosaic/<orbit>_velocity_NA.h5 is the decomposition's input and the
    archived (Zenodo) product
 
-The tie is primarily a datum, not a ramp: the GNSS role here is VALIDATION.
+The tie is primarily a datum; the GNSS is used here mainly for validation.
 The ramp model, per track group,
 
     r(x, y) = a.x^2 + b.y^2 + c.xy + d.x + e.y  +  k_frame
 
-with (x, y) centred geographic coordinates scaled to km. There is NO global
+with (x, y) centred geographic coordinates scaled to km. There is no global
 constant: with one, the design matrix is structurally rank-deficient (the
 frame indicators sum to the constant column) and lstsq would return a
 minimum-norm answer without warning; `check_full_rank` enforces this.
 
-The per-frame constants are a DIAGNOSTIC, not a correction: with GNSS
+The per-frame constants are a diagnostic, not a correction: with GNSS
 referenced to ZOA1 they are each frame's residual offset after referencing
-and should be ~0. The genuine inter-frame offset (difference of constants
-within a track) is PRESERVED in the output, not flattened: the correction is
-re-zeroed at ZOA1 with ONE scalar per track group (`corr_ref`).
+and are expected to be ~0. The inter-frame offset (difference of constants
+within a track) is preserved in the output, not flattened: the correction is
+re-zeroed at ZOA1 with one scalar per track group (`corr_ref`).
 
 Output:  <frame>/mintpy/velocity_NA.h5, mosaic/<orbit>_velocity_NA.h5,
          <data_dir>/GPS/gps_insar_validation.csv (per-station residuals)
 
 Run in the conda environment.
+Source: written for this project; GNSS velocities from run00 (UNR, NA frame).
 """
 import os
 import shutil
@@ -123,7 +117,7 @@ def disc(row, col, radius_px, shape):
 
 
 def track_of(frame_id):
-    """Track of a frame, from its own burst IDs -- never a hardcoded table."""
+    """Track of a frame, from its own burst IDs (not a hardcoded table)."""
     from opera_utils import get_burst_ids_for_frame
     tracks = sorted({b.split("_")[0] for b in get_burst_ids_for_frame(int(frame_id))})
     return tracks[0]
@@ -133,7 +127,7 @@ def sample_frame(frame_id, paths, gnss):
     """GNSS LOS, InSAR LOS and their residual at every station this frame covers.
 
     The GNSS is projected to LOS with the incidence and azimuth of the
-    station's OWN pixels, not a frame mean.
+    station's own pixels, not a frame mean.
     """
     grid = read_grid(paths['velocity_masked'])
     with h5py.File(paths['velocity_masked'], "r") as f:
@@ -157,8 +151,8 @@ def sample_frame(frame_id, paths, gnss):
             continue                              # too little valid InSAR
         L = utils.los_unit_vector(np.nanmean(inc[rr, cc][ok]), np.nanmean(azi[rr, cc][ok]))
         if not np.all(np.isfinite(L)):
-            continue    # velocity valid but geometry missing here -- a single
-            #             NaN gnss_los would poison the whole group's fit/RMS
+            continue    # velocity valid but geometry missing here: a single
+            #             NaN gnss_los would make the whole group's fit/RMS NaN
         rows.append(dict(
             StaID=sta.StaID, frame=frame_id, orbit=grid["orbit"].lower(),
             Lon=sta.Lon, Lat=sta.Lat, n_px=int(ok.sum()),
@@ -171,7 +165,7 @@ def sample_frame(frame_id, paths, gnss):
 
 def ref_lonlat(vel_path):
     """(lon, lat) of the run04 InSAR reference pixel. MintPy's REF_LAT/REF_LON
-    attrs actually hold UTM northing/easting; convert to geographic."""
+    attrs hold UTM northing/easting; converted to geographic."""
     with h5py.File(vel_path, "r") as f:
         a = f.attrs
         northing, easting, epsg = float(a["REF_LAT"]), float(a["REF_LON"]), int(a["EPSG"])
@@ -192,8 +186,8 @@ def quad_columns(lon, lat, lon0, lat0):
 
 
 def check_full_rank(G, label):
-    """Abort on a STRUCTURALLY rank-deficient design matrix (columns dependent
-    however many stations are added -- always a parametrisation bug). lstsq
+    """Abort on a structurally rank-deficient design matrix (columns dependent
+    however many stations are added, i.e. a parametrisation error). lstsq
     returns a minimum-norm answer with no warning otherwise."""
     n_obs, n_par = G.shape
     if np.linalg.matrix_rank(G) != n_par:
@@ -203,7 +197,7 @@ def check_full_rank(G, label):
 
 def _design(obs, group, center):
     """Shared quadratic + one indicator per frame, no global constant
-    (the indicators already span it -- see check_full_rank)."""
+    (the indicators already span it; see check_full_rank)."""
     Q = quad_columns(obs["Lon"], obs["Lat"], *center)
     ind = np.column_stack([(obs["frame"] == f).to_numpy(float) for f in group])
     return np.hstack([Q, ind])
@@ -212,9 +206,8 @@ def _design(obs, group, center):
 def loo_residuals(obs, group, center, y):
     """Leave-one-out out-of-sample residual at each station.
 
-    In-sample residuals flatter the fit (it absorbs its own targets); LOO
-    refits without each station and predicts it, measuring genuine
-    InSAR-GNSS agreement.
+    In-sample residuals understate the misfit (the fit absorbs its own
+    targets); LOO refits without each station and predicts it.
     """
     n, p = len(obs), _design(obs, group, center).shape[1]
     out = np.full(n, np.nan)
@@ -231,7 +224,7 @@ def loo_residuals(obs, group, center, y):
 
 def fit_group(track, group, obs):
     """Solve one track group: shared quadratic + one constant per frame, with
-    the GNSS referenced to ZOA1 so the constants come out ~0.
+    the GNSS referenced to ZOA1 so the constants are expected near 0.
 
     Returns (quad, consts, gref, center, obs); gref is ZOA1's absolute GNSS
     LOS in this group's look geometry (the datum removed before fitting).
@@ -253,7 +246,7 @@ def fit_group(track, group, obs):
     after = y - G @ p
     after_loo = loo_residuals(obs, group, center, y)
 
-    # 3) Report. Constants should be ~0 (residual per-frame offset AFTER the
+    # 3) Report. Constants are expected near 0 (residual per-frame offset after the
     #    shared reference); far from zero means the run04 referencing did not take
     for name, c in zip(QUAD_TERMS, quad):
         print(f"    {name:>3} {c:+9.4f} mm/yr per km^n")
@@ -271,11 +264,10 @@ def fit_group(track, group, obs):
 
 
 def write_tie_report(all_obs, group_stats, n_pool, n_subsiding, outdir=None):
-    """Every number this script produces that the manuscript quotes, written to
-    a file. Without it the station counts and tie RMSEs exist only in stdout,
-    so checking the text against the code means re-running the whole script and
-    reading the terminal -- which is how an off-by-one in the station counts
-    survived into the draft."""
+    """Write the tie statistics (settings, station counts per orbit and frame,
+    per-track fit coefficients and constants, residual RMSE before / after /
+    leave-one-out, mm/yr) to common_paths['validation_dir']/gps_tie_stats.txt.
+    Returns the path."""
     obs = pd.concat(all_obs, ignore_index=True)
     L = []
     def w(x=""):
@@ -344,14 +336,14 @@ def write_tie_report(all_obs, group_stats, n_pool, n_subsiding, outdir=None):
 
 def decide_ramp(obs, consts, n_frames):
     """Whether to apply the fitted ramp. Two gates, because a marginal GNSS
-    improvement can hide a real inter-frame degradation:
+    improvement can coincide with an inter-frame degradation:
 
     - LOO gate: the ramp must reduce the out-of-sample residual over
       datum-only by at least RAMP_MIN_IMPROVEMENT.
     - overlap gate (multi-frame groups): the shared quadratic cancels in the
-      overlap, so the constant SPREAD is exactly the inter-frame offset the
-      ramp would introduce. The overlap's hundreds of thousands of pixels are
-      a far stronger inter-frame constraint than the sparse stations.
+      overlap, so the spread of the constants is the inter-frame offset the
+      ramp would introduce. The overlap's pixels constrain the inter-frame
+      offset more tightly than the sparse stations.
     """
     before = np.sqrt(np.mean(obs["residual_before"].to_numpy() ** 2))
     loo_rms = np.sqrt(np.nanmean(obs["residual_after_loo"].to_numpy() ** 2))
@@ -373,18 +365,18 @@ def ramp_at(lon0, lat0, quad, const, center):
 
 
 def write_na_velocity(paths, frame_id, grid, quad, const, corr_ref, center, apply_ramp):
-    """velocity_NA.h5 -- the InSAR tied to GNSS, referenced at ZOA1.
+    """Write velocity_NA.h5: the InSAR velocity tied to GNSS, referenced at ZOA1.
 
     Per pixel: v = v_insar + [quad(x,y) + const - corr_ref] if the ramp is
     applied, else v = v_insar unchanged.
 
-    `corr_ref` is the correction evaluated AT ZOA1, ONE scalar per track
-    group, so the output field is zero at ZOA1 -- the same datum as
-    velocity_masked.h5 and timeseries_tropo.h5, which is what the creep
-    analysis and every figure use. Because it is one scalar for the group,
-    the genuine offset between frames (difference of their `const`) is
-    preserved, not flattened. `gref` is deliberately NOT added back: the
-    field is NA-frame *differential*, zero at the reference station.
+    `corr_ref` is the correction evaluated at ZOA1, one scalar per track
+    group, so the output field is zero at ZOA1: the same datum as
+    velocity_masked.h5 and timeseries_tropo.h5, which the creep analysis and
+    the figures use. Because it is one scalar for the group, the offset
+    between frames (difference of their `const`) is preserved, not flattened.
+    `gref` is not added back: the field is NA-frame differential, zero at the
+    reference station.
     """
     if apply_ramp:
         lon, lat = pixel_lonlat(grid)
@@ -409,11 +401,11 @@ def write_na_velocity(paths, frame_id, grid, quad, const, corr_ref, center, appl
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# Main
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
 
-    # 1) Screened GNSS velocities from run00 (any frame's CSV -- the station
+    # 1) Screened GNSS velocities from run00 (any frame's CSV: the station
     #    list is AOI-wide), minus fast-subsiding stations
     gnss_path = paths_gps['enu'].format(frame="09157", ref_frame=ref_frame)
     gnss = pd.read_csv(gnss_path)
@@ -424,7 +416,7 @@ if __name__ == '__main__':
               f"{list(gnss.loc[subsiding, 'StaID'])}")
         gnss = gnss[~subsiding]
 
-    # 2) Sample every frame; group frames by TRACK (shared look geometry)
+    # 2) Sample every frame; group frames by track (shared look geometry)
     groups, samples, grids = {}, {}, {}
     for frame, paths in FRAME_PATHS.items():
         df, grid, _ = sample_frame(frame, paths, gnss)
@@ -449,7 +441,7 @@ if __name__ == '__main__':
         # 4) The correction at ZOA1, one scalar for the whole group, evaluated
         #    with the constant of the frame backing ZOA1 with the most pixels
         #    (a deterministic choice; other frames differ only by their const,
-        #    which is the inter-frame offset we keep, not average away)
+        #    which is the inter-frame offset, kept rather than averaged away)
         rlon, rlat = ref_lonlat(FRAME_PATHS[group[0]]['velocity_masked'])
         at_ref = obs[obs["StaID"] == REF_STATION]
         ref_frame_id = (str(at_ref.loc[at_ref["n_px"].idxmax(), "frame"])
@@ -464,7 +456,7 @@ if __name__ == '__main__':
                               quad, consts[f], corr_ref, center, apply_ramp)
 
     # 5) Mosaic the tied fields per orbit, the same way run04 mosaics the
-    #    untied ones. THIS is the decomposition's input and the archived
+    #    untied ones. This is the decomposition's input and the archived
     #    product: one clean field per direction, no frame edge inside it.
     mdir = os.path.join(data_dir, "mosaic")
     os.makedirs(mdir, exist_ok=True)
@@ -484,7 +476,7 @@ if __name__ == '__main__':
         print(f"    {os.path.basename(out)}  {len(dirs)} frame(s)  "
               f"{100*fin.mean():.1f}% valid")
 
-    # 6) Per-station residuals, as fitted -- the numbers behind Fig. S2
+    # 6) Per-station residuals, as fitted (Fig. S2)
     out = os.path.join(data_dir, "GPS", "gps_insar_validation.csv")     # beside the GNSS series it was tied to
     pd.concat(all_obs, ignore_index=True).to_csv(out, index=False)
     print(f"\nstations -> {out}")

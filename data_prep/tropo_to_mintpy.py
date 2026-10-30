@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
-
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/tropo_to_mintpy.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
+@author: Danielle Lindsay
 
 Stack run03's per-date TROPO GeoTIFFs into one MintPy `timeseries`-format
-HDF5, ready for `diff.py`. Imported by run04; nothing about the physics
-changes here -- this is a container conversion, and the layout is copied from
-the frame's own `timeseries.h5` rather than assumed.
+HDF5, ready for `diff.py`. Imported by run04. This is a container conversion
+(the values are unchanged); the layout is copied from the frame's own
+`timeseries.h5`.
 
 Target format (read from `mintpy/tropo_pyaps3.py` and a real timeseries.h5):
 
@@ -20,7 +14,7 @@ Target format (read from `mintpy/tropo_pyaps3.py` and a real timeseries.h5):
                 timeseries  (n, y, x) float32
     attrs       FILE_TYPE = 'timeseries', UNIT = 'm', plus the grid keys
 
-Three things deliberately NOT done here:
+Three things not done here:
 
 1. No sign flip. opera-utils already negates ("positive means apparent
    uplift") and so does MintPy, so `diff.py` subtracts directly.
@@ -32,6 +26,8 @@ Three things deliberately NOT done here:
 The first acquisition has no differential file (subtract_first_date makes it
 identically zero), so that date is written as an explicit zero layer, keeping
 the date list identical to timeseries.h5's.
+
+Source: written for this project; MintPy timeseries format (Yunjun et al. 2019).
 """
 import glob
 import os
@@ -41,8 +37,8 @@ import h5py
 import numpy as np
 import rasterio
 
-# Copied onto the output so the two files describe the same grid. Deliberately
-# a fixed list: blindly copying every attribute would drag REF_* across too.
+# Copied onto the output so the two files describe the same grid. A fixed list:
+# copying every attribute would also copy REF_*.
 GRID_KEYS = [
     "EPSG", "LENGTH", "WIDTH", "X_FIRST", "Y_FIRST", "X_STEP", "Y_STEP",
     "X_UNIT", "Y_UNIT", "UTM_ZONE", "HEIGHT", "WAVELENGTH", "PLATFORM",
@@ -81,7 +77,7 @@ def build(frame_dir, out_name="inputs/TROPO.h5", ts_name="mintpy/timeseries.h5")
     for i, d in enumerate(ts_dates):
         if d == ref_date:
             # the reference date's differential is zero by construction; the
-            # file on disk holds the ABSOLUTE delay and must not be inserted
+            # file on disk holds the absolute delay and must not be inserted
             continue
         with rasterio.open(by_date[d]) as src:
             if (src.height, src.width) != (ny, nx):

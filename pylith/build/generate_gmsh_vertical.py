@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
 """
-DRAFT (2026-09-29): PyLith tetrahedral mesh with a VERTICAL fault under the
-hand-mapped creeping trace (Dani: "points at the top and the same points at
-the bottom, and gmsh does the infilling").
+PyLith tetrahedral mesh with a vertical fault under the mapped creeping
+trace: the trace points at the surface are extruded to the same points at
+depth, and gmsh fills the volume.
 
 Follows PyLith v5.0.2 examples/crustal-strikeslip-3d/generate_gmsh.py
 (pylith.meshio.gmsh_utils.GenerateMesh: create_geometry, mark, generate_mesh).
 Run inside the PyLith environment (its python has gmsh):
-    python generate_gmsh.py --write [--gui]
+    python generate_gmsh_vertical.py --write --preset <coarse|default|fine|shallow> [--gui]
 
 Geometry (local transverse Mercator centred on Tule Pond, metres, z up):
-- trace: Inputs/hayward_fault_profiles.csv (100 m hand-digitised points),
-  52-67 km from Point Pinole (the CSI model's along-strike window), decimated
-  to every 3rd point (300 m) so the spline does not follow digitising jitter
+- trace: the 100 m points of hayward_fault_profiles.csv in the mesh CRS
+  (paths_inputs['mesh']/trace_tmerc.txt), 52-67 km from Point Pinole (the
+  along-strike data window), decimated to every 3rd point (300 m) so the
+  spline does not follow digitising jitter
 - fault: the spline extruded straight down to fault_depth_m (vertical)
 - domain: a box domain_half_m either side of the site, domain_depth_m deep
 - fault and box fragmented so the tets conform to the fault; the fault's top
   edge lies on the free surface, its two ends and bottom are buried edges
   (marked automatically by PyLith v5)
-Sizes: dx_fault on the fault, dx_surface on the free surface within
-data_half_m of the site, growing by `bias` to dx_far.
+Sizes: dx_fault on the fault, dx_surface on the free surface over the data
+area, growing by `bias` to dx_far (PRESETS; generate_mesh).
+Output: mesh/mesh_vertical_tet_<preset>.msh, with _report.txt (cell counts,
+fault edge lengths, element quality) and _fault.npz (fault triangles).
 """
 import os
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 import sys
 import time
 
@@ -38,11 +41,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..")))
 from TulePond_filepaths import paths_inputs   # noqa: E402  (only `os` is imported there: safe in the PyLith python)
 MESH_DIR = paths_inputs["mesh"]
 
-site_lon, site_lat = -121.968, 37.557                # CSI frame origin (07_slip_model)
+site_lon, site_lat = -121.968, 37.557                # mesh CRS origin = the CSI frame origin (TulePond_filepaths.model_frame_lonlat)
 CRS = f"+proj=tmerc +datum=WGS84 +lon_0={site_lon} +lat_0={site_lat} +k=1 +units=m +type=crs"
-km_window = (52.0, 67.0)                             # along-strike window of the CSI fault (km from Point Pinole)
+km_window = (52.0, 67.0)                             # along-strike window of the fault (km from Point Pinole)
 decimate = 3                                         # keep every 3rd trace point (300 m)
-fault_depth_m = 3000.0                               # CSI mesh_depth_km
+fault_depth_m = 3000.0                               # vertical depth of the fault bottom edge (m)
 domain_half_m = 50e3                                 # box +/- 50 km (several fault lengths)
 domain_depth_m = 40e3
 # mesh sizes (m); size grows linearly away from each target: size = dx + (bias - 1) * distance
@@ -57,13 +60,13 @@ PRESETS = {
 }
 patch_y_m = (-3100.0, 2800.0)       # Tule Pond section km 56-63 from Point Pinole (km 63 at y=-3084, km 56 at y=2776)
 patch_z_m = 1500.0                  # fine patch: top 1.5 km of the fault
-data_x_m = (-9300.0, 5300.0)        # extent of the 2386 quadtree samples (fig2_model_row.npz) in this CRS
+data_x_m = (-9300.0, 5300.0)        # extent of the quadtree samples in this CRS
 data_y_m = (-6450.0, 6000.0)
 
 
 def trace_xy():
-    """The creeping trace in the mesh CRS, south to north (written by the TulePond
-    environment: 52-67 km from Point Pinole, every 3rd 100 m point, round-trip checked)."""
+    """The creeping trace in the mesh CRS (m), south to north, read from paths_inputs['mesh']/trace_tmerc.txt:
+    52-67 km from Point Pinole, every 3rd 100 m point. Returns (x, y)."""
     xy = np.loadtxt(os.path.join(MESH_DIR, "trace_tmerc.txt"))
     return xy[:, 0], xy[:, 1]
 
@@ -122,11 +125,11 @@ class App(GenerateMesh):
         - fault_fine: dx_fine on the fault inside the Tule Pond patch (y in patch_y_m, top patch_z_m), where d is
           the larger of the distance to the fault and the distance outside the patch box;
         - fault: dx_fault on the whole fault (PyLith get_math_progression of the fault Distance field);
-        - surface: dx_surface on the free surface over the data area (MathEval in x, y, z; replaces the gmsh "Box"
-          field, which hung the 1D stage on 2026-09-29);
-        each capped at dx_far inside its own MathEval and combined with a gmsh "Min" field. NOTE (gmsh 4.15.2,
-        2026-09-29): a MathEval that references another MathEval (e.g. a separate cap field "Min(F3, 6000)") hangs
-        the 1D stage, as did the "Box" field; a Min field over self-contained MathEvals meshes in 0.1 s."""
+        - surface: dx_surface on the free surface over the data area (MathEval in x, y, z);
+        each capped at dx_far inside its own MathEval and combined with a gmsh "Min" field. With gmsh 4.15.2 a
+        MathEval that references another MathEval, or a gmsh "Box" field, stalls the 1D meshing stage, so each
+        MathEval is self-contained. The "shallow" preset adds a fourth field, dx_band within band_m of the fault
+        in the top band_z_m along the patch."""
         p = PRESETS[self.preset]
         gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
         gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)

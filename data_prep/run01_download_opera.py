@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
+@author: Danielle Lindsay
 
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/run01_download_opera.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
-
-OPERA DISP-S1 download + rebase for the Hayward AOI, using only the maintained
-`opera-utils` command-line tools:
+OPERA DISP-S1 download and rebase for the Hayward AOI, using the `opera-utils`
+command-line tools:
 
 1) Per frame: verify the subset ROI with a small test patch before committing
    to the full download
@@ -28,6 +22,8 @@ Output per frame:  <data_dir>/<frame>/data/*.nc  and  <frame>/<frame>_stack.nc
 
 Run in the conda environment (needs opera-utils, shapely, h5py, xarray).
 Earthdata credentials in ~/.netrc.
+Source: OPERA DISP-S1 v1.0 (NASA JPL OPERA project, distributed by ASF);
+opera-utils (disp-s1-download, disp-s1-reformat).
 """
 import glob
 import os
@@ -49,12 +45,12 @@ OPERA = "opera-utils"     # on PATH when the conda environment is active
 start = common_paths['date_start']
 # `date_end` is the last acquisition used in the paper. CMR's --end-datetime is a
 # datetime, so passing the bare date drops that day's acquisition (the Bay Area
-# passes are ~02:07 UTC ascending, ~14:07 UTC descending, both after 00:00), which
-# silently cost us 2026-03-27 on 09157. Search one day past it instead.
+# passes are ~02:07 UTC ascending, ~14:07 UTC descending, both after 00:00), so the
+# search ends one day after it.
 end   = (date.fromisoformat(common_paths['date_end']) + timedelta(days=1)).isoformat()
 
 # Per-frame DOWNLOAD window: `aoi_bbox_disp` for 09157/11115 (the science AOI
-# nudged one pixel so new granules land on the existing archive grid -- see the
+# nudged one pixel so new granules land on the existing archive grid; see the
 # comment on aoi_bbox_disp in TulePond_filepaths.py); 09156 clipped to its
 # footprint, and its own bbox already reproduces its archive window.
 frame_bbox = {
@@ -67,7 +63,7 @@ VERIFY_WIN  = ("2020-06-01", "2020-08-01")  # dense period for the ROI test patc
 ROI_TOL_DEG = 0.03                          # ~1 pixel-block tolerance on subset extent
 
 # ---------------------------------------------------------------------------
-# disp-s1-reformat options -- NOT the tool defaults. Passed explicitly so a
+# disp-s1-reformat options (not the tool defaults). Passed explicitly so a
 # run is reproducible from the command alone.
 #
 #   solid earth tide ON   - tool default; cancels in cross-fault differencing
@@ -161,7 +157,7 @@ def check_corrections_group(data_dir):
 def check_grid_consistency(data_dir):
     """Abort if the .nc files in `data_dir` are not all on the same grid.
 
-    `disp-s1-download` skips files that already exist BY FILENAME, and the
+    `disp-s1-download` skips files that already exist by filename, and the
     filename does not encode the subset window: re-running with a slightly
     different bbox leaves two incompatible grids in one directory, and
     `disp-s1-reformat` then fails deep inside xarray ("Resulting object does
@@ -189,8 +185,8 @@ def check_stack_coverage(stack_path, warn_below=5.0):
 
     A frame footprint can intersect the AOI while the bursts never image it
     (swath edge / water): the stack writes fine but is all-NaN there. Rebased
-    NaN is monotonic (it only ever grows), so the FIRST epoch is the best case
-    -- if that is empty the frame never covers the AOI at all.
+    NaN is monotonic (it only ever grows), so the first epoch is the best case:
+    if that is empty the frame never covers the AOI at all.
     """
     import numpy as np
     import xarray as xr
@@ -210,7 +206,7 @@ def check_stack_coverage(stack_path, warn_below=5.0):
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# Main
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
 

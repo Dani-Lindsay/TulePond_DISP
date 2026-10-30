@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 """
-PyLith tetrahedral mesh with a DIPPING fault under the hand-mapped creeping trace (2026-09-30, dip sensitivity).
-Same geometry, sizing, marking and quality steps as generate_gmsh_vertical.py (imported), with one change: the
-trace spline is extruded along a dipping vector instead of straight down.
+PyLith tetrahedral mesh with a dipping fault under the mapped creeping trace. Same geometry, sizing, marking and
+quality steps as generate_gmsh_vertical.py (imported), with one change: the trace spline is extruded along a
+dipping vector instead of straight down.
 
-Dip convention: `--dip 80e` = 80 degrees, dipping EAST (hanging wall east); `70e`, `80w` likewise. The dip
-direction is the horizontal unit normal to the MEAN strike of the trace (km 52-67), pointing to the given side,
-so the fault is a ruled surface: top edge exactly on the trace, every depth level the same trace shifted by
-z / tan(dip) along that normal (the construction of 07's wrap_fault for CSI). The fault depth is measured
-VERTICALLY: fault_depth_m = 3000 m below the surface, so the down-dip length is 3000 / sin(dip) m and the bottom
-edge lies 3000 / tan(dip) m (529 m for 80, 1092 m for 70) to the dipping side of the trace. The bottom and end
-edges are buried (PyLith v5 marks them automatically); the domain is the same 100 x 100 x 40 km box.
+Dip convention: `--dip 70w` = 70 degrees, dipping west (hanging wall west); `80e`, `60w` likewise. The dip
+direction is the horizontal unit normal to the mean strike of the trace (km 52-67), pointing to the given side,
+so the fault is a ruled surface: top edge on the trace, every depth level the same trace shifted by
+z / tan(dip) along that normal (the same construction as model_utils.wrap_fault). The fault depth is measured
+vertically: fault_depth_m = 3000 m below the surface, so the down-dip length is 3000 / sin(dip) m and the bottom
+edge lies 3000 / tan(dip) m to the dipping side of the trace. The bottom and end edges are buried (PyLith v5
+marks them automatically); the domain is the same 100 x 100 x 40 km box. The measured dip of the fault triangles
+is asserted to be within 1 degree of the requested dip and appended to the report.
 
-Run inside the PyLith environment:  python generate_gmsh_dip.py --write --preset default --dip 80e
+Run inside the PyLith environment:  python generate_gmsh_dip.py --write --preset shallow --dip 70w
 Output: mesh/mesh_dip<dip>_tet_<preset>.msh (+ _report.txt, _fault.npz as the vertical generator).
+Source: PyLith v5.0.2 pylith.meshio.gmsh_utils.GenerateMesh (as generate_gmsh_vertical.py); gmsh OpenCASCADE
+extrusion.
 """
 import os
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 import sys
 
 import numpy as np
@@ -35,8 +38,9 @@ MESH_DIR = paths_inputs["mesh"]
 
 
 def dip_vector(dip_str):
-    """(dx, dy, dz) of the extrusion, and the dip angle: horizontal offset fault_depth_m / tan(dip) along the mean
-    normal of the trace, on the given side (e / w), vertical drop fault_depth_m."""
+    """Extrusion vector of the dipping fault. dip_str: dip in degrees plus side, e.g. '70w'. Returns (dx, dy, dz)
+    in m (horizontal offset fault_depth_m / tan(dip) along the mean normal of the trace, on the given side; vertical
+    drop fault_depth_m), the dip (deg) and the unit horizontal normal used."""
     assert dip_str[-1] in "ew" and dip_str[:-1].isdigit(), f"dip must be like 80e or 70w, got {dip_str!r}"
     dip_deg, side = float(dip_str[:-1]), dip_str[-1]
     assert 30.0 < dip_deg < 90.0, "use generate_gmsh_vertical.py for a vertical fault"

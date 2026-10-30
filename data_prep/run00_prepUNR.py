@@ -1,32 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 29 2026
+@author: Danielle Lindsay
 
-@author: daniellelindsay
-
-Ported into TulePond_DISP/data_prep on 2026-09-28 from
-Hayward_DISP-S1/analysis/run00_prepUNR.py, unchanged except for the imports
-(TulePond_filepaths, the repo-root insar_utils) and this note.
-
-GPS Processing Pipeline (UNR daily solutions -> screened ENU velocities):
-1) Download UNR holdings + steps metadata, filter station list by ROI & date window
+GNSS processing (UNR daily solutions -> screened ENU velocities):
+1) Download the UNR holdings and steps metadata; filter the station list by ROI and date window
 2) Download daily NA-frame time series per station
 3) For each station:
    a) Data length check
    b) Manual exclusion -> plot to Manual_Exclude/, skip summary
    c) Auto-correct equipment steps (type 1) and manual steps -> mark Corrected
    d) Noise threshold on Z -> plot to Noisy/, skip summary
-   e) Trend fit & std; summary only for Raw or Corrected stations
-   f) Plot with step lines, trend lines, legend off to right
+   e) Trend fit and standard error; summary only for Raw or Corrected stations
+   f) Plot with step lines and trend lines
 4) Write kept stations to <frame>_enu_NA.csv, one file per frame
 
-Every station is plotted and sorted into Uncorrected/ Corrected/ Noisy/
-Manual_Exclude/ under paths_gps['Fig_Dir'] -- flip through those to review.
+Every station is plotted and sorted into Uncorrected/, Corrected/, Noisy/ and
+Manual_Exclude/ under paths_gps['Fig_Dir'] for visual review.
 
-The screening logic and step correction follow NC_ALOS-2/run00_prepUNR.py.
-UNR retired IGS14 and moved the tenv3 tree since that repo was published;
-the URLs below are the current IGS20-era locations (NA plate-fixed frame).
+Source: GNSS time series from the Nevada Geodetic Laboratory (UNR; Blewitt et
+al. 2018), IGS20 NA plate-fixed frame. The screening and step correction follow
+NC_ALOS-2/run00_prepUNR.py (written for an earlier project by the same author).
 """
 import os
 import subprocess
@@ -145,7 +139,7 @@ def get_station_list(holdings_file: str, output_file: str) -> int:
         usecols=[0, 1, 2, 7, 8], header=0,
         names=['StaID', 'lat', 'lon', 'dtbeg', 'dtend']
     )
-    # 1) UNR holdings longitudes are 0-360; our ROI is signed longitude
+    # 1) UNR holdings longitudes are 0-360; the ROI is in signed longitude
     df['lon'] = ((df['lon'] + 180) % 360) - 180
     df['dtbeg'] = pd.to_datetime(df['dtbeg'], errors='coerce')
     df['dtend'] = pd.to_datetime(df['dtend'], errors='coerce')
@@ -192,8 +186,8 @@ def download_data_with_sta_list(data_dir: str, sta_list_file: str) -> int:
 def parse_steps_file(file_path: str, sta_id: str) -> Tuple[List[float], List[float]]:
     """Step dates for one station from UNR steps.txt.
 
-    Type 1 = equipment change (corrected below); type 2 = earthquake (kept --
-    real motion, plotted for reference only).
+    Type 1 = equipment change (corrected below); type 2 = earthquake (kept as
+    ground motion, plotted for reference only).
     """
     month_map = {m: i for i, m in enumerate(
         ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'], 1
@@ -424,7 +418,7 @@ def run_path(frame: str, sta_list_file: str, data_dir: str, fig_dir: str,
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# Main
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
 

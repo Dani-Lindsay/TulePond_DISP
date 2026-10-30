@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Kinematic slip database for a PyLith FaultCohesiveKin forward run of an INVERTED slip model: one point per fault
+Kinematic slip database for a PyLith FaultCohesiveKin forward run of an inverted slip model: one point per fault
 vertex (all vertices of the fault mesh, locked ones with 0) with the vertex's slip, written with spatialdata's own
 SimpleIOAscii writer (SimpleDB, queried "nearest": the fault vertices coincide with the points, so the tent slip
 field of the inversion is reproduced exactly). Left-lateral = sign_rl x right-lateral (build_G's derived sign).
 Run in the PyLith env:  python3 make_vertex_slip_db.py <in.npz: xyz (m, mesh CRS), slip_rl_m, sign_rl> <out.spatialdb>
 """
 import sys
-# PyLith build script (pylith/README.md). Ported from drafts/pylith (2026-09-30); every output path comes from
-# TulePond_filepaths (2026-10-06 layout: meshes in paths_inputs['mesh'], SFCVM grids in paths_sfcvm['spatialdb']);
-# the databases are written where the command line says, relative to the results directory.
+# PyLith build script (pylith/README.md). Output paths come from TulePond_filepaths (meshes in paths_inputs['mesh'],
+# SFCVM grids in paths_sfcvm['spatialdb']); the databases are written where the command line says, relative to the
+# results directory.
 
 import numpy as np
 from spatialdata.geocoords.CSGeo import CSGeo
