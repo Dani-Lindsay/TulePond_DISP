@@ -1324,8 +1324,8 @@ fig.show()
 #
 # Three panels on one along-fault axis, every profile smoothed with the same 0.5 km Gaussian (`rate_smooth_km`, as the
 # rate profile of 03) and the Tule Pond section shaded. (A) The cross-fault azimuth of the mapped trace at every 100 m
-# crossing. (B) The fault-parallel creep rate of every crossing (03 `creep_rate_fp.csv`), the crossings flagged by the
-# along-fault rate test of 03, the creepmeter and alignment-array rates over the InSAR window and over the whole array
+# crossing. (B) The fault-parallel creep rate of every crossing kept by 03 (`creep_rate_fp.csv`; crossings flagged by
+# the along-fault rate test of 03 are not shown), the creepmeter and alignment-array rates over the InSAR window and over the whole array
 # record, and the interseismic Hayward Fault rates of the Johnson et al. (2022) compilation (alignment arrays, InSAR
 # and cultural offsets, 1 sigma). (C) The slip budget: the inter-event, event-driven (five Tule Pond events) and total
 # rates, with the same arrays and creepmeters; the Oakland control band also shaded.
@@ -1345,13 +1345,12 @@ johnson = johnson[johnson["Fault"].str.contains("Hayward") & (johnson["Type"] ==
 johnson["km"] = to_km(johnson["Latitude"].values)
 johnson["sig"] = pd.to_numeric(johnson["sig (mm/yr)"], errors="coerce")
 johnson = johnson[(johnson.km >= km_lim[0]) & (johnson.km <= km_lim[1])]
-vermillion = "#D55E00"                           # Okabe-Ito vermillion: flagged crossings
 purple = "#CC79A7"                               # Okabe-Ito reddish purple: Johnson et al. (2022)
 line_width = 1.5
 cm_km = [v[0] for v in cm_rates.values()]
 cm_rate = [v[1] for v in cm_rates.values()]
 
-fig, axes = plt.subplots(3, 1, figsize=(7.2, 8.4), sharex=True, height_ratios=[1, 1.5, 1.5], constrained_layout=True)
+fig, axes = plt.subplots(3, 1, figsize=(7.2, 6.3), sharex=True, height_ratios=[1, 1.5, 1.5], constrained_layout=True)
 for ax in axes:
     ax.axvspan(len_lo, len_hi, color="0.9", zorder=0)
     for km_cm in cm_km:
@@ -1368,8 +1367,6 @@ utils.panel_title(ax, "A")
 # B) creep rate per crossing, with the independent rates
 ax = axes[1]
 ax.plot(creep_rate_fp.km[~flagged], creep_rate_fp.fp_creep_rate_raw[~flagged], ".", color="0.6", ms=2.5, label="InSAR rate at each crossing")
-ax.plot(creep_rate_fp.km[flagged], creep_rate_fp.fp_creep_rate_raw[flagged], "x", color=vermillion, ms=3.5, mew=0.8,
-        label="Flagged crossings (removed)")
 ax.plot(creep_rate_fp.km, creep_rate_fp.fp_creep_rate_smooth, "-", color="k", lw=line_width, label=f"Smoothed ({rate_smooth_km:g} km Gaussian)")
 for inst, marker, label in (("AA", "D", "alignment arrays"), ("SAR", "o", "InSAR"), ("Cult", "P", "cultural offsets")):
     rows = johnson[johnson["Inst"] == inst]
