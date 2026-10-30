@@ -1565,16 +1565,6 @@ ordered = ladder.assign(is_selected=is_selected).sort_values("is_selected")     
 selected_colour = "#D55E00"                                                      # Okabe-Ito vermillion
 
 
-def panel_label(ax, letter, text, x=0.025, y=0.95, size=8.5):
-    """Science style: bold capital, then the description in normal weight, one translucent box behind both."""
-    # one wide box behind both pieces: drawn first on an invisible copy of the full string, then the two texts on top
-    ax.text(x, y, f"{letter} {text}", transform=ax.transAxes, va="top", ha="left", fontsize=size, alpha=0,
-            bbox=dict(facecolor="white", edgecolor="none", alpha=0.7), zorder=5)
-    letter_text = ax.text(x, y, letter, transform=ax.transAxes, va="top", ha="left", fontsize=size, fontweight="bold", zorder=6)
-    ax.annotate(text, xy=(1, 1), xycoords=letter_text, xytext=(3, 0), textcoords="offset points", va="top", ha="left",
-                fontsize=size, zorder=6)
-
-
 def draw_ladder_scores(ax, score_column, scale=1.0):
     """One bar per bin (inner to outer edge) at the bin's score, a dot at the bin centre; the selected bin in colour."""
     for _, bin_row in ordered.iterrows():
@@ -1597,22 +1587,21 @@ for ax in axes:
     for kernel_edge in kernel_m:
         ax.axvline(kernel_edge, color="0.55", lw=0.7, ls="--", zorder=1)
     ax.set_xlim(-15, 720)
-axes[0].text(3, 1.95, f"phase-linking\nhalf-width\n({kernel_m[0]} to {kernel_m[1]} m by era)", fontsize=6, color="0.40", va="top")
-ladder_panels = ((axes[0], "rate_rms", "InSAR minus creepmeter rate RMS (mm/yr)", (0.3, 2.5), "A", "Long-term rate agreement", 1),
-                 (axes[1], "valid", "Valid data along fault strike (%)", (40, 80), "B", "Spatial completeness", 1),
-                 (axes[2], "coz1_det_r", "COZ1 detrended correlation r", (0, 0.8), "C", "Creep event shape", 1),
-                 (axes[3], "coz1_step_frac", "COZ1 slip step recovered (%)", (0, 90), "D", "Creep event amplitude", 100))
-for ax, score_column, y_label, y_limits, letter, title, scale in ladder_panels:
+ladder_panels = ((axes[0], "rate_rms", "InSAR minus creepmeter rate RMS (mm/yr)", (0.3, 2.5), "A", 1),
+                 (axes[1], "valid", "Valid data along fault strike (%)", (40, 80), "B", 1),
+                 (axes[2], "coz1_det_r", "COZ1 detrended correlation, r", (0, 0.8), "C", 1),
+                 (axes[3], "coz1_step_frac", "COZ1 slip step recovered (%)", (0, 90), "D", 100))
+for ax, score_column, y_label, y_limits, letter, scale in ladder_panels:
     scores = scale * ladder[score_column].dropna()
     assert scores.between(*y_limits).all(), f"{score_column}: scores {scores.min():.2f} to {scores.max():.2f} fall outside the panel {y_limits}"
     draw_ladder_scores(ax, score_column, scale)
     ax.set_ylabel(y_label, fontsize=7)
     ax.set_ylim(*y_limits)
-    panel_label(ax, letter, title, x=0.0, y=1.09, size=8)
+    utils.panel_title(ax, letter)
 for ax in axes[2:]:
     ax.set_xlabel("Distance from fault trace (m)")
-axes[0].legend(handles=[Line2D([], [], color="0.55", lw=1.1, marker="o", ms=4.5, label=f"tested ({len(ladder)} bins)"),
-                        Line2D([], [], color=selected_colour, lw=1.1, marker="o", ms=4.5, label=f"selected: {selected[0]} to {selected[1]} m")],
+axes[0].legend(handles=[Line2D([], [], color="0.55", lw=1.1, marker="o", ms=4.5, label=f"Tested bins ({len(ladder)})"),
+                        Line2D([], [], color=selected_colour, lw=1.1, marker="o", ms=4.5, label=f"Selected bin, {selected[0]} to {selected[1]} m")],
                fontsize=6, loc="upper right")
 fig.tight_layout()
 fig_lad = os.path.join(fig_dir, f"figS_binning_ladder_coh{ladder_coh:g}_mp{min_points}_stack{ladder_n_stack}x{ladder_stack_km}km.png")
