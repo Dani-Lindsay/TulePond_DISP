@@ -172,7 +172,7 @@ fine_dips = pd.concat([fine_rows, baseline.to_frame().T], ignore_index=True)
 fine_dips["x"] = [dip_x[v] for v in fine_rows.variant] + [dip_x[cfg.selected_dip_label]]
 assert fine_dips.x.is_unique, "two fine-mesh rows at the same dip"
 fine_dips = fine_dips.sort_values("x")
-selected_label = f"3D SFSVM, 60 m surface cells (selected {cfg.selected_dip_label})"
+selected_label = f"3D SFSVM, 60 m surface cells (preferred, {cfg.selected_dip_label})"
 dip_series.append((selected_label, OKABE["blue"], "s", fine_dips))
 sigma_labels = ["x0.25", "x0.5", "Corner", "x2", "x4"]
 sigma_frame = pd.DataFrame([baseline if lab == "Corner" else pick("Regularization sigma", lab) for lab in sigma_labels])
@@ -299,13 +299,13 @@ print(disagree[["panel", "run", "impulse", "km", "depth_m", "rel_rms"]].to_strin
 assert (disagree.order == 1).all(), "an order-2 PyLith impulse disagrees in sign with the analytic solution"
 fig, axes = plt.subplots(1, 2, figsize=(15.0 * cm, 6.0 * cm), constrained_layout=True, sharey=True)
 panel_a = gf[gf.panel == "A"]
-for run, colour, marker, label in (("gf_default_homog", "0.45", "^", "Order 1"), ("gf_default_homog_order2", OKABE["vermillion"], "o", "Order 2 (selected)")):
+for run, colour, marker, label in (("gf_default_homog", "0.45", "^", "Order 1"), ("gf_default_homog_order2", OKABE["vermillion"], "o", "Order 2 (preferred)")):
     part = panel_a[panel_a.run == run]
     axes[0].plot(part.depth_m, 100 * part.rel_rms, ls="none", marker=marker, color=colour, ms=3.0, label=label)
 panel_b = gf[gf.panel == "B"]
 for run, colour, marker, label in (("gf_default_homog_order2", OKABE["vermillion"], "o", "100 m fault / 250 m surface cells"),
                                    ("gf_fine_homog_order2_strip", OKABE["purple"], "D", "60 m fault / 200 m surface cells"),
-                                   ("gf_shallow_homog_order2_strip", OKABE["blue"], "s", "60 m cells within 1 km (selected)")):
+                                   ("gf_shallow_homog_order2_strip", OKABE["blue"], "s", "60 m cells within 1 km (preferred)")):
     part = panel_b[panel_b.run == run]
     axes[1].plot(part.depth_m, 100 * part.rel_rms, ls="none", marker=marker, color=colour, ms=3.0, label=label)
 for ax, letter, title in ((axes[0], "A", "Element order (100 m fault / 250 m surface cells)"), (axes[1], "B", "Mesh refinement (order 2)")):
