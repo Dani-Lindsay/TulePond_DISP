@@ -1,14 +1,13 @@
 # %% [markdown]
-# # [1] 09 Alignment arrays: did the two-year clock exist before InSAR?
+# # [1] 09 Alignment arrays: the event history at Tule Pond before InSAR
 #
 # ```
-# Created on Thu Sep 24 2026
-# @author: daniellelindsay
-# Run in opera_disp_feb13. Seconds.
+# Author: Danielle Lindsay
+# Environment: opera_disp_feb13. Run time: seconds.
 # ```
 #
 # **What this notebook does.** The USGS Bay Area alignment arrays (archive v3.0)
-# give a 45-year record of surface slip at Tule Pond. Six arrays span the
+# provide a 45-year record of surface slip at Tule Pond. Six arrays span the
 # section; HRKT (inside it) and HAPP (1.6 km north) were surveyed every ~2
 # months from 1979 to 2007 (HRKT to mid-2007) and annually after; HCAM and HPMD (~3 km south)
 # every ~2 months from 1990-92 to 2007; the others annually.
@@ -21,16 +20,14 @@
 #    onset window (supplement figure: map + the six arrays since 2015).
 # 2. **The HRKT event history, bimonthly era only.** An event is a survey
 #    interval whose step exceeds the inter-event rate by a fixed 6 mm (chosen
-#    by eye; the threshold sweep documents the choice), fitted with the same
-#    joint model as notebook 04; detections with a fitted step under 2 sigma
-#    are dropped. The output catalogue feeds 10 (event table, seasonality) and
-#    11 (repeat intervals and the forecast: the intervals live only there).
+#    by eye against visually distinct steps; the threshold sweep shows the
+#    effect of this choice), fitted with the same joint model as notebook 04;
+#    detections with a fitted step under 2 sigma are dropped. The output
+#    catalogue is read by 10 (event table, seasonality) and 11 (repeat
+#    intervals and the forecast; the intervals are computed only there).
 # 3. **Along strike.** The same detector on HAPP, HCAM and HPMD, and their
-#    step inside every HRKT event window: did the events reach them?
+#    excess step inside every HRKT event window.
 # 4. **Threshold sweep** (supplement): the detector at 3 sigma, 6 mm and 5 mm.
-#
-# PREPUB: Ported from `Hayward_DISP-S1/analysis/run16_AA_insar_timeseries.py`,
-# PREPUB: `run18_aa_event_history.py` and `plotting/figS_hrkt_threshold_sweep.py`.
 #
 # **Inputs**: 03 `fp_ts.csv`, 04 `creep_events.csv` (the InSAR onset windows: `onset_lo` is
 # the last acquisition before the step, which is also 04's step epoch, and `onset_hi` the first
@@ -47,13 +44,14 @@
 #
 # **Figures**: the six-array supplement figure (`figS_tulepond_arrays_insar_*`),
 # the threshold sweep (`figS_hrkt_threshold_sweep_3sig-6mm-5mm`, supplement), and
-# working figures of the HRKT and HAPP records (`qc09_aa_history_*`; NOT the paper's
+# QC figures of the HRKT and HAPP records (`qc09_aa_history_*`; not the paper's
 # Fig 3, which 11_forecast draws).
 #
-# **What to check.** Every array within 150 m of the trace (asserted); HRKT's
-# bimonthly era ends mid-2007 (`09_hrkt_dense_era_end_yr`); the quiet interval
-# spans Loma Prieta (asserted); the neighbours stay within noise inside the HRKT
-# windows. Every number is registered in the last cell (`09_*`).
+# **What to check.** Every array within 150 m of the trace (asserted); the end
+# of HRKT's bimonthly era (`09_hrkt_dense_era_end_yr`, printed); the longest
+# quiet interval spans Loma Prieta (asserted); the neighbours' excess, in
+# sigma, inside the HRKT windows (printed). Every value is registered in the
+# last cell (`09_*`).
 
 # %%
 # [2]
@@ -84,12 +82,12 @@ os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
 
-stack_km = 0.5                 # half-width ALONG STRIKE of the InSAR stack around each array (Dani 2026-10-01: was 1 km of latitude)
+stack_km = 0.5                 # half-width along strike of the InSAR stack around each array (km)
 site = "HRKT"                  # the array with the dense record
 thr_mm = 6.0                   # detection threshold: fixed excess per survey interval, chosen by eye (see the sweep)
-min_step_sigma = 2.0           # a detection is kept only if its fitted step is at least this many sigma (Dani 2026-10-02)
+min_step_sigma = 2.0           # a detection is kept only if its fitted step is at least this many sigma
 n_pass = 2                     # detector passes (pass 2 uses the fitted inter-event rate)
-dense_window_days = aa_dense_window_days   # the bimonthly era: survey intervals up to this; the detector runs only there (Dani 2026-10-02; TulePond_filepaths, shared with 10 and 11)
+dense_window_days = aa_dense_window_days   # the bimonthly era: survey intervals up to this; the detector runs only there (TulePond_filepaths, shared with 10 and 11)
 n_background = 4               # columns of the joint model before the steps: constant, rate, annual sin, annual cos
 neighbour_codes = ["HAPP", "HCAM", "HPMD"]   # the other arrays surveyed every ~2 months: north (HAPP) and south (HCAM, HPMD) of the section
 zoom_t0 = 2015.0               # start of the zoomed panels
@@ -103,12 +101,12 @@ event_field_file = os.path.join(paths_out["06_event_field_geometry"], "fig2_inpu
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")        # the SSE extent bracket
 strike_map = 144.0             # page rotation of the map (mean strike, notebook 02; as Fig 1A)
 map_h_cm = 9.2                 # map height (cm, as Fig 1A); the width follows at true scale
-event_lim = 5.0                # map colour range, +/- mm of event slip (the blocks sit near +/- 4 to 5 mm)
+event_lim = 5.0                # map colour range, +/- mm of event slip
 array_label_u_km = [46.5, 49.0, 51.5, 54.0, 56.5, 59.0]   # along-strike km of the six array codes (north to south), north of CFW1 (62.2) and the scale bar
 
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
-# Okabe-Ito: array blue; InSAR vermillion; InSAR onset lines orange (working figures). No green anywhere.
+# Okabe-Ito: array blue; InSAR vermillion; InSAR onset lines orange (QC figures). No green.
 aa_color = "#0072B2"
 insar_color = "#D55E00"
 det_color = "#E69F00"
@@ -219,7 +217,7 @@ for code, (insar_dates, insar_slip, n_crossings) in stacks.items():
         stack_rows.append(dict(code=code, date=date, slip_mm=slip, n_crossings=n_crossings))
 pd.DataFrame(stack_rows).to_csv(os.path.join(out_dir, "aa_insar_stacks.csv"), index=False)
 
-# the five event steps ON THE HRKT STACK, so the InSAR-era event size is compared with the array's dense-era steps at
+# the five event steps on the HRKT stack, so the InSAR-era event size is compared with the array's dense-era steps at
 # the same place (04's event steps are measured on its peak band, not at HRKT). Same joint model as 04, least squares,
 # with the steps at 04's step epochs (onset_lo, the last acquisition before each step).
 hrkt_dates, hrkt_slip, hrkt_n = stacks["HRKT"]
@@ -234,9 +232,8 @@ print(f"HRKT InSAR stack ({hrkt_n} crossings): event steps {np.round(hrkt_insar_
 #
 # For each InSAR onset window, the array step between the last survey before the window and the
 # first survey after it; and, since 2015, the median step of the survey intervals that contain an
-# InSAR onset window against those that do not (no survey may fall inside a window: asserted). At
-# HGIL, inside the peak zone, the array steps ~14 mm in event years and ~0 mm between: the array's
-# own statement of the sawtooth.
+# InSAR onset window against those that do not (no survey may fall inside a window: asserted). The
+# HGIL and HRKT medians are registered.
 
 # %%
 # [10]
@@ -408,12 +405,12 @@ plt.show()
 # ## [13] The HRKT event history (the bimonthly era only)
 #
 # HRKT was surveyed every ~2 months until mid-2007, then annually. The detector and the joint model
-# run on the bimonthly era only (Dani 2026-10-02): the annual cycle in the model cannot be resolved from
+# run on the bimonthly era only: the annual cycle in the model cannot be resolved from
 # annual surveys, and a one-year window cannot place an event in its season. The era ends at the last
 # survey that closes an interval of `dense_window_days` or less.
 #
-# Detection on survey intervals: `excess = (cum_i - cum_{i-1}) - rate * (t_i - t_{i-1})` beats `thr_mm`
-# (a fixed threshold chosen by eye against the visually clear steps; the sweep below shows the choice). The
+# Detection on survey intervals: `excess = (cum_i - cum_{i-1}) - rate * (t_i - t_{i-1})` exceeds `thr_mm`
+# (a fixed threshold chosen by eye against visually distinct steps; the sweep below shows the effect of this choice). The
 # flagged intervals are fitted with the joint model (constant + rate + annual sin/cos + one step per event);
 # where in its window a step is placed does not change the fit, since no survey falls inside the window.
 # Any event whose fitted step is under `min_step_sigma` times its 1-sigma error is dropped (the weakest
@@ -424,7 +421,8 @@ plt.show()
 # every statistic of the onset times (11 [26]) draws it uniformly within the window. The joint model places
 # each step at the last survey before it (onset_lo, as 04); any time inside the window gives the same fit.
 #
-# The quiet interval is the longest gap between detections; it spans Loma Prieta.
+# The quiet interval is the longest gap between detections. Check: it spans the 1989 Loma Prieta
+# earthquake (asserted).
 
 # %%
 # [14]
@@ -441,7 +439,7 @@ def interval_excess(survey_yr, cum_slip, rate_mm_yr):
 
 
 def detect_intervals(survey_yr, cum_slip, rate_mm_yr, threshold_mm):
-    """Survey intervals whose excess step beats the threshold, as [i_start, i_end]
+    """Survey intervals whose excess step exceeds the threshold, as [i_start, i_end]
     index pairs; consecutive flagged intervals are merged into one. Also returns
     the excess of every interval."""
     excess = interval_excess(survey_yr, cum_slip, rate_mm_yr)
@@ -534,15 +532,15 @@ n_quiet = int(((survey_yr > quiet_start) & (survey_yr < quiet_end)).sum())
 max_step_quiet = float(np.max(np.diff(cum_slip[in_quiet])))
 print(f"quiet interval {quiet_start:.2f} to {quiet_end:.2f} ({quiet_end - quiet_start:.1f} yr): {n_quiet} surveys, "
       f"largest step {max_step_quiet:.1f} mm; Loma Prieta {loma_prieta}")
-assert quiet_start < loma_prieta < quiet_end, "the longest quiet interval no longer spans Loma Prieta: check the catalogue"
+assert quiet_start < loma_prieta < quiet_end, "the longest quiet interval does not span Loma Prieta: check the catalogue"
 
 # %% [markdown]
-# ## [15] Along strike: did the events reach the neighbouring dense arrays?
+# ## [15] Along strike: the neighbouring bimonthly arrays inside the HRKT event windows
 #
 # Three other arrays were surveyed every ~2 months: HAPP (km 54.6, 1.6 km north of the section) and HCAM and
 # HPMD (km 65.3 and 65.7, ~3 km south of it). For each, over its own bimonthly era: its own detections at the
 # same threshold, and its excess step (slip minus its rate x window) over the window of every HRKT event it
-# covers. An event that reached the array would step it inside the HRKT window.
+# covers, expressed in units of its own robust sigma.
 
 # %%
 # [16]
@@ -575,7 +573,7 @@ print(f"largest excess at a neighbour inside an HRKT window: {neighbours.excess_
       f"({len(neighbours)} array-windows)")
 
 # %% [markdown]
-# ## [17] Working figures: the 45-year record at the two longest dense arrays (not the paper's Fig 3)
+# ## [17] QC figures: the 45-year record at the two longest dense arrays (not the paper's Fig 3)
 #
 # HRKT (km 61.2, inside the section) and HAPP (km 54.6, north of it). One figure per array: the whole
 # record with its own detections shaded (bimonthly era) and an inset since 2015 against the InSAR; the
@@ -585,7 +583,7 @@ print(f"largest excess at a neighbour inside an HRKT window: {neighbours.excess_
 # %%
 # [18]
 def draw_history(code, catalogue, excess_code, sigma_code, era_end, reference_windows=None):
-    """One working figure for one array (see the cell above)."""
+    """One QC figure for one array (see the cell above)."""
     array = arrays[code]
     era = array[array.year <= era_end + 1e-9]
     insar_dates, insar_slip, n_crossings = stacks[code]
@@ -636,7 +634,7 @@ def draw_history(code, catalogue, excess_code, sigma_code, era_end, reference_wi
     fig.tight_layout()
     f_history = os.path.join(fig_dir, f"qc09_aa_history_{code}_thr{thr_mm:g}mm_nev{len(catalogue)}.png")
     fig.savefig(f_history, dpi=300)
-    print(f"Saved the working {code} history figure to: {f_history}")
+    print(f"Saved the {code} QC history figure to: {f_history}")
     plt.show()
 
 
@@ -735,7 +733,7 @@ REG.register("09_hrkt_window_min_d", hrkt_events.window_days.min(), "d", 0, wher
 REG.register("09_hrkt_window_max_d", hrkt_events.window_days.max(), "d", 0, where="Fig3 caption", cell="detector", sidecar=sidecar)
 REG.register("09_hrkt_insar_step_mean_mm", hrkt_insar_steps.mean(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
 REG.register("09_hrkt_insar_step_median_mm", np.median(hrkt_insar_steps), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
-REG.register("09_hrkt_insar_step_min_mm", hrkt_insar_steps.min(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)   # the range beside the mean (2026-10-06)
+REG.register("09_hrkt_insar_step_min_mm", hrkt_insar_steps.min(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)   # the range beside the mean
 REG.register("09_hrkt_insar_step_max_mm", hrkt_insar_steps.max(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
 REG.register("09_quiet_start_yr", quiet_start, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
 REG.register("09_quiet_end_yr", quiet_end, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
