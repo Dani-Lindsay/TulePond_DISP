@@ -69,7 +69,7 @@ from cmcrameri import cm as cmc
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
-from TulePond_filepaths import common_paths, repo_dir, paths_out, model_crs, dist_min, dist_max
+from TulePond_filepaths import common_paths, repo_dir, paths_out, model_crs
 import insar_utils as utils
 import model_config as cfg                          # THE parameter block of the slip models
 import model_utils                                  # every modelling function, once (with its source)
@@ -264,11 +264,11 @@ for key, value in numbers.items():
     print(f"  {key:22s} {value:.5g}")
 
 # %% [markdown]
-# ## [7] Across-fault deflection on X-X' (the paragraph-7 numbers)
+# ## [7] 07a's homogeneous model and 06's profile lines
 #
-# On 06's X-X' line (samples within 300 m of it, `model_utils.profile_samples`), each side's deflection = the median of
-# the samples 60-150 m from the trace (06's near band `dist_min`-`dist_max`, inner edge raised to the 60 m cut) minus the
-# median 1.5 km to the end of 06's profile (`cross_m`), for the data, the 3D model and 07a's homogeneous model.
+# The homogeneous model must be on the same samples with the same cut (asserted). (The X-X' near/far deflections of the
+# retired 08a are not recomputed: on the quadtree samples the far band 1.5-2 km holds a single sample within 300 m of
+# X-X'; the paper's X-X' numbers are 06's, from the pixels.)
 
 # %%
 ## [7]
@@ -276,25 +276,7 @@ fig2_inputs = np.load(fig2_inputs_file)
 homogeneous = np.load(homogeneous_file)
 assert np.array_equal(homogeneous["sample_lon"], model_data["sample_lon"]) and np.array_equal(homogeneous["keep"], keep), \
     "07a's homogeneous model is not on these samples / this cut"
-on_x, _ = model_utils.profile_samples(model_data["sample_lon"], model_data["sample_lat"], fig2_inputs["prof_fp_X_ends"], fig2_inputs["epsg"])
-near_band_m = (max(dist_min, cfg.near_trace_cut_km) * 1e3, dist_max * 1e3)
-far_band_m = (cfg.profile_far_m, float(fig2_inputs["cross_m"]))
-
-
-def deflection_mm(values, side):
-    """Median in the near band minus the median in the far band, on one side (-1 west, +1 east) of X-X'."""
-    offset_m = side * signed_d_km * 1e3
-    near = on_x & (offset_m >= near_band_m[0]) & (offset_m < near_band_m[1])
-    far = on_x & (offset_m >= far_band_m[0]) & (offset_m < far_band_m[1])
-    assert near.sum() >= 3 and far.sum() >= 3, f"too few samples on X-X' ({near.sum()}, {far.sum()})"
-    return float(np.median(values[near]) - np.median(values[far]))
-
-
-deflections = pd.DataFrame([dict(field=name, west_mm=deflection_mm(values, -1), east_mm=deflection_mm(values, 1))
-                            for name, values in (("data (plane removed)", data_plane_removed_mm), ("3D model", model_mm),
-                                                 ("homogeneous model", homogeneous["model_mm"]))])
-print(f"X-X': near band {near_band_m[0]:.0f}-{near_band_m[1]:.0f} m, far band {far_band_m[0]:.0f}-{far_band_m[1]:.0f} m")
-print(deflections.round(2).to_string(index=False))
+print(f"07a homogeneous model: sigma {float(homogeneous['sigma']):.2f}, Mw {float(homogeneous['Mw_30gpa']):.3f}, n_sub {int(homogeneous['n_sub'])}")
 
 # %% [markdown]
 # ## [8] The 3D model against the homogeneous model (07a)
@@ -498,7 +480,7 @@ np.savez(selected_file, sample_lon=model_data["sample_lon"], sample_lat=model_da
          provenance=f"{notebook} {made}: {cfg.gf_run}, locked method (model_config), sigma {sigma:.3f}")
 mc = mc_summary.set_index("quantity")
 stats = REG.sidecar("08a_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
-                                                      deflections.to_string(index=False), mc_summary.to_string(index=False),
+                                                      mc_summary.to_string(index=False),
                                                       stress_drop.to_string(index=False)]
                     + [f"{k} = {v}" for k, v in numbers.items()])
 where = "M8"
@@ -518,10 +500,6 @@ REG.register("08a_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "[6]"
 REG.register("08a_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "[6]", stats)
 REG.register("08a_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "[6]", stats)
 REG.register("08a_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "[6]", stats)
-for _, row in deflections.iterrows():
-    tag = {"data (plane removed)": "data", "3D model": "model", "homogeneous model": "hom"}[row.field]
-    REG.register(f"08a_xx_{tag}_west_mm", row.west_mm, "mm", 2, "P7", "[7]", stats)
-    REG.register(f"08a_xx_{tag}_east_mm", row.east_mm, "mm", 2, "P7", "[7]", stats)
 for key, tag, units, precision in (("Mw_30gpa", "mw_30gpa", "Mw", 3), ("Mw_sfcvm", "mw_harmonic", "Mw", 3),
                                    ("potency_m3", "potency_m3", "m3", 0), ("peak_slip_mm", "peak_slip_mm", "mm", 2),
                                    ("depth50_m", "depth50_m", "m", 0), ("depth90_m", "depth90_m", "m", 0)):

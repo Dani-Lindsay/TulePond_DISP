@@ -657,7 +657,7 @@ def model_row(fig, product, lim, model_mm):
         handle.write(f"S 0.15c - 0.3c - 1.0p,{model_col} 0.35c 3D (SFSVM)\n")
         handle.write("S 0.15c - 0.3c - 0.8p,gray55 0.35c Difference\n")
     with pygmt.config(FONT_ANNOT_PRIMARY=legend_font):
-        fig.legend(spec=legend_file, position="jTR+o0.1c/0.05c", box=False)   # top right, over the quiet south end (Dani 2026-10-16)
+        fig.legend(spec=legend_file, position="jTL+o0.1c/0.05c", box=False)   # top left, over the quiet north end (2026-10-30: the south end now has data)
     fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font=panel_letter_font, no_clip=True)
     # Alameda Creek and Lake Elizabeth on the trace (TulePond_filepaths, Dani 2026-10-16): sky-blue bars under K's x axis,
     # named below them (Dani's sketch); the gap to L leaves room
