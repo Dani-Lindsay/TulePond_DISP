@@ -74,6 +74,7 @@ import textwrap
 import warnings
 
 import insar_utils as utils
+import model_config
 from TulePond_filepaths import (common_paths, creepmeters, params, x_width,
                                 dist_min, dist_max, coh_timeseries, min_points, coh_velocity,
                                 creepmeter_glitches, gittins_window_pad_days,
@@ -182,7 +183,7 @@ growing = [(100, 200), (100, 300), (100, 400), (100, 500), (100, 700)]
 original = [(0, 60), (30, 90), (60, 120), (0, 120), (30, 150), (60, 180), (200, 600), (500, 700)]
 inner_edge = [(0, 150), (10, 150), (20, 150), (30, 150), (40, 150), (50, 150), (60, 150), (70, 150), (80, 150)]
 selected = (int(dist_min * 1000), int(dist_max * 1000))      # the bin the paper uses
-kernel_m = (55, 65)   # measured DISP-S1 phase-linking half-width, before / after the 2024-25 reprocessing
+excluded_m = 1e3 * model_config.near_trace_cut_km   # m: the near-trace cut of the slip models (the DISP-S1 phase-linking half-width)
 
 # every bin once, in the order of the four sets (a bin already in an earlier set is not repeated)
 ladder_bins = []          # (set name, inner m, outer m)
@@ -1551,8 +1552,8 @@ print(coh_table.round(3).to_string(index=False))
 #
 # Four panels against distance from the trace: each tested bin is a horizontal
 # bar from its inner to its outer edge with a dot at its centre (grey), the
-# selected 30 to 150 m bin in vermillion. The shaded strip is the phase-linking
-# half-width (55 to 65 m depending on the processing era).
+# selected 30 to 150 m bin (the crossings of the time series) in vermillion. The shaded strip is the 60 m near-trace
+# cut of the slip models (the DISP-S1 phase-linking half-width).
 
 # %%
 # [22]
@@ -1582,10 +1583,7 @@ def draw_ladder_scores(ax, score_column, scale=1.0):
 
 
 for ax in axes:
-    ax.axvspan(0, kernel_m[0], facecolor="0.92", zorder=0)
-    ax.axvspan(*kernel_m, facecolor="0.92", zorder=0, hatch="///", edgecolor="0.80", lw=0)
-    for kernel_edge in kernel_m:
-        ax.axvline(kernel_edge, color="0.55", lw=0.7, ls="--", zorder=1)
+    ax.axvspan(0, excluded_m, facecolor="0.92", zorder=0)
     ax.set_xlim(-15, 720)
 ladder_panels = ((axes[0], "rate_rms", "InSAR minus creepmeter rate RMS (mm/yr)", (0.3, 2.5), "A", 1),
                  (axes[1], "valid", "Valid data along fault strike (%)", (40, 80), "B", 1),
