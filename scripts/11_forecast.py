@@ -2,96 +2,83 @@
 # # [1] 11 The next-event forecast
 #
 # ```
-# Created on Thu Sep 24 2026
-# @author: daniellelindsay
-# Run in opera_disp_feb13. The forecast (400 timing draws x 5 bootstrap refits per model, catalogue and
-# aperiodicity branch) takes a few minutes.
+# Author: Danielle Lindsay
+# Environment: opera_disp_feb13. Run time: a few minutes (the forecast: 400 timing draws x 5 bootstrap refits per
+# model, catalogue and aperiodicity branch).
 # ```
 #
-# **What this notebook does.** Everything the paper predicts is here, in one place, from the event
-# catalogues (04, 09) and notebook 10's rain products:
+# **Contents.** The repeat intervals, the renewal forecasts and the prediction statement, computed from the event
+# catalogues (04, 09) and the rainfall products of 10_rain_seasonality:
 #
-# 1. **The repeat intervals, ONE definition** (the only notebook that computes them; 04 registered
-#    point-onset intervals until 2026-10-06): for each of `n_timing` draws of the onsets, uniform within
-#    their windows (no midpoints), the sample mean and sample SD (ddof = 1) of the record's intervals;
-#    both averaged over the draws; COV = SD / mean; "+/-" is 1 SD of the intervals (not a standard
-#    error). Per record (`11_<rec>_interval_mean_yr`, `_sd_yr`, `_cov`, `_n_intervals`, `_n_events`):
+# 1. **The repeat intervals** (computed only in this notebook): for each of `n_timing` draws of the onsets,
+#    uniform within their windows (no midpoints), the sample mean and sample SD (ddof = 1) of the record's
+#    intervals; both are averaged over the draws; COV = SD / mean; "+/-" is 1 SD of the intervals (not a
+#    standard error). Per record (`11_<rec>_interval_mean_yr`, `_sd_yr`, `_cov`, `_n_intervals`, `_n_events`):
 #    InSAR (5 events, 4 intervals), the bimonthly-era HRKT array record without the interval that
 #    spans Loma Prieta (`aa_dense_nolp`: 9 events, 7 intervals) and with it (`aa_dense_withlp`: 8
 #    intervals), and the combined record (`merged`: 14 events, 11 intervals; no interval across
-#    the unobserved 2006-2017 gap, none across Loma Prieta). Fig 3C draws the same numbers.
-# 2. **Renewal forecast** of the next onset: the intervals of each draw fitted by exponential,
+#    the unobserved 2006-2017 gap, none across Loma Prieta). Fig 3C draws the same statistics.
+# 2. **Renewal forecast** of the next onset: the intervals of each draw are fitted by exponential,
 #    lognormal, Weibull, BPT and Gaussian models with a parametric bootstrap, conditional on no event
 #    through the last observation, `forecast_last_obs_date` (TulePond_filepaths: the last descending
-#    acquisition of the CSLC + Dolphin extension check, 2026-10-05). The fitted BPT aperiodicity is
-#    registered as `11_<rec>_bpt_alpha` (the inverse-Gaussian MLE, NOT the sample COV of 1.). The
-#    paper's InSAR record still ends at the data end, the last acquisition on both tracks (read from
-#    03's fp_ts), registered as `11_data_end`.
+#    acquisition of the CSLC + Dolphin extension). The fitted BPT aperiodicity is registered as
+#    `11_<rec>_bpt_alpha` (the inverse-Gaussian maximum-likelihood estimate, not the sample COV of 1.). The
+#    InSAR record of the paper ends at the data end, the last acquisition on both tracks (read from
+#    `fp_ts.csv` of 03), registered as `11_data_end`.
 # 3. **The Working Group aperiodicities** (WGCEP 1999, USGS OFR 99-517, printed p16: alpha 0.3, 0.5
-#    and 0.7 as weighted branches, never a fitted alpha): the BPT forecast of each record with alpha
-#    FIXED at each branch (only the mean refitted), the branches mixed with the weights 0.2, 0.6, 0.2
-#    (the report's three-way branch convention, App. C printed p31; the alpha weights themselves are
-#    not printed in OFR 99-517, so two other weightings are shown and the mixture's P is insensitive
-#    to them). For the InSAR record also the fitted-alpha forecast with alpha drawn from its
-#    chi-square pivot (the uncertainty of alpha from four intervals), its 95 % CI, and the
-#    falsification dates: when the fitted-alpha model's conditional chance of no event falls to 5 %
-#    and to 1 %.
+#    and 0.7 as weighted branches, not a fitted alpha): the BPT forecast of each record with alpha
+#    fixed at each branch (only the mean refitted), the branches mixed with the weights 0.2, 0.6, 0.2
+#    (the three-way branch convention of the report, App. C printed p31; the alpha weights themselves are
+#    not printed in OFR 99-517, so the mixture is also computed with two other weightings). For the
+#    InSAR record also the fitted-alpha forecast with alpha drawn from its chi-square pivot (the
+#    uncertainty of alpha from four intervals), its 95 % CI, and the falsification dates: the dates at
+#    which the conditional probability of no event under the fitted-alpha model falls to 5 % and to 1 %.
 # 4. **The InSAR clock** in closed form (mean interval, t-based prediction interval), on the same
 #    onset draws as 1.
 # 5. **Fig 3** and **the prediction statement**, combining the recurrence windows with the calendar
-#    window of the onsets (from 10's `rain_conditioning_summary.csv`; the rainfall-conditioning tests
-#    themselves moved to 10_rain_seasonality on 2026-10-06).
+#    window of the onsets (from `rain_conditioning_summary.csv` of 10_rain_seasonality, where the
+#    rainfall-conditioning tests are computed).
 #
 # Loma Prieta: the array forecast is given both without and with the interval spanning the 1989
 # earthquake (keys `_nolp` / `_withlp`), as WGCEP 1999 ran its BPT calculations with and without the
-# stress-interaction clock changes in parallel (printed p17); the paper quotes `_nolp` (Lienkaemper et
-# al. 1997: the creep suppression after Loma Prieta on the southern Hayward fault).
+# stress-interaction clock changes in parallel (printed p17); the paper quotes `_nolp` (creep on the
+# southern Hayward fault was suppressed after Loma Prieta; Lienkaemper et al. 1997).
 #
-# ONE wet season (Dani 2026-10-05: October to April), `TulePond_filepaths.wet_season_months` = (first
-# month, last month), shared with 10_rain_seasonality's onset-season count (this notebook checks it against
-# the months 10 saved). `forecast_wet_season` is that season in the first water year whose season ends after
+# Wet season: October to April, `TulePond_filepaths.wet_season_months` = (first month, last month), shared
+# with the onset-season count of 10_rain_seasonality (this notebook checks it against the months saved by
+# 10_rain_seasonality). `forecast_wet_season` is that season in the first water year whose season ends after
 # the last observation (WY2027: every "P(WY2027 wet season)").
 #
 # **Quantiles beyond the forecast grid.** The forecast curves are evaluated on a daily grid (`grid`, derived
 # in [8] from the data: from the first 1 January after the last onset to `grid_span_means` of the longest
-# mean interval past the last observation). A mixture curve that never reaches a quantile on the grid has
+# mean interval past the last observation). A mixture curve that does not reach a quantile on the grid has
 # no date: `quantile_date` returns NaN and the quantile is written and registered as '> <grid end>', never
 # as the grid end itself. Each forecast row also carries `p_by_grid_end`.
 #
-# PREPUB: Ported from `Hayward_DISP-S1/analysis/run21_recurrence_forecast.py`; until 2026-09-24 this was the
-# PREPUB: second half of the old notebook 09_seasonality_forecast. Its old registry rows (`10_issue_date`,
-# PREPUB: `10_insar_*`, `10_aa_dense_*`, from `10_seasonality_forecast_v2`) are RETIRED in registry.txt.
-# PREPUB: Retired 2026-10-06 (no longer registered here): `11_insar_cov` and `11_*_fig3c_*` (folded into the one
-# PREPUB: interval definition), `11_aa_dense_*` (renamed `11_aa_dense_withlp_*`), `11_*_p_by_end_2027` (quoted
-# PREPUB: nowhere), and the rainfall-conditioning keys `11_onset_*`, `11_wy_*`, `11_cum_at_*`, `11_frac_at_*`,
-# PREPUB: `11_ruleA/B_*`, `11_rain_sweep_*` (now 10_rain_seasonality's `10_*`). `11_<rec>_interval_cov` was the
-# PREPUB: BPT alpha until 2026-10-06; it is now the sample COV (the alpha is `11_<rec>_bpt_alpha`).
-#
-# **Inputs**: 03 `fp_ts.csv` (the data end), 04 `section_lengths.csv` and 04's registered 90 % band-stack
-# steps (`04_band90_step_<yr>_mm` and their CIs, read back from `registry.csv`, 04's latest run: the
-# prediction statement's LOCATION and MAGNITUDE), 04 `creep_events.csv` (InSAR onset windows:
-# `onset_lo`, the last acquisition before the step, which is 04's step epoch, to `onset_hi`, the
+# **Inputs**: 03 `fp_ts.csv` (the data end), 04 `section_lengths.csv` and the 90 % band-stack steps
+# registered by 04 (`04_band90_step_<yr>_mm` and their CIs, read back from `registry.csv`, latest run of 04:
+# the location and magnitude of the prediction statement), 04 `creep_events.csv` (InSAR onset windows:
+# `onset_lo`, the last acquisition before the step, which is the step epoch of 04, to `onset_hi`, the
 # first acquisition after it), 09 `hrkt_aa_events.csv` (array onset windows `onset_lo` to
 # `onset_hi`; `onset_mid` = the window midpoint, for labels, plot positions and sort keys only) and
-# `aa_insar_stacks.csv`, 10 `fig3_rain_panel.npz` (with 10's wet-season months), `fig3_onset_windows.csv`
-# and `rain_conditioning_summary.csv`, the HRKT array file.
+# `aa_insar_stacks.csv`, 10 `fig3_rain_panel.npz` (with the wet-season months of 10), `fig3_onset_windows.csv`
+# and `rain_conditioning_summary.csv`, and the HRKT array file.
 #
 # **Outputs** (`outputs/11_forecast/`): `recurrence_forecast_models.csv` (every record x model: interval
-# statistics, quantiles, P(wet season)), `recurrence_intervals.csv` (the one definition of 1., per record),
+# statistics, quantiles, P(wet season)), `recurrence_intervals.csv` (the interval statistics of 1., per record),
 # `recurrence_forecast_wg99.csv` (every record x aperiodicity branch, the mixtures and the InSAR alpha-pivot
-# forecast), `prediction_statement.txt`, the stats sidecar `11_forecast_stats.txt`, registry rows `11_*`.
+# forecast), `prediction_statement.txt`, the stats sidecar `11_forecast_stats.txt`, and registry rows `11_*`.
 #
 # **Figures**: the paper's Fig 3 (`fig3_history_forecast_ntiming400_nboot5_issue<date>`: A HRKT history, B
-# onsets over the rain, C repeat intervals, D the forecast); the five renewal models
-# (`qc11_renewal_models_single_fits`, working).
+# onsets over the rainfall, C repeat intervals, D the forecast); the five renewal models
+# (`qc11_renewal_models_single_fits`, working figure).
 #
-# **What to check.** The InSAR clock gives the next event about mid December 2026 (`11_next_clock_date`,
-# 95 % prediction interval `11_pi95_*`, whose lower end lies before the last observation: the clock is
-# unconditional, do not quote it as a forecast window); the InSAR BPT 5-95 % window (`11_insar_bpt_q05`,
-# `_q95`) sits inside the coming wet season ONLY with the fitted alpha (~0.035); with the Working Group
-# aperiodicities (`11_insar_bpt_wg99_p_wet_wy2027`) and on the array and merged records the wet-season
-# probability is far lower; the mixture's P moves by about 0.01 between weightings.
-# Every number is registered in the last cell (`11_*`).
+# **Checks.** The closed-form InSAR clock date (`11_next_clock_date`) and its 95 % prediction interval
+# (`11_pi95_*`): the clock is unconditional, and the printout lists any of its dates that fall before the last
+# observation; these are not a forecast window. The InSAR BPT 5-95 % window (`11_insar_bpt_q05`, `_q95`)
+# against the coming wet season, with the fitted alpha and with the Working Group aperiodicities
+# (`11_insar_bpt_wg99_p_wet_wy2027`), and the same for the array and merged records; the range of the mixture's
+# P(wet season) over the alternative weightings (printed). Every number is registered in the last cell (`11_*`).
 
 # %%
 # [2]
@@ -116,10 +103,10 @@ from matplotlib.ticker import MultipleLocator
 # The forecast settings, the Working Group aperiodicity branches, the wet season and the input files.
 #
 # **Random numbers.** `seed` starts every generator, each a fresh `np.random.default_rng(seed)`: the
-# forecast of [26] (one generator feeding, in order, each catalogue's interval draws and then its five
+# forecast of [26] (one generator feeding, in order, the interval draws of each catalogue and then its five
 # model forecasts), each aperiodicity branch and the alpha-pivot forecast of [28] (one generator each, so the
-# three branches use the SAME onset and bootstrap draws: common random numbers, the mixture differs only by
-# alpha). The closed-form clock of [30] has no generator of its own: it reads the InSAR onset draws of [26].
+# three branches use the same onset and bootstrap draws; with these common random numbers the branches differ
+# only in alpha). The closed-form clock of [30] has no generator of its own: it reads the InSAR onset draws of [26].
 
 # %%
 # [4]
@@ -131,44 +118,43 @@ os.makedirs(fig_dir, exist_ok=True)
 
 
 # the forecast
-loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, as 09 and 10)
+loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, as in 09 and 10)
 n_timing = 400                 # timing draws: onsets drawn uniformly in their windows
 n_boot = 5                     # bootstrap refits per timing draw (per catalogue and model): 400 x 5 = 2000 curves per mean
-#                                forecast curve, enough for a mean cdf; a Monte Carlo setting, not a statistical one (the
-#                                parametric bootstrap cannot widen alpha beyond its biased-low refits: [28] does that)
+#                                forecast curve; a Monte Carlo setting (the parametric bootstrap does not widen alpha
+#                                beyond its refits, which are biased low; the alpha-pivot forecast of [28] does)
 seed = 7                       # every generator starts from it (see above)
 # The forecast is conditioned on no event through the last observation, forecast_last_obs_date
-# (TulePond_filepaths: the last descending acquisition of the CSLC + Dolphin extension check,
-# extension_2026-09/RESULT.md, 2026-10-05; Dani 2026-10-05). The paper's InSAR record ends earlier, at
-# the data end (the end of the fault-parallel series, read from the data below), and stays the record end.
-# forecast_issue_date is only the date the statement was first written (fixed, so the file names hold);
-# nothing is claimed for the months after the last observation.
+# (TulePond_filepaths: the last descending acquisition of the CSLC + Dolphin extension). The InSAR record of
+# the paper ends earlier, at the data end (the end of the fault-parallel series, read from the data below).
+# forecast_issue_date is the date the statement was first written (fixed, so that the file names are stable);
+# nothing is stated for the months after the last observation.
 models = ["exponential", "lognormal", "weibull", "bpt", "gaussian"]
-resolvable_days = aa_dense_window_days   # array windows longer than this do not constrain the season (TulePond_filepaths: 09's bimonthly era)
+resolvable_days = aa_dense_window_days   # array windows longer than this do not constrain the season (TulePond_filepaths: the bimonthly era of 09)
 min_interval_yr = 0.05         # bootstrap intervals shorter than this are clipped to it (counted and reported)
 max_degenerate_fraction = 0.01   # at most this share of the forecast curves may come from a refit with zero survival
 grid_span_means = 4.0          # the forecast grid runs this many of the longest mean interval past the last observation
-#                                (the exponential's 95 % lies 3.0 means after it, -ln 0.05; one more mean leaves room for
-#                                the bootstrap spread of the mean); its start and end are derived in [8]
+#                                (the 95 % quantile of the exponential lies 3.0 means after it, -ln 0.05; one more mean
+#                                allows for the bootstrap spread of the mean); its start and end are derived in [8]
 
 # the Working Group aperiodicities: WGCEP (1999), "Earthquake Probabilities in the San Francisco Bay Region: 2000 to
 # 2030 - A Summary of Findings", USGS Open-File Report 99-517, printed p16: "For the aperiodicity, WG99 used three
 # (weighted) values: 0.3, 0.5, and 0.7" (representative of the 37 sequences of Ellsworth et al.). The alpha weights
-# are NOT printed in the report; the weights below are its stated convention for a three-way branch point (App. C,
+# are not printed in the report; the weights below are its stated convention for a three-way branch point (App. C,
 # printed p31: "branch weights of 0.2, 0.6, and 0.2 ... corresponding roughly to a confidence interval of one
-# standard deviation"). The alternative weightings are a sensitivity check only (equal weights, and 0.2/0.5/0.3, the
-# one other three-way weighting in the report, Table 2, for a different quantity); WG99 mixes branch PROBABILITIES
+# standard deviation"). The alternative weightings are a sensitivity test only (equal weights, and 0.2/0.5/0.3, the
+# one other three-way weighting in the report, Table 2, for a different quantity); WG99 mixes branch probabilities
 # by weighted mean (printed p18), so the branch cdfs are mixed with the weights.
 wg99_alpha_branches = (0.3, 0.5, 0.7)
 wg99_alpha_weights = (0.2, 0.6, 0.2)
 wg99_alternative_weights = {"equal": (1 / 3, 1 / 3, 1 / 3), "0.2/0.5/0.3": (0.2, 0.5, 0.3)}
 assert abs(sum(wg99_alpha_weights) - 1) < 1e-12 and all(abs(sum(w) - 1) < 1e-12 for w in wg99_alternative_weights.values())
-# falsification: the dates by which the fitted-alpha InSAR model's conditional chance of NO event (its survival,
-# 1 - the conditional cdf) falls to these levels; no event by then rejects that model at 1 - level
+# falsification: the dates by which the conditional probability of no event under the fitted-alpha InSAR model (its
+# survival, 1 - the conditional cdf) falls to these levels; no event by then rejects that model at 1 - level
 falsification_levels = (0.05, 0.01)
 
-# the wet season, (first month, last month): ONE definition with 10_rain_seasonality's onset count (Dani 2026-10-05:
-# October to April), TulePond_filepaths.wet_season_months (imported above: a missing value stops the import).
+# the wet season, (first month, last month), October to April: the same definition as the onset count of
+# 10_rain_seasonality, TulePond_filepaths.wet_season_months (imported above: a missing value stops the import).
 # forecast_wet_season (its dates in the coming water year) is set once the last observation is read, cell [8].
 wet_season_source = "TulePond_filepaths.wet_season_months"
 assert len(wet_season_first_last) == 2 and all(int(m) == m and 1 <= m <= 12 for m in wet_season_first_last), \
@@ -179,9 +165,9 @@ for k in range((last_wet_month - first_wet_month) % 12 + 1):
     wet_season_months.append((first_wet_month - 1 + k) % 12 + 1)
 wet_months_text = f"{calendar.month_abbr[first_wet_month]}-{calendar.month_abbr[last_wet_month]}"     # e.g. 'Oct-Apr'
 
-# the prediction statement's LOCATION and MAGNITUDE: 04's measured extents and the paper's band stack
-magnitude_band_pct = int(round(100 * paper_band_frac))   # 04's band_main (TulePond_filepaths paper_band_frac 0.90): the peak slip zone the steps are quoted on
-magnitude_band = f"band{magnitude_band_pct}"      # 04's name for it (section_lengths.csv row tulepond_band90, keys 04_band90_*)
+# location and magnitude of the prediction statement: the measured extents of 04 and the band stack of the paper
+magnitude_band_pct = int(round(100 * paper_band_frac))   # band_main of 04 (TulePond_filepaths paper_band_frac 0.90): the peak slip zone on which the steps are quoted
+magnitude_band = f"band{magnitude_band_pct}"      # its name in 04 (section_lengths.csv row tulepond_band90, keys 04_band90_*)
 
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 section_lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
@@ -232,43 +218,43 @@ def wet_season_of(wy):
     return first.strftime("%Y-%m-%d"), last.strftime("%Y-%m-%d")
 
 # %% [markdown]
-# ## [7] Load: the event catalogues, the forecast dates and grid, 10's rain summary
+# ## [7] Load: the event catalogues, the forecast dates and grid, the rainfall summary of 10
 #
 # The catalogues: InSAR events from 04 (window `onset_lo` to `onset_hi`; `onset_lo` is
 # the last acquisition before the step); the HRKT array events from 09, all from the bimonthly era
 # (09 runs the detector only there), whose windows of `aa_dense_window_days` (130 d) or less resolve the
 # season (asserted); and the merged record, the bimonthly-era array events and the InSAR events, with the
 # years between the last array event (2006) and the first InSAR event (2017) treated as unobserved
-# (annual surveys from mid-2007): no interval is formed across them, the clock simply restarts with
-# the first InSAR detection. There are no array detections after 2006.
+# (annual surveys from mid-2007): no interval is formed across them, and the record restarts with
+# the first InSAR detection.
 #
 # The forecast grid (daily) is derived here: it starts on the first 1 January after the last InSAR onset
 # window opened (`onset_lo`; every conditional curve is zero until the last observation, which must lie on the grid,
 # asserted) and ends on the 1 January after the last observation plus `grid_span_means` times the
 # longest mean interval of the four catalogues (point onsets: window midpoints).
 #
-# 10's `rain_conditioning_summary.csv` gives part (3) of the prediction statement and the last Fremont
-# day of its data line (read, never recomputed here).
+# `rain_conditioning_summary.csv` of 10_rain_seasonality gives part (3) of the prediction statement and the
+# last Fremont day of its data line (read, not recomputed here).
 
 # %%
 # [8]
 creep_events = pd.read_csv(events_file)
 insar_events = creep_events[creep_events.segment == "TULEPOND"].sort_values("onset_lo").reset_index(drop=True)
-insar_events["onset_mid"] = 0.5 * (insar_events.onset_lo + insar_events.onset_hi)     # as 09's: sort key and plot position only
+insar_events["onset_mid"] = 0.5 * (insar_events.onset_lo + insar_events.onset_hi)     # as in 09: sort key and plot position only
 aa_dense = pd.read_csv(aa_events_file)
 assert (aa_dense.window_days <= resolvable_days).all(), f"09 returned an array window longer than {resolvable_days} d"
 # every catalogue carries a `src` column; an interval is only formed between two events of the same source, so the
-# merged catalogue never bridges 2006 to 2017, when the arrays were surveyed annually and the section was unobserved
-# by the clock's standard (Dani, 2026-09-24). The clock restarts with the first InSAR detection.
+# merged catalogue does not bridge 2006 to 2017, when the arrays were surveyed annually and the section is treated
+# as unobserved. The record restarts with the first InSAR detection.
 insar_events = insar_events.assign(src="InSAR")
 aa_dense = aa_dense.assign(src="AA")
 merged_events = pd.concat([aa_dense[["onset_lo", "onset_hi", "onset_mid", "src"]], insar_events[["onset_lo", "onset_hi", "onset_mid", "src"]]])
 merged_events = merged_events.sort_values("onset_mid").reset_index(drop=True)
 # name -> (catalogue, drop the Loma Prieta-spanning interval?); the combined record also leaves out the Loma
-# Prieta-spanning interval (Dani, 2026-09-29)
+# Prieta-spanning interval
 catalogues = {"A_insar": (insar_events, False), "B_aa_dense": (aa_dense, False), "B_aa_dense_noLP": (aa_dense, True),
               "C_merged": (merged_events, True)}
-# each catalogue's key in the registry and the files: B_aa_dense keeps the Loma Prieta interval (withlp), B_aa_dense_noLP
+# the key of each catalogue in the registry and the files: B_aa_dense keeps the Loma Prieta interval (withlp), B_aa_dense_noLP
 # leaves it out (nolp); WGCEP 1999 ran its BPT with and without the stress-interaction clock changes in parallel (p17)
 record_keys = {"A_insar": "insar", "B_aa_dense": "aa_dense_withlp", "B_aa_dense_noLP": "aa_dense_nolp", "C_merged": "merged"}
 n_insar_events = len(insar_events)
@@ -276,7 +262,7 @@ n_aa_events = len(aa_dense)
 print(f"InSAR {n_insar_events} events; array bimonthly era {n_aa_events} events (windows <= {resolvable_days} d); "
       f"merged {len(merged_events)} events with 2006 to 2017 unobserved")
 
-# the last date the data vouch for: the end of the fault-parallel series (03), i.e. the last acquisition seen by both tracks
+# the end of the InSAR record: the end of the fault-parallel series (03), i.e. the last acquisition seen by both tracks
 data_end_yr = float(pd.read_csv(fp_ts_file, index_col=0, nrows=1).columns.astype(float).max())
 data_end = (decyear_to_date(data_end_yr)[0] + pd.Timedelta(hours=12)).strftime("%Y-%m-%d")     # the columns are decimal years to 4 places: round to the day
 # the reference date of the forecast: the last observation with no event (later than the record end)
@@ -285,7 +271,7 @@ assert pd.Timestamp(forecast_last_obs_date) >= pd.Timestamp(data_end), \
 last_obs = forecast_last_obs_date
 last_obs_day_yr = float(decyear(pd.to_datetime([last_obs]))[0])        # the reference date of the forecast, on the day
 print(f"InSAR record ends {data_end} (the last acquisition on both tracks); forecast conditioned on no event through "
-      f"{last_obs} (forecast_last_obs_date, the extension check); statement first written {forecast_issue_date}")
+      f"{last_obs} (forecast_last_obs_date, the CSLC + Dolphin extension); statement first written {forecast_issue_date}")
 
 # the wet season of the forecast: the first water year whose wet season ends after the last observation
 forecast_wy = int(pd.Timestamp(last_obs).year + (1 if pd.Timestamp(last_obs).month >= 10 else 0))     # the water year of the last observation
@@ -293,7 +279,7 @@ if pd.Timestamp(wet_season_of(forecast_wy)[1]) < pd.Timestamp(last_obs):
     forecast_wy += 1
 forecast_wet_season = wet_season_of(forecast_wy)
 wet_label = f"WY{forecast_wy} wet season"            # every "P(WY<N> wet season)" and the registry keys _p_wet_wy<N>
-# one season for 10 and 11: the months 10 counted the onsets in must be these
+# the same season in 10 and 11: the months in which 10 counted the onsets must be these
 with np.load(rain_panel_file) as rain_panel_saved:
     assert "wet_season_months" in rain_panel_saved.files, f"{rain_panel_file} has no wet_season_months: rerun 10_rain_seasonality"
     rain_panel_months = [int(m) for m in rain_panel_saved["wet_season_months"]]
@@ -319,7 +305,7 @@ assert grid[0] <= last_obs_day_yr <= grid[-1], f"the last observation {last_obs}
 print(f"forecast grid {grid[0]:.0f} to {grid_end:.0f} ({grid.size} days): {grid_span_means:g} x the longest mean interval "
       f"({longest_mean_yr:.2f} yr) past the last observation")
 
-# 10's rainfall-conditioning summary (part (3) of the prediction statement, the data line)
+# the rainfall-conditioning summary of 10 (part (3) of the prediction statement, the data line)
 rain_summary = pd.read_csv(rain_summary_file, dtype=str).set_index("name")
 rain_summary_needed = ["n_insar_onsets", "onset_dowy_min", "onset_dowy_max", "onset_earliest", "onset_latest", "calendar_spread_d",
                        "cum_at_onset_min_mm", "cum_at_onset_max_mm", "frac_at_onset_min", "frac_at_onset_max", "wy_percentile_min",
@@ -331,7 +317,7 @@ assert not missing_summary, f"{rain_summary_file} lacks {missing_summary}: rerun
 
 
 def rain_value(name):
-    """One number of 10's rain summary, as a float."""
+    """One number of the rainfall summary of 10, as a float."""
     return float(rain_summary.loc[name, "value"])
 
 
@@ -350,11 +336,11 @@ assert int(rain_value("n_insar_onsets")) == n_insar_events, "10's rain summary w
 # reported, and the second must stay under `max_degenerate_fraction` (asserted).
 #
 # One random-number generator (`seed`) feeds every draw in order, so the
-# forecast reproduces exactly.
+# forecast is reproducible.
 #
-# The functions also hold the ONE definition of the interval statistics (`interval_statistics`: per onset
+# The functions also hold the definition of the interval statistics (`interval_statistics`: per onset
 # draw the sample mean and SD, ddof = 1, of the intervals, averaged over the draws; COV = SD / mean), the
-# BPT with a FIXED aperiodicity (`alpha_fixed`: only the mean is fitted and refitted, the Working Group
+# BPT with a fixed aperiodicity (`alpha_fixed`: only the mean is fitted and refitted, the Working Group
 # branches of [28]) and the fitted-alpha BPT with alpha drawn from its chi-square pivot
 # (`forecast_bpt_alpha_pivot`, [28]).
 
@@ -363,7 +349,7 @@ assert int(rain_value("n_insar_onsets")) == n_insar_events, "10's rain summary w
 def bpt_distribution(mean_yr, alpha):
     """The Brownian passage time (inverse Gaussian) distribution of mean mean_yr and aperiodicity alpha, in scipy's
     parametrisation invgauss(mu=alpha^2, scale=mean/alpha^2): its mean is mean_yr and its sd / mean is alpha (Ellsworth
-    et al. 1999, p3 density; checked numerically in audit_2026-10-05/D_forecast_vs_WG99.md (a))."""
+    et al. 1999, p3 density)."""
     return stats.invgauss(mu=alpha ** 2, scale=mean_yr / alpha ** 2)
 
 
@@ -438,7 +424,7 @@ def conditional_cdf(dist, t_last, time_since_last):
 
 
 def interval_statistics(interval_draws, n_events):
-    """THE definition of a record's interval statistics (the only one the paper quotes): for each onset draw the
+    """The definition of a record's interval statistics (the one the paper quotes): for each onset draw the
     sample mean and the sample SD (ddof = 1) of its intervals; mean_yr and sd_yr are their averages over the draws,
     cov = sd_yr / mean_yr, '+/-' = 1 SD of the intervals. Also each interval averaged over the draws (in onset
     order), and the per-draw means and SDs. interval_draws: one array of intervals (yr) per onset draw."""
@@ -496,9 +482,9 @@ def forecast(model, catalogue, drop_lp, t_last_window, ref_yr, rng, alpha_fixed=
 def forecast_bpt_alpha_pivot(catalogue, drop_lp, t_last_window, ref_yr, rng):
     """The fitted-alpha BPT forecast with the uncertainty of alpha: for each of n_timing onset draws (intervals x,
     n of them) the mean mu = mean(x), and n_boot values of alpha from the chi-square pivot of the inverse Gaussian,
-    lambda * sum(1/x - 1/mu) ~ chi2(n - 1), i.e. alpha^2 = mu * sum(1/x - 1/mu) / chi2(n - 1) (a flat-prior stand-in
-    for the Bayesian route Ellsworth et al. 1999 p7 suggest; audit_2026-10-05/D_forecast_vs_WG99.md (c)). Conditioned
-    as forecast(). Returns (mean conditional cdf on the grid, the alpha draws)."""
+    lambda * sum(1/x - 1/mu) ~ chi2(n - 1), i.e. alpha^2 = mu * sum(1/x - 1/mu) / chi2(n - 1) (a flat-prior approximation
+    to the Bayesian approach of Ellsworth et al. 1999, p7). Conditioned as forecast(). Returns (mean conditional cdf on
+    the grid, the alpha draws)."""
     cdf_sum = np.zeros_like(grid)
     alphas = []
     for _ in range(n_timing):
@@ -542,13 +528,12 @@ def prob_between(cdf, date_a, date_b):
 # %% [markdown]
 # ## [11] The five renewal models, one at a time
 #
-# Before the forecast, each model on its own, fitted once by maximum likelihood
-# to the intervals between point onsets: for catalogue A (the InSAR events) 04's step epochs
-# `onset_lo`, the last acquisition before each step; for catalogue B (the bimonthly-era array
-# events) the window midpoints `onset_mid`. The forecast below never uses these single fits (it draws the onsets within
-# their windows and bootstraps), but they show what each family assumes and what it would say. The
-# number to compare is P(onset in the WY2027 wet season (`wet_label`) | no onset by the last observation). `describe_fit`
-# prints the same lines for every model.
+# Each model on its own, fitted once by maximum likelihood to the intervals between point onsets: for
+# catalogue A (the InSAR events) the step epochs `onset_lo` of 04, the last acquisition before each step;
+# for catalogue B (the bimonthly-era array events) the window midpoints `onset_mid`. The forecast below does
+# not use these single fits (it draws the onsets within their windows and bootstraps); they illustrate the
+# form of each model. For each fit `describe_fit` prints the fitted parameters, the AICc and
+# P(onset in the WY2027 wet season (`wet_label`) | no onset by the last observation).
 
 # %%
 # [12]
@@ -588,13 +573,11 @@ single_fits = {}          # (catalogue, model) -> fitted distribution, for the c
 # %% [markdown]
 # ### [13] Exponential: the Poisson null
 #
-# One parameter, the mean interval. The hazard rate (the chance of an onset in
-# the next instant, given none yet) is constant: the fault has no memory of
-# when it last slipped, so the ~1.7 yr between the last (2024-25) event and the
-# last observation changes nothing. This is the "no clock" null every time-dependent forecast is
-# measured against (WGCEP 1988; Ellsworth et al. 1999). With the InSAR mean of
-# 1.97 yr it gives a 22 % chance of an onset in any given half-year
-# (1 - exp(-0.5 / 1.97)), whenever that half-year is.
+# One parameter, the mean interval. The hazard rate (the probability of an onset in
+# the next instant, given none yet) is constant, so the time elapsed since the last
+# event does not change the forecast. This is the time-independent null model against which
+# time-dependent forecasts are compared (WGCEP 1988; Ellsworth et al. 1999). The probability
+# of an onset in any interval of length T is 1 - exp(-T / mean).
 
 # %%
 # [14]
@@ -607,9 +590,8 @@ single_fits[("B", "exponential")] = describe_fit("exponential", array_intervals,
 #
 # The logarithm of the interval is Gaussian: two parameters, the median
 # interval and the spread of the logarithm. The hazard rises after the last
-# event, peaks near the median, then FALLS for long elapsed times, so an event
-# that is very overdue is treated as less likely, not more. Nishenko and
-# Buland (1987) introduced it for earthquake recurrence and the first Working
+# event, peaks near the median, then decreases for long elapsed times. Nishenko and
+# Buland (1987) introduced it for earthquake recurrence, and the Working
 # Group on California Earthquake Probabilities (1988, 1990) used it.
 
 # %%
@@ -622,11 +604,11 @@ single_fits[("B", "lognormal")] = describe_fit("lognormal", array_intervals, "B 
 # ### [17] Weibull: the ageing model
 #
 # Two parameters, a scale and a shape k. The hazard is a power of the elapsed
-# time, t to the (k - 1): k = 1 is the exponential, k > 1 means the chance
-# keeps rising the longer the fault waits (ageing, as in reliability
-# engineering, where the family comes from), without limit. Hagiwara (1974)
-# applied it to earthquakes; Utsu (1984) compared it with the others. A large
-# k is a very regular clock.
+# time, t to the (k - 1): k = 1 is the exponential, and for k > 1 the hazard
+# increases without limit with elapsed time (ageing, as in reliability
+# engineering, where the family originates). Hagiwara (1974)
+# applied it to earthquakes; Utsu (1984) compared it with the other models. A large
+# k corresponds to a regular recurrence.
 
 # %%
 # [18]
@@ -639,16 +621,14 @@ single_fits[("B", "weibull")] = describe_fit("weibull", array_intervals, "B arra
 #
 # The inverse-Gaussian distribution of the first time a steadily loaded state
 # variable, perturbed by Brownian noise, reaches a fixed threshold (Matthews,
-# Ellsworth and Reasenberg 2002). Two parameters: the mean interval and the
-# aperiodicity alpha, which is the CoV of the intervals. The hazard rises
+# Ellsworth and Reasenberg 2002). Two parameters: the mean interval mu and the
+# aperiodicity alpha, the CoV of the distribution. The hazard rises
 # after the last event to a peak and then declines to a finite asymptotic
 # rate, 1 / (2 mu alpha^2), at times long compared to the mean (Ellsworth et
 # al. 1999, p4: "It grows to a peak and then declines to a finite asymptotic
-# rate"), so an overdue event stays possible rather than certain or fading.
-# At the InSAR record's fitted alpha (~0.035) that asymptote is ~200 /yr: the
-# fitted BPT is then a near-deterministic clock. It is the model of WGCEP 1999
-# (with alpha 0.3, 0.5, 0.7 as branches, [28]), WGCEP 2003 and UCERF3 (Field et
-# al. 2015), and the model the prediction statement quotes.
+# rate"). It is the model of WGCEP 1999 (with alpha 0.3, 0.5, 0.7 as branches,
+# [28]), WGCEP 2003 and UCERF3 (Field et al. 2015), and the model quoted in the
+# prediction statement.
 
 # %%
 # [20]
@@ -659,12 +639,10 @@ single_fits[("B", "bpt")] = describe_fit("bpt", array_intervals, "B array")
 # %% [markdown]
 # ### [21] Gaussian: the plain clock
 #
-# Mean and standard deviation of the intervals, the arithmetic the text
-# quotes (next = last + mean, plus or minus the sd). Not a recurrence model in
-# the forecasting literature: its hazard rises without bound and it allows
-# negative intervals in principle. It is here because with four intervals the
-# other families cannot be told apart, and the reader should see that the
-# plain clock says the same thing they do.
+# Mean and standard deviation of the intervals, the arithmetic of the closed-form
+# clock (next = last + mean, plus or minus the sd). It is not a standard recurrence
+# model in the forecasting literature: its hazard rises without bound and it allows
+# negative intervals. It is included for comparison with the closed-form clock of [30].
 
 # %%
 # [22]
@@ -675,12 +653,11 @@ single_fits[("B", "gaussian")] = describe_fit("gaussian", array_intervals, "B ar
 # %% [markdown]
 # ### [23] The five side by side
 #
-# Left: the interval density of each model fitted to the InSAR intervals, the
-# four intervals as ticks. Middle: the hazard rate, the chance of an onset per
-# year given none yet, against time since the last event; this is where the
-# families differ, and the dotted line marks where we are at the last observation.
-# Right: the conditional forecast from each single fit, the wet season shaded.
-# The array fits are the thin lines.
+# (A) The interval density of each model fitted to the InSAR intervals, with the
+# four intervals as ticks. (B) The hazard rate, the probability of an onset per
+# year given none yet, against time since the last event; the dotted line marks
+# the elapsed time at the last observation. (C) The conditional forecast from each
+# single fit, with the wet season shaded. The array fits are the thin lines.
 
 # %%
 # [24]
@@ -733,11 +710,11 @@ plt.show()
 # %% [markdown]
 # ## [25] The repeat intervals and the forecast: onsets drawn within their windows (Fig 3C, 3D and the registered window)
 #
-# Now the real thing: for each catalogue, 400 draws of the onsets within their windows; their intervals give
-# THE interval statistics of the record (`interval_statistics`: mean and SD, ddof = 1, per draw, averaged;
-# COV = SD / mean; Fig 3C draws them; written to `recurrence_intervals.csv`), and the AICc of each model on
-# the median draw. Then for each model 400 more draws, each fitted and bootstrapped, conditioned on no event
-# through the last observation. The onset draws are kept: the InSAR clock of [30] reads them.
+# For each catalogue, 400 draws of the onsets within their windows; their intervals give the interval
+# statistics of the record (`interval_statistics`: mean and SD, ddof = 1, per draw, averaged;
+# COV = SD / mean; drawn in Fig 3C; written to `recurrence_intervals.csv`), and the AICc of each model on
+# the median draw. Then for each model 400 further draws, each fitted and bootstrapped, conditioned on no event
+# through the last observation. The onset draws are kept for the InSAR clock of [30].
 
 # %%
 # [26]
@@ -746,7 +723,7 @@ t_last_window = (float(insar_events.onset_lo.iloc[-1]), float(insar_events.onset
 forecast_rows = []
 forecast_curves = {}
 onset_draws = {}                  # catalogue -> (n_timing, n_events) onset draws of the interval statistics (the clock reads A_insar's)
-interval_stats = {}               # catalogue -> interval_statistics(...): the ONE definition of mean, SD, COV
+interval_stats = {}               # catalogue -> interval_statistics(...): the definition of mean, SD, COV
 stats_lines = ["11 FORECAST", "", "REPEAT INTERVALS AND RENEWAL FORECAST",
                f"last event onset window {ymd(t_last_window[0])} to {ymd(t_last_window[1])}; reference date (last observation) {last_obs}; InSAR record end {data_end}; "
                f"{n_timing} timing draws x {n_boot} bootstrap refits; {wet_label} {forecast_wet_season[0]}..{forecast_wet_season[1]} ({wet_months_text}); "
@@ -799,7 +776,7 @@ for cat_name, (catalogue, drop_lp) in catalogues.items():
 forecasts = pd.DataFrame(forecast_rows)
 interval_table = pd.DataFrame(interval_rows)
 interval_table.to_csv(os.path.join(out_dir, "recurrence_intervals.csv"), index=False, float_format="%.4f")
-# the records the text quotes have the interval counts the review lists (audit D section 6): a changed catalogue must be seen
+# the records quoted in the text have these event and interval counts: a changed catalogue stops the notebook
 expected_counts = {"A_insar": (5, 4), "B_aa_dense": (9, 8), "B_aa_dense_noLP": (9, 7), "C_merged": (14, 11)}
 for cat_name, (n_events_expected, n_intervals_expected) in expected_counts.items():
     got = (interval_stats[cat_name]["n_events"], interval_stats[cat_name]["n_intervals"])
@@ -820,23 +797,23 @@ print("\n".join(stats_lines))
 # %% [markdown]
 # ## [27] The Working Group aperiodicities, the uncertainty of the fitted alpha, the falsification dates
 #
-# **WGCEP 1999 branches.** For each record, the BPT forecast of [26] with alpha FIXED at each of
+# **WGCEP 1999 branches.** For each record, the BPT forecast of [26] with alpha fixed at each of
 # `wg99_alpha_branches` (0.3, 0.5, 0.7; OFR 99-517 printed p16), only the mean fitted to each onset draw and
 # refitted in the bootstrap, each branch on its own generator started from `seed` (the same onset and bootstrap
 # draws for the three branches). The branches' conditional cdfs are mixed with `wg99_alpha_weights` (0.2, 0.6,
-# 0.2: the report's three-way branch convention, App. C printed p31; the alpha weights themselves are not
-# printed); the mixture's P(wet season) under the alternative weightings is printed and its range registered, so
-# the insensitivity to the weights shows.
+# 0.2: the three-way branch convention of the report, App. C printed p31; the alpha weights themselves are not
+# printed); the mixture's P(wet season) under the alternative weightings is printed and its range registered.
 #
-# **The fitted alpha and its uncertainty (InSAR).** Four intervals constrain alpha only loosely: its 95 % CI from
-# the chi-square pivot of the inverse Gaussian (lambda * sum(1/x - 1/mean) ~ chi2(n - 1), on the intervals averaged
-# over the onset draws). The fitted-alpha forecast with alpha drawn from that pivot (`forecast_bpt_alpha_pivot`)
-# carries this uncertainty, which [26]'s parametric bootstrap cannot (its refits stay near the biased-low MLE).
+# **The fitted alpha and its uncertainty (InSAR).** The 95 % CI of alpha from the chi-square pivot of the
+# inverse Gaussian (lambda * sum(1/x - 1/mean) ~ chi2(n - 1), on the intervals averaged over the onset draws).
+# The fitted-alpha forecast with alpha drawn from that pivot (`forecast_bpt_alpha_pivot`) carries this
+# uncertainty, which the parametric bootstrap of [26] does not (its refits stay near the maximum-likelihood
+# estimate, which is biased low).
 #
-# **Falsification.** The fitted-alpha InSAR forecast of [26] is a near-deterministic clock: the dates by which its
-# conditional survival (the chance of no event yet, 1 - the conditional cdf) falls to `falsification_levels`
-# (5 % and 1 %). No event by then rejects that model at 95 % and 99 %. (The 5 % date is the forecast's 95 %
-# quantile, `11_insar_bpt_q95`.)
+# **Falsification.** For the fitted-alpha InSAR forecast of [26], the dates by which its conditional survival
+# (the probability of no event yet, 1 - the conditional cdf) falls to `falsification_levels` (5 % and 1 %).
+# No event by then rejects that model at 95 % and 99 %. (The 5 % date is the 95 % quantile of the forecast,
+# `11_insar_bpt_q95`.)
 
 # %%
 # [28]
@@ -918,9 +895,9 @@ print("\n".join(wg99_lines))
 # %% [markdown]
 # ## [29] The InSAR clock in closed form
 #
-# The plain arithmetic the text quotes, on the SAME `n_timing` draws of the InSAR onsets as the interval
-# statistics of [26] (`onset_draws["A_insar"]`; until 2026-10-06 a second generator with the same seed made
-# identical draws): the mean and sd of the intervals, next = last + mean, and a t-based 95 % prediction
+# The closed-form arithmetic, on the same `n_timing` draws of the InSAR onsets as the interval
+# statistics of [26] (`onset_draws["A_insar"]`): the mean and sd of the intervals, next = last + mean, and a
+# t-based 95 % prediction
 # interval for a single new interval, mean +/- t(n-1) s sqrt(1 + 1/n). The registered numbers are the
 # averages over the draws; the spread of the next date over the draws is printed alongside. The mean and
 # sd are the interval statistics of [26] (asserted equal). The clock is not conditioned on the quiet time:
@@ -984,14 +961,13 @@ print("\n".join(clock_lines))
 #
 # Left column on one time axis: A) the HRKT record with the bimonthly-era detections shaded, the
 # annual-survey years greyed, the InSAR stack tied to it and the InSAR onsets dashed, HRKT since 2015
-# as an inset (HGIL dropped, Dani 2026-10-01); B) the onset windows on the water year over the 7-day
-# rain (from 10_rain_seasonality). Right column: C) the repeat intervals of the three catalogues the
-# text quotes (the array and combined records leave out the interval spanning Loma Prieta): each
-# interval as a bar over its possible range (window to window, no point), the mean and SD of the
-# record marked and written, the ONE definition of [26] (`interval_statistics`; registered as
-# `11_<rec>_interval_mean_yr`, `_sd_yr`); D) the conditional probability of the next onset, BPT with the
-# fitted alpha, one line per catalogue, the 2026-27 wet season shaded (unchanged 2026-10-06: the Working
-# Group branches are not drawn). The inset of A ends at the data end (`data_end`).
+# as an inset; B) the onset windows on the water year over the 7-day rainfall (from 10_rain_seasonality).
+# Right column: C) the repeat intervals of the three catalogues quoted in the text (the array and combined
+# records leave out the interval spanning Loma Prieta): each interval as a bar over its possible range
+# (window to window), with the mean and SD of the record marked and written, as defined in [26]
+# (`interval_statistics`; registered as `11_<rec>_interval_mean_yr`, `_sd_yr`); D) the conditional
+# probability of the next onset, BPT with the fitted alpha, one line per catalogue, the 2026-27 wet season
+# shaded (the Working Group branches are not drawn). The inset of A ends at the data end (`data_end`).
 
 # %%
 # [32]
@@ -1001,7 +977,7 @@ colours = {"A_insar": insar_colour, "B_aa_dense_noLP": array_colour, "C_merged":
 labels = {"A_insar": "InSAR", "B_aa_dense_noLP": "A. Array", "C_merged": "Combined"}
 label_pt = 7
 
-# the left column's inputs, saved by 09 and 10
+# the inputs of the left column, saved by 09 and 10
 rain_panel = np.load(rain_panel_file)
 windows = pd.read_csv(windows_file)
 aa_stacks = pd.read_csv(aa_stacks_file)
@@ -1038,7 +1014,7 @@ def place(x, y, w, h):
 
 
 fig = plt.figure(figsize=(fig_w, fig_h))
-# all four panels the same height (Dani 2026-10-01); the row gap leaves room for C's x label above D's title
+# all four panels the same height; the row gap leaves room for the x label of C above the title of D
 left_x = 0.50
 left_w = 4.05
 right_x = 5.20
@@ -1082,8 +1058,8 @@ for i in legend_order:
 ax.legend(ordered_handles, ordered_labels, fontsize=label_pt, loc="lower right", frameon=True,
           facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{A}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
-ax.set_xlim(x0, x1)                                  # year labels but no "Year" title: it fills the row gap (Dani 2026-10-01)
-# HRKT since 2015 as one larger inset (Dani 2026-10-01: HGIL dropped), zeroed at its first survey
+ax.set_xlim(x0, x1)                                  # year labels but no "Year" title (no space in the row gap)
+# HRKT since 2015 as an inset, zeroed at its first survey
 zoom_t0 = 2015.0
 recent = hrkt[hrkt.year >= zoom_t0]
 zero = float(recent.cum_mm.iloc[0])
@@ -1092,7 +1068,7 @@ inset.plot(recent.year, recent.cum_mm - zero, "o", ms=1.6, color=array_colour, l
 inset.plot(hrkt_stack.date, hrkt_stack.slip_mm - zero, "-", lw=0.7, color=insar_colour)
 for step_epoch in windows.query("src == 'insar'").onset_lo:
     inset.axvline(step_epoch, color="0.7", lw=0.5, ls="--", zorder=0)
-inset.set_xlim(zoom_t0, data_end_yr)                 # to the end of the InSAR record (until 2026-10-06 a typed 2026.2)
+inset.set_xlim(zoom_t0, data_end_yr)                 # to the end of the InSAR record
 inset.set_xticks([2016, 2018, 2020, 2022, 2024])
 inset.tick_params(labelsize=6, length=1.5, pad=1.5)
 inset.text(0.04, 0.95, "HRKT since 2015", transform=inset.transAxes, fontsize=label_pt, va="top")
@@ -1123,7 +1099,7 @@ ax.legend(handles=[Line2D([], [], color="0.15", lw=1.4, label="Alignment array o
           frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
 ax.set_title(r"$\bf{B}$  Onset windows on the water year, over 7-day rainfall", loc="left", fontsize=8)
 ax.set_xlim(x0, x1)
-for ax in (ax_a, ax_b):                              # Roland: annual ticks, years labelled every 5 (B; A shares the axis)
+for ax in (ax_a, ax_b):                              # annual ticks, years labelled every 5 (B; A shares the axis)
     ax.xaxis.set_major_locator(MultipleLocator(5))
     ax.xaxis.set_minor_locator(MultipleLocator(1))
 
@@ -1143,11 +1119,11 @@ for j, cat_name in enumerate(shown):
     ax.hlines(rows_y, shortest, longest, color=colours[cat_name], lw=1.6)
     mean_yr = interval_stats[cat_name]["mean_yr"]
     sd_yr = interval_stats[cat_name]["sd_yr"]
-    assert interval_stats[cat_name]["n_intervals"] == len(shortest), f"{cat_name}: Fig 3C draws {len(shortest)} intervals, [26] has another count"
+    assert interval_stats[cat_name]["n_intervals"] == len(shortest), f"{cat_name}: Fig 3C draws {len(shortest)} intervals, [26] has a different count"
     fig3c_numbers[cat_name] = (mean_yr, sd_yr, len(shortest))
     ax.plot([mean_yr, mean_yr], [j - 0.3, j + 0.3], "-", color=colours[cat_name], lw=1.5)
     ax.text(mean_yr, j + 0.36, f"{mean_yr:.2f} $\\pm$ {sd_yr:.2f} yr", ha="center", va="top", fontsize=7, color=colours[cat_name])
-    tick_labels.append(f"{labels[cat_name]}\n(n = {len(shortest)})")      # the spans are read from A (Dani 2026-10-01)
+    tick_labels.append(f"{labels[cat_name]}\n(n = {len(shortest)})")      # the record spans are shown in A
 ax.set_yticks(range(len(shown)))
 ax.set_yticklabels(tick_labels, fontsize=label_pt, linespacing=1.1)
 ax.set_ylim(len(shown) - 0.35, -0.6)          # inverted: first catalogue on top; room under the last bar for its number
@@ -1162,7 +1138,7 @@ ax.axvspan(wet_years[0], wet_years[1], color=wet_shade_colour, alpha=0.15, lw=0)
 for cat_name in shown:
     ax.plot(grid, forecast_curves[(cat_name, "bpt")], "-", color=colours[cat_name], lw=1.2, label=labels[cat_name])
 ax.axvline(last_obs_day_yr, color="0.3", lw=0.7, ls="-.")
-ax.text(last_obs_day_yr - 0.06, 0.98, "Last observation", fontsize=label_pt, color="0.3", va="top", ha="right", rotation=90)   # left of the line: the InSAR curve rises just right of it
+ax.text(last_obs_day_yr - 0.06, 0.98, "Last observation", fontsize=label_pt, color="0.3", va="top", ha="right", rotation=90)   # left of the line, clear of the InSAR curve
 ax.set_xlim(2025.5, 2030.0)
 ax.xaxis.set_major_locator(MultipleLocator(1))
 ax.set_ylim(0, 1.02)
@@ -1183,22 +1159,22 @@ plt.show()
 # %% [markdown]
 # ## [33] The prediction statement
 #
-# Built from the numbers above in a fixed template, so the statement the paper
-# makes is generated, not typed. TIME WINDOW part (3), the calendar window of the onsets, and the
-# Fremont gauge's last day are 10_rain_seasonality's (`rain_conditioning_summary.csv`). LOCATION is 04's `section_lengths.csv`: the fault length hosting the
-# events (`tulepond_creep_length`) and the peak slip zone (`tulepond_band90`). MAGNITUDE is the paper's
-# step sizes, 04's 90 % band stack (`04_band90_step_<yr>_mm` with their 95 % CIs), read back from the
-# registry rows of 04's latest run; that run must be newer than `section_lengths.csv` and must have
-# registered the same onset windows as `creep_events.csv` (both asserted), so the statement cannot mix
-# two runs of 04. These are 04's numbers: nothing here is registered again.
+# Built from the numbers above in a fixed template, so that the statement is generated, not typed. Part (3)
+# of the time window (the calendar window of the onsets) and the last day of the Fremont gauge come from
+# 10_rain_seasonality (`rain_conditioning_summary.csv`). The location comes from `section_lengths.csv` of 04:
+# the fault length hosting the events (`tulepond_creep_length`) and the peak slip zone (`tulepond_band90`).
+# The magnitude is the step sizes of the paper, the 90 % band stack of 04 (`04_band90_step_<yr>_mm` with their
+# 95 % CIs), read back from the registry rows of the latest run of 04; that run must be newer than
+# `section_lengths.csv` and must have registered the same onset windows as `creep_events.csv` (both asserted),
+# so that the statement does not mix two runs of 04. These numbers belong to 04 and are not registered again here.
 
 # %%
 # [34]
-# LOCATION: 04's measured extents
+# location: the measured extents of 04
 section_lengths = pd.read_csv(section_lengths_file).set_index("name")
 creep_length = section_lengths.loc["tulepond_creep_length"]
 peak_zone = section_lengths.loc[f"tulepond_{magnitude_band}"]
-# MAGNITUDE: the band-stack steps of 04's latest run, from the registry
+# magnitude: the band-stack steps of the latest run of 04, from the registry
 registry_rows = pd.read_csv(common_paths["registry_csv"], dtype=str)
 rows_04 = registry_rows[registry_rows.notebook == "04_event_detection"]
 assert len(rows_04), "the registry has no rows of 04_event_detection"
@@ -1207,14 +1183,14 @@ rows_04 = rows_04[rows_04.run_id == last_run_04].set_index("key")
 run_04_time = pd.Timestamp(rows_04.timestamp.min())          # the registry stamps local time to the second
 section_lengths_time = pd.Timestamp.fromtimestamp(np.floor(os.path.getmtime(section_lengths_file)))     # local time, as the registry
 assert run_04_time >= section_lengths_time - pd.Timedelta(seconds=1), \
-    f"04's latest registry run ({run_04_time}) is older than {section_lengths_file}: 04 stopped before registering; rerun it"
+    f"the latest registry run of 04 ({run_04_time}) is older than {section_lengths_file}: 04 stopped before registering; rerun it"
 event_labels = []
 for onset_lo, onset_hi in zip(insar_events.onset_lo, insar_events.onset_hi):
-    label = f"{int(onset_lo)}"                     # 04's key label: the year of the step epoch
+    label = f"{int(onset_lo)}"                     # key label in 04: the year of the step epoch
     event_labels.append(label)
     assert np.isclose(float(rows_04.loc[f"04_onset_lo_{label}", "value"]), onset_lo, rtol=0, atol=1e-4) and \
         np.isclose(float(rows_04.loc[f"04_onset_hi_{label}", "value"]), onset_hi, rtol=0, atol=1e-4), \
-        f"04's registered {label} window is not the one in {events_file}"
+        f"the {label} window registered by 04 is not the one in {events_file}"
 band_steps = []
 band_ci_lo = []
 band_ci_hi = []
@@ -1251,14 +1227,13 @@ def wg99_text(cat_name):
             f"{' / '.join(branch_p)}), 5-95% {mixture_row.q05} .. {mixture_row.q95}")
 
 
-# the tightest rule A / B lag spreads (10) beside the calendar spread of the onsets: printed side by side, no verdict
-# (they differ by days, within the one-day resolution of a rain day)
+# the lag spreads of the tightest rules A and B (10) beside the calendar spread of the onsets, printed side by side
 rules_text = (f"      tightest rainfall rules (10_rain_seasonality): lag spread A {rain_value('ruleA_best_spread_d'):.0f} d, "
               f"B {rain_value('ruleB_best_spread_d'):.0f} d, against the calendar spread of the onsets {rain_value('calendar_spread_d'):.0f} d")
 statement_lines = [
     "TULE POND CREEP-EVENT PREDICTION STATEMENT (generated by notebook 11_forecast)",
     f"first written {forecast_issue_date}; conditioned on no event through the last observation, {last_obs} "
-    f"(descending CSLC + Dolphin extension check, extension_2026-09/RESULT.md); "
+    f"(descending CSLC + Dolphin extension of the InSAR record); "
     f"data: OPERA DISP-S1 to {data_end} (the end of the paper's InSAR record), HRKT array events to {aa_dense.onset_hi.max():.2f} (bimonthly surveys to {dense_era_end:.2f}), "
     f"Fremont GHCN gauge to {rain_summary.loc['fremont_last_valid_day', 'value']} (10_rain_seasonality)",
     f"the renewal-model windows below run from the last observation; nothing is claimed for the months after {last_obs}", "",
@@ -1329,7 +1304,7 @@ sidecar = REG.sidecar("11_forecast", stats_lines + ["", *statement_lines])
 REG.register("11_issue_date", forecast_issue_date, "date", 0, where="P10, M9", cell="constants", sidecar=sidecar)
 REG.register("11_data_end", data_end, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
 REG.register("11_last_obs_date", last_obs, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
-# the interval statistics: ONE definition ([26]), every record
+# the interval statistics ([26]), every record
 for cat_name, key in record_keys.items():
     record = interval_stats[cat_name]
     REG.register(f"11_{key}_interval_mean_yr", record["mean_yr"], "yr", 2, where="P10, Fig3", cell="intervals", sidecar=sidecar)
