@@ -11,7 +11,6 @@ Functions used by a single notebook are written in that notebook; the functions 
 notebooks or scripts. Most have a test in tests/.
 
 Sections
-    run_command          run a MintPy / GMT command-line tool and print it
     Disk space, dates    disk-space check before downloads; decimal years
     Read-Write           h5py readers and writers for MintPy files
     Projections          LOS unit vector, fault-parallel design matrix, decomposition
@@ -40,26 +39,7 @@ import pandas as pd                # Tables
 import h5py                        # MintPy HDF5 products
 from scipy import stats            # linregress
 from scipy.ndimage import gaussian_filter1d      # gaussian_smooth_km
-import geopy.distance              # geodesic distance along the fault trace
 import pyproj                      # lon/lat <-> UTM for the strike frame (strike_frame)
-
-
-def run_command(cmd):
-    """Run a MintPy or GMT command-line tool (cmd: list of program and arguments)
-    from the running Python environment, printing the command first so the
-    notebook output records what ran.
-
-    The tool is looked up next to the running Python (the environment's bin/),
-    so the tool of the same environment is used in non-interactive shells.
-    Raises CalledProcessError on a non-zero exit. Source: written for this project.
-    """
-    import sys
-    env_bin = os.path.dirname(sys.executable)
-    exe = os.path.join(env_bin, cmd[0])
-    if os.path.exists(exe):
-        cmd = [exe] + list(cmd[1:])
-    print("Running:", " ".join(str(c) for c in cmd))
-    subprocess.run([str(c) for c in cmd], check=True)
 
 
 # ------------------------------
@@ -145,74 +125,6 @@ def load_h5_attrs(h5_file):
     """Return the MintPy attributes of a file as a plain dict of strings."""
     with h5py.File(h5_file, "r") as hf:
         return {k: (v.decode() if isinstance(v, bytes) else str(v)) for k, v in hf.attrs.items()}
-
-
-def load_h5_data(h5_file, dataset, to_mm=False):
-    """Read one 2-D dataset from a MintPy file as float64, with zeros set to
-    NaN (MintPy writes 0 for no-data). `to_mm=True` multiplies by 1000 (m to mm).
-
-    Returns (array, attrs).
-    """
-    with h5py.File(h5_file, "r") as hf:
-        arr = np.array(hf[dataset][:]).astype(np.float64)
-        attrs = {k: (v.decode() if isinstance(v, bytes) else str(v)) for k, v in hf.attrs.items()}
-    arr[arr == 0] = np.nan
-    if to_mm:
-        arr = arr * 1000.0
-    return arr, attrs
-
-
-def load_geometry(geo_file):
-    """Read incidenceAngle and azimuthAngle (degrees) from geometryGeo.h5 as
-    float64. Zeros (no-data) become NaN."""
-    inc, _ = load_h5_data(geo_file, "incidenceAngle")
-    azi, _ = load_h5_data(geo_file, "azimuthAngle")
-    return inc, azi
-
-
-def grid_coords(attrs):
-    """Pixel-centre X and Y coordinate arrays (metres, EPSG in attrs) from the
-    MintPy attributes X_FIRST/Y_FIRST/X_STEP/Y_STEP/WIDTH/LENGTH."""
-    x0, y0 = float(attrs["X_FIRST"]), float(attrs["Y_FIRST"])
-    dx, dy = float(attrs["X_STEP"]), float(attrs["Y_STEP"])
-    nx, ny = int(attrs["WIDTH"]), int(attrs["LENGTH"])
-    x = x0 + dx * np.arange(nx)
-    y = y0 + dy * np.arange(ny)
-    return x, y
-
-
-def lonlat_grid(attrs):
-    """2-D longitude and latitude arrays (deg) for a UTM-gridded MintPy product
-    (EPSG from attrs, default 32610)."""
-    import pyproj
-    epsg = int(attrs.get("EPSG", 32610))
-    x, y = grid_coords(attrs)
-    X, Y = np.meshgrid(x, y)
-    to_ll = pyproj.Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
-    lon, lat = to_ll.transform(X, Y)
-    return lon, lat
-
-
-def write_new_h5(data, out_file, src_file, dataset="velocity", extra_attrs=None):
-    """Write a 2-D array to a new MintPy-style HDF5 file, copying every
-    attribute from `src_file` so that MintPy tools (save_gmt.py, view.py)
-    read the product. `extra_attrs` are added on top (provenance).
-
-    NaN is written as 0 to match MintPy's no-data convention. Returns out_file.
-    """
-    arr = np.array(data, dtype=np.float32)
-    arr[~np.isfinite(arr)] = 0.0
-    with h5py.File(src_file, "r") as src, h5py.File(out_file, "w") as dst:
-        dst.create_dataset(dataset, data=arr)
-        for key, value in src.attrs.items():
-            dst.attrs[key] = value
-        dst.attrs["FILE_TYPE"] = dataset
-        dst.attrs["DATA_TYPE"] = "float32"
-        for key, value in (extra_attrs or {}).items():
-            dst.attrs[key] = str(value)
-    print(f"Saved {dataset} to: {out_file}")
-    return out_file
-
 
 # ------------------------------
 # Projections
@@ -353,26 +265,6 @@ def write_cpt(path, cmap_name, vmin, vmax, n=64):
 # ------------------------------
 # Along-fault axis
 # ------------------------------
-
-def along_fault_km(ft_lon, ft_lat):
-    """Along-fault distance of every trace vertex (ft_lon, ft_lat in deg, south
-    to north), in km, with zero at Point Pinole (the northern end = the last
-    row of hayward_fault_profiles.csv) and increasing southward, the published
-    along-fault convention.
-
-    Summed segment by segment along the curved trace with geodesic distances
-    (geopy), not projected onto a straight line. Source: written for this project.
-    """
-    ft_lon = np.asarray(ft_lon, dtype=float)
-    ft_lat = np.asarray(ft_lat, dtype=float)
-    if ft_lat[-1] < ft_lat[0]:
-        raise ValueError("trace must run south -> north (Point Pinole, the zero, last)")
-    seg_km = [geopy.distance.geodesic((ft_lat[i], ft_lon[i]),
-                                      (ft_lat[i + 1], ft_lon[i + 1])).km
-              for i in range(len(ft_lat) - 1)]
-    from_south = np.concatenate([[0.0], np.cumsum(seg_km)])
-    return from_south[-1] - from_south       # zero at the north end
-
 
 def lat_to_km_map(profiles_csv):
     """Return a function lat (deg) -> km from Point Pinole, by nearest vertex of

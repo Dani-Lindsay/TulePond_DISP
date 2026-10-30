@@ -11,35 +11,29 @@ it follows no published code). No function reads a path on its own: every file i
 
 Contents:
   1. Along-trace distance and the fault trace          km_from_pinole, model_trace, signed_distance_m
-  2. CSI triangular fault on the mapped trace          unrolled_mesh, wrap_fault, triangle_areas_km2
-  3. The data: fault-parallel field, noise, quadtree   look_vector, decompose_fault_parallel, los_from_steps,
+  2. The data: fault-parallel field, noise, quadtree   look_vector, decompose_fault_parallel, los_from_steps,
                                                        fault_parallel_from_steps, dist_to_trace, fault_parallel_dataset,
                                                        semivariogram_model, covariance, downsample, covariance_matrix,
-                                                       build_cd, quadtree_block_corners, build_sample_set,
-                                                       write_points_list, samples_from_arrays
-  4. Inversion on the CSI triangular fault             crossing_profile, crossing_profile_on_triangles, tie_rows,
-                                                       invert_triangles
-  5. Magnitudes and the L-curve                        moment_magnitude, potency_from_slip, lcurve_corner, lcurve_pick
-  6. Surface constraint (sensitivity tests only)       surface_pct_denominator_mm, arc_length_on_polyline,
-                                                       local_scatter_mm, tent_rows, crossing_constraint, surface_slip_data
-  7. PyLith Green's functions -> G                     read_gf_run, trace_top, build_G, load_G, build_G_los
-  8. Tent (vertex) parameterisation and inversion      TentFault, tent_fault_template, data_cd, invert_tents,
-                                                       invert_tents_multi, match_impulse_order, analytic_tent_G,
+                                                       build_cd, quadtree_block_corners, write_points_list,
+                                                       samples_from_arrays
+  3. Magnitudes and the L-curve                        moment_magnitude, lcurve_corner
+  4. Surface constraint (sensitivity tests only)       arc_length_on_polyline, local_scatter_mm, tent_rows,
+                                                       crossing_constraint, surface_slip_data
+  5. PyLith Green's functions -> G                     read_gf_run, trace_top, build_G, load_G
+  6. Tent (vertex) parameterisation and inversion      TentFault, tent_fault_template, data_cd, invert_tents,
+                                                       match_impulse_order, analytic_tent_G,
                                                        positions_fingerprint, analytic_tent_G_cached,
                                                        tent_model_setup, tent_numbers, tent_lcurve, own_corner,
                                                        uniform_slip_shape, uniform_slip_fit, profile_samples, side_deflection_mm,
-                                                       correlated_noise, materna_stress_drop_pa, strike_slip_stress_drop_pa
-  9. PyLith forward runs, materials, stress            read_forward_points, read_forward_slip, superposition_check,
-                                                       shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
-                                                       screw_dislocation_mm, median_edge_length_m, vertex_areas_m2,
-                                                       slip_weighted_stress_drop_pa, potency_extent
- 10. Provenance and running PyLith                     field_fingerprint, run_logged, ensure_product
- 11. Cross-fault steps at the crossings                crossing_steps_like
+                                                       correlated_noise, strike_slip_stress_drop_pa
+  7. PyLith materials, rigidity, extent of slip        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
+                                                       potency_extent
+  8. Provenance                                        field_fingerprint
+  9. Cross-fault steps at the crossings                crossing_steps_like
 The settings of the paper's models are in model_config.py.
 """
 import copy
 import os
-import subprocess
 import time
 
 import h5py
@@ -47,7 +41,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline, RegularGridInterpolator
 from scipy.optimize import curve_fit
-from scipy.spatial import Delaunay, cKDTree
+from scipy.spatial import cKDTree
 
 import insar_utils as utils
 
@@ -108,113 +102,7 @@ def signed_distance_m(line_x, line_y, px, py):
 
 
 # =====================================================================================================================
-# 2. CSI triangular fault on the mapped trace
-# =====================================================================================================================
-def unrolled_mesh(h_top, const_to, growth, h_bot, z_max, trace, fine_km, far_rate, smooth_iters):
-    """Triangular fault mesh in the unrolled (along-strike s, depth z) plane, km. Node rows from the surface to z_max:
-    the first row h_top deep, the row height constant down to const_to, then multiplied by `growth` per row up to
-    h_bot. Along strike the node spacing equals the row height inside fine_km (km from Point Pinole) and widens by
-    far_rate per km outside it. Delaunay triangles (slivers dropped), then smooth_iters rounds of Laplacian smoothing
-    of the interior nodes. trace = model_trace(...). Returns the nodes (n, 2: s, z in km) and the faces (m, 3).
-    Source: written for this project."""
-    arc_s, arc_total, trace_km_pp = trace["arc_s"], trace["arc_total"], trace["km_pp"]
-    row_depths = [0.0]
-    row_step = h_top
-    while row_depths[-1] < z_max:
-        row_depths.append(min(row_depths[-1] + row_step, z_max))
-        if row_depths[-1] >= const_to - 1e-9:
-            row_step = min(row_step * growth, h_bot)
-    row_depths = np.array(row_depths)
-    row_heights = np.r_[np.diff(row_depths), np.diff(row_depths)[-1]]
-
-    def spacing_at(arc_pos, row_height):
-        km_pp = np.interp(arc_pos, arc_s, trace_km_pp)
-        outside = np.maximum(0, np.maximum(fine_km[0] - km_pp, km_pp - fine_km[1]))
-        return row_height + far_rate * outside
-
-    nodes = []
-    for depth, height in zip(row_depths, row_heights):
-        row = [0.0]
-        while row[-1] < arc_total:
-            row.append(row[-1] + spacing_at(row[-1], height))
-        row = np.array(row) * arc_total / row[-1]
-        for pos in row:
-            nodes.append((pos, depth))
-    nodes = np.array(nodes)
-
-    def triangulate(pts):
-        faces = Delaunay(pts).simplices
-        area2 = np.abs((pts[faces[:, 1], 0] - pts[faces[:, 0], 0])
-                       * (pts[faces[:, 2], 1] - pts[faces[:, 0], 1])
-                       - (pts[faces[:, 2], 0] - pts[faces[:, 0], 0])
-                       * (pts[faces[:, 1], 1] - pts[faces[:, 0], 1]))
-        return faces[0.5 * area2 > 1e-6]
-
-    faces = triangulate(nodes)
-    fixed = ((nodes[:, 1] < 1e-9) | (nodes[:, 1] > z_max - 1e-9)
-             | (nodes[:, 0] < 1e-9) | (nodes[:, 0] > arc_total - 1e-9))
-    for _ in range(smooth_iters):
-        neighbours = {}
-        for tri in faces:
-            for node in tri:
-                neighbours.setdefault(node, set()).update(tri)
-        smoothed = nodes.copy()
-        for node in np.nonzero(~fixed)[0]:
-            ring = np.array(sorted(neighbours[node] - {node}))
-            smoothed[node] = nodes[ring].mean(0)
-        nodes = smoothed
-        faces = triangulate(nodes)
-    return nodes, faces
-
-
-def wrap_fault(nodes, faces, dip_deg, name, trace, frame_lonlat):
-    """The unrolled mesh (unrolled_mesh) wrapped onto the mapped trace as a csi.TriangularPatches fault (km, depth
-    positive). When dip_deg (deg) is not 90, each node is shifted east by depth / tan(dip) about the fixed surface
-    trace. Each fault holds its own copy of the faces (homogeneizeStrike reorders face rows in place). The mesh
-    (nodes, faces, arc length) is kept on the fault as `mesh_sz`. Returns the CSI fault.
-    Source: CSI (Jolivet et al.), following the CSI tutorial `tutoFaultMeshing`."""
-    trace_lonlat, arc_s, trace_x, trace_y = trace["lonlat"], trace["arc_s"], trace["x_km"], trace["y_km"]
-    flt = TriangularPatches(name, lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    flt.trace(trace_lonlat[:, 0], trace_lonlat[:, 1])
-    flt.discretize2(every=trace["every_km"])
-    node_x = np.interp(nodes[:, 0], arc_s, trace_x)
-    node_y = np.interp(nodes[:, 0], arc_s, trace_y)
-    vertices = np.c_[node_x, node_y, nodes[:, 1]]
-    if abs(dip_deg - 90.0) > 0.1:
-        strike_vec = np.array([trace_x[-1] - trace_x[0], trace_y[-1] - trace_y[0]])
-        strike_vec = strike_vec / np.hypot(strike_vec[0], strike_vec[1])
-        normal_vec = np.array([strike_vec[1], -strike_vec[0]])
-        if normal_vec[0] < 0:
-            normal_vec = -normal_vec                   # + east
-        east_shift = nodes[:, 1] / np.tan(np.deg2rad(dip_deg))
-        vertices[:, 0] += east_shift * normal_vec[0]
-        vertices[:, 1] += east_shift * normal_vec[1]
-    faces_own = faces.copy()
-    flt.Vertices = vertices
-    flt.Faces = faces_own
-    flt.vertices2ll()
-    flt.patch = []
-    for face in faces_own:
-        flt.patch.append(vertices[face])               # the three corners of the triangle (x, y, z)
-    flt.patch2ll()
-    flt.setdepth()
-    flt.vertical = abs(dip_deg - 90.0) <= 0.1
-    flt.homogeneizeStrike(direction=0, sign=-1.0)
-    flt.initializeslip()
-    flt.mesh_sz = (nodes.copy(), faces_own, trace["arc_total"])
-    return flt
-
-
-def triangle_areas_km2(nodes, faces):
-    """Area (km^2) of every triangle of the unrolled (s, z) mesh (nodes in km, faces as from unrolled_mesh).
-    Source: written for this project."""
-    tri_sz = nodes[faces]
-    return 0.5 * np.abs((tri_sz[:, 1, 0] - tri_sz[:, 0, 0]) * (tri_sz[:, 2, 1] - tri_sz[:, 0, 1])
-                        - (tri_sz[:, 2, 0] - tri_sz[:, 0, 0]) * (tri_sz[:, 1, 1] - tri_sz[:, 0, 1]))
-
-
-# =====================================================================================================================
-# 3. The data: the fault-parallel mean event, its noise model and the quadtree samples
+# 2. The data: the fault-parallel mean event, its noise model and the quadtree samples
 # =====================================================================================================================
 def look_vector(strike_deg):
     """Horizontal unit vector (east, north, up) along the strike bearing (deg clockwise from north): the 'look
@@ -417,24 +305,6 @@ def quadtree_block_corners(ds):
     return block_lon, block_lat
 
 
-def build_sample_set(fp_event, lon, lat, strike_deg, fault, frame_lonlat, profile_lats,
-                     swath_km, exclude_km, km_window, cov_mask_km, cov_distmax_km, start_block_km,
-                     min_block_km, nug_power):
-    """One quadtree sample set of a fault-parallel field: the data set (fault_parallel_dataset), its far-field noise
-    model (covariance), the distance-based quadtree (downsample) and the full data covariance of the samples
-    (build_cd). Distances in km, nug_power the exponent of covariance_matrix. Returns a dict: samples (csi.insar,
-    Cd set), sar (the pixel data set), cov_p, look, block_lon, block_lat, n_pixels.
-    Source: written for this project (CSI, Jolivet et al.)."""
-    sar, look = fault_parallel_dataset(fp_event, lon, lat, strike_deg, fault, frame_lonlat, swath_km,
-                                       exclude_km, km_window, profile_lats)
-    cov_p = covariance(sar, fault, swath_km, cov_mask_km, cov_distmax_km)
-    samples = downsample(sar, fault, start_block_km, min_block_km)
-    build_cd(samples, cov_p, nug_power)
-    block_lon, block_lat = quadtree_block_corners(samples)
-    return dict(samples=samples, sar=sar, cov_p=cov_p, look=look, block_lon=block_lon,
-                block_lat=block_lat, n_pixels=int(np.isfinite(sar.vel).sum()))
-
-
 def write_points_list(stem, lon, lat, crs, header, extra):
     """Write a sample set as a PyLith PointsList (`<stem>.txt`: "name x y z", m in the mesh CRS `crs`, z = 0 on the flat
     free surface) and an npz (`<stem>.npz`: lon, lat, x, y, names, crs and the arrays of `extra`). lon, lat in deg;
@@ -487,154 +357,11 @@ def samples_from_arrays(name, lon, lat, x_km, y_km, vel_mm, wgt, look, frame_lon
 
 
 # =====================================================================================================================
-# 4. Inversion on the CSI triangular fault (homogeneous half-space)
-# =====================================================================================================================
-def crossing_profile(crossings, floor_mm, step_km, win_km, km_window, trace_south_north, frame_lonlat):
-    """csi.surfaceslip data set of the running median of the five-event mean step at the fault crossings (04's
-    event_fraction_by_crossing.csv: columns km, lat, mean_event_mm), every step_km (km) over windows of +/- win_km / 2
-    (at least 4 crossings), error 1.4826 MAD / sqrt(n) floored at floor_mm (mm), placed on the trace
-    (trace_south_north: lon, lat rows, south to north); kept within km_window. Returns the data set (mm).
-    Source: written for this project (CSI surfaceslip, Jolivet et al.)."""
-    rows = []
-    for k_centre in np.arange(np.ceil(crossings.km.min()), crossings.km.max(), step_km):
-        in_win = np.abs(crossings.km - k_centre) <= win_km / 2 + 1e-6   # 1e-6 km: keeps the edge crossings against float round-off
-        amps = crossings.mean_event_mm[in_win].dropna()
-        if len(amps) < 4:
-            continue
-        med = float(np.median(amps))
-        err = max(1.4826 * float(np.median(np.abs(amps - med))) / np.sqrt(len(amps)), floor_mm)
-        lat_c = float(np.median(crossings.lat[in_win]))
-        lon_c = float(np.interp(lat_c, trace_south_north[:, 1], trace_south_north[:, 0]))
-        rows.append((lon_c, lat_c, k_centre, med, err))
-    rows = np.array(rows)
-    rows = rows[(rows[:, 2] >= km_window[0]) & (rows[:, 2] <= km_window[1])]
-    surface_data = surfaceslip(f"crossing stacks f{floor_mm:g}", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    surface_data.read_from_binary(rows[:, 3], rows[:, 0], rows[:, 1], err=rows[:, 4])
-    surface_data.buildCd()
-    return surface_data
-
-
-def crossing_profile_on_triangles(fault, crossings, floor_mm, step_km, win_km, km_window, trace_south_north,
-                                  frame_lonlat, profile_lats):
-    """Surface constraint on the CSI triangular fault: the running-median profile (crossing_profile) interpolated to the
-    centre of every surface triangle of `fault`, each error scaled by sqrt(triangles within +/- step_km / 2) so that
-    the total weight per profile step is unchanged (CSI's default link, `Fault.surfaceGFs`, ties each point to its
-    single nearest triangle). Returns a csi.surfaceslip data set (mm). Source: written for this project."""
-    base = crossing_profile(crossings, floor_mm, step_km, win_km, km_window, trace_south_north, frame_lonlat)
-    base_km = km_from_pinole(base.lat, profile_lats)
-    order = np.argsort(base_km)
-    surface_tri = []
-    for index, patch in enumerate(fault.patch):
-        if 0 in patch[:, 2]:
-            surface_tri.append(index)
-    centre_ll = np.array([fault.patchll[index].mean(0) for index in surface_tri])
-    tri_km = km_from_pinole(centre_ll[:, 1], profile_lats)
-    keep = (tri_km >= base_km.min()) & (tri_km <= base_km.max())
-    centre_ll, tri_km = centre_ll[keep], tri_km[keep]
-    vals = np.interp(tri_km, base_km[order], base.vel[order])
-    errs = np.interp(tri_km, base_km[order], base.err[order])
-    per_step = np.zeros(tri_km.size)
-    for k, km in enumerate(tri_km):
-        per_step[k] = np.sum(np.abs(tri_km - km) <= step_km / 2 + 1e-6)
-    errs = errs * np.sqrt(np.maximum(per_step, 1))
-    surface_data = surfaceslip(f"crossing interp f{floor_mm:g}", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    surface_data.read_from_binary(vals, centre_ll[:, 0], centre_ll[:, 1], err=errs)
-    surface_data.buildCd()
-    return surface_data
-
-
-def tie_rows(fault, n_params, tie_depth_km, tie_bin_km=0.1, tie_err_mm=0.01):
-    """Optional uniform-slip constraint at the top of the fault, as extra data rows: in every tie_bin_km (km)
-    along-strike column, each cell shallower than tie_depth_km (km) minus the column's shallowest cell = 0, with a
-    small error tie_err_mm (a near-hard constraint). Returns the rows (n_ties x n_params) and their variances (mm^2).
-    Source: written for this project, after Jolivet et al. (2023)."""
-    nodes, faces, _ = fault.mesh_sz
-    centroid = nodes[faces].mean(1)
-    shallow = np.nonzero(centroid[:, 1] < tie_depth_km)[0]
-    column_of = np.floor(centroid[shallow, 0] / tie_bin_km).astype(int)
-    rows = []
-    for column in np.unique(column_of):
-        members = shallow[column_of == column]
-        if members.size < 2:
-            continue
-        reference = members[np.argmin(centroid[members, 1])]
-        for member in members[members != reference]:
-            row = np.zeros(n_params)
-            row[member] = 1.0
-            row[reference] = -1.0
-            rows.append(row)
-    if rows:
-        tie_matrix = np.array(rows)
-    else:
-        tie_matrix = np.zeros((0, n_params))
-    return tie_matrix, np.full(tie_matrix.shape[0], tie_err_mm ** 2)
-
-
-def invert_triangles(fault, insar_datas, sigma, lam, frame_lonlat, ramp_spec="1", surface=None, tie_depth_km=None):
-    """Right-lateral slip (mm) on the triangle fault from InSAR samples (and the surface constraint when given): Meade
-    (2007) triangular dislocations in a homogeneous half-space (CSI `buildGFs`, sign flipped so right-lateral is
-    positive), one transformation per dataset (ramp_spec for the InSAR, a constant for the surface data), the
-    exponential prior `buildCmXY(sigma, lam)`, the optional top tie (tie_rows), NNLS (slip >= 0, the transformation
-    free). Fills fault.slip and each dataset's synth, and removes the fitted transformation from each dataset's vel in
-    place (pass copies). Returns the CSI solver.
-    Source: CSI (Jolivet et al.), with the calls of the CSI tutorials (external/csi/notebooks/)."""
-    solve_datas = list(insar_datas)
-    if surface is not None:
-        solve_datas.append(surface)
-    for ds in insar_datas:
-        fault.buildGFs(ds, vertical=True, slipdir="s", verbose=False)
-        fault.G[ds.name]["strikeslip"] *= -1.0        # right-lateral positive
-    if surface is not None:
-        fault.buildGFs(surface, slipdir="s", verbose=False)   # no sign flip for surface slip data
-    trans = transform("ramps", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    specs = [ramp_spec] * len(insar_datas)
-    if surface is not None:
-        specs.append("1")
-    trans.buildGFs(solve_datas, specs, verbose=False)
-    fault.assembleGFs(solve_datas, slipdir="s", verbose=False)
-    fault.assembled(solve_datas, verbose=False)
-    fault.assembleCd(solve_datas, verbose=False)
-    trans.assembleGFs(solve_datas, verbose=False)
-    trans.assembled(solve_datas, verbose=False)
-    trans.assembleCd(solve_datas, verbose=False)
-    fault.buildCmXY(sigma, lam, verbose=False)
-    trans.buildCm(1e4, verbose=False)
-    solver = multisrc("mean event", [fault, trans], verbose=False)
-    solver.assembleGFs()
-    solver.assembleCm()
-    if tie_depth_km:                                  # uniform slip over the top tie_depth_km
-        tie_matrix, tie_var = tie_rows(fault, solver.G.shape[1], tie_depth_km)
-        solver.G = np.vstack([solver.G, tie_matrix])
-        solver.d = np.concatenate([solver.d, np.zeros(tie_matrix.shape[0])])
-        n_data = solver.Cd.shape[0]
-        cd_tied = np.zeros((n_data + tie_matrix.shape[0], n_data + tie_matrix.shape[0]))
-        cd_tied[:n_data, :n_data] = solver.Cd
-        cd_tied[n_data:, n_data:] = np.diag(tie_var)
-        solver.Cd = cd_tied
-    mprior = np.zeros(solver.Np)
-    for index, param_type in enumerate(solver.paramTypes):
-        if param_type[0] == trans.name:
-            mprior[index] = -1e3                      # NNLS: the transformation may be negative
-    solver.ConstrainedLeastSquareSoln(method="nnls", mprior=mprior)
-    solver.distributem()
-    for ds in solve_datas:
-        ds.buildsynth([fault], direction="s")
-        ds.removeTransformation(trans)                # the fitted transformation is removed from the data
-    return solver
-
-
-# =====================================================================================================================
-# 5. Magnitudes and the L-curve
+# 3. Magnitudes and the L-curve
 # =====================================================================================================================
 def moment_magnitude(moment_nm):
     """Moment magnitude from the seismic moment M0 in N m: Mw = 2/3 (log10 M0 - 9.1) (Hanks & Kanamori 1979)."""
     return (2.0 / 3.0) * (np.log10(moment_nm) - 9.1)
-
-
-def potency_from_slip(area_km2, slip_mm):
-    """Potency (m^3): the sum over cells of area (km^2) x slip (mm), converted to m^2 and m.
-    Source: written for this project."""
-    return float(np.sum(area_km2 * 1e6 * slip_mm * 1e-3))
 
 
 def lcurve_corner(sigmas, misfit, roughness):
@@ -655,28 +382,9 @@ def lcurve_corner(sigmas, misfit, roughness):
     return corner, fine_log_sigma, curvature
 
 
-def lcurve_pick(sigmas, corner):
-    """The smallest grid sigma at or above the L-curve corner `corner` (i.e. the corner rounded toward weaker
-    smoothing). Source: written for this project."""
-    sigmas = np.asarray(sigmas, float)
-    return float(sigmas[sigmas >= corner].min())
-
-
 # =====================================================================================================================
-# 6. Surface constraint of the 3D model (measured crossings tied to the tent slip on the top edge; sensitivity only)
+# 4. Surface constraint of the 3D model (measured crossings tied to the tent slip on the top edge; sensitivity only)
 # =====================================================================================================================
-def surface_pct_denominator_mm(km, mean_mm, km_lo, km_hi, min_n=10):
-    """Denominator (mm) of a surface-slip percentage (modelled surface slip / measured): the median of the measured
-    crossings (04's five-event mean step at each crossing, mm; finite values only) with km_lo <= km <= km_hi (km from
-    Point Pinole; the SSE section of 04's section_lengths.csv; a 1e-6 km tolerance keeps its end crossings against
-    float round-off). Fails if fewer than min_n crossings are inside. Source: written for this project."""
-    km = np.asarray(km, float)
-    mean_mm = np.asarray(mean_mm, float)
-    inside = (km >= km_lo - 1e-6) & (km <= km_hi + 1e-6) & np.isfinite(mean_mm)
-    assert inside.sum() >= min_n, f"only {inside.sum()} measured crossings in km {km_lo:.2f}-{km_hi:.2f}"
-    return float(np.median(mean_mm[inside]))
-
-
 def arc_length_on_polyline(px, py, vx, vy):
     """Arc length along the polyline (vx, vy) of the point on it nearest to each (px, py), that distance, and the arc
     length of every polyline vertex, in the units of the inputs (m in the mesh CRS). Source: written for this project."""
@@ -752,7 +460,7 @@ def surface_slip_data(constraint, floor_mm, frame_lonlat):
 
 
 # =====================================================================================================================
-# 7. PyLith Green's functions -> the fault-parallel G matrix
+# 5. PyLith Green's functions -> the fault-parallel G matrix
 # =====================================================================================================================
 def read_gf_run(pylith_output_dir, name):
     """Read one PyLith GreensFns run `name` from pylith_output_dir. Returns the fault vertices (m) and cells, the
@@ -865,35 +573,8 @@ def load_G(name, points_npz, strike_deg, pylith_output_dir, gf_dir):
     return gnpz
 
 
-def build_G_los(gnpz, points_npz, los_enu, pylith_output_dir):
-    """The Green's functions of a PyLith GreensFns run projected on a LOS unit vector per sample (los_enu: (n_samples, 3),
-    east, north, up, ground to satellite), m of LOS displacement per m of right-lateral slip, in the impulse order and
-    with the right-lateral sign of the run's fault-parallel G product `gnpz` (build_G: vertex_index, sign_rl). The 3D
-    displacements are re-read from the run's points.h5 (read_gf_run) and matched to the samples as build_G does. The mesh
-    CRS (tmerc centred on the section) is taken as east / north / up. Returns (G_los, G_fault_parallel_check): the second
-    is the same displacements projected on gnpz's look vector, which must equal gnpz's G (asserted by the caller).
-    Source: written for this project (the PyLith examples/subduction-3d/invert_slip.py reading pattern, as build_G)."""
-    name = str(gnpz["runs"][0])
-    fault_xyz, _, slip, point_xyz, disp = read_gf_run(pylith_output_dir, name)
-    assert np.array_equal(fault_xyz, gnpz["fault_xyz"]), f"{name}: the fault mesh differs from the G product"
-    ll = slip[:, :, 1]
-    k_vertex = np.argmax(np.abs(ll), axis=1)
-    assert np.array_equal(k_vertex, gnpz["vertex_index"]), f"{name}: impulse order differs from the G product"
-    peak_sign = np.sign(ll[np.arange(ll.shape[0]), k_vertex])
-    points = np.load(points_npz)
-    dist, order = cKDTree(point_xyz[:, :2]).query(np.c_[points["x"], points["y"]])
-    assert dist.max() < 1e-3 and np.unique(order).size == order.size, f"{name}: samples do not match the output points"
-    los_enu = np.asarray(los_enu, float)
-    assert los_enu.shape == (order.size, 3) and np.allclose(np.linalg.norm(los_enu, axis=1), 1.0, atol=1e-6), "LOS must be unit vectors"
-    disp_samples = disp[:, order, :]                                         # (impulses, samples, 3)
-    scale = float(gnpz["sign_rl"]) * peak_sign[None, :]
-    G_los = np.einsum("kpc,pc->pk", disp_samples, los_enu) * scale
-    G_fp = np.einsum("kpc,c->pk", disp_samples, np.asarray(gnpz["look"], float)) * scale
-    return G_los, G_fp
-
-
 # =====================================================================================================================
-# 8. The tent (vertex) parameterisation of the PyLith fault, and the inversion
+# 6. The tent (vertex) parameterisation of the PyLith fault, and the inversion
 # =====================================================================================================================
 class TentFault:
     """The PyLith fault of a G matrix (the npz of build_G) as used by the inversion: the fault vertices and triangles
@@ -1088,49 +769,6 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
         surface.buildsynth([fault_model], direction="s")
     assert np.all(fault_model.slip[:, 0] >= -1e-9), "negative slip out of NNLS"
     return fault_model, insar_data, surface
-
-
-def invert_tents_multi(template, datasets, sigma, lam, frame_lonlat, ramp_spec="1,x,y", name="tents"):
-    """invert_tents for several InSAR data sets in one CSI solve (e.g. the ascending and descending LOS samples):
-    datasets = list of (samples, G, Cd), each with its own Green's functions (m/m, right-lateral positive), covariance
-    (mm^2) and its own reference-frame polynomial (ramp_spec, solved jointly); the same exponential prior
-    buildCmXY(sigma, lam) and NNLS (slip >= 0) as invert_tents. No surface data. Returns (fault, [data sets]), each data
-    set with its synth and its fitted frame removed from vel. With one data set it equals invert_tents
-    (tests/test_model_utils.py). Source: CSI multisourcesolve with several data sets (Jolivet et al.), as invert_tents."""
-    fault_model = copy.deepcopy(template)
-    fault_model.name = name
-    solve_datas = []
-    for k, (samples, G, Cd) in enumerate(datasets):
-        data = copy.deepcopy(samples)
-        assert Cd.shape == (data.vel.size, data.vel.size) and G.shape[0] == data.vel.size
-        data.Cd = Cd.copy()
-        fault_model.setGFs(data, strikeslip=[np.asarray(G, float).copy()])
-        solve_datas.append(data)
-    assert len({d.name for d in solve_datas}) == len(solve_datas), "the data sets need distinct names"
-    trans = transform("ramps", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    trans.buildGFs(solve_datas, [str(ramp_spec)] * len(solve_datas), verbose=False)
-    fault_model.assembleGFs(solve_datas, slipdir="s", verbose=False)
-    fault_model.assembled(solve_datas, verbose=False)
-    fault_model.assembleCd(solve_datas, verbose=False)
-    trans.assembleGFs(solve_datas, verbose=False)
-    trans.assembled(solve_datas, verbose=False)
-    trans.assembleCd(solve_datas, verbose=False)
-    fault_model.buildCmXY(sigma, lam, verbose=False)
-    trans.buildCm(1e4, verbose=False)
-    solver = multisrc(f"{name} mean event", [fault_model, trans], verbose=False)
-    solver.assembleGFs()
-    solver.assembleCm()
-    mprior = np.zeros(solver.Np)
-    for i, param_type in enumerate(solver.paramTypes):
-        if param_type[0] == trans.name:
-            mprior[i] = -1e3
-    solver.ConstrainedLeastSquareSoln(method="nnls", mprior=mprior)
-    solver.distributem()
-    for data in solve_datas:
-        data.buildsynth([fault_model], direction="s")
-        data.removeTransformation(trans)
-    assert np.all(fault_model.slip[:, 0] >= -1e-9), "negative slip out of NNLS"
-    return fault_model, solve_datas
 
 
 def match_impulse_order(ref_fault_xyz, ref_vertex_index, fault_xyz, vertex_index, label="", tol_m=1e-3):
@@ -1368,29 +1006,17 @@ def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, keep):
     """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data, surface), the
     weighted misfit chi2 of the fitted samples (`keep`; the L-curve's x axis), the prior-weighted roughness
     sqrt(m^T (Cm / sigma^2)^-1 m) (its y axis), the RMS of the fitted samples (mm), peak slip (mm), Mw at mu_ref (Pa)
-    and the solve time (s). With several data sets (solve returns a list, keep is a list of masks) chi2 is summed and
-    the RMS is taken over all of them. `label` prefixes the progress lines. Returns a DataFrame, one row per sigma.
+    and the solve time (s). `label` prefixes the progress lines. Returns a DataFrame, one row per sigma.
     Source: written for this project, after Hansen (1992)."""
-    if isinstance(keep, (list, tuple)):                       # one mask per data set (invert_tents_multi)
-        keep_list = [np.asarray(k, bool) for k in keep]
-    else:
-        keep_list = None
-        keep = np.asarray(keep, bool)
+    keep = np.asarray(keep, bool)
     rows = []
     for sigma in sigma_grid:
         t0 = time.time()
         fault_model, insar_data, _ = solve(sigma)
-        datas = insar_data if isinstance(insar_data, (list, tuple)) else [insar_data]     # a list from invert_tents_multi
-        keeps = keep_list if keep_list is not None else [keep]
-        assert len(keeps) == len(datas), "one keep mask per data set"
-        chi2, res_all = 0.0, []
-        for data, keep_k in zip(datas, keeps):
-            res_k = (data.vel - data.synth)[keep_k]
-            chi2 += float(np.dot(res_k, np.linalg.solve(data.Cd[np.ix_(keep_k, keep_k)], res_k)))
-            res_all.append(res_k)
-        res = np.concatenate(res_all)
+        res = (insar_data.vel - insar_data.synth)[keep]
+        Cd_fit = insar_data.Cd[np.ix_(keep, keep)]
         slip_vec = fault_model.slip[:, 0]
-        rows.append(dict(sigma=float(sigma), chi2_fitted=chi2,
+        rows.append(dict(sigma=float(sigma), chi2_fitted=float(np.dot(res, np.linalg.solve(Cd_fit, res))),
                          roughness=float(np.sqrt(np.dot(slip_vec, np.linalg.solve(fault_model.Cm / sigma ** 2, slip_vec)))),
                          rms_mm=float(np.sqrt(np.mean(res ** 2))), peak_slip_mm=float(slip_vec.max()),
                          Mw_30gpa=float(moment_magnitude(mu_ref * tents.potency_m3(slip_vec))), seconds=time.time() - t0))
@@ -1474,14 +1100,6 @@ def correlated_noise(Cd, n_draws, seed):
     return z @ L.T
 
 
-def materna_stress_drop_pa(mu_pa, slip_m, half_width_m):
-    """Stress drop of a slipping patch (Pa): delta_tau = mu d / x, mu the rigidity (Pa), d the slip (m), x half the
-    patch width (m). Not used for the paper's stress drop (strike_slip_stress_drop_pa).
-    Source: Materna et al. (2024), SI Eq. 2."""
-    assert mu_pa > 0 and slip_m > 0 and half_width_m > 0
-    return float(mu_pa * slip_m / half_width_m)
-
-
 def strike_slip_stress_drop_pa(mu_pa, slip_m, width_m):
     """Stress drop (Pa) of a long strike-slip fault that reaches the free surface: delta_sigma = (2 / pi) mu d / w, mu the
     rigidity (Pa), d the (uniform) slip (m), w the down-dip width of the slipping part (m).
@@ -1492,44 +1110,8 @@ def strike_slip_stress_drop_pa(mu_pa, slip_m, width_m):
 
 
 # =====================================================================================================================
-# 9. PyLith forward runs, materials and the stress drop
+# 7. PyLith materials, rigidity and the extent of slip
 # =====================================================================================================================
-def read_forward_points(points_h5, points_xy):
-    """3D displacement (mm; last time step) of a PyLith run at the given points (m, mesh CRS), matched by coordinates
-    (< 1 mm asserted). Returns (n_points, 3) east, north, up in mm.
-    Source: written for this project (PyLith OutputSolnPoints output)."""
-    with h5py.File(points_h5, "r") as h5:
-        dist, order = cKDTree(h5["geometry/vertices"][:, :2]).query(points_xy)
-        assert dist.max() < 1e-3, f"{os.path.basename(points_h5)}: output points are not the requested points"
-        return h5["vertex_fields/displacement"][-1][order] * 1e3
-
-
-def read_forward_slip(fault_h5, sign_rl):
-    """Fault vertices (m), cells and the right-lateral slip (mm, = sign_rl x the left-lateral component, the sign
-    build_G derived; last time step) of a PyLith FaultCohesiveKin run. Source: written for this project."""
-    with h5py.File(fault_h5, "r") as h5:
-        f_xyz = h5["geometry/vertices"][:]
-        f_cells = np.asarray(h5["viz/topology/cells"][:], int)
-        slip_rl = float(sign_rl) * h5["vertex_fields/slip"][-1][:, 1] * 1e3
-    return f_xyz, f_cells, slip_rl
-
-
-def superposition_check(G, imp_xyz, points_h5, fault_h5, points_xy, look, sign_rl):
-    """Superposition test: G (m/m) x a forward run's own vertex slip compared with that run's fault-parallel
-    displacement at the samples (points_xy in m, look the projection vector). The two agree to numerical precision
-    when G and the forward run share mesh, medium and element order. Returns a dict: the max / rms difference and the
-    rms signal (mm). Source: written for this project."""
-    u_fp = read_forward_points(points_h5, points_xy).dot(look)
-    f_xyz, _, slip_rl = read_forward_slip(fault_h5, sign_rl)
-    vertex_dist, vertex_match = cKDTree(f_xyz).query(imp_xyz)
-    assert vertex_dist.max() < 1e-6, "forward-run fault vertices differ from the GF fault vertices"
-    assert np.setdiff1d(np.nonzero(slip_rl > 1e-6)[0], vertex_match).size == 0, "forward slip on vertices without an impulse"
-    superposed = G.dot(slip_rl[vertex_match])
-    diff = superposed - u_fp
-    return dict(max_abs_diff_mm=float(np.abs(diff).max()), rms_diff_mm=float(np.sqrt(np.mean(diff ** 2))),
-                rms_signal_mm=float(np.sqrt(np.mean(superposed ** 2))))
-
-
 def shear_modulus_pa(density_kg_m3, vs_m_s):
     """Shear modulus mu = rho vs^2 (Pa) from density (kg/m^3) and S-wave speed (m/s)."""
     return density_kg_m3 * vs_m_s ** 2
@@ -1577,41 +1159,6 @@ def harmonic_mean_rigidity(mu_a, mu_b):
     return 2.0 * mu_a * mu_b / (mu_a + mu_b)
 
 
-def screw_dislocation_mm(slip_mm, locking_depth_m, x_m):
-    """Surface displacement (mm) of a 2D screw dislocation, slip s from the surface to depth D:
-    u(x) = (s / pi) arctan(D / x), x the signed distance from the fault (m), D = locking_depth_m (m).
-    Source: the standard 2D screw-dislocation solution (e.g. Segall 2010, ch. 2)."""
-    return (slip_mm / np.pi) * np.arctan(locking_depth_m / x_m)
-
-
-def median_edge_length_m(triangles_xyz):
-    """Median length (m) of all the edges of a set of triangles (n, 3 vertices, xyz in m). Source: written for this project."""
-    edge_01 = np.linalg.norm(triangles_xyz[:, 1] - triangles_xyz[:, 0], axis=1)
-    edge_12 = np.linalg.norm(triangles_xyz[:, 2] - triangles_xyz[:, 1], axis=1)
-    edge_20 = np.linalg.norm(triangles_xyz[:, 0] - triangles_xyz[:, 2], axis=1)
-    return float(np.median(np.concatenate([edge_01, edge_12, edge_20])))
-
-
-def vertex_areas_m2(vertices_xyz, cells):
-    """Area (m^2) attached to every fault vertex (vertices_xyz in m, cells (n, 3)): one third of the area of each
-    triangle it belongs to. Source: written for this project."""
-    triangles = vertices_xyz[cells]
-    triangle_area = 0.5 * np.linalg.norm(np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]), axis=1)
-    areas = np.zeros(len(vertices_xyz))
-    np.add.at(areas, cells.ravel(), np.repeat(triangle_area / 3.0, 3))
-    return areas
-
-
-def slip_weighted_stress_drop_pa(dtau_pa, slip_m, vertex_area_m2):
-    """Slip-weighted stress drop of a distributed slip model (Pa): sum(dtau s A) / sum(s A) over the fault vertices,
-    negative slip counted as zero. dtau = PyLith's shear-traction change (Pa; a right-lateral drop is a positive
-    left-lateral traction change, asserted), s the slip (m), A the vertex area (m^2). Not used for the paper's stress
-    drop (strike_slip_stress_drop_pa). Source: Noda et al. (2013)."""
-    weight = np.clip(slip_m, 0.0, None) * vertex_area_m2
-    assert np.sum(dtau_pa * weight) > 0, "right-lateral slip did not lower the right-lateral shear traction: sign convention broken"
-    return float(np.sum(dtau_pa * weight) / np.sum(weight))
-
-
 def potency_extent(sub_potency_m3, sub_depth_m, sub_km, fraction=0.9):
     """Depth extent w (m) and along-strike length L (km) that hold `fraction` of a slip model's potency: w = the depth
     above which that share of the potency lies; L = the span between the (1 - fraction)/2 and (1 + fraction)/2 potency
@@ -1632,7 +1179,7 @@ def potency_extent(sub_potency_m3, sub_depth_m, sub_km, fraction=0.9):
 
 
 # =====================================================================================================================
-# 10. Provenance and running PyLith
+# 8. Provenance
 # =====================================================================================================================
 def field_fingerprint(fp_maps_npz):
     """The fingerprint of 06's fault-parallel field that a model fits, in the form every model product carries
@@ -1641,33 +1188,9 @@ def field_fingerprint(fp_maps_npz):
     return f"fp_maps.npz:{utils.file_fingerprint(fp_maps_npz)}"
 
 
-def run_logged(cmd, cwd, env_extra=None):
-    """Run a shell command in cwd (env_extra: added environment variables), print it, and assert a zero return code.
-    Returns the wall time (s). Source: written for this project."""
-    print("$", cmd)
-    t0 = time.time()
-    env = dict(os.environ, **(env_extra or {}))
-    out = subprocess.run(cmd, shell=True, cwd=cwd, env=env, capture_output=True, text=True)
-    assert out.returncode == 0, f"command failed ({out.returncode}):\n{out.stdout[-3000:]}\n{out.stderr[-3000:]}"
-    print(out.stdout[-1500:])
-    return time.time() - t0
-
-
-def ensure_product(path, recipe, cwd, allow_run, timings=None):
-    """A PyLith product (mesh, database, run output) at `path`. If it is missing and allow_run is set
-    (TULEPOND_RUN_PYLITH=1), it is made by the shell command `recipe` run in cwd (the PyLith work directory,
-    data_dir), and its wall time is stored in `timings`; otherwise an assertion stops with the command that makes it.
-    Returns path. Source: written for this project."""
-    if not os.path.exists(path):
-        assert allow_run, (f"missing PyLith product {path}\n  made once with (from {cwd}): {recipe}\n  set TULEPOND_RUN_PYLITH=1 "
-                           f"to run it here (needs the PyLith 5.0.2 bundle, see pylith/README.md)")
-        seconds = run_logged(recipe, cwd)
-        if timings is not None:
-            timings[os.path.basename(path)] = seconds
-        assert os.path.exists(path), f"{recipe} did not write {path}"
-    return path
-
-
+# =====================================================================================================================
+# 9. Cross-fault steps at the crossings
+# =====================================================================================================================
 def crossing_steps_like(values_mm, signed_d_km, sample_km_pp, crossing_km, inner_km=0.03, outer_km=0.15,
                         half_along_km=0.2, min_per_side=3):
     """Cross-fault step (mm) of a field values_mm at the samples, measured as notebooks 03 and 04 measure the crossings:

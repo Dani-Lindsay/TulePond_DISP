@@ -7,7 +7,7 @@ dipping vector instead of straight down.
 Dip convention: `--dip 70w` = 70 degrees, dipping west (hanging wall west); `80e`, `60w` likewise. The dip
 direction is the horizontal unit normal to the mean strike of the trace (km 52-67), pointing to the given side,
 so the fault is a ruled surface: top edge on the trace, every depth level the same trace shifted by
-z / tan(dip) along that normal (the same construction as model_utils.wrap_fault). The fault depth is measured
+z / tan(dip) along that normal. The fault depth is measured
 vertically: fault_depth_m = 3000 m below the surface, so the down-dip length is 3000 / sin(dip) m and the bottom
 edge lies 3000 / tan(dip) m to the dipping side of the trace. The bottom and end edges are buried (PyLith v5
 marks them automatically); the domain is the same 100 x 100 x 40 km box. The measured dip of the fault triangles

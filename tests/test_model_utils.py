@@ -45,42 +45,24 @@ def test_covariance_matrix_nugget_on_diagonal_only():
     assert np.allclose(cd, cd.T)
 
 
-def test_lcurve_corner_and_pick_on_a_synthetic_l():
+def test_lcurve_corner_on_a_synthetic_l():
     sigma = np.array([1.0, 2, 4, 8, 16, 32, 64])
     misfit = np.array([100.0, 60, 30, 12, 10, 9.5, 9.3])                       # flattens after sigma 8
     rough = np.array([1.0, 1.2, 1.5, 2.0, 6, 20, 70])                          # rises after sigma 8
     corner, _, curvature = sc.lcurve_corner(sigma, misfit, rough)
     assert 4 < corner < 16 and np.all(curvature >= 0)
-    assert sc.lcurve_pick(sigma, corner) == sigma[sigma >= corner].min()
 
 
 def test_moment_magnitude_and_rigidity():
     assert np.isclose(sc.moment_magnitude(10 ** 16.1), 2 / 3 * 7.0)            # Hanks & Kanamori
     assert np.isclose(sc.harmonic_mean_rigidity(1.0, 1.0), 1.0)
     assert np.isclose(sc.harmonic_mean_rigidity(1.0, 3.0), 1.5)                 # below the arithmetic mean 2
-    assert np.isclose(sc.potency_from_slip(np.array([1.0, 2.0]), np.array([10.0, 5.0])), 1e6 * 0.01 + 2e6 * 0.005)
-
-
-def test_stress_drop_weights_and_sign():
-    xyz = np.array([[0.0, 0, 0], [1, 0, 0], [0, 0, -1], [1, 0, -1]])
-    cells = np.array([[0, 1, 2], [1, 3, 2]])
-    area = sc.vertex_areas_m2(xyz, cells)
-    assert np.isclose(area.sum(), 1.0)
-    assert np.isclose(sc.slip_weighted_stress_drop_pa(np.full(4, 5.0), np.ones(4), area), 5.0)
-    with pytest.raises(AssertionError):
-        sc.slip_weighted_stress_drop_pa(np.full(4, -5.0), np.ones(4), area)
 
 
 def test_km_from_pinole_index_rule():
     lats = np.linspace(37.4, 38.0, 7)                                          # south -> north, 0.1 km per vertex
     km = sc.km_from_pinole(lats[[6, 0, 3]], lats)
     assert np.allclose(km, [0.0, 0.6, 0.3])
-
-
-def test_screw_dislocation_far_and_near():
-    assert np.isclose(sc.screw_dislocation_mm(10.0, 1000.0, 1e9), 0.0, atol=1e-5)
-    assert np.isclose(sc.screw_dislocation_mm(10.0, 1000.0, 1e-9), 5.0, atol=1e-5)   # s/2 at the fault, east side
-
 
 
 def test_match_impulse_order_undoes_a_vertex_renumbering():
@@ -188,16 +170,9 @@ def test_correlated_noise_has_the_requested_covariance():
     assert np.allclose(sc.correlated_noise(Cd, 3, seed=11), sc.correlated_noise(Cd, 3, seed=11))   # the seed fixes it
 
 
-def test_materna_stress_drop():
-    assert np.isclose(sc.materna_stress_drop_pa(30e9, 0.0128, 175.0), 30e9 * 0.0128 / 175.0)
-    with pytest.raises(AssertionError):
-        sc.materna_stress_drop_pa(30e9, 0.0, 175.0)
-
-
 def test_strike_slip_stress_drop():
-    # (2 / pi) mu d / w: pi times smaller than mu d / (w / 2)
+    # (2 / pi) mu d / w
     assert np.isclose(sc.strike_slip_stress_drop_pa(30e9, 0.0128, 350.0), 2 / np.pi * 30e9 * 0.0128 / 350.0)
-    assert np.isclose(sc.materna_stress_drop_pa(30e9, 0.0128, 175.0) / sc.strike_slip_stress_drop_pa(30e9, 0.0128, 350.0), np.pi)
     with pytest.raises(AssertionError):
         sc.strike_slip_stress_drop_pa(30e9, 0.0128, 0.0)
 
@@ -231,35 +206,3 @@ def test_side_deflection_near_minus_far_per_side():
     ok = np.ones(d.size, bool)
     assert sc.side_deflection_mm(values, d, ok, ok, -1, (0.06, 0.25), (1.5, 3.0)) == (-4.0, 6, 6)
     assert sc.side_deflection_mm(values, d, ok, ok, 1, (0.06, 0.25), (1.5, 3.0)) == (2.0, 6, 6)
-
-
-# 2026-10-30: the LOS test (los_inversion_2026-10-30): several data sets in one CSI solve, LOS Green's functions
-def _real_setup():
-    data = os.path.expanduser("~/work/proj_TulePond_DISP")
-    run = "gf_default_sfcvm_order2"
-    if not os.path.exists(os.path.join(data, "modeling_SFCVM", "gf", f"G_{run}.npz")) or \
-            not os.path.exists(os.path.join(data, "outputs", "07a_uniform_model", "model_data.npz")):
-        pytest.skip("real products not available")
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "sensitivity"))
-    import common
-    inputs = common.load_inputs()
-    return common, inputs, common.make_setup(inputs, run), common.samples_for(inputs, "default")
-
-
-def test_invert_tents_multi_with_one_dataset_equals_invert_tents():
-    common, inputs, setup, samples = _real_setup()
-    G = setup["G"]["m"]
-    Cd = sc.data_cd("nugget", samples, inputs["cov_p"], 0.0, keep=setup["keep"])
-    one, data_one, _ = sc.invert_tents(setup["template"], samples, G, Cd, None, None, 27.0, (0.1, 0.05), inputs["frame_lonlat"])
-    multi, datas = sc.invert_tents_multi(setup["template"], [(samples, G, Cd)], 27.0, (0.1, 0.05), inputs["frame_lonlat"])
-    assert np.allclose(one.slip[:, 0], multi.slip[:, 0], atol=1e-6)
-    assert np.allclose(data_one.vel, datas[0].vel, atol=1e-6) and np.allclose(data_one.synth, datas[0].synth, atol=1e-6)
-
-
-def test_build_G_los_reproduces_the_fault_parallel_G():
-    import model_config as cfg
-    common, inputs, setup, samples = _real_setup()
-    gnpz = setup["gnpz"]["m"]
-    look = np.tile(np.asarray(gnpz["look"], float), (samples.vel.size, 1))
-    G_los, G_fp = sc.build_G_los(gnpz, inputs["points"]["default"], look, cfg.gf_pylith_output_dir)
-    assert np.allclose(G_fp, gnpz["G_rl_m_per_m"], atol=1e-12) and np.allclose(G_los, G_fp, atol=1e-12)

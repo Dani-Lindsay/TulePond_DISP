@@ -14,6 +14,7 @@ Run:  pytest tests/test_filepaths.py -v      (env: opera_disp_feb13)
 import os
 import sys
 
+import geopy.distance
 import numpy as np
 import pandas as pd
 import pytest
@@ -111,6 +112,15 @@ def trace():
     return df["ft_lon"].values, df["ft_lat"].values
 
 
+def geodesic_km_from_pinole(ft_lon, ft_lat):
+    """Reference along-fault distance (km) of every trace vertex (south to north): geodesic segment lengths (geopy)
+    summed along the curved trace, zero at the northern end (Point Pinole). Used only to check the 100 m index rule."""
+    seg_km = [geopy.distance.geodesic((ft_lat[i], ft_lon[i]), (ft_lat[i + 1], ft_lon[i + 1])).km
+              for i in range(len(ft_lat) - 1)]
+    from_south = np.concatenate([[0.0], np.cumsum(seg_km)])
+    return from_south[-1] - from_south
+
+
 def test_trace_shape_and_ends(trace):
     ft_lon, ft_lat = trace
     assert len(ft_lat) == 791
@@ -119,32 +129,26 @@ def test_trace_shape_and_ends(trace):
 
 
 def test_zero_at_pinole_increasing_southward(trace):
-    km = utils.along_fault_km(*trace)
+    km = geodesic_km_from_pinole(*trace)
     assert km[790] == 0.0
     assert np.all(np.diff(km) < 0)
     assert km[0] == pytest.approx(79.0, abs=0.1)
 
 
 def test_matches_100m_index_rule(trace):
-    km = utils.along_fault_km(*trace)
+    km = geodesic_km_from_pinole(*trace)
     index_rule = (790 - np.arange(791)) * 0.1
     assert np.abs(km - index_rule).max() < 0.010
 
 
 def test_lat_to_km_map_matches_geodesic(trace):
     ft_lon, ft_lat = trace
-    km_geo = utils.along_fault_km(ft_lon, ft_lat)
+    km_geo = geodesic_km_from_pinole(ft_lon, ft_lat)
     f = utils.lat_to_km_map(fp.common_paths["fault_profiles"])
     assert np.abs(f(ft_lat) - km_geo).max() < 0.010
     # CFW1 creepmeter sits ~62.6 km from Point Pinole
     cfw1_lat = [c[1] for c in fp.creepmeters if c[0] == "CFW1"][0]
     assert f([cfw1_lat])[0] == pytest.approx(62.6, abs=0.2)
-
-
-def test_north_first_trace_rejected(trace):
-    ft_lon, ft_lat = trace
-    with pytest.raises(ValueError):
-        utils.along_fault_km(ft_lon[::-1], ft_lat[::-1])
 
 
 def test_inside_repo_location_is_refused(monkeypatch):
