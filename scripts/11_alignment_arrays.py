@@ -1,60 +1,59 @@
 # %% [markdown]
-# # [1] 09 Alignment arrays: the event history at Tule Pond before InSAR
+# # 11 Alignment arrays: the event history at Tule Pond before InSAR
 #
 # ```
 # Author: Danielle Lindsay
 # Environment: opera_disp_feb13. Run time: seconds.
 # ```
 #
-# **What this notebook does.** The USGS Bay Area alignment arrays (archive v3.0)
-# provide a 45-year record of surface slip at Tule Pond. Six arrays span the
-# section; HRKT (inside it) and HAPP (1.6 km north) were surveyed every ~2
-# months from 1979 to 2007 (HRKT to mid-2007) and annually after; HCAM and HPMD (~3 km south)
-# every ~2 months from 1990-92 to 2007; the others annually.
+# **What this notebook does.** The USGS Bay Area alignment arrays (archive v3.0; McFarland et al. 2017) record
+# surface slip at Tule Pond over 45 years. Six arrays span the section. HRKT (inside the section) and HAPP (1.6 km
+# north of it) were surveyed about every two months from 1979 to 2007 (HRKT to mid-2007) and annually after that.
+# HCAM and HPMD (about 3 km south) were surveyed about every two months from 1990-92 to 2007, and the other arrays
+# annually.
 #
-# 1. **Where the arrays are, and the arrays against the InSAR.** Positions
-#    (lat, lon) from the archive summary, checked against the mapped trace. The
-#    InSAR fault-parallel stack within 0.5 km along strike of each array
-#    (`stack_km`), tied to the array by the mean offset at the surveys inside
-#    the InSAR window (a vertical shift only); the array step across each InSAR
-#    onset window (supplement figure: map + the six arrays since 2015).
-# 2. **The HRKT event history, bimonthly era only.** An event is a survey
-#    interval whose step exceeds the inter-event rate by a fixed 6 mm (chosen
-#    by eye against visually distinct steps; the threshold sweep shows the
-#    effect of this choice), fitted with the same joint model as notebook 04;
-#    detections with a fitted step under 2 sigma are dropped. The output
-#    catalogue is read by 10 (event table, seasonality) and 11 (repeat
-#    intervals and the forecast; the intervals are computed only there).
-# 3. **Along strike.** The same detector on HAPP, HCAM and HPMD, and their
-#    excess step inside every HRKT event window.
-# 4. **Threshold sweep** (supplement): the detector at 3 sigma, 6 mm and 5 mm.
+# 1. **Array positions and the InSAR at each array** (sections 2 to 5). The positions (latitude, longitude) are read
+#    from the archive summary and checked against the mapped trace. The InSAR fault-parallel series within 0.5 km
+#    along strike of each array (`stack_km`) are averaged and the average is tied to the array by a constant offset.
+#    The array step across each InSAR onset window is measured. The supplement figure shows the map and the six
+#    arrays since 2015.
+# 2. **The HRKT event history, bimonthly era only** (section 6). An event is a survey interval whose step exceeds the
+#    inter-event rate by a fixed 6 mm. The flagged intervals are fitted with the joint model of notebook 04, and
+#    detections with a fitted step under 2 sigma are dropped. The 6 mm threshold was chosen by eye against visually
+#    distinct steps; the threshold sweep (step 4) shows the effect of this choice. Notebook 12 (event table,
+#    seasonality) and notebook 13 (repeat intervals and forecast) read the catalogue. The repeat intervals are
+#    computed only in notebook 13.
+# 3. **Along strike** (section 7). The same detector is run on HAPP, HCAM and HPMD, and their excess step inside every
+#    HRKT event window is measured.
+# 4. **Threshold sweep** (section 9, supplement). The detector is run with thresholds of 3 sigma, 6 mm and 5 mm.
 #
-# **Inputs**: 03 `fp_ts.csv`, 04 `creep_events.csv` (the InSAR onset windows: `onset_lo` is
-# the last acquisition before the step, which is also 04's step epoch, and `onset_hi` the first
-# acquisition after it), 04 `section_lengths.csv` and 06 `fig2_inputs.npz` (the map: the mean-event
-# fault-parallel field and the SSE extent), the archive summary and the
-# array files of HAPP, HGIL, HRKT, HHAN, HUNI, HPIN, HCAM and HPMD, the mapped trace.
+# **Inputs**: 03 `fp_ts.csv`; 04 `creep_events.csv` (the InSAR onset windows, where `onset_lo` is the last acquisition
+# before the step, which is also the step epoch of 04, and `onset_hi` the first acquisition after it); 04
+# `section_lengths.csv` and 06 `fig2_inputs.npz` (for the map, the mean-event fault-parallel field and the SSE
+# extent); the archive summary; the array files of HAPP, HGIL, HRKT, HHAN, HUNI, HPIN, HCAM and HPMD; the mapped trace.
 #
-# **Outputs** (`outputs/11_alignment_arrays/`): `hrkt_aa_events.csv` (the survey window
-# `onset_lo` to `onset_hi` of each array event, its step, and `onset_mid`, the window midpoint, for
-# labels, plot positions and sort keys only) and `aa_insar_stacks.csv` (read by 10 and 11), `aa_insar_steps.csv`,
-# `aa_alongstrike_neighbours.csv`, `hrkt_threshold_sweep.csv`, the map panel
-# `qc09_arrays_map_panel.png` and its colour table `event_RdBu_r.cpt`, the stats
-# sidecar `09_aa_stats.txt`, registry rows `09_*`.
+# **Outputs** (`outputs/11_alignment_arrays/`): `hrkt_aa_events.csv` (for each array event the survey window
+# `onset_lo` to `onset_hi`, its step, and `onset_mid`, the window midpoint, used only for labels, plot positions and
+# sorting); `aa_insar_stacks.csv` (read by 12 and 13); `aa_insar_steps.csv`; `aa_alongstrike_neighbours.csv`;
+# `hrkt_threshold_sweep.csv`; the map panel `qc09_arrays_map_panel.png` and its colour table `event_RdBu_r.cpt`;
+# the stats sidecar `11_aa_stats.txt`; registry rows `11_*` (including `11_hgil_*` and `11_hrkt_*`, the step medians of
+# section 4).
 #
-# **Figures**: the six-array supplement figure (`figS_tulepond_arrays_insar_*`),
-# the threshold sweep (`figS_hrkt_threshold_sweep_3sig-6mm-5mm`, supplement), and
-# QC figures of the HRKT and HAPP records (`qc09_aa_history_*`; not the paper's
-# Fig 3, which 13_forecast draws).
+# **Figures**: the six-array supplement figure (`figS_tulepond_arrays_insar_*`); the threshold sweep
+# (`figS_hrkt_threshold_sweep_3sig-6mm-5mm`, supplement); QC figures of the HRKT and HAPP records
+# (`qc09_aa_history_*`). The paper's Fig 3 is drawn by 13_forecast.
 #
-# **What to check.** Every array within 150 m of the trace (asserted); the end
-# of HRKT's bimonthly era (`09_hrkt_dense_era_end_yr`, printed); the longest
-# quiet interval spans Loma Prieta (asserted); the neighbours' excess, in
-# sigma, inside the HRKT windows (printed). Every value is registered in the
-# last cell (`09_*`).
+# **What to check.** Every array lies within 150 m of the trace (asserted, section 2). The end of the HRKT bimonthly
+# era (`11_hrkt_dense_era_end_yr`) is printed in section 6. The longest quiet interval spans Loma Prieta (asserted,
+# section 6). The excess of the neighbouring arrays inside the HRKT windows, in units of sigma, is printed in
+# section 7. Every value is registered in section 10.
+
+# %% [markdown]
+# ## 1. Imports and settings
+#
+# The detector settings, the arrays, the colours and the input files. The registry records the input files.
 
 # %%
-# [2]
 import os
 import warnings
 
@@ -68,14 +67,8 @@ import pygmt                                     # the map panel
 import xarray as xr                              # gridded data for pygmt
 import matplotlib.pyplot as plt
 
-# %% [markdown]
-# ## [3] Paths and parameters
-#
-# The detector settings, the arrays, the colours and the input files; the registry records the inputs.
-
 # %%
-# [4]
-notebook = "13_alignment_arrays"
+notebook = "11_alignment_arrays"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -87,13 +80,13 @@ site = "HRKT"                  # the array with the dense record
 thr_mm = 6.0                   # detection threshold: fixed excess per survey interval, chosen by eye (see the sweep)
 min_step_sigma = 2.0           # a detection is kept only if its fitted step is at least this many sigma
 n_pass = 2                     # detector passes (pass 2 uses the fitted inter-event rate)
-dense_window_days = aa_dense_window_days   # the bimonthly era: survey intervals up to this; the detector runs only there (TulePond_filepaths, shared with 10 and 11)
+dense_window_days = aa_dense_window_days   # the bimonthly era: survey intervals up to this (d); the detector runs only there (TulePond_filepaths, shared with 12 and 13)
 n_background = 4               # columns of the joint model before the steps: constant, rate, annual sin, annual cos
 neighbour_codes = ["HAPP", "HCAM", "HPMD"]   # the other arrays surveyed every ~2 months: north (HAPP) and south (HCAM, HPMD) of the section
 zoom_t0 = 2015.0               # start of the zoomed panels
-loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, shared with 10 and 11)
-# the six arrays across the section, north -> south; their positions (lat AND lon) are read from the archive
-# summary in [6] and checked against the mapped trace
+loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, shared with 12 and 13)
+# the six arrays across the section, north to south; their positions (lat and lon) are read from the archive
+# summary in section 2 and checked against the mapped trace
 array_codes = ["HAPP", "HGIL", "HRKT", "HHAN", "HUNI", "HPIN"]
 max_trace_dist_m = 150.0       # every array must sit within this distance of the mapped trace
 # the map panel: 06's mean-event fault-parallel field on the shared rotated fault map of Fig 1A
@@ -106,7 +99,7 @@ array_label_u_km = [46.5, 49.0, 51.5, 54.0, 56.5, 59.0]   # along-strike km of t
 
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
-# Okabe-Ito: array blue; InSAR vermillion; InSAR onset lines orange (QC figures). No green.
+# Okabe-Ito colours (no green): array blue, InSAR vermillion, InSAR onset lines orange in the QC figures
 aa_color = "#0072B2"
 insar_color = "#D55E00"
 det_color = "#E69F00"
@@ -118,13 +111,23 @@ for code in array_codes + ["HCAM", "HPMD"]:
 REG.inputs(fp_ts_file, events_file, common_paths["aa_summary"], event_field_file, lengths_file, common_paths["fault_profiles"], *array_files)
 
 # %% [markdown]
-# ## [5] Load: the InSAR fault-parallel time series, the InSAR catalogue, the arrays
+# ## 2. Load the InSAR fault-parallel series, the InSAR catalogue and the arrays
 #
-# The InSAR onsets come from 04 as windows: `onset_lo` is the last acquisition before the step (04's
-# step epoch: its step is H(t > onset_lo)), `onset_hi` the first acquisition after it.
+# The InSAR onsets come from 04 as windows. `onset_lo` is the last acquisition before the step and is the step epoch
+# of 04 (its step is $H(t - t_\mathrm{lo})$, defined in section 3); `onset_hi` is the first acquisition after it.
+#
+# The array positions come from the archive summary. The along-strike distance of an array (km from Point Pinole) is
+# computed from its latitude, as for the InSAR crossings. The distance of an array to the mapped trace is measured on
+# a flat earth,
+#
+# $$d = \min_j \sqrt{\left[(\lambda_j - \lambda)\, k_\lambda\right]^2 + \left[(\varphi_j - \varphi)\, k_\varphi\right]^2},$$
+#
+# where $(\varphi, \lambda)$ are the latitude and longitude of the array (degrees), $(\varphi_j, \lambda_j)$ those of
+# trace vertex $j$ (vertices every 100 m), $k_\varphi = 111.19$ km per degree and
+# $k_\lambda = 111.19 \cos\bar\varphi$ km per degree, with $\bar\varphi$ the mean latitude of the trace. Because $d$ is
+# measured to the nearest vertex rather than to the line, it overestimates the distance by up to about 50 m.
 
 # %%
-# [6]
 # the fault-parallel time series from 03: lat x decimal year, mm
 fp_ts = pd.read_csv(fp_ts_file, index_col=0)
 to_km = utils.lat_to_km_map(common_paths["fault_profiles"])    # latitude -> km from Point Pinole along the trace
@@ -169,18 +172,49 @@ print(array_pos.round({"lat": 4, "lon": 4, "km": 1, "dist_to_trace_m": 0}).to_st
 assert (array_pos.dist_to_trace_m <= max_trace_dist_m).all(), f"an array lies more than {max_trace_dist_m:g} m from the mapped trace"
 
 # %% [markdown]
-# ## [7] The InSAR stack at each array
+# ## 3. The InSAR stack at each array
 #
-# The mean of the fault-parallel series of every crossing within `stack_km` along strike of
-# the array (crossings with fewer than half their dates are left out), tied to
-# the array by the mean offset at the surveys that fall inside the InSAR window
-# (asserted: every array has surveys there). A vertical shift only: nothing is fitted.
-# Then the five event steps on the HRKT stack, with the joint model of 04.
+# The stack at an array is the mean of the fault-parallel series of the crossings within `stack_km` along strike of
+# the array, leaving out crossings with data on fewer than half the dates:
+#
+# $$\bar u(t_j) = \frac{1}{N_c} \sum_{c=1}^{N_c} u_c(t_j),$$
+#
+# where $u_c(t_j)$ is the fault-parallel slip of crossing $c$ at acquisition $t_j$ (mm) and $N_c$ the number of
+# crossings with data at $t_j$. The stack is tied to the array by a constant offset (a vertical shift only; nothing is
+# fitted),
+#
+# $$\Delta = \frac{1}{N_s} \sum_{k=1}^{N_s} \left[ U(\tau_k) - \bar u(\tau_k) \right],$$
+#
+# where $U(\tau_k)$ is the cumulative array slip at survey $\tau_k$ (mm), the sum runs over the $N_s$ surveys inside
+# the InSAR record (asserted: every array has at least one), and $\bar u(\tau_k)$ is the stack interpolated linearly to
+# the survey time. The tied stack is $\bar u + \Delta$.
+#
+# The five event steps are then measured on the HRKT stack with the joint model of 04,
+#
+# $$u(t) = c + v\,(t - \bar t) + a \sin 2\pi t + b \cos 2\pi t + \sum_{k=1}^{K} s_k\, H(t - \tau_k),$$
+#
+# where $u(t)$ is the slip at time $t$ (mm; $t$ in decimal years), $\bar t$ the mean of the epochs, $c$ a constant
+# (mm), $v$ the inter-event rate (mm/yr), $a$ and $b$ the annual sine and cosine amplitudes (mm), $s_k$ the step of
+# event $k$ (mm), $\tau_k$ its step epoch (here `onset_lo` of 04), $K$ the number of events, and $H(x) = 1$ for
+# $x > 0$ and 0 otherwise. The model is solved by least squares. The steps of 04 are measured on its peak-slip band
+# stack, not at HRKT, so these steps compare the InSAR-era events with the array steps at the same place.
 
 # %%
-# [8]
 def design_matrix(dates, step_epochs):
-    """The joint model of 04: constant, rate, annual sin and cos, then one Heaviside step H(t > step epoch) per event."""
+    """Design matrix of the joint model of 04 (section 3).
+
+    Parameters
+    ----------
+    dates : numpy.ndarray
+        Epochs (decimal years).
+    step_epochs : sequence of float
+        Step epoch of each event (decimal years); the step is H(t > step epoch).
+
+    Returns
+    -------
+    numpy.ndarray
+        Columns: constant, rate (time minus the mean epoch), annual sine, annual cosine, then one step per event.
+    """
     columns = [np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
     for step_epoch in step_epochs:
         columns.append((dates > step_epoch).astype(float))
@@ -188,7 +222,24 @@ def design_matrix(dates, step_epochs):
 
 
 def insar_stack(code, array):
-    """(dates, slip_mm, n_crossings) of the InSAR stack at one array, tied to the array."""
+    """InSAR stack at one array, tied to the array by a constant offset (section 3).
+
+    Parameters
+    ----------
+    code : str
+        Array code.
+    array : pandas.DataFrame
+        The array record (year, cum_mm, std_mm).
+
+    Returns
+    -------
+    dates : numpy.ndarray
+        Acquisition epochs with data (decimal years).
+    slip : numpy.ndarray
+        Tied stack (mm).
+    n_crossings : int
+        Number of crossings in the stack.
+    """
     crossing_km = to_km(fp_ts.index.values.astype(float))      # fp_ts is indexed by latitude: along-strike km of each crossing
     array_km = float(array_pos.km[code])
     nearby = fp_ts[np.abs(crossing_km - array_km) <= stack_km]
@@ -199,7 +250,7 @@ def insar_stack(code, array):
     ok = np.isfinite(slip)
     dates = fp_dates[ok]
     slip = slip[ok]
-    # tie: the surveys inside the InSAR window
+    # tie: mean offset at the surveys inside the InSAR record
     in_window = array[(array.year >= dates.min()) & (array.year <= dates.max())]
     assert len(in_window) > 0, f"{code}: no survey inside the InSAR window to tie the stack on"
     offset = float(np.mean(in_window.cum_mm.values - np.interp(in_window.year.values, dates, slip)))
@@ -210,16 +261,14 @@ stacks = {}                                       # code -> (dates, slip_mm, n_c
 for code, array in arrays.items():
     stacks[code] = insar_stack(code, array)
 
-# saved for notebooks 10 and 11; 13_forecast draws the paper's Fig 3 (HRKT record, onsets over the rain, intervals, forecast)
+# saved for notebooks 12 and 13; 13_forecast draws the paper's Fig 3
 stack_rows = []
 for code, (insar_dates, insar_slip, n_crossings) in stacks.items():
     for date, slip in zip(insar_dates, insar_slip):
         stack_rows.append(dict(code=code, date=date, slip_mm=slip, n_crossings=n_crossings))
 pd.DataFrame(stack_rows).to_csv(os.path.join(out_dir, "aa_insar_stacks.csv"), index=False)
 
-# the five event steps on the HRKT stack, so the InSAR-era event size is compared with the array's dense-era steps at
-# the same place (04's event steps are measured on its peak band, not at HRKT). Same joint model as 04, least squares,
-# with the steps at 04's step epochs (onset_lo, the last acquisition before each step).
+# the five event steps on the HRKT stack (section 3), with the steps at the step epochs onset_lo of 04
 hrkt_dates, hrkt_slip, hrkt_n = stacks["HRKT"]
 G_hrkt = design_matrix(hrkt_dates, insar_events.onset_lo)
 hrkt_insar_steps = np.linalg.lstsq(G_hrkt, hrkt_slip, rcond=None)[0][n_background:]
@@ -228,16 +277,19 @@ print(f"HRKT InSAR stack ({hrkt_n} crossings): event steps {np.round(hrkt_insar_
       f"median {np.median(hrkt_insar_steps):.1f}, range {hrkt_insar_steps.min():.1f}-{hrkt_insar_steps.max():.1f} (registered beside the mean)")
 
 # %% [markdown]
-# ## [9] The arrays against the InSAR at each site
+# ## 4. The arrays against the InSAR at each site
 #
-# For each InSAR onset window, the array step between the last survey before the window and the
-# first survey after it; and, since 2015, the median step of the survey intervals that contain an
-# InSAR onset window against those that do not (no survey may fall inside a window: asserted). The
-# HGIL and HRKT medians are registered.
+# For each InSAR onset window, the array step is
+#
+# $$\Delta U = U(\tau_\mathrm{after}) - U(\tau_\mathrm{before}),$$
+#
+# where $\tau_\mathrm{before}$ is the last survey on or before `onset_lo`, $\tau_\mathrm{after}$ the first survey on or
+# after `onset_hi`, and $U$ the cumulative array slip (mm). No survey may fall inside a window (asserted). Since 2015
+# (`zoom_t0`), each survey interval is classed as an event interval if it contains a whole InSAR onset window and as a
+# quiet interval otherwise, and the median step of each class is computed. The HGIL and HRKT medians are registered.
 
 # %%
-# [10]
-stats_lines = ["09 ALIGNMENT ARRAYS",
+stats_lines = ["11 ALIGNMENT ARRAYS",
                f"InSAR stack: crossings within +/-{stack_km:g} km of each array; tie: mean offset at surveys inside the InSAR window"]
 onset_text = []
 for event in insar_events.itertuples():
@@ -250,7 +302,7 @@ for code, array in arrays.items():
     stats_lines.append(f"{code} (km {array_pos.km[code]:.1f}, {array_pos.dist_to_trace_m[code]:.0f} m from the trace), stack {n_crossings} crossings; array {array.year.min():.2f}-{array.year.max():.2f}, "
                        f"{len(array)} surveys, {array.cum_mm.iloc[-1] / (array.year.max() - array.year.min()):.2f} mm/yr; "
                        f"InSAR {(insar_slip[-1] - insar_slip[0]) / (insar_dates[-1] - insar_dates[0]):.2f} mm/yr, {len(in_window)} surveys in window")
-    # the array step across each InSAR onset window: last survey before the window minus first survey after it
+    # the array step across each InSAR onset window: first survey after the window minus last survey before it
     for event in insar_events.itertuples():
         inside = array[(array.year > event.onset_lo) & (array.year < event.onset_hi)]
         assert len(inside) == 0, f"{code}: a survey falls inside the InSAR onset window {event.onset_lo:.3f}-{event.onset_hi:.3f}"
@@ -291,20 +343,28 @@ aa_steps.to_csv(os.path.join(out_dir, "aa_insar_steps.csv"), index=False)
 print("\n".join(stats_lines))
 
 # %% [markdown]
-# ## [11] Supplement figure: where the six arrays are, and how the InSAR compares
+# ## 5. Supplement figure: the six arrays and the InSAR
 #
-# A) the rotated fault map of Fig 1A (the same function, `utils.fault_map_panel`: trace, cities,
-# creepmeters, SSE extent, distance from Point Pinole) over 06's mean-event fault-parallel field, the
-# field Fig 2 maps (display-referenced to the mid-point of the median slip west and east of the trace),
-# with the six arrays as black squares, their codes tied to them by thin leaders; B to G) each array since 2015 (blue, survey error
-# bars) with the InSAR stack tied to it (vermillion) and the five InSAR steps (grey dashed, at each step epoch
-# `onset_lo`; the 6 to 12 d window is narrower than the line at this scale). The map is
-# drawn with pygmt and placed in the matplotlib figure as an image (one 600 dpi PNG).
+# Panel A is the rotated fault map of Fig 1A, drawn by the same function (`utils.fault_map_panel`: trace, cities,
+# creepmeters, SSE extent, distance from Point Pinole), over the mean-event fault-parallel field of 06, the field
+# mapped in Fig 2. The six arrays are black squares, each tied to its code by a thin leader. Panels B to G show each
+# array since 2015 (blue, with survey error bars), the InSAR stack tied to it (vermillion) and the five InSAR step
+# epochs `onset_lo` (grey dashed; the 6 to 12 d window is narrower than the line at this scale). The map is drawn
+# with pygmt and placed in the matplotlib figure as a 600 dpi PNG.
+#
+# For display, the field is referenced to the mid-point of the median slip on the two sides of the trace,
+# $u_\mathrm{ref} = \tfrac{1}{2}(\tilde u_W + \tilde u_E)$, where $\tilde u_W$ and $\tilde u_E$ are the medians of the
+# field west and east of the trace (mm). A map node lies east of the trace when
+#
+# $$d_x\,(y - y_0) - d_y\,(x - x_0) > 0,$$
+#
+# where $(x, y)$ is the node, $(x_0, y_0)$ the nearest trace vertex, and $(d_x, d_y)$ the trace direction from the
+# vertex before to the vertex after the nearest one, turned to point south; all are in km on the flat-earth scale of
+# section 2.
 
 # %%
-# [12]
-# --- A) the map: the shared rotated fault map of Fig 1A (utils.fault_map_panel) over 06's mean-event
-# fault-parallel field (the field Fig 2 maps), looked up on a regular lon/lat grid (nearest pixel)
+# A) the map: the rotated fault map of Fig 1A over the mean-event fault-parallel field of 06, resampled to a
+# regular lon/lat grid (nearest pixel)
 event_fields = np.load(event_field_file)
 fp_event = np.asarray(event_fields["fp_event"], float)                 # mm, on 06's UTM box grid (pixel centres X, Y)
 event_x = np.asarray(event_fields["X"], float)
@@ -317,9 +377,9 @@ _, _, corners = utils.fault_map_corners(frame)
 lon_axis, lat_axis, event_lonlat = utils.utm_grid_to_lonlat(fp_event, float(event_x[0, 0]), x_step, float(event_y[0, 0]), y_step,
                                                             frame["to_utm"], corners)
 lon_grid, lat_grid = np.meshgrid(lon_axis, lat_axis)
-# display reference: the mid-point of the median event slip west and east of the trace (where 06 has data)
-# side of the fault: the cross product of the local trace direction (turned to run north to south) with the
-# vector from the nearest trace vertex to the node; positive = to the left of a south-going trace = east
+# display reference: the mid-point of the median event slip west and east of the trace (section 5). The side of the
+# fault is the sign of the cross product of the local trace direction (pointing south) with the vector from the
+# nearest trace vertex to the node; positive is east
 trace_x = trace.ft_lon.values * km_per_deg_lon
 trace_y = trace.ft_lat.values * km_per_deg_lat
 node_x = lon_grid.ravel() * km_per_deg_lon
@@ -329,7 +389,7 @@ ahead = np.clip(nearest + 1, 0, len(trace_x) - 1)
 behind = np.clip(nearest - 1, 0, len(trace_x) - 1)
 dir_x = trace_x[ahead] - trace_x[behind]
 dir_y = trace_y[ahead] - trace_y[behind]
-if trace.ft_lat.values[0] < trace.ft_lat.values[-1]:          # the file runs south to north: turn the direction south-going
+if trace.ft_lat.values[0] < trace.ft_lat.values[-1]:          # the file runs south to north: turn the direction to point south
     dir_x = -dir_x
     dir_y = -dir_y
 east_of_trace = (dir_x * (node_y - trace_y[nearest]) - dir_y * (node_x - trace_x[nearest]) > 0).reshape(lon_grid.shape)
@@ -342,9 +402,9 @@ event_lonlat = event_lonlat - 0.5 * (event_west + event_east)
 print(f"mean event display reference: west {event_west:+.2f}, east {event_east:+.2f} mm; mid-point removed")
 grid_ll = xr.DataArray(event_lonlat, coords={"lat": lat_axis, "lon": lon_axis}, dims=("lat", "lon"))
 cpt_event = utils.write_cpt(os.path.join(out_dir, "event_RdBu_r.cpt"), "RdBu_r", -event_lim, event_lim)
-# the six arrays: black squares; their codes in a column on the west side, spread along strike and tied to
-# each square by a thin leader (HRKT, HHAN and HUNI lie within 1 km of each other: 0.1 cm on this map), kept
-# clear of CFW1's label
+# the six arrays as black squares; their codes in a column on the west side, spread along strike and tied to each
+# square by a thin leader (HRKT, HHAN and HUNI lie within 1 km of each other, 0.1 cm on this map), clear of the
+# CFW1 label
 array_u, array_v = utils.to_uv(frame, array_pos.lon.values, array_pos.lat.values)
 assert np.all(np.diff(array_u) > 0), "array_codes must run north to south"
 array_symbols = []
@@ -366,7 +426,7 @@ with pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_L
                           extra_symbols=array_symbols, extra_labels=array_labels)
 gmt_map.savefig(map_png, dpi=600, crop="+gwhite")
 
-# --- B to G) the arrays since 2015 against the InSAR, two rows of three, beside the map
+# B to G) the arrays since 2015 with the InSAR, two rows of three, beside the map
 utils.mpl_paper_style(base=7)
 fig = plt.figure(figsize=(7.2, 4.4), constrained_layout=True)          # 18.3 cm wide
 grid_spec = fig.add_gridspec(2, 4, width_ratios=[0.9, 1, 1, 1])             # the map column: the tall rotated map
@@ -402,46 +462,113 @@ print("Saved figure to:", f_arrays)
 plt.show()
 
 # %% [markdown]
-# ## [13] The HRKT event history (the bimonthly era only)
+# ## 6. The HRKT event history (bimonthly era only)
 #
-# HRKT was surveyed every ~2 months until mid-2007, then annually. The detector and the joint model
-# run on the bimonthly era only: the annual cycle in the model cannot be resolved from
-# annual surveys, and a one-year window cannot place an event in its season. The era ends at the last
-# survey that closes an interval of `dense_window_days` or less.
+# HRKT was surveyed about every two months until mid-2007 and annually after that. The detector and the joint model
+# run on the bimonthly era only, because the annual cycle of the model cannot be resolved from annual surveys and a
+# one-year window cannot place an event in its season. The era ends at the last survey that closes an interval of
+# `dense_window_days` (130 d) or less.
 #
-# Detection on survey intervals: `excess = (cum_i - cum_{i-1}) - rate * (t_i - t_{i-1})` exceeds `thr_mm`
-# (a fixed threshold chosen by eye against visually distinct steps; the sweep below shows the effect of this choice). The
-# flagged intervals are fitted with the joint model (constant + rate + annual sin/cos + one step per event);
-# where in its window a step is placed does not change the fit, since no survey falls inside the window.
-# Any event whose fitted step is under `min_step_sigma` times its 1-sigma error is dropped (the weakest
-# first) and the model refitted. Pass 2 repeats the detection with the fitted inter-event rate.
+# **Detection statistic.** For each survey interval $i$,
 #
-# The catalogue keeps each event's survey window [onset_lo, onset_hi]; its `onset_mid` is the window
-# midpoint, a label, plot position and sort key only. The onset is equally likely anywhere in the window, so
-# every statistic of the onset times (11 [26]) draws it uniformly within the window. The joint model places
-# each step at the last survey before it (onset_lo, as 04); any time inside the window gives the same fit.
+# $$e_i = (U_i - U_{i-1}) - v\,(t_i - t_{i-1}),$$
 #
-# The quiet interval is the longest gap between detections. Check: it spans the 1989 Loma Prieta
-# earthquake (asserted).
+# where $U_i$ is the cumulative slip at survey $i$ (mm), $t_i$ its time (decimal years) and $v$ the inter-event rate
+# (mm/yr). An interval is flagged when $e_i > \theta$, with $\theta$ = `thr_mm` = 6 mm, a fixed threshold chosen by eye
+# against visually distinct steps (section 9 shows the effect of this choice). Consecutive flagged intervals are
+# merged into one event, whose window runs from the first to the last survey of the merged intervals.
+#
+# **Joint model.** The flagged events are fitted with the joint model of section 3, with the step of event $k$ at
+# $\tau_k$, the last survey before it (as `onset_lo` in 04). Any time inside the window gives the same fit, because no
+# survey falls inside it. The formal 1-sigma error of each step is
+#
+# $$\sigma_{s_k} = \sqrt{\hat\sigma^2 \left[(G^\top G)^{-1}\right]_{kk}}, \qquad
+# \hat\sigma^2 = \frac{1}{N - P} \sum_{i=1}^{N} r_i^2,$$
+#
+# where $G$ is the design matrix, $N$ the number of surveys, $P$ the number of model parameters (4 + $K$) and $r_i$
+# the residual at survey $i$ (mm).
+#
+# **The 2-sigma rule.** While the smallest ratio $s_k / \sigma_{s_k}$ is under `min_step_sigma` (2), the event with
+# that ratio is dropped and the model refitted.
+#
+# **Two passes.** In pass 1 the rate $v$ is the slope of a least-squares line through all surveys of the era. In pass
+# 2 the detection is repeated with the inter-event rate $v$ fitted by the joint model of pass 1.
+#
+# **The threshold in units of sigma.** The noise of the detection statistic is measured by the robust standard
+# deviation [citation needed]
+#
+# $$\sigma_R = 1.4826 \, \mathrm{median}_i \left| e_i - \mathrm{median}(e) \right|,$$
+#
+# computed on the statistic of the last pass; $\theta / \sigma_R$ is printed and registered. The annual amplitude is
+# $A = \sqrt{a^2 + b^2}$ and the RMS is the root mean square of the residuals.
+#
+# The catalogue keeps the survey window [`onset_lo`, `onset_hi`] of each event; `onset_mid`, the window midpoint, is
+# used only for labels, plot positions and sorting. The onset is equally likely anywhere in its window, so every
+# statistic of the onset times (notebook 13, section 6) draws it uniformly within the window.
+#
+# The quiet interval is the longest gap between the end of one event window and the start of the next. It must span
+# the 1989 Loma Prieta earthquake (asserted).
 
 # %%
-# [14]
 def bimonthly_era(array):
-    """The array up to the last survey that closes an interval of dense_window_days or less."""
+    """Bimonthly era of an array record (section 6).
+
+    Parameters
+    ----------
+    array : pandas.DataFrame
+        The array record (year, cum_mm, std_mm), sorted by year.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The record up to the last survey that closes an interval of dense_window_days or less.
+    """
     gap_days = np.diff(array.year.values) * 365.25
     last = int(np.max(np.where(gap_days <= dense_window_days)[0])) + 1
     return array.iloc[:last + 1].reset_index(drop=True)
 
 
 def interval_excess(survey_yr, cum_slip, rate_mm_yr):
-    """The detection statistic of every survey interval: its step minus the rate x its length (mm)."""
+    """Detection statistic e_i of every survey interval (section 6).
+
+    Parameters
+    ----------
+    survey_yr : numpy.ndarray
+        Survey times (decimal years).
+    cum_slip : numpy.ndarray
+        Cumulative slip at each survey (mm).
+    rate_mm_yr : float
+        Inter-event rate (mm/yr).
+
+    Returns
+    -------
+    numpy.ndarray
+        Step of each interval minus the rate times its length (mm).
+    """
     return np.diff(cum_slip) - rate_mm_yr * np.diff(survey_yr)
 
 
 def detect_intervals(survey_yr, cum_slip, rate_mm_yr, threshold_mm):
-    """Survey intervals whose excess step exceeds the threshold, as [i_start, i_end]
-    index pairs; consecutive flagged intervals are merged into one. Also returns
-    the excess of every interval."""
+    """Flag the survey intervals whose detection statistic exceeds the threshold.
+
+    Consecutive flagged intervals are merged into one event.
+
+    Parameters
+    ----------
+    survey_yr, cum_slip : numpy.ndarray
+        Survey times (decimal years) and cumulative slip (mm).
+    rate_mm_yr : float
+        Inter-event rate (mm/yr).
+    threshold_mm : float
+        Detection threshold (mm).
+
+    Returns
+    -------
+    events : list of [int, int]
+        Survey index of the start and end of each event window.
+    excess : numpy.ndarray
+        Detection statistic of every interval (mm).
+    """
     excess = interval_excess(survey_yr, cum_slip, rate_mm_yr)
     events = []
     for i in np.where(excess > threshold_mm)[0]:
@@ -453,24 +580,61 @@ def detect_intervals(survey_yr, cum_slip, rate_mm_yr, threshold_mm):
 
 
 def fit_steps(survey_yr, cum_slip, events):
-    """The joint model with one step per event: (coef, design_G, step 1-sigma errors). The step is H(t > the last
-    survey before the event), as 04's step at onset_lo; any time inside the window gives the same fit, since no
-    survey falls inside it."""
+    """Least-squares fit of the joint model with one step per event (section 6).
+
+    The step of each event is at the last survey before it, as the step at onset_lo in 04.
+
+    Parameters
+    ----------
+    survey_yr, cum_slip : numpy.ndarray
+        Survey times (decimal years) and cumulative slip (mm).
+    events : list of [int, int]
+        Survey index of the start and end of each event window.
+
+    Returns
+    -------
+    coef : numpy.ndarray
+        Constant, rate, annual sine and cosine, then the steps (mm, mm/yr).
+    design_G : numpy.ndarray
+        Design matrix.
+    step_err : numpy.ndarray
+        Formal 1-sigma error of each step (mm).
+    """
     step_epochs = []
     for i_start, i_end in events:
         step_epochs.append(survey_yr[i_start])
     design_G = design_matrix(survey_yr, step_epochs)
     coef, *_ = np.linalg.lstsq(design_G, cum_slip, rcond=None)
-    residual = cum_slip - np.dot(design_G, coef)                       # np.dot(G, coef) = the model at every survey
+    residual = cum_slip - np.dot(design_G, coef)
     variance = float(np.sum(residual ** 2) / (len(survey_yr) - design_G.shape[1]))
     step_err = np.sqrt(variance * np.diag(np.linalg.inv(np.dot(design_G.T, design_G))))[n_background:]
     return coef, design_G, step_err
 
 
 def run_detector(survey_yr, cum_slip, threshold_mm):
-    """Two passes of detection + joint fit, dropping steps under min_step_sigma x their error.
-    Returns (catalogue, excess, inter_event_rate, coef, design_G, n_dropped)."""
-    inter_event_rate = float(np.polyfit(survey_yr, cum_slip, 1)[0])          # pass 1: the global rate
+    """Detector of section 6: two passes of detection and joint fit, with the 2-sigma rule.
+
+    Parameters
+    ----------
+    survey_yr, cum_slip : numpy.ndarray
+        Survey times (decimal years) and cumulative slip (mm).
+    threshold_mm : float
+        Detection threshold (mm).
+
+    Returns
+    -------
+    catalogue : pandas.DataFrame
+        One row per event: onset_lo, onset_hi, onset_mid, window_days, amplitude_mm, amp_err.
+    excess : numpy.ndarray
+        Detection statistic of the last pass (mm).
+    inter_event_rate : float
+        Inter-event rate fitted in the last pass (mm/yr).
+    coef, design_G : numpy.ndarray
+        Coefficients and design matrix of the last fit.
+    n_dropped : int
+        Detections dropped by the 2-sigma rule in the last pass.
+    """
+    inter_event_rate = float(np.polyfit(survey_yr, cum_slip, 1)[0])          # pass 1: the slope of a straight line
     for _ in range(n_pass):
         events, excess = detect_intervals(survey_yr, cum_slip, inter_event_rate, threshold_mm)
         n_dropped = 0
@@ -481,7 +645,7 @@ def run_detector(survey_yr, cum_slip, threshold_mm):
             ratio = coef[n_background:] / step_err
             if ratio.min() >= min_step_sigma:
                 break
-            i_start, i_end = events.pop(int(np.argmin(ratio)))               # the weakest event goes first
+            i_start, i_end = events.pop(int(np.argmin(ratio)))               # drop the weakest event
             n_dropped += 1
             print(f"      dropped {survey_yr[i_start]:.2f}-{survey_yr[i_end]:.2f}: fitted step {ratio.min():.1f} sigma (< {min_step_sigma:g})")
         inter_event_rate = float(coef[1])                                     # pass 2 uses the fitted rate
@@ -505,7 +669,7 @@ annual_mm = float(np.hypot(coef[2], coef[3]))
 rms_mm = float(np.sqrt(np.mean((cum_slip - np.dot(design_G, coef)) ** 2)))
 assert len(hrkt_events) > 0, f"no {site} events at {thr_mm:g} mm"
 assert hrkt_events.window_days.max() <= dense_window_days, "an event window longer than the bimonthly cadence"
-# the event catalogue for 10 (the event table, the seasonality) and 11 (the forecast); onset_mid is the window midpoint (see above)
+# the event catalogue for 12 (event table, seasonality) and 13 (repeat intervals, forecast)
 hrkt_events.round(4).to_csv(os.path.join(out_dir, f"{site.lower()}_aa_events.csv"), index=False)
 
 print(f"{site} bimonthly era: {len(survey_yr)} surveys {survey_yr.min():.2f}-{dense_era_end:.2f}, "
@@ -515,14 +679,14 @@ print(f"threshold {thr_mm:g} mm = {thr_mm / excess_sigma:.1f} robust sigma (sigm
       f"{n_dropped} detection(s) dropped under {min_step_sigma:g} sigma")
 print(f"{len(hrkt_events)} events, steps {hrkt_events.amplitude_mm.min():.1f} to {hrkt_events.amplitude_mm.max():.1f} mm "
       f"(median {hrkt_events.amplitude_mm.median():.1f})")
-# the event table: the onset is known only to the survey window (window_lo = last survey before the step,
-# window_hi = first survey after it); the step is the joint-model amplitude with its 1-sigma formal error
+# the event table: the survey window (window_lo, last survey before the step; window_hi, first survey after it) and
+# the joint-model step with its formal 1-sigma error
 event_table = hrkt_events[["onset_lo", "onset_hi", "window_days", "amplitude_mm", "amp_err"]].rename(
     columns={"onset_lo": "window_lo (yr)", "onset_hi": "window_hi (yr)", "window_days": "window (d)",
              "amplitude_mm": "step (mm)", "amp_err": "1-sigma (mm)"})
 print(event_table.round({"window_lo (yr)": 2, "window_hi (yr)": 2, "window (d)": 0, "step (mm)": 1, "1-sigma (mm)": 1}).to_string(index=False))
 
-# the quiet interval: the longest gap between detections; the surveys inside it and their largest step
+# the quiet interval: the longest gap between event windows, the surveys inside it and their largest step
 gaps_yr = hrkt_events.onset_lo.values[1:] - hrkt_events.onset_hi.values[:-1]
 i_gap = int(np.argmax(gaps_yr))
 quiet_start = float(hrkt_events.onset_hi.values[i_gap])
@@ -535,15 +699,20 @@ print(f"quiet interval {quiet_start:.2f} to {quiet_end:.2f} ({quiet_end - quiet_
 assert quiet_start < loma_prieta < quiet_end, "the longest quiet interval does not span Loma Prieta: check the catalogue"
 
 # %% [markdown]
-# ## [15] Along strike: the neighbouring bimonthly arrays inside the HRKT event windows
+# ## 7. Along strike: the neighbouring bimonthly arrays inside the HRKT event windows
 #
-# Three other arrays were surveyed every ~2 months: HAPP (km 54.6, 1.6 km north of the section) and HCAM and
-# HPMD (km 65.3 and 65.7, ~3 km south of it). For each, over its own bimonthly era: its own detections at the
-# same threshold, and its excess step (slip minus its rate x window) over the window of every HRKT event it
-# covers, expressed in units of its own robust sigma.
+# Three other arrays were surveyed about every two months: HAPP (km 54.6, 1.6 km north of the section) and HCAM and
+# HPMD (km 65.3 and 65.7, about 3 km south of it). Each is run through the detector of section 6 over its own
+# bimonthly era at the same threshold. For every HRKT event window that falls inside that era, the excess step of the
+# neighbour is
+#
+# $$E = \left[U'(t_\mathrm{hi}) - U'(t_\mathrm{lo})\right] - v'\,(t_\mathrm{hi} - t_\mathrm{lo}),$$
+#
+# where $t_\mathrm{lo}$ and $t_\mathrm{hi}$ are the ends of the HRKT window (decimal years), $U'$ the cumulative slip of
+# the neighbour interpolated linearly to those times (mm) and $v'$ its own inter-event rate (mm/yr). $E$ is also given
+# in units of the neighbour's own robust sigma, $E / \sigma_R'$.
 
 # %%
-# [16]
 neighbour_rows = []
 neighbour_runs = {}
 for code in neighbour_codes:
@@ -573,22 +742,37 @@ print(f"largest excess at a neighbour inside an HRKT window: {neighbours.excess_
       f"({len(neighbours)} array-windows)")
 
 # %% [markdown]
-# ## [17] QC figures: the 45-year record at the two longest dense arrays (not the paper's Fig 3)
+# ## 8. QC figures: the 45-year record at the two longest bimonthly arrays
 #
-# HRKT (km 61.2, inside the section) and HAPP (km 54.6, north of it). One figure per array: the whole
-# record with its own detections shaded (bimonthly era) and an inset since 2015 against the InSAR; the
-# detection statistic over the bimonthly era, as a step over each survey interval. HRKT's windows are
-# outlined on HAPP's panels.
+# HRKT (km 61.2, inside the section) and HAPP (km 54.6, north of it), one figure each. Panel A shows the whole record
+# with the array's own detections shaded over the bimonthly era, and an inset since 2015 with the InSAR stack. Panel B
+# shows the detection statistic $e_i$ over the bimonthly era as a step over each survey interval. The HRKT windows are
+# outlined on the HAPP panels. These are QC figures, not the paper's Fig 3.
 
 # %%
-# [18]
 def draw_history(code, catalogue, excess_code, sigma_code, era_end, reference_windows=None):
-    """One QC figure for one array (see the cell above)."""
+    """Draw the QC figure of one array (section 8).
+
+    Parameters
+    ----------
+    code : str
+        Array code.
+    catalogue : pandas.DataFrame
+        The array's own detections.
+    excess_code : numpy.ndarray
+        Detection statistic over the bimonthly era (mm).
+    sigma_code : float
+        Robust sigma of the detection statistic (mm).
+    era_end : float
+        End of the bimonthly era (decimal year).
+    reference_windows : pandas.DataFrame, optional
+        Event windows of another array to outline (the HRKT windows on the HAPP figure).
+    """
     array = arrays[code]
     era = array[array.year <= era_end + 1e-9]
     insar_dates, insar_slip, n_crossings = stacks[code]
     fig, axes = plt.subplots(2, 1, figsize=(7.2, 4.8), sharex=True, height_ratios=[1.5, 0.6])
-    # A) the record, its detections shaded, the InSAR steps dashed (at each step epoch, onset_lo)
+    # A) the record, its detections shaded, the InSAR step epochs (onset_lo) dashed
     ax = axes[0]
     ax.plot(array.year, array.cum_mm, "o", ms=2.2, color=aa_color, lw=0.7, ls="-", zorder=3, label=f"{code} alignment array")
     ax.plot(insar_dates, insar_slip, "-", lw=0.8, color=insar_color, zorder=5, label=f"InSAR stack (n = {n_crossings}, tied)")
@@ -643,15 +827,16 @@ draw_history("HRKT", hrkt_events, excess, excess_sigma, dense_era_end)
 draw_history("HAPP", happ_events, happ_excess, happ_sigma, float(happ_era.year.max()), reference_windows=hrkt_events)
 
 # %% [markdown]
-# ## [19] Threshold sweep (supplement)
+# ## 9. Threshold sweep (supplement)
 #
-# The same detector (bimonthly era, the 2-sigma step rule) at the relative 3 sigma cut, at 6 mm and at 5 mm.
-# Left: the detection statistic (one value per survey interval) with each threshold and the detected windows.
-# Right: the fitted step of each detected event with its 1-sigma error; the horizontal bar spans its window.
+# The detector of section 6 (bimonthly era, 2-sigma rule) is run with three thresholds: $\theta = 3\sigma_g$, 6 mm and
+# 5 mm. Here $\sigma_g$ is the robust sigma of the detection statistic $e_i$ computed with the global rate, the slope of
+# a least-squares line through all surveys of the era. The left panels show the detection statistic (one value per
+# survey interval) with each threshold and the detected windows. The right panels show the fitted step of each
+# detected event with its 1-sigma error; the horizontal bar spans its window.
 
 # %%
-# [20]
-# the robust sigma of the excess at the global rate sets the "3 sigma" case
+# the robust sigma of the detection statistic at the global rate sets the 3-sigma threshold
 global_rate = float(np.polyfit(survey_yr, cum_slip, 1)[0])
 excess_global = interval_excess(survey_yr, cum_slip, global_rate)
 sigma_global = utils.robust_sigma(excess_global)
@@ -694,10 +879,9 @@ print("Saved figure to:", f_sweep)
 plt.show()
 
 # %% [markdown]
-# ## [21] Registry: the stats sidecar `09_aa_stats.txt` and the `09_*` numbers
+# ## 10. Registry: the stats sidecar `11_aa_stats.txt` and the registered numbers
 
 # %%
-# [22]
 stats_lines += [f"{site} EVENT HISTORY (bimonthly era {survey_yr.min():.2f}-{dense_era_end:.2f}): {len(survey_yr)} surveys, "
                 f"median spacing {np.median(np.diff(survey_yr)) * 365.25:.0f} d",
                 f"detection: fixed {thr_mm:g} mm excess per interval (= {thr_mm / excess_sigma:.1f} robust sigma, sigma {excess_sigma:.2f} mm); "
@@ -744,7 +928,7 @@ for code in ("HGIL", "HRKT"):
     for kind in ("event_median", "quiet_median"):
         rows = aa_steps[(aa_steps.code == code) & (aa_steps.kind == kind)]
         assert len(rows) == 1, f"{code}: no {kind} step since {zoom_t0:.0f}"
-        REG.register(f"09_{code.lower()}_{kind}_mm", float(rows.step_mm.iloc[0]), "mm", 1, where="P9, Fig3", cell="arrays-insar", sidecar=sidecar)
+        REG.register(f"11_{code.lower()}_{kind}_mm", float(rows.step_mm.iloc[0]), "mm", 1, where="P9, Fig3", cell="arrays-insar", sidecar=sidecar)
 for case in sweep.itertuples():
     REG.register(f"11_sweep_{case.thr_mm:.1f}mm_n_events", case.n_events, "count", 0, where="S threshold sweep", cell="sweep", sidecar=sidecar)
 REG.render()
