@@ -39,7 +39,7 @@
 #
 # **Outputs** (`outputs/08a_3d_model/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane,
 # residual, crossings steps: Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
-# `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `08a_selected_stats.txt`.
+# `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `near_fault_deflection.csv`, `08a_selected_stats.txt`.
 # **Figures** (`Figures_<fig_date>/`): `figS_model_lcurve`, `figS_model_slip`, `figS_model_fit_maps`,
 # `figS_model_profiles`, `figS_model_montecarlo`. **Registry keys** `08a_*`.
 #
@@ -293,6 +293,33 @@ model_comparison.to_csv(os.path.join(out_dir, "model_comparison.csv"), index=Fal
 print(model_comparison.to_string(index=False))
 
 # %% [markdown]
+# ## [8b] Near-fault deflection, west and east (Methods M7)
+#
+# In the SSE section: the mean over the fitted samples 60-250 m from the trace minus the mean over the samples 1.5-3 km
+# away, each side separately (`model_utils.side_deflection_mm`; distances in `model_config`), for the data (each model's
+# own plane removed), the 3D model and the homogeneous model, with the sample counts. The far band holds only 11-14
+# samples per side, so the same is reported with the far band at 1-3 km as a check. The point (Methods M7): the
+# homogeneous model cannot reproduce the west/east asymmetry of the data.
+
+# %%
+## [8b]
+in_section = (sample_km_pp >= creep_lo_km) & (sample_km_pp <= creep_hi_km)
+deflection_fields = (("Data (3D model's plane removed)", data_plane_removed_mm), ("3D model", model_mm),
+                     ("Data (homogeneous model's plane removed)", homogeneous["data_plane_removed_mm"]),
+                     ("Homogeneous model", homogeneous["model_mm"]))
+deflection_rows = []
+for far_km, far_label in ((cfg.far_deflection_km, "selected"), (cfg.far_deflection_check_km, "check")):
+    for field, values in deflection_fields:
+        west = model_utils.side_deflection_mm(values, signed_d_km, in_section, keep, -1, cfg.near_deflection_km, far_km)
+        east = model_utils.side_deflection_mm(values, signed_d_km, in_section, keep, 1, cfg.near_deflection_km, far_km)
+        deflection_rows.append(dict(far_band=far_label, far_km=f"{far_km[0]:g}-{far_km[1]:g}", field=field, west_mm=west[0],
+                                    east_mm=east[0], n_near_west=west[1], n_far_west=west[2], n_near_east=east[1], n_far_east=east[2]))
+deflection = pd.DataFrame(deflection_rows)
+deflection.to_csv(os.path.join(out_dir, "near_fault_deflection.csv"), index=False)
+print(f"near band {cfg.near_deflection_km} km; far band {cfg.far_deflection_km} km (check {cfg.far_deflection_check_km} km)")
+print(deflection.round(2).to_string(index=False))
+
+# %% [markdown]
 # ## [9] Figures of the model: L-curves, slip, fit maps, profiles
 #
 # Science style (`insar_utils.mpl_paper_style(base=7)`, bold panel letters, 300 dpi, png + pdf), Okabe-Ito colours.
@@ -333,6 +360,7 @@ for ax, letter, values, title in ((axes[0], "A", slip, f"3D (SFSVM), Mw {numbers
                                   (axes[1], "B", homogeneous["slip_mm"], f"Homogeneous, Mw {float(homogeneous['Mw_30gpa']):.2f} (30 GPa)")):
     image = ax.tripcolor(triangulation, values, shading="gouraud", cmap=cmc.lajolla, vmin=0, vmax=vmax)
     ax.axvspan(creep_lo_km, creep_hi_km, ymin=0.97, ymax=1.0, color="k")
+    ax.text(creep_hi_km + 0.1, 0.03, "SSE section (04)", va="top", ha="left", fontsize=6.5, color="0.85")
     ax.set_ylim(1.5, 0)
     ax.set_xlim(54.5, 64.5)
     ax.set_ylabel("Depth (km)")
@@ -480,7 +508,7 @@ np.savez(selected_file, sample_lon=model_data["sample_lon"], sample_lat=model_da
          provenance=f"{notebook} {made}: {cfg.gf_run}, locked method (model_config), sigma {sigma:.3f}")
 mc = mc_summary.set_index("quantity")
 stats = REG.sidecar("08a_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
-                                                      mc_summary.to_string(index=False),
+                                                      mc_summary.to_string(index=False), deflection.to_string(index=False),
                                                       stress_drop.to_string(index=False)]
                     + [f"{k} = {v}" for k, v in numbers.items()])
 where = "M8"
@@ -506,6 +534,11 @@ for key, tag, units, precision in (("Mw_30gpa", "mw_30gpa", "Mw", 3), ("Mw_sfcvm
     REG.register(f"08a_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "[10]", stats)
     REG.register(f"08a_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "[10]", stats)
     REG.register(f"08a_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "[10]", stats)
+for _, row in deflection[deflection.far_band == "selected"].iterrows():
+    tag = {"Data (3D model's plane removed)": "data", "3D model": "model", "Data (homogeneous model's plane removed)": "data_homplane",
+           "Homogeneous model": "hom"}[row.field]
+    REG.register(f"08a_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "[8b]", stats)
+    REG.register(f"08a_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "[8b]", stats)
 REG.register("08a_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
 REG.register("08a_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
 REG.register("08a_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)

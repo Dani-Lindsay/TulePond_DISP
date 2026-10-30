@@ -47,10 +47,10 @@ ANCHORS = {
     "06_fp_rate_step_mm_yr": (1.41, 2), "06_fp_event_step_mm": (8.74, 2),
     "06_XX_rate_step_mm_yr": (1.17, 2), "06_XX_event_step_mm": (9.17, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
     "06_YY_rate_step_mm_yr": (6.54, 2), "06_YY_event_step_mm": (0.88, 2),
-    # 08a the 3D model (PyLith GFs, aligned SFCVM v26, nugget Cd, sigma 12; selected 2026-09-30)
-    # rerun 2026-10-03 (surface constraint = the measured crossings): rms W 1.50 -> 1.46, surface 98 -> 105 %, potency 18073 -> 18080
-    "08a_mw_30gpa": (3.76, 2), "08a_rms_west300_mm": (1.46, 2), "08a_surface_pct": (105, 0), "08a_potency_m3": (18080, 0),
-    "08a_mw_sfcvm": (3.04, 2), "08a_sigma": (12, 0),
+    # 08a the selected model, rewired 2026-10-30 (model_config.py: order 2, shallow mesh, N^0, 60 m cut, plane, own corner)
+    "08a_mw_30gpa": (3.86, 2), "08a_mw_harmonic": (3.26, 2), "08a_rms_mm": (1.15, 2), "08a_rms_west500_mm": (1.44, 2),
+    "08a_rms_east500_mm": (1.10, 2), "08a_potency_m3": (25997, 0), "08a_sigma": (43.2, 1), "08a_depth90_m": (933, 0),
+    "07a_hom_mw_30gpa": (3.80, 2),
     # 09 alignment arrays: detector on the bimonthly era only, steps under 2 sigma dropped (Dani 2026-10-02);
     # the repeat intervals live only in 11
     "09_hrkt_n_surveys": (159, 0), "09_hrkt_n_events": (9, 0), "09_hrkt_amp_median_mm": (8.2, 1),

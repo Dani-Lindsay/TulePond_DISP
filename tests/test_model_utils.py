@@ -215,3 +215,11 @@ def test_analytic_tent_G_right_lateral_sign():
     lon, lat = to_mesh.transform(px, py, direction="INVERSE")
     G = sc.analytic_tent_G(tents, lon, lat, sc.look_vector(180.0), model_frame_lonlat, to_mesh, n_sub=4)
     assert G.shape == (2, 1) and G[1, 0] - G[0, 0] > 0                          # east minus west along +look
+
+
+def test_side_deflection_near_minus_far_per_side():
+    d = np.r_[-np.linspace(0.07, 0.24, 6), -np.linspace(1.6, 2.9, 6), np.linspace(0.07, 0.24, 6), np.linspace(1.6, 2.9, 6)]
+    values = np.r_[np.full(6, -5.0), np.full(6, -1.0), np.full(6, 3.0), np.full(6, 1.0)]
+    ok = np.ones(d.size, bool)
+    assert sc.side_deflection_mm(values, d, ok, ok, -1, (0.06, 0.25), (1.5, 3.0)) == (-4.0, 6, 6)
+    assert sc.side_deflection_mm(values, d, ok, ok, 1, (0.06, 0.25), (1.5, 3.0)) == (2.0, 6, 6)

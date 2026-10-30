@@ -28,7 +28,7 @@ Contents, in the order the notebooks use them:
                                                        match_impulse_order, analytic_tent_G, positions_fingerprint,
                                                        analytic_tent_G_cached,
                                                        tent_model_setup, tent_numbers, tent_lcurve, own_corner,
-                                                       uniform_slip_shape, uniform_slip_fit, profile_samples,
+                                                       uniform_slip_shape, uniform_slip_fit, profile_samples, side_deflection_mm,
                                                        correlated_noise, materna_stress_drop_pa
   9. PyLith forward runs, materials, stress            read_forward_points, read_forward_slip, superposition_check,
                                                        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
@@ -1337,6 +1337,18 @@ def profile_samples(lon, lat, line_ends_xy, epsg, half_width_m=300.0):
     along = (sx - xw) * unit[0] + (sy - yw) * unit[1]
     across = -(sx - xw) * unit[1] + (sy - yw) * unit[0]
     return (np.abs(across) <= half_width_m) & (along >= 0) & (along <= length), along
+
+
+def side_deflection_mm(values_mm, signed_d_km, in_section, keep, side, near_km, far_km):
+    """Near-fault deflection on one side (side -1 west, +1 east) of the trace: the mean of values_mm over the fitted
+    samples (keep) in the SSE section (in_section) whose distance from the trace is within near_km (km, (min, max)), minus
+    the mean over those within far_km. Returns (deflection mm, n near, n far). Methods M7. Written for this project."""
+    distance_km = side * np.asarray(signed_d_km, float)
+    usable = np.asarray(keep, bool) & np.asarray(in_section, bool)
+    near = usable & (distance_km >= near_km[0]) & (distance_km <= near_km[1])
+    far = usable & (distance_km >= far_km[0]) & (distance_km <= far_km[1])
+    assert near.sum() >= 5 and far.sum() >= 5, f"too few samples (near {near.sum()}, far {far.sum()})"
+    return float(np.mean(values_mm[near]) - np.mean(values_mm[far])), int(near.sum()), int(far.sum())
 
 
 def correlated_noise(Cd, n_draws, seed):

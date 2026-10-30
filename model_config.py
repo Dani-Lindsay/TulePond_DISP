@@ -101,6 +101,11 @@ depth_fractions = (0.5, 0.9)  # the depths above which 50 % and 90 % of the pote
 fig2k_inner_km = 0.06         # km: Fig 2K step, data and model, 60-150 m from the trace (#21)
 fig2k_outer_km = 0.15
 profile_far_m = 1500.0        # m: start of the far band of the across-fault deflections (08a profiles; 07a/08a [14] before)
+# Near-fault deflection (Methods M7: the homogeneous model cannot reproduce the west/east asymmetry): in the SSE section,
+# the mean over fitted samples near_deflection_km from the trace minus the mean over samples far_deflection_km away, per side.
+near_deflection_km = (0.06, 0.25)     # km: from the 60 m cut to 250 m
+far_deflection_km = (1.5, 3.0)        # km: the far band (11-14 samples per side: thin)
+far_deflection_check_km = (1.0, 3.0)  # km: a wider far band, as a check
 
 # Monte Carlo uncertainty (#20): correlated noise drawn from the full 5 km covariance (nugget / N^0.5, unscaled), added
 # to the model prediction, re-inverted at the fixed corner sigma with the locked weighting.

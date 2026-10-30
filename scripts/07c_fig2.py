@@ -28,12 +28,13 @@
 #
 # The model row and lines (2026-10-30):
 # - G (fault-parallel profiles): the models AT THE QUADTREE SAMPLES within 300 m of each profile line (G x slip plus the
-#   fitted plane, no PyLith forward run): 3D (vermillion) and homogeneous (blue). The vertical column (H) carries no
+#   fitted plane, no PyLith forward run), drawn as lines through the samples sorted by distance, broken at the trace
+#   (Dani 2026-10-30): 3D (vermillion) and homogeneous (blue). The vertical column (H) carries no
 #   model: the Green's functions are fault-parallel only.
 # - I: the slip model plus its fitted plane (1, x, y), so that J = E - I at every sample (asserted); blocks inside the
 #   60 m near-trace cut are left blank.
 # - K: the cross-fault step 60-150 m from the trace at every crossing of 04, for the data (black) and the selected
-#   model (vermillion) measured the same way on the samples (register #21), and their difference (grey); Mw at 30 GPa
+#   model (vermillion) measured the same way on the samples (register #21); Mw at 30 GPa
 #   and at the harmonic SFSVM rigidity.
 # - L: the slip on the fault, top 1 km (tents: slip at the vertices, linear between them).
 #
@@ -495,15 +496,18 @@ def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, col
                     if (col, line) not in lines_by_key:                              # the vertical column has no model
                         continue
                     model_dist, model_values = lines_by_key[(col, line)]
-                    fig.plot(x=model_dist / 1e3, y=model_values, style="c0.07c", fill=line_col, pen="0.2p,white")   # model at the samples
+                    for side_sign in (-1, 1):                                        # each side on its own: no line across the trace
+                        on_side = side_sign * model_dist > 0
+                        order = np.argsort(model_dist[on_side])
+                        fig.plot(x=model_dist[on_side][order] / 1e3, y=model_values[on_side][order], pen="1.0p," + line_col)   # model at the samples
             for median_x, median_values in running_median(dist, values):            # the per-side running median, on top of the models
                 fig.plot(x=np.asarray(median_x) / 1e3, y=median_values, pen="1.0p," + median_col)
             fig.plot(x=[0, 0], y=[-lim, lim], pen="0.5p,gray50")
             if model_lines is not None and len(model_lines) > 1 and k == 0 and j == 1:   # legend: bottom centre of the first column's Y-Y' panel,
                 legend_file = os.path.join(cpt_dir, "legend_models.txt")                 # on a white box, drawn after the trace line so it sits on top
-                with open(legend_file, "w") as handle:                                  # one dot per model (no commas: GMT labels stop at one)
+                with open(legend_file, "w") as handle:                                  # one line per model (no commas: GMT labels stop at one)
                     for _, line_col, line_label in model_lines:
-                        handle.write(f"S 0.15c c 0.09c {line_col} 0.2p,white 0.35c {line_label}\n")
+                        handle.write(f"S 0.15c - 0.3c - 1.0p,{line_col} 0.35c {line_label}\n")
                 with pygmt.config(FONT_ANNOT_PRIMARY=legend_font):
                     fig.legend(spec=legend_file, position="jBC+o0c/0.08c", box="+gwhite+c0.05c/0.03c")      # entries stacked
             fig.text(position="TL", text=line, font=profile_label_font, offset="0.1c/-0.08c")
@@ -588,7 +592,7 @@ print(f"K: {finite_k.sum()} of {k_line_km.size} crossings have a 60-150 m step o
 #
 # I the fault-parallel model (slip model + the fitted plane, so J = E - I) and J the residual, each quadtree sample filled over its own
 # block (shared colour bar right of J, on the event row's scale); K the 60-150 m cross-fault step along strike, data and
-# model, and their difference; L slip with depth on the
+# model; L slip with depth on the
 # unrolled fault, top 1 km (PyLith tents: slip at the vertices, linear between them).
 # Fonts as the map and profile panels: panel letters, I/J titles, axis labels, tick
 # labels, the K legend, the Mw text and L's colour bar.
@@ -629,7 +633,7 @@ def model_row(fig, product, lim, model_mm):
              font=heading_font, no_clip=True)
 
     # K: the cross-fault step 60-150 m from the trace at 04's crossings, data and selected model measured the same way on the
-    # samples (register #21, [9]), and their difference; unsmoothed
+    # samples (register #21, [9]); unsmoothed (the difference line was removed, Dani 2026-10-30)
     k_indent = 0.7                                       # room for the I/J bar label and the depth label
     Wk = W_model - k_indent
     Hk = 0.38 * Hm
@@ -638,9 +642,8 @@ def model_row(fig, product, lim, model_mm):
     km_view = [54.0, 65.0]
     fig.shift_origin(xshift=f"{x_prof + k_indent}c", yshift=f"{Hl + gap_kl}c")
     k_view = (k_line_km >= km_view[0]) & (k_line_km <= km_view[1]) & finite_k
-    k_residual = k_data_mm - k_model_mm
     highest_mm = max(np.nanmax(k_data_mm[k_view]), np.nanmax(k_model_mm[k_view]))
-    lowest_mm = min(0.0, np.nanmin(k_residual[k_view]))
+    lowest_mm = min(0.0, np.nanmin(k_data_mm[k_view]), np.nanmin(k_model_mm[k_view]))
     slip_top = float(np.ceil(highest_mm / 2 + 1) * 2)            # the next even mm above the highest value, plus 2
     slip_bottom = float(np.floor(lowest_mm / 2) * 2)
     region_k = km_view + [slip_bottom, slip_top]
@@ -648,14 +651,12 @@ def model_row(fig, product, lim, model_mm):
         fig.basemap(region=region_k, projection=f"X{Wk}c/{Hk}c", frame=["Wsrt", "xa2f1", f"ya{slip_top / 2:g}+lmm"])
     fig.plot(x=km_view, y=[0, 0], pen="0.4p,gray60")
     k_plot = np.where(finite_k, 1.0, np.nan)                     # NaN where a side has no samples: GMT breaks the lines there
-    fig.plot(x=k_line_km, y=k_residual * k_plot, pen="0.8p,gray55")
     fig.plot(x=k_line_km[finite_k], y=k_data_mm[finite_k], style="c0.05c", fill=median_col)
     fig.plot(x=k_line_km, y=k_model_mm * k_plot, pen="1.0p," + model_col)
     legend_file = os.path.join(cpt_dir, "legend_k.txt")
     with open(legend_file, "w") as handle:                       # no commas: GMT labels stop at one
         handle.write(f"S 0.15c c 0.08c {median_col} - 0.35c InSAR (60-150 m)\n")
         handle.write(f"S 0.15c - 0.3c - 1.0p,{model_col} 0.35c 3D (SFSVM)\n")
-        handle.write("S 0.15c - 0.3c - 0.8p,gray55 0.35c Difference\n")
     with pygmt.config(FONT_ANNOT_PRIMARY=legend_font):
         fig.legend(spec=legend_file, position="jTL+o0.1c/0.05c", box=False)   # top left, over the quiet north end (2026-10-30: the south end now has data)
     fig.text(position="TL", text="K", justify="BL", offset="0c/0.12c", font=panel_letter_font, no_clip=True)
