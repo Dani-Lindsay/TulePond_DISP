@@ -15,27 +15,25 @@
 # ---
 
 # %% [markdown]
-# # 07a The data of the slip models, and the best homogeneous model
+# # 07a The data of the slip models, and the homogeneous slip model
 #
 # ```
-# Rewritten from scratch on Fri Oct 30 2026 (the rewire, code_audit_2026-10-28/REWIRE_BRIEF.md); the earlier 07a is in
-# drafts/retired_2026-10-28/.
-# @author: daniellelindsay
-# Run in opera_disp_feb13, after 04 and 06. About 15 min with the analytic Green's functions cached (about 2 h without).
+# Author: Danielle Lindsay
+# Environment: environment.yml. Runs after 04 and 06. About 15 min with the analytic Green's functions cached, about 2 h
+# without.
 # ```
 #
-# **What this notebook does.** Two things, in this order.
+# **What this notebook does.**
 #
-# 1. **The data side of every slip model** (cells [2]-[6]): notebook 06's five-event mean fault-parallel field, its
-#    quadtree samples (the PyLith output points: their positions must not change), the far-field noise model
-#    (semivariogram beyond 5 km of the trace), and the coherence-0.7 sample set of the sensitivity row. Written once as
-#    products that 08a, 08b and `scripts/sensitivity/` read.
-# 2. **The best homogeneous model** (cells [7]-[11]): the same inversion as the selected 3D model of 08a, on the same
-#    fault vertices, with Green's functions of a homogeneous elastic half-space (CSI triangular dislocations, Meade 2007,
-#    register #13). It is the comparison line of Fig 2 and of 08a.
+# 1. **The data of every slip model** (cells [2]-[6]): the five-event mean fault-parallel field of notebook 06, its
+#    quadtree samples (the PyLith output points), the far-field noise model (semivariogram beyond 5 km of the trace), and
+#    the sample set of the coherence-0.7 sensitivity test. These are written once as products read by 08a, 08b and
+#    `scripts/sensitivity/`.
+# 2. **The homogeneous slip model** (cells [7]-[11]): the inversion of 08a on the same fault (the fault of the PyLith
+#    run `model_config.gf_run`, dipping 70 deg W), with Green's functions of a homogeneous elastic half-space (CSI
+#    triangular dislocations, Meade 2007). It is the homogeneous comparison model of 08a and Fig 2.
 #
-# Every setting comes from `model_config.py` (the one parameter block; register rows in brackets). Every modelling
-# function is in `model_utils.py`.
+# Every setting comes from `model_config.py`; every modelling function is in `model_utils.py`.
 #
 # **Inputs**: 06 `fp_maps.npz` (the field), `tulepond_steps_{ascending,descending}.h5` (the coherence-0.7 field);
 # 04 `section_lengths.csv`; the trace KML and `hayward_fault_profiles.csv`; the temporal-coherence 0.9 masks; the
@@ -49,15 +47,15 @@
 #
 # **What to check**
 # - [3] PASS: the quadtree samples are the PyLith output points (same positions, same data).
-# - [4] the noise fit: nugget ~0.90 mm, one exponential ~0.89 mm / 1.7 km, the second term at 0 (its range on a bound).
-# - [7] the n_sub check: the largest relative difference of the 20 test tents decides n_sub.
-# - [9] the corner lies inside the grid; the refined corner is near the base corner.
-# - [10] the RMS of the fitted samples, the near-field RMS west / east, Mw (30 GPa), depth50 / depth90.
+# - [4] The noise fit: a nugget and one exponential term; the second exponential term fits to zero.
+# - [7] The n_sub check: the largest relative difference of the 20 test tents sets n_sub.
+# - [9] The L-curve corner lies inside the sigma grid.
+# - [10] RMS of the fitted samples, near-field RMS west / east, Mw (30 GPa), depth50 / depth90.
 
 # %% [markdown]
-# ## [1] Imports, the locked settings, the registry
+# ## [1] Imports, settings and the number registry
 #
-# The settings are printed from `model_config.summary()`, so the run record shows what was used.
+# The settings are printed from `model_config.summary()` so that the executed notebook records them.
 
 # %%
 ## [1]
@@ -77,8 +75,8 @@ from TulePond_filepaths import (common_paths, repo_dir, paths_out, paths_inputs,
                                 model_frame_lonlat, coh_timeseries)
 import insar_utils as utils
 from insar_utils import load_trace
-import model_config as cfg                          # THE parameter block of the slip models
-import model_utils                                  # every modelling function, once (with its source)
+import model_config as cfg                          # the settings of the slip models
+import model_utils                                  # the modelling functions
 
 notebook = "07a_uniform_model"
 out_dir = paths_out[notebook]
@@ -102,9 +100,9 @@ print("\n".join(cfg.summary()))
 # %% [markdown]
 # ## [2] The mapped trace
 #
-# The hand-drawn trace (KML) between the latitudes of the model region, as a CSI trace discretised every 20 m
-# (`model_utils.model_trace`). Its points give every pixel's distance to the fault (the quadtree refines toward it and
-# the noise model masks around it) and every sample's signed distance and along-strike km.
+# The mapped trace (KML) between the latitudes of the model region, as a CSI trace discretised every 20 m
+# (`model_utils.model_trace`). It gives each pixel's distance to the fault (used by the quadtree and the noise mask) and
+# each sample's signed distance and along-strike distance.
 
 # %%
 ## [2]
@@ -118,14 +116,14 @@ print(f"trace: {trace['lonlat'].shape[0]} KML vertices, {trace['arc_total']:.1f}
 # %% [markdown]
 # ## [3] The data: the fault-parallel mean event and its quadtree samples
 #
-# Notebook 06's decomposition (coherence 0.9, the SSE-section strike) as one `csi.insar` data set whose look vector is
-# the horizontal unit vector along strike, so right-lateral motion of the east side is positive
-# (`model_utils.fault_parallel_dataset`): pixels within 4 km of the trace (#3), the pixel straddling the trace dropped,
-# km 52-67 along strike. Distance-based quadtree from 2 km blocks to one 30 m pixel at the trace (#4,
-# `model_utils.downsample`, CSI `imagedownsampling`).
+# The fault-parallel field of notebook 06 (temporal coherence 0.9, strike of the SSE section) as one `csi.insar` data
+# set whose look vector is the horizontal unit vector along strike, so right-lateral motion of the east side is positive
+# (`model_utils.fault_parallel_dataset`): pixels within 4 km of the trace, excluding the pixel on the trace, km 52-67
+# along strike. Distance-based quadtree from 2 km blocks to single 30 m pixels at the trace (`model_utils.downsample`,
+# CSI `imagedownsampling`).
 #
-# CHECK: the samples are the PyLith output points. Every Green's function (PyLith and analytic) was computed at these
-# positions, so they must be the positions (and data) of `insar_points.npz` exactly.
+# Check: every Green's function (PyLith and analytic) is computed at the sample positions in `insar_points.npz`, so the
+# samples must match them (positions and data) exactly.
 
 # %%
 ## [3]
@@ -148,14 +146,14 @@ print(f"fault-parallel field at strike {strike_deg:.2f} deg: {n_pixels:,} pixels
 print(f"PASS: the samples are the PyLith output points (positions, data and block sizes identical; key {positions_key})")
 
 # %% [markdown]
-# ## [4] The noise model: semivariogram of the far field (register #5)
+# ## [4] The noise model: semivariogram of the far field
 #
-# Exponential + nugget semivariogram (`model_utils.semivariogram_model`: nugget + two exponentials) fitted to the pixels
-# more than 5 km from the trace, a plane removed (`model_utils.covariance`; Sudhaus & Jonsson 2009, Vavra & Fialko
-# 2026). The model swath (4 km) holds no such pixels, so the field is rebuilt on a 15 km swath for this fit only
-# (`model_config.noise_swath_km`). Saved as products: the fitted parameters and the binned semivariogram (08b draws it).
-# Under the locked weighting (#6) only the nugget enters the inversion (every sample has variance nugget^2); the full
-# covariance is used for the Monte Carlo noise of 08a and for the full-Cd sensitivity row.
+# Nugget plus exponential semivariogram (`model_utils.semivariogram_model`: a nugget and two exponential terms) fitted to
+# the pixels more than 5 km from the trace after removing a plane (`model_utils.covariance`; Sudhaus & Jonsson 2009,
+# Vavra & Fialko 2026). The 4 km model swath holds no such pixels, so the field is rebuilt on a 15 km swath for this fit
+# (`model_config.noise_swath_km`). The fitted parameters and the binned semivariogram are saved (08b plots them).
+# The inversion weights every sample equally (variance nugget^2); the full covariance is used for the Monte Carlo
+# noise realisations of 08a and for the full-covariance sensitivity test.
 
 # %%
 ## [4]
@@ -179,16 +177,16 @@ semivariogram_bins.to_csv(bins_file, index=False)
 assert 0.5 < np.sqrt(cov_p[0]) < 1.5, f"nugget {np.sqrt(cov_p[0]):.3f} mm outside the plausible range"
 print(f"{n_noise_pixels:,} pixels beyond {cfg.noise_mask_km:g} km: nugget {np.sqrt(cov_p[0]):.3f} mm; short "
       f"{np.sqrt(cov_p[1]):.3f} mm / {cov_p[2]:.2f} km; long {np.sqrt(cov_p[3]):.2e} mm / {cov_p[4]:.2f} km "
-      f"(a long sill of ~0 with its range on the 2 km bound = a nugget plus ONE exponential)")
+      f"(a second sill of ~0 at its range bound: a nugget plus one exponential term)")
 print(f"wrote {noise_file}, {bins_file}")
 
 # %% [markdown]
-# ## [5] The coherence-0.7 sample set (the sensitivity row "Data coherence 0.7")
+# ## [5] The coherence-0.7 sample set (sensitivity test)
 #
-# 06's mean event at the time-series fit mask (coherence 0.7) instead of 0.9, re-decomposed here from 06's saved
-# per-track steps (`model_utils.fault_parallel_from_steps`, MintPy `asc_desc2horz_vert`). GATE: the same call with the
-# coherence-0.9 masks reproduces 06's `fp_maps.npz` exactly. Its quadtree uses the same rule; its PyLith run
-# (`gf_default_sfcvm_coh07_order2`) was computed at its positions, asserted unchanged when the list is rewritten in [6].
+# The mean event of 06 masked at temporal coherence 0.7 (the time-series fit mask) instead of 0.9, decomposed from the
+# per-track steps saved by 06 (`model_utils.fault_parallel_from_steps`, MintPy `asc_desc2horz_vert`). Check: the same
+# call with the coherence-0.9 masks reproduces 06's `fp_maps.npz` exactly. The quadtree uses the same rule; the PyLith
+# run `gf_default_sfcvm_coh07_order2` was computed at these positions (asserted unchanged in [6]).
 
 # %%
 ## [5]
@@ -207,13 +205,12 @@ print(f"coherence-{coh_timeseries} field: {int(np.isfinite(sar_coh07.vel).sum())
       f"({time.time() - t0:.0f} s)")
 
 # %% [markdown]
-# ## [6] The products of the data side
+# ## [6] Data products
 #
-# - The PyLith point lists (`model_utils.write_points_list`, "name x y z" in the mesh CRS + an npz with the data, block
-#   pixel counts, block corners and the noise model): the selected set and the coherence-0.7 set. The positions are
-#   ASSERTED unchanged (the cached Green's functions are computed at them). Both carry the 5 km noise model and the
-#   locked exponent (until 2026-10-30 they carried 07a's 1 km fit and N^0.5).
-# - `model_data.npz`: everything the slip models take from here, in one file.
+# - The PyLith point lists (`model_utils.write_points_list`: "name x y z" in the mesh CRS, plus an npz with the data,
+#   block pixel counts, block corners and the noise model) for the main and the coherence-0.7 sample sets. The positions
+#   are asserted unchanged, as the stored Green's functions are computed at them.
+# - `model_data.npz`: the data inputs of the slip models in one file.
 
 # %%
 ## [6]
@@ -242,17 +239,17 @@ np.savez(model_data_file,
 print(f"wrote {model_data_file}: {quadtree.vel.size} samples, strike {strike_deg:.4f}")
 
 # %% [markdown]
-# ## [7] The homogeneous Green's functions on the PyLith tents (register #13)
+# ## [7] Homogeneous Green's functions on the PyLith fault
 #
-# The selected PyLith run (`model_config.gf_run`) fixes the fault: its vertices, triangles and impulse vertices (the
-# "tents": unit slip at one vertex, linear to zero at its neighbours). `model_utils.analytic_tent_G` gives the same tents
-# in a homogeneous half-space (Poisson solid) with CSI's triangular dislocations (Meade 2007): every triangle is split
-# into n_sub^2 constant-slip sub-triangles.
+# The PyLith run `model_config.gf_run` defines the fault: its vertices, triangles and impulse vertices (the "tents":
+# unit slip at one vertex, decreasing linearly to zero at its neighbours). `model_utils.analytic_tent_G` computes the
+# same tents in a homogeneous half-space (Poisson solid) with CSI triangular dislocations (Meade 2007), splitting each
+# triangle into n_sub^2 constant-slip sub-triangles.
 #
-# The n_sub check (rule of the brief): 20 test tents in the SSE section (5 at the surface, 15 spread over depth by rank),
-# with n_sub 4 and 8; if any column differs by more than 1 % (relative L2 norm over the samples), n_sub 8 is used.
-# The full matrix is cached, keyed by run, n_sub, sample positions and impulse vertices (`analytic_tent_G_cached`).
-# CHECK: uniform slip on every tent moves the east side along +look (right-lateral), as the PyLith G does.
+# Choice of n_sub: 20 test tents in the SSE section (5 at the surface, 15 spread over depth) are computed with n_sub 4
+# and 8; if any column differs by more than 1 % (relative L2 norm over the samples), n_sub 8 is used. The full matrix is
+# cached, keyed by run, n_sub, sample positions and impulse vertices (`analytic_tent_G_cached`).
+# Check: uniform right-lateral slip on every tent moves the east side along +look, as in the PyLith Green's functions.
 
 # %%
 ## [7]
@@ -293,15 +290,14 @@ for label, G_check in (("analytic", G_homogeneous), ("PyLith 3D", gf_npz["G_rl_m
 print(f"G homogeneous {G_homogeneous.shape} from {analytic_cache}")
 
 # %% [markdown]
-# ## [8] The inversion set-up (the locked method, the same as 08a)
+# ## [8] Inversion set-up (as in 08a)
 #
-# `model_utils.tent_model_setup` on the selected run gives the tent fault, the CSI template (`TriangularTents` on the
-# impulse vertices), every sample's signed distance and along-strike km, `keep` (the fitted samples: 60 m or more from
-# the trace, #2) and the near-field masks (fitted samples within 500 m west / east, in the SSE section). The samples
-# are read back from `model_data.npz` (`model_utils.samples_from_arrays`), exactly as 08a reads them. Data covariance:
-# diagonal, nugget^2 for every sample ("the data were equally weighted", #6; `model_utils.data_cd`). The plane (1, x, y)
-# is solved jointly (#7), slip >= 0 (#14), CSI exponential prior with lambda (0.1, 0.05) km (#15), no surface
-# constraint (#17): all inside `model_utils.invert_tents`.
+# `model_utils.tent_model_setup` gives the tent fault, the CSI template (`TriangularTents` on the impulse vertices),
+# each sample's signed distance and along-strike distance, `keep` (the fitted samples, 60 m or more from the trace) and
+# the near-field masks (fitted samples within 500 m west / east in the SSE section). The samples are read from
+# `model_data.npz` (`model_utils.samples_from_arrays`) as in 08a. Data covariance: diagonal, nugget^2 for every sample
+# (equal weights; `model_utils.data_cd`). A plane (1, x, y) is solved jointly with the slip; slip >= 0; CSI exponential
+# prior with correlation lengths (0.1, 0.05) km; no surface constraint (`model_utils.invert_tents`).
 
 # %%
 ## [8]
@@ -321,17 +317,17 @@ print(f"{keep.sum()} fitted samples of {keep.size} (cut {cfg.near_trace_cut_km *
 
 
 def solve_homogeneous(sigma):
-    """The homogeneous model at one sigma (the locked inversion, model_utils.invert_tents)."""
+    """The homogeneous model at one sigma (model_utils.invert_tents)."""
     return model_utils.invert_tents(setup["template"], samples, G_homogeneous, Cd, None, None, sigma, cfg.lam_xz_km,
                                     model_frame_lonlat, use_surface=cfg.use_surface, name=f"homogeneous sigma {sigma:.3f}",
                                     ramp_spec=cfg.ramp_spec)
 
 # %% [markdown]
-# ## [9] The L-curve and the model's own corner (register #16)
+# ## [9] L-curve and corner
 #
-# `model_utils.own_corner`: the L-curve (weighted misfit of the fitted samples vs prior-weighted roughness) on the base
-# grid, its corner (maximum curvature, Hansen 1992), then nine more sigmas around that corner and the corner of the
-# union. The model is solved at that corner (not snapped to a grid value).
+# `model_utils.own_corner`: the L-curve (weighted misfit of the fitted samples against prior-weighted roughness) on the
+# base sigma grid and its corner (maximum curvature, Hansen 1992), then nine more sigmas around that corner and the
+# corner of the combined set. The model is solved at that sigma.
 
 # %%
 ## [9]
@@ -344,12 +340,11 @@ print(f"homogeneous corner {sigma_hom:.2f} (base grid {sigma_hom_base:.2f}); {le
       f"wrote {lcurve_file}")
 
 # %% [markdown]
-# ## [10] The best homogeneous model and its numbers
+# ## [10] The homogeneous model and its numbers
 #
-# Solved at its corner. The numbers (`model_utils.tent_numbers`, the metric policy of 2026-10-28): RMS of the
-# plane-removed data minus the model over the fitted samples and within 500 m west / east in the SSE section; potency;
-# Mw at 30 GPa (the medium is uniform: no other rigidity); peak slip and its depth; the depths above which 50 % and
-# 90 % of the potency lie.
+# Solved at the corner sigma. Numbers (`model_utils.tent_numbers`): RMS of the plane-removed data minus the model over
+# the fitted samples and within 500 m west / east in the SSE section; potency; Mw at 30 GPa; peak slip and its depth;
+# the depths above which 50 % and 90 % of the potency lie.
 
 # %%
 ## [10]
@@ -369,7 +364,7 @@ print(f"  fitted plane: {plane_coef[0]:+.3f} mm {plane_coef[1]:+.3f} mm/km (x) {
 # ## [11] Products and registry
 #
 # `homogeneous_model.npz`: the slip on the tents, the model (G x slip) at every sample, the fitted plane, the
-# plane-removed data, `keep` and the sigma (08a compares it with the 3D model; 07c draws its line in Fig 2).
+# plane-removed data, `keep` and sigma (read by 08a and by 07c for Fig 2).
 
 # %%
 ## [11]
@@ -378,7 +373,7 @@ np.savez(model_file, slip_mm=slip_hom, imp_xyz=tents.imp_xyz, model_mm=data_hom.
          data_plane_removed_mm=data_hom.vel.copy(), keep=keep, sigma=sigma_hom, sigma_base_corner=sigma_hom_base, n_sub=n_sub,
          sample_lon=model_data["sample_lon"], sample_lat=model_data["sample_lat"], positions_fingerprint=positions_key,
          analytic_G=analytic_cache, **{k: v for k, v in numbers_hom.items()},
-         provenance=f"{notebook} {made}: analytic (CSI Meade, n_sub {n_sub}) tents of {cfg.gf_run}; locked method (model_config)")
+         provenance=f"{notebook} {made}: analytic (CSI Meade, n_sub {n_sub}) tents of {cfg.gf_run}; settings of model_config")
 stats = REG.sidecar("07a_homogeneous", cfg.summary() + [f"noise model: {noise_model.iloc[0].drop('provenance').to_dict()}",
                                                          f"n_sub check: {nsub_table.to_dict('list')}",
                                                          f"sigma corner {sigma_hom:.3f} (base grid {sigma_hom_base:.3f})"]
