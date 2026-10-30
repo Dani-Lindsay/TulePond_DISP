@@ -18,7 +18,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 - **Slip models**: homogeneous half-space and 3D elastic structure (USGS SFSVM v26.0) with PyLith 5.0.2 Green's
   functions, the fault dipping 70 deg west (07-10; `pylith/`)
 - **Event history** from the alignment arrays (11), **rainfall** (12) and the **forecast** (13)
-- **Paper figures** collected under their manuscript names (14)
+- **Paper figures**: Figs 1-3 drawn, and every figure collected under its manuscript name (14)
 
 ## Repository layout
 
@@ -47,17 +47,17 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `01_prep_figures` | Velocity processing chain and the GNSS tie of the frames. | Figs S1, S2 |
 | `02_velocity_decomposition` | Ascending and descending velocity mosaics decomposed into fault-parallel and vertical fields (MintPy `asc_desc2horz_vert`); creepmeter transects. | Fig 1 (map data) |
 | `03_creep_timeseries` | Cross-fault time series at every 100 m crossing (30-150 m from the trace), common date grid, fault-parallel decomposition, along-fault rate profile and the flag of anomalous crossings. | Rate mask, acquisitions |
-| `04_event_detection` | Event detector on the Tule Pond stack (COZ1 as control), joint model of each crossing, per-crossing event slip, section extent and 90 % band, slip budget, seismicity near the section. | Fig 1, event detection, creep rate along the fault |
+| `04_event_detection` | Event detector on the Tule Pond stack (COZ1 as control), joint model of each crossing, per-crossing event slip, section extent and 90 % band, slip budget, seismicity near the section; the Fig 1 inputs. | Event detection, creep rate along the fault |
 | `05_validation` | Comparison with the five USGS creepmeters; the aperture ladder. | Validation, aperture ladder |
-| `06_event_field_geometry` | Per-pixel step maps of each event on both tracks, burst-seam correction, mean event, fault-parallel and vertical maps, cross-fault profiles X-X' and Y-Y'. | Fig 2 (data rows), step maps |
-| `07_model_data` | The data of the slip models (quadtree samples, noise model) and the homogeneous slip model on the same fault. | |
+| `06_event_field_geometry` | Per-pixel step maps of each event on both tracks, burst-seam correction, mean event, fault-parallel and vertical maps, cross-fault profiles X-X' and Y-Y'. | Step maps |
+| `07_model_data` | The data of the slip models: quadtree samples (the PyLith output points), the noise model, the coherence-0.7 sample set. | |
+| `08_model_homogeneous` | The homogeneous slip model on the same 70 deg W fault (analytic half-space Green's functions). | |
 | `09_model_3d` | The preferred slip model (3D SFSVM, PyLith Green's functions, fault dipping 70 deg west): fit, moment, depth extent, Monte Carlo of correlated noise, stress drop. | Model figures, SFSVM materials |
-| `09_fig2` | Draws Fig 2 from 06, 07 and 08. | Fig 2, LOS maps and profiles |
 | `10_model_sensitivity` | Draws the sensitivity tests of `scripts/sensitivity/`: sweeps, depth scan, semivariogram. | Sensitivity figures |
 | `11_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |
 | `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
-| `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast. | Fig 3, renewal fits |
-| `14_paper_figures` | Copies the current paper figures to `Figures_<date>/paper/` under their manuscript names. | |
+| `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast; the Fig 3 inputs. | Renewal fits |
+| `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles |
 
 ## The number registry
 

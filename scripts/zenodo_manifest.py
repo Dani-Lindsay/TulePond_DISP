@@ -22,7 +22,7 @@ import model_config as cfg                       # noqa: E402
 
 # the folders and root files of the deposit (slip models); everything else of the data root is outside this manifest
 FOLDERS = ["modeling_inputs", "modeling_SFCVM", "modeling_uniform", "pylith_runs_done", "outputs/07_model_data",
-           "outputs/09_model_3d", "outputs/10_model_sensitivity", "outputs/09_fig2", os.path.basename(cfg.sensitivity_dir),
+           "outputs/09_model_3d", "outputs/10_model_sensitivity", "outputs/08_model_homogeneous", os.path.basename(cfg.sensitivity_dir),
            "sensitivity_2026-10-27", "depth_scan_2026-10-28", "order2_surface_tent_check_2026-10-25",
            "basement_depth_2026-10-28", "semivariogram_2026-10-28", "Figures_2026-10-28", "external_inputs/USGS_SFCVM_v26-0"]
 ROOT_FILES = ["run_production_2026-10-25.sh", "run_production_2026-10-25.jobs", "run_production_2026-10-25.log",
@@ -31,8 +31,8 @@ ROOT_FILES = ["run_production_2026-10-25.sh", "run_production_2026-10-25.jobs", 
               "CHOICES_REGISTER_2026-10-25.md"]
 REPO_FOLDERS = ["pylith", "scripts/sensitivity"]
 REPO_FILES = ["model_config.py", "model_utils.py", "TulePond_filepaths.py", "insar_utils.py", "scripts/07_model_data.py",
-              "scripts/09_model_3d.py", "scripts/10_model_sensitivity.py", "scripts/09_fig2.py", "scripts/zenodo_manifest.py",
-              "07_model_data.ipynb", "09_model_3d.ipynb", "10_model_sensitivity.ipynb", "09_fig2.ipynb", "tests/test_model_utils.py"]
+              "scripts/09_model_3d.py", "scripts/10_model_sensitivity.py", "scripts/08_model_homogeneous.py", "scripts/zenodo_manifest.py",
+              "07_model_data.ipynb", "09_model_3d.ipynb", "10_model_sensitivity.ipynb", "08_model_homogeneous.ipynb", "tests/test_model_utils.py"]
 SKIP = ["*/__pycache__/*", "*/_to_delete_*", "*/.DS_Store", "*.pyc", "*/retired_2026-10-28/*"]
 SELECTED_RUNS = {cfg.gf_run}
 SENSITIVITY_RUNS = {"gf_shallow_dip70e_sfcvm_order2", "gf_shallow_dip70w_sfcvm_order2", "gf_default_sfcvm_order2",

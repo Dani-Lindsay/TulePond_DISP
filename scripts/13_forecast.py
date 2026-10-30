@@ -34,9 +34,12 @@
 #    fitted-$\alpha$ model falls to 5 % and to 1 %.
 # 4. **The InSAR clock** in closed form (section 8): the mean interval and a t-based prediction interval, on the same
 #    onset draws as step 1.
-# 5. **Fig 3 and the prediction statement** (sections 9 and 10). The statement combines the recurrence windows with
-#    the calendar window of the onsets from `rain_conditioning_summary.csv` of 12_rain_seasonality, where the
-#    rainfall-conditioning tests are computed.
+# 5. **The inputs of Fig 3** (section 9). The interval ranges, interval statistics and BPT forecasts of the records
+#    drawn in Fig 3C and 3D are written to `fig3_inputs.npz`. Notebook 14 draws Fig 3 from this file and the products
+#    of 11 and 12.
+# 6. **The prediction statement** (section 10). It combines the recurrence windows with the calendar window of the
+#    onsets from `rain_conditioning_summary.csv` of 12_rain_seasonality, where the rainfall-conditioning tests are
+#    computed.
 #
 # **Loma Prieta.** The array forecast is given both without and with the interval spanning the 1989 earthquake (keys
 # `_nolp` and `_withlp`), as WGCEP 1999 ran its BPT calculations with and without the stress-interaction clock changes
@@ -58,18 +61,17 @@
 # and magnitude of the prediction statement; 04 `creep_events.csv` (InSAR onset windows from `onset_lo`, the last
 # acquisition before the step and the step epoch of 04, to `onset_hi`, the first acquisition after it); 11
 # `hrkt_aa_events.csv` (array onset windows `onset_lo` to `onset_hi`, and `onset_mid`, the window midpoint, used only
-# for labels, plot positions and sorting) and `aa_insar_stacks.csv`; 12 `fig3_rain_panel.npz` (with the wet-season
-# months of 12), `fig3_onset_windows.csv` and `rain_conditioning_summary.csv`; the HRKT array file.
+# for sorting and for the reach of the forecast grid); 12 `fig3_rain_panel.npz` (the wet-season months of 12 and the
+# end of the bimonthly surveys at HRKT) and `rain_conditioning_summary.csv`.
 #
 # **Outputs** (`outputs/13_forecast/`): `recurrence_forecast_models.csv` (every record and model, with the interval
 # statistics, quantiles and P(wet season)); `recurrence_intervals.csv` (the interval statistics of each record);
 # `recurrence_forecast_wg99.csv` (every record and aperiodicity branch, the mixtures and the InSAR alpha-pivot
-# forecast); `prediction_statement.txt`; the stats sidecar `13_forecast_stats.txt`; registry rows `13_*` and, per
-# record, `13_<rec>_*` (section 11).
+# forecast); `fig3_inputs.npz` (the inputs of Fig 3 from this notebook, section 9); `prediction_statement.txt`; the
+# stats sidecar `13_forecast_stats.txt`; registry rows `13_*` and, per record, `13_<rec>_*` (section 11).
 #
-# **Figures**: the paper's Fig 3 (`fig3_history_forecast_ntiming400_nboot5_issue<date>`: A, HRKT history; B, onsets
-# over the rainfall; C, repeat intervals; D, the forecast); the five renewal models
-# (`qc11_renewal_models_single_fits`, supplement).
+# **Figures**: the five renewal models (`qc11_renewal_models_single_fits`, supplement). The paper's Fig 3
+# (`fig3_history_forecast_ntiming400_nboot5_issue<date>`) is drawn by notebook 14 from `fig3_inputs.npz`.
 #
 # **What to check.** The closed-form InSAR clock date (`13_next_clock_date`) and its 95 % prediction interval
 # (`13_pi95_lo`, `13_pi95_hi`). The clock is unconditional; the printout in section 8 lists any of its dates that fall
@@ -102,9 +104,6 @@ import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
 from scipy import stats                          # the renewal distributions
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import MultipleLocator
 
 # %%
 notebook = "13_forecast"
@@ -170,14 +169,11 @@ fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 section_lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 aa_events_file = os.path.join(paths_out["11_alignment_arrays"], "hrkt_aa_events.csv")
-aa_stacks_file = os.path.join(paths_out["11_alignment_arrays"], "aa_insar_stacks.csv")
 rain_panel_file = os.path.join(paths_out["12_rain_seasonality"], "fig3_rain_panel.npz")
-windows_file = os.path.join(paths_out["12_rain_seasonality"], "fig3_onset_windows.csv")
 rain_summary_file = os.path.join(paths_out["12_rain_seasonality"], "rain_conditioning_summary.csv")
-hrkt_file = os.path.join(common_paths["aa_dir"], "HRKT.csv")
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
-REG.inputs(fp_ts_file, section_lengths_file, events_file, aa_events_file, aa_stacks_file, rain_panel_file, windows_file, rain_summary_file, hrkt_file)
+REG.inputs(fp_ts_file, section_lengths_file, events_file, aa_events_file, rain_panel_file, rain_summary_file)
 
 # %% [markdown]
 # ## 2. Functions: dates and water years
@@ -281,7 +277,8 @@ def wet_season_of(wy):
 # **Wet season of the forecast.** The first water year whose wet season ends after the last observation.
 #
 # `rain_conditioning_summary.csv` of 12_rain_seasonality gives part (3) of the prediction statement and the last
-# Fremont day of its data line; they are read, not recomputed.
+# Fremont day of its data line; they are read, not recomputed. The end of the bimonthly surveys at HRKT, quoted in the
+# statement, is read from `fig3_rain_panel.npz` of 12.
 
 # %%
 creep_events = pd.read_csv(events_file)
@@ -327,6 +324,7 @@ wet_label = f"WY{forecast_wy} wet season"            # every "P(WY<N> wet season
 with np.load(rain_panel_file) as rain_panel_saved:
     assert "wet_season_months" in rain_panel_saved.files, f"{rain_panel_file} has no wet_season_months: rerun 12_rain_seasonality"
     rain_panel_months = [int(m) for m in rain_panel_saved["wet_season_months"]]
+    dense_era_end = float(rain_panel_saved["dense_era_end"])      # the end of the bimonthly surveys at HRKT (12), for the prediction statement
 assert rain_panel_months == wet_season_months, \
     f"12_rain_seasonality counted the onsets in months {rain_panel_months}, this notebook uses {wet_season_months}: rerun 12"
 print(f"{wet_label}: {forecast_wet_season[0]} to {forecast_wet_season[1]} ({wet_months_text}, {wet_season_source}; same months as 12)")
@@ -963,10 +961,7 @@ single_fits[("B", "gaussian")] = describe_fit("gaussian", array_intervals, "B ar
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt
 model_colours = {"exponential": "0.4", "lognormal": "#0072B2", "weibull": "#CC79A7", "bpt": "#E69F00", "gaussian": "#56B4E9"}   # Okabe-Ito, no green
 model_names = {"exponential": "Exponential", "lognormal": "Lognormal", "weibull": "Weibull", "bpt": "Brownian passage time", "gaussian": "Gaussian"}
-insar_colour = "#D55E00"               # Okabe-Ito vermillion: InSAR in every figure of this notebook
-array_colour = "#0072B2"               # Okabe-Ito blue: the alignment array
-combined_colour = "#CC79A7"            # Okabe-Ito reddish purple: the combined record
-onset_line_colour = "#E69F00"          # Okabe-Ito orange: InSAR onset lines
+insar_colour = "#D55E00"               # Okabe-Ito vermillion: InSAR, as in Fig 3
 wet_shade_colour = "#56B4E9"           # Okabe-Ito sky blue: the wet season
 interval_axis = np.linspace(0.05, 6.0, 600)
 fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.6))
@@ -1305,228 +1300,74 @@ stats_lines += clock_lines
 print("\n".join(clock_lines))
 
 # %% [markdown]
-# ## 9. Figure 3: the HRKT history, the onsets on the water year, the repeat intervals and the forecast
+# ## 9. The inputs of Fig 3
 #
-# The left column shares one time axis. A) The HRKT record with the bimonthly-era detections shaded, the years of
-# annual surveys greyed, the InSAR stack tied to it, the InSAR onsets dashed, and HRKT since 2015 as an inset that ends
-# at the data end (`data_end`). B) The onset windows on the water year over the 7-day rainfall (from
-# 12_rain_seasonality). The right column shows C) the repeat intervals of the three records quoted in the text (the
-# array and combined records leave out the interval spanning Loma Prieta) and D) the conditional probability of the
-# next onset from the BPT with the fitted $\alpha$, one line per record, with the 2026-27 wet season shaded (the Working
-# Group branches are not drawn). In C each interval is a bar over its possible range, from
-# $t_{\mathrm{lo},j+1} - t_{\mathrm{hi},j}$ to $t_{\mathrm{hi},j+1} - t_{\mathrm{lo},j}$, where $t_{\mathrm{lo},j}$ and
-# $t_{\mathrm{hi},j}$ are the ends of window $j$; the mean and SD of the record (section 6;
-# `13_<rec>_interval_mean_yr`, `13_<rec>_interval_sd_yr`) are marked and written.
+# Fig 3 is drawn in notebook 14 from saved products. This section writes what the figure needs from this notebook to
+# `fig3_inputs.npz`; panels A and B read the products of 11 and 12 directly. The records drawn in Fig 3C and 3D
+# (`shown`) are the three quoted in the text: the InSAR record, the array record without the interval spanning Loma
+# Prieta and the combined record. For each of them the file holds the possible range of each repeat interval, the
+# interval mean and SD of section 6 (`13_<rec>_interval_mean_yr`, `13_<rec>_interval_sd_yr`) and the BPT forecast
+# with the fitted $\alpha$ on the forecast grid. Interval $j$ ranges from $t_{\mathrm{lo},j+1} - t_{\mathrm{hi},j}$ to
+# $t_{\mathrm{hi},j+1} - t_{\mathrm{lo},j}$, where $t_{\mathrm{lo},j}$ and $t_{\mathrm{hi},j}$ are the ends of window
+# $j$, and the number of ranges must equal the number of intervals of section 6 (asserted). The file also holds the
+# last observation, the wet season of the forecast, the data end (`data_end`), the settings that name the figure file
+# and the onsets of the InSAR and array catalogues, against which notebook 14 checks the onset windows of 12.
+#
+# | Key | Content |
+# |---|---|
+# | `provenance` | notebook, git hash and time of the run |
+# | `records` | the catalogue names of `shown`, in drawing order |
+# | `interval_mean_yr`, `interval_sd_yr`, `n_intervals` | the interval statistics of section 6, one value per record |
+# | `interval_shortest_<record>`, `interval_longest_<record>` | the two ends of each interval range (yr) |
+# | `grid`, `bpt_cdf` | the forecast grid (decimal years) and the fitted-$\alpha$ BPT forecast of each record on it |
+# | `last_obs`, `last_obs_day_yr` | the last observation, as a date and as a decimal year |
+# | `forecast_wet_season`, `wet_season_yr` | the first and last day of the wet season of the forecast, as dates and decimal years |
+# | `data_end`, `data_end_yr` | the end of the InSAR record, as a date and as a decimal year |
+# | `insar_onset_lo`, `aa_dense_onset_lo` | the window starts of the InSAR and array catalogues |
+# | `n_timing`, `n_boot`, `forecast_issue_date` | the settings in the file name of Fig 3 |
 
 # %%
-utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 shown = ["A_insar", "B_aa_dense_noLP", "C_merged"]       # the array without the Loma Prieta interval; B (with it) stays in the table
-colours = {"A_insar": insar_colour, "B_aa_dense_noLP": array_colour, "C_merged": combined_colour}
-labels = {"A_insar": "InSAR", "B_aa_dense_noLP": "A. Array", "C_merged": "Combined"}
-label_pt = 7
-
-# the inputs of the left column, saved by 11 and 12
-rain_panel = np.load(rain_panel_file)
-windows = pd.read_csv(windows_file)
-aa_stacks = pd.read_csv(aa_stacks_file)
-hrkt = utils.load_aa(common_paths["aa_dir"], "HRKT")
-hrkt_stack = aa_stacks[aa_stacks.code == "HRKT"]
-x0 = float(rain_panel["x0"])
-x1 = float(rain_panel["x1"])
-dense_era_end = float(rain_panel["dense_era_end"])
-# the catalogues drawn on the left are the ones the forecast fits: same onsets, in the same order
-assert np.allclose(np.sort(windows.query("src == 'insar'").onset_lo), np.sort(catalogues["A_insar"][0].onset_lo), rtol=0, atol=1e-6)
-assert np.allclose(np.sort(windows.query("src == 'aa_dense'").onset_lo), np.sort(aa_dense.onset_lo), rtol=0, atol=1e-6)
-
-
-def onset_bar(ax, x, day_lo, day_hi, color, lw):
-    """Draw a vertical bar from day_lo to day_hi of the water year at x, wrapping across 1 October if needed.
-
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-    x : float
-        Position on the time axis (decimal year).
-    day_lo, day_hi : float
-        Days of the water year.
-    color : str
-    lw : float
-        Line width.
-    """
-    if day_hi >= day_lo:
-        segments = [(day_lo, day_hi)]
-    else:
-        segments = [(day_lo, 366), (1, day_hi)]
-    for segment_lo, segment_hi in segments:
-        ax.plot([x, x], [segment_lo, segment_hi], "-", color=color, lw=lw, solid_capstyle="butt", zorder=5)
-    for y in (day_lo, day_hi):
-        ax.plot([x - 0.28, x + 0.28], [y, y], "-", color=color, lw=lw * 0.8, zorder=5)
-
-
-# full Science width (7.2 in = 18.3 cm); panels placed by hand (inches) so the columns align whatever the labels
-fig_w = 7.2
-fig_h = 5.05
-
-
-def place(x, y, w, h):
-    """Add an axes to the figure at a position given in inches.
-
-    Parameters
-    ----------
-    x, y : float
-        Lower-left corner (in).
-    w, h : float
-        Width and height (in).
-
-    Returns
-    -------
-    matplotlib.axes.Axes
-    """
-    return fig.add_axes([x / fig_w, y / fig_h, w / fig_w, h / fig_h])
-
-
-fig = plt.figure(figsize=(fig_w, fig_h))
-# all four panels the same height; the row gap leaves room for the x label of C above the title of D
-left_x = 0.50
-left_w = 4.05
-right_x = 5.20
-right_w = 1.88
-panel_h = 1.85
-row_y = (2.90, 0.42)
-ax_a = place(left_x, row_y[0], left_w, panel_h)
-ax_b = place(left_x, row_y[1], left_w, panel_h)
-ax_c = place(right_x, row_y[0], right_w, panel_h)
-ax_d = place(right_x, row_y[1], right_w, panel_h)
-for ax in (ax_a, ax_b, ax_c, ax_d):
-    ax.tick_params(labelsize=label_pt)
-
-# A) the HRKT record
-ax = ax_a
-ax.plot(hrkt.year, hrkt.cum_mm, "o", ms=1.6, color=array_colour, lw=0.6, ls="-", zorder=3,
-        label=f"Alignment array ({hrkt.year.min():.0f} to {hrkt.year.max():.0f})")
-ax.plot(hrkt_stack.date, hrkt_stack.slip_mm, "-", lw=0.8, color=insar_colour, zorder=5,
-        label=f"InSAR FP stack (n = {int(hrkt_stack.n_crossings.iloc[0])})")       # shifted onto the array datum (caption)
-for i, window in enumerate(windows.query("src == 'aa_dense'").itertuples()):
-    ax.axvspan(window.onset_lo, window.onset_hi, color=array_colour, alpha=0.20, lw=0, zorder=1,
-               label="Alignment array detection" if i == 0 else None)
-ax.axvspan(dense_era_end, float(rain_panel["insar_start"]), color="0.5", alpha=0.10, lw=0, zorder=0, label="Annual surveys")
-for i, step_epoch in enumerate(windows.query("src == 'insar'").onset_lo):       # at each step epoch (the window is too narrow to see)
-    ax.axvline(step_epoch, color=onset_line_colour, lw=0.9, ls="--", zorder=2, label="InSAR detection" if i == 0 else None)
-ax.axvline(float(rain_panel["loma_prieta"]), color="0.25", lw=0.7, ls=":", zorder=2)
-ax.text(float(rain_panel["loma_prieta"]) + 0.3, 0.04, "Loma Prieta", transform=ax.get_xaxis_transform(), fontsize=label_pt, color="0.25",
-        ha="left", va="bottom", bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))     # between the array curve and the x axis
-ax.set_ylabel("Cumulative slip (mm)", fontsize=label_pt)
-handles, leg_labels = ax.get_legend_handles_labels()
-legend_order = []                                       # the grey "Annual surveys" last
-for i, leg_label in enumerate(leg_labels):
-    if leg_label != "Annual surveys":
-        legend_order.append(i)
-legend_order.append(leg_labels.index("Annual surveys"))
-ordered_handles = []
-ordered_labels = []
-for i in legend_order:
-    ordered_handles.append(handles[i])
-    ordered_labels.append(leg_labels[i])
-ax.legend(ordered_handles, ordered_labels, fontsize=label_pt, loc="lower right", frameon=True,
-          facecolor="white", edgecolor="none", framealpha=0.9)
-ax.set_title(r"$\bf{A}$  HRKT alignment array, detected events shaded", loc="left", fontsize=8)
-ax.set_xlim(x0, x1)                                  # year labels but no "Year" title (no space in the row gap)
-# HRKT since 2015 as an inset, zeroed at its first survey
-zoom_t0 = 2015.0
-recent = hrkt[hrkt.year >= zoom_t0]
-zero = float(recent.cum_mm.iloc[0])
-inset = ax.inset_axes([0.05, 0.50, 0.40, 0.46])      # top left, above the array curve, which reaches this height only after 2010
-inset.plot(recent.year, recent.cum_mm - zero, "o", ms=1.6, color=array_colour, lw=0.6, ls="-")
-inset.plot(hrkt_stack.date, hrkt_stack.slip_mm - zero, "-", lw=0.7, color=insar_colour)
-for step_epoch in windows.query("src == 'insar'").onset_lo:
-    inset.axvline(step_epoch, color="0.7", lw=0.5, ls="--", zorder=0)
-inset.set_xlim(zoom_t0, data_end_yr)                 # to the end of the InSAR record
-inset.set_xticks([2016, 2018, 2020, 2022, 2024])
-inset.tick_params(labelsize=6, length=1.5, pad=1.5)
-inset.text(0.04, 0.95, "HRKT since 2015", transform=inset.transAxes, fontsize=label_pt, va="top")
-
-# B) the onset windows on the water year over the 7-day rain
-ax = ax_b
-rain_cmap = LinearSegmentedColormap.from_list("rain", list(rain_panel["rain_colours"]))
-density_max = float(rain_panel["density_max"])
-density_days = int(rain_panel["density_days"])
-mesh = ax.pcolormesh(rain_panel["x_edges"], np.arange(-0.5, 367.5), rain_panel["rain_grid"], cmap=rain_cmap, vmin=0, vmax=density_max,
-                     shading="flat", rasterized=True, zorder=0)
-for window in windows.itertuples():
-    bar_colour = "0.15" if window.src == "aa_dense" else insar_colour
-    onset_bar(ax, window.onset_mid, window.dowy_lo, window.dowy_hi, bar_colour, 1.4)
-ax.set_ylim(366, 1)
-ax.set_yticks([1, 62, 124, 182, 244, 305, 366])
-ax.set_yticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1"])
-ax.set_xlabel("Year", fontsize=label_pt)
-ax.set_ylabel("Day of water year", fontsize=label_pt)
-ax.add_patch(plt.Rectangle((0.575, 0.04), 0.415, 0.24, transform=ax.transAxes, facecolor="white", edgecolor="none", alpha=0.85, zorder=4))
-cax = ax.inset_axes([0.61, 0.11, 0.35, 0.035])
-cb = fig.colorbar(mesh, cax=cax, orientation="horizontal", extend="max")
-cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=label_pt, labelpad=2)
-cb.ax.xaxis.set_label_position("top")
-cb.ax.tick_params(labelsize=label_pt, length=2, pad=1.5)
-ax.legend(handles=[Line2D([], [], color="0.15", lw=1.4, label="Alignment array onset window"),
-                   Line2D([], [], color=insar_colour, lw=1.4, label="InSAR onset window")], fontsize=label_pt, loc="lower left",
-          frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
-ax.set_title(r"$\bf{B}$  Onset windows on the water year, over 7-day rainfall", loc="left", fontsize=8)
-ax.set_xlim(x0, x1)
-for ax in (ax_a, ax_b):                              # annual ticks, years labelled every 5 (B; A shares the axis)
-    ax.xaxis.set_major_locator(MultipleLocator(5))
-    ax.xaxis.set_minor_locator(MultipleLocator(1))
-
-# C) the repeat intervals of each catalogue: each interval as a bar over its possible range (from the end of the earlier
-# window to the start of the later one, up to the start of the earlier to the end of the later), the mean of the onset
-# draws marked, mean and sd written under it
-ax = ax_c
-tick_labels = []
+fig3_ranges = {}
 fig3c_numbers = {}                 # catalogue -> (mean, sd, number of intervals): interval_stats of section 6, printed
-for j, cat_name in enumerate(shown):
+for cat_name in shown:
+    # each interval as its possible range, from the end of the earlier window to the start of the later one, up to the
+    # start of the earlier to the end of the later
     catalogue, drop_lp = catalogues[cat_name]
     catalogue = catalogue.sort_values("onset_mid").reset_index(drop=True)
     keep = interval_mask(catalogue.onset_mid.values, catalogue.src.values, drop_lp)     # which pairs form an interval (order and Loma Prieta side)
     shortest = (catalogue.onset_lo.values[1:] - catalogue.onset_hi.values[:-1])[keep]
     longest = (catalogue.onset_hi.values[1:] - catalogue.onset_lo.values[:-1])[keep]
-    rows_y = j + np.linspace(-0.15, 0.15, len(shortest))
-    ax.hlines(rows_y, shortest, longest, color=colours[cat_name], lw=1.6)
     mean_yr = interval_stats[cat_name]["mean_yr"]
     sd_yr = interval_stats[cat_name]["sd_yr"]
     assert interval_stats[cat_name]["n_intervals"] == len(shortest), f"{cat_name}: Fig 3C draws {len(shortest)} intervals, section 6 has a different count"
     fig3c_numbers[cat_name] = (mean_yr, sd_yr, len(shortest))
-    ax.plot([mean_yr, mean_yr], [j - 0.3, j + 0.3], "-", color=colours[cat_name], lw=1.5)
-    ax.text(mean_yr, j + 0.36, f"{mean_yr:.2f} $\\pm$ {sd_yr:.2f} yr", ha="center", va="top", fontsize=7, color=colours[cat_name])
-    tick_labels.append(f"{labels[cat_name]}\n(n = {len(shortest)})")      # the record spans are shown in A
-ax.set_yticks(range(len(shown)))
-ax.set_yticklabels(tick_labels, fontsize=label_pt, linespacing=1.1)
-ax.set_ylim(len(shown) - 0.35, -0.6)          # inverted: first catalogue on top; room under the last bar for its number
-ax.set_xlim(0, 6)
-ax.set_xlabel("Repeat interval (yr)", fontsize=label_pt)
-ax.set_title(r"$\bf{C}$  SSE repeat intervals", loc="left", fontsize=8)
-
-# D) the conditional forecast, BPT, one line per catalogue; the wet season shaded, the last observation marked
-ax = ax_d
-wet_years = decyear(pd.to_datetime(list(forecast_wet_season)))
-ax.axvspan(wet_years[0], wet_years[1], color=wet_shade_colour, alpha=0.15, lw=0)
-for cat_name in shown:
-    ax.plot(grid, forecast_curves[(cat_name, "bpt")], "-", color=colours[cat_name], lw=1.2, label=labels[cat_name])
-ax.axvline(last_obs_day_yr, color="0.3", lw=0.7, ls="-.")
-ax.text(last_obs_day_yr - 0.06, 0.98, "Last observation", fontsize=label_pt, color="0.3", va="top", ha="right", rotation=90)   # left of the line, clear of the InSAR curve
-ax.set_xlim(2025.5, 2030.0)
-ax.xaxis.set_major_locator(MultipleLocator(1))
-ax.set_ylim(0, 1.02)
-ax.set_xlabel("Year", fontsize=label_pt)
-ax.set_ylabel("Cumulative probability", fontsize=label_pt)
-ax.set_title(r"$\bf{D}$  Probability of the next SSE", loc="left", fontsize=8)
-ax.legend(fontsize=label_pt, loc="lower right", handlelength=1.2, handletextpad=0.5, borderpad=0.3, labelspacing=0.3,
-          frameon=True, facecolor="white", edgecolor="none", framealpha=0.9)
-f_fig3 = os.path.join(fig_dir, f"fig3_history_forecast_ntiming{n_timing}_nboot{n_boot}_issue{forecast_issue_date}.png")
-fig.savefig(f_fig3, dpi=600)
-fig.savefig(f_fig3.replace(".png", ".pdf"))
-print("Saved Fig 3 to:", f_fig3)
+    fig3_ranges[f"interval_shortest_{cat_name}"] = shortest
+    fig3_ranges[f"interval_longest_{cat_name}"] = longest
 for cat_name, (mean_yr, sd_yr, n_shown) in fig3c_numbers.items():
-    print(f"Fig 3C {labels[cat_name]}: {n_shown} intervals, mean {mean_yr:.3f} yr, SD {sd_yr:.3f} yr (the interval statistics of section 6)")
     stats_lines.append(f"Fig 3C {cat_name}: {n_shown} intervals, mean {mean_yr:.3f} yr, SD {sd_yr:.3f} yr (the interval statistics of section 6)")
-plt.show()
+    print(stats_lines[-1])
+
+# one value or one curve per record, in the order of shown
+shown_means = []
+shown_sds = []
+shown_counts = []
+shown_curves = []
+for cat_name in shown:
+    shown_means.append(fig3c_numbers[cat_name][0])
+    shown_sds.append(fig3c_numbers[cat_name][1])
+    shown_counts.append(fig3c_numbers[cat_name][2])
+    shown_curves.append(forecast_curves[(cat_name, "bpt")])
+fig3_inputs_file = os.path.join(out_dir, "fig3_inputs.npz")
+np.savez(fig3_inputs_file, provenance=utils.provenance_stamp(notebook, repo_dir), records=np.array(shown),
+         interval_mean_yr=np.array(shown_means), interval_sd_yr=np.array(shown_sds), n_intervals=np.array(shown_counts),
+         grid=grid, bpt_cdf=np.array(shown_curves), last_obs=last_obs, last_obs_day_yr=last_obs_day_yr,
+         forecast_wet_season=np.array(forecast_wet_season),
+         wet_season_yr=np.asarray(decyear(pd.to_datetime(list(forecast_wet_season))), float),
+         data_end=data_end, data_end_yr=data_end_yr,
+         insar_onset_lo=catalogues["A_insar"][0].onset_lo.values, aa_dense_onset_lo=aa_dense.onset_lo.values,
+         n_timing=n_timing, n_boot=n_boot, forecast_issue_date=forecast_issue_date, **fig3_ranges)
+print("Saved the Fig 3 inputs to:", fig3_inputs_file)
 
 # %% [markdown]
 # ## 10. The prediction statement
