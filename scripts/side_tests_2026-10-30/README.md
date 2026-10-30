@@ -16,3 +16,4 @@ and figures. These are COPIES so the code is on GitHub; edit and run the data-ro
 | model_comparison.py | fig_redraws_2026-10-30 | SM model-comparison figure (FOUR_ROWS=1) |
 | redraw_model_slip.py | fig_redraws_2026-10-30 | slip figure redraw without re-running 08a |
 | make_table.py | sensitivity_table_2026-10-30 | LaTeX sensitivity table |
+| los_inversion.py | los_inversion_2026-10-30 | ascending + descending LOS inversion, strike-slip only (vertical / 70 W / 70 E) vs the fault-parallel fits |
