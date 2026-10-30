@@ -1355,15 +1355,26 @@ print("\n".join(seis_count_lines))
 print("events in the window by catalogue span: " + "; ".join(catalogue_spans))
 
 # %% [markdown]
-# ## 14. Figure 1 data: the rotated map, the Hovmöller diagram, the per-event profiles
+# ## 14. Fig 1 inputs: the rotated map, the Hovmöller diagram, the per-event profiles, the rates and the stack
+#
+# Fig 1 is drawn in notebook 14. This section computes what it shows and writes it to one file,
+# `fig1_inputs.npz`.
 #
 # The map is the fault-parallel velocity (notebook 02) sampled on a longitude-latitude grid and referenced,
-# for display only, to the CTM1-COZ1 patch, so that the fault sits at zero: the reference is the mid-point of
+# for display only, to the CTM1-COZ1 patch, so that the fault sits at zero. The reference is the mid-point of
 # the medians of the two blocks within 5 km of the fault in that patch. The Hovmöller diagram is the slip
 # above the inter-event rate $u_x(t)$ of section 9 on a regular 6 day grid (GMT grids must be regular), each
 # node taking the nearest acquisition and left blank where none lies within 9 d. The per-event profiles are
 # the running sums of the five per-crossing steps $A_{k,x}$ of section 8 along strike, smoothed with the
-# 0.2 km Gaussian.
+# 0.2 km Gaussian. The creep rates are the smoothed inter-event, event-driven and total rates of section 12
+# in the window, with the 5 to 95 % range of the per-crossing rates within 0.5 km along the trace, kept only
+# where at least 5 crossings have a rate. The band stack is the mean series of section 11 with its joint
+# model, split into the epochs between events and the epochs next to each step.
+#
+# The file also holds the trace, the EPSG code and the map strike (notebook 14 rebuilds the strike frame from
+# them), the window and band limits, the earthquakes and repeating earthquakes in the window (section 13),
+# the alignment-array rates (section 12), the creepmeter rates with their 1-sigma errors, and a provenance
+# string.
 
 # %%
 # --- the strike frame of the map: u along the mean strike from Point Pinole (km, + south), v across the fault (km, + east)
@@ -1378,11 +1389,10 @@ with h5py.File(map_file, "r") as hf:
 fp_map[fp_map == 0] = np.nan
 frame = utils.strike_frame(int(attrs["EPSG"]), strike_map, x_fault["ft_lon"].values, x_fault["ft_lat"].values)   # u along strike from Point Pinole, v across
 
-# The map is drawn by utils.fault_map_panel (the same panel as the 05 and 11 supplements): GMT's oblique
-# Mercator, x axis along strike_map - 90 (north-east, across the fault), so the fault runs up the page with
-# north at the top. The region is the rectangle of the strike frame utils.fault_map_corners gives: u from
-# -3 km (north of Point Pinole) to 70 km (just south of CFW1), v +/- 10.9 km. Every point is plotted in
-# lon/lat, no hand rotation.
+# Notebook 14 draws the map with utils.fault_map_panel (the same panel as the 05 and 11 supplements): GMT's
+# oblique Mercator, x axis along strike_map - 90 (north-east, across the fault), so the fault runs up the page
+# with north at the top. The grid covers the rectangle of the strike frame that utils.fault_map_corners gives:
+# u from -3 km (north of Point Pinole) to 70 km (just south of CFW1), v +/- 10.9 km.
 _, _, corners = utils.fault_map_corners(frame)                    # (lon, lat) of the four map corners
 
 # --- a) the FP velocity on a regular lon/lat grid (nearest UTM pixel), referenced in the strike frame
@@ -1401,9 +1411,7 @@ in_patch = (u_grid >= patch_lo) & (u_grid <= patch_hi)
 fp_west = np.nanmedian(fp_lonlat[in_patch & (v_grid < 0) & (v_grid >= -ref_patch_km)])
 fp_east = np.nanmedian(fp_lonlat[in_patch & (v_grid > 0) & (v_grid <= ref_patch_km)])
 fp_lonlat = fp_lonlat - 0.5 * (fp_west + fp_east)
-vel_lim = 4.0           # colour range +/- this (mm/yr)
 print(f"map display reference: west block {fp_west:+.2f}, east block {fp_east:+.2f} mm/yr; mid-point removed")
-grid_ll = xr.DataArray(fp_lonlat, coords={"lat": lat_axis, "lon": lon_axis}, dims=("lat", "lon"))
 
 # --- b) the hovmoller: the slip above the inter-event rate in the window, on a regular 6-day time grid
 in_window_rows = (km >= w_lo) & (km <= w_hi)
@@ -1423,7 +1431,6 @@ for node, t_node in enumerate(t_regular):
     nearest_epoch[node] = int(np.argmin(np.abs(dates - t_node)))
 hovmoller = hov_rows[:, nearest_epoch]
 hovmoller[:, np.abs(t_regular - dates[nearest_epoch]) > 9.0 / 365.25] = np.nan     # no real epoch within 9 d: blank
-grid_hov = xr.DataArray(hovmoller, coords={"y": grid, "x": t_regular}, dims=("y", "x"))
 
 # --- c) per-event cumulative slip profiles along strike: the per-crossing steps of the joint fit of section 8 (event_fraction,
 # the same crossings and fit as D), smoothed and bridged across gaps as D
@@ -1465,162 +1472,41 @@ event_epochs_wide = is_event_epoch.copy()
 event_epochs_wide[1:] |= is_event_epoch[:-1]
 event_epochs_wide[:-1] |= is_event_epoch[1:]
 
-
-# %% [markdown]
-# ## 15. Figure 1 (pygmt, one font)
-#
-# (A) The fault-parallel velocity (notebook 02) on a page rotated to the mean strike, with the creepmeters
-# (gold triangles, as in D), city labels and a distance axis down the left edge. The bracket is the length of
-# fault hosting the events (section 10). (B) Tule Pond: the slip above each crossing's own inter-event rate in
-# the window (section 9), with the earthquakes of section 13 (circles coloured by depth and sized by
-# magnitude) and the repeating earthquakes (white squares). The dashed lines mark the 90 % band. (C) The
-# cumulative slip of each event along strike (blues, light to dark in time). (D) The creep rates: inter-event
-# (bluish green), event-driven (orange, the five Tule Pond events) and their sum (black), with the
-# creepmeters over the InSAR window (gold) and the alignment arrays refit over the same window (dark grey);
-# error bars are 1 sigma. (E) The InSAR stack: the mean fault-parallel series of the band crossings, zeroed at
-# the first epoch with nothing subtracted, and the joint model drawn over it (bluish green between events,
-# orange across the steps). The colours are from the Okabe-Ito palette.
-
-# %%
-# --- sizes in cm, double-column width, one font ---
-green = "#009E73"                                # Okabe-Ito bluish green: inter-event rate
-orange = "#E69F00"                               # Okabe-Ito orange: event-driven
-gold = "#F0E442"                                 # Okabe-Ito yellow: creepmeters
-hov_w, hov_h = 6.6, 5.4                          # hovmoller (6.6 cm keeps the page at the 18.3 cm Science full width)
-stack_h = 3.2                                    # stack: shorter than the hovmoller, so B carries the figure
-gap_stack = 0.6                                  # between B and E (B has no x annotation, E has its label inside)
-map_h = hov_h + gap_stack + stack_h               # map: as tall as B + gap + E, so the tops and bottoms line up (its width follows, true scale)
-profile_w, rates_w, profile_h = 2.6, 2.6, hov_h  # profiles and rates panels: the same width
-gap_map, gap_p, gap_r = 1.6, 0.35, 0.35          # B, C and D share one y axis, so the gaps are just the tick length
-cb_w = 2.5                                       # every colour bar the same size and font (14p trick -> 7 pt)
-cpt_dir = os.path.join(out_dir, "cpt")
-os.makedirs(cpt_dir, exist_ok=True)
-cpt_vel = utils.write_cpt(os.path.join(cpt_dir, "vel_vik.cpt"), "RdBu_r", -vel_lim, vel_lim)
-cpt_hov = utils.write_cpt(os.path.join(cpt_dir, "hov_reds.cpt"), "Reds", vmin, vmax)
-cpt_dep = utils.write_cpt(os.path.join(cpt_dir, "depth_plasma_r.cpt"), "plasma_r", 0, 12)
-
-fig = pygmt.Figure()
-pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", FONT_TITLE="9p,Helvetica-Bold",
-             MAP_FRAME_TYPE="plain", MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p")
-
-# A) the map: the shared rotated fault map (utils.fault_map_panel, also the 05 and 11 supplements): oblique
-# Mercator, fault up the page, north at the top, true scale, map_h tall. The bracket ("SSE extent") spans the
-# Tule Pond creep length (len_lo-len_hi, the length of fault hosting the events; section_lengths.csv), not the
-# narrower stacked band, which is drawn as the dashed lines in B. The cities, the creepmeter triangles (drawn
-# above every label) and the distance axis are drawn by the same function.
-map_w = utils.fault_map_panel(fig, frame, grid_ll, cpt_vel, map_h, x_fault["ft_lon"].values, x_fault["ft_lat"].values,
-                              creepmeters, (len_lo, len_hi), letter="A", title="Hayward Fault",
-                              colorbar_frame="xa2f1+lFault-parallel velocity (mm/yr)")
-
-# B) hovmoller, top of the middle column
-fig.shift_origin(xshift=f"{map_w + gap_map}c", yshift=f"{map_h - hov_h}c")
-region_hov = [t0, t1, w_lo, w_hi]
-fig.basemap(region=region_hov, projection=f"X{hov_w}c/-{hov_h}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])
-fig.grdimage(grid=grid_hov, cmap=cpt_hov, nan_transparent=True)
-fig.plot(x=seis_window.YYYY.values, y=seis_window.km.values, style="c", size=0.09 + 0.05 * np.clip(seis_window.Mag.values, 0, 5),
-         fill=seis_window.Depth.values, cmap=cpt_dep, pen="0.3p,white")
-fig.plot(x=cre_window.YYYY.values, y=cre_window.km.values, style="s0.16c", fill="white", pen="0.6p,black")
-for band_edge_km in (band_lo, band_hi):
-    fig.plot(x=[t0, t1], y=[band_edge_km, band_edge_km], pen="0.7p,gray25,3_2")
-fig.text(x=t0, y=w_lo, text="@%Helvetica-Bold%B@%% @:7p:Tule Pond, slip above the inter-event rate@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
-fig.basemap(region=region_hov, projection=f"X{hov_w}c/-{hov_h}c", frame=["WStr", "xf1", "ya2.5+lDistance from Point Pinole (km)"])   # frame on top: a clean edge
-
-# E) the stack, bottom of the middle column, bottom aligned with the map
-fig.shift_origin(yshift=f"-{stack_h + gap_stack}c")
-ok_stack = np.isfinite(band_main_stack["mean"])
-region_stack = [t0, t1, -3, float(np.nanmax(band_main_stack["mean"] + band_main_stack["std"])) * 1.08]
-fig.basemap(region=region_stack, projection=f"X{hov_w}c/{stack_h}c", frame=["WStr", "xa2f1+lYear", "ya20+lCumulative FP slip (mm)"])
-envelope_x = np.r_[dates[ok_stack], dates[ok_stack][::-1]]
-envelope_y = np.r_[(band_main_stack["mean"] + band_main_stack["std"])[ok_stack], (band_main_stack["mean"] - band_main_stack["std"])[ok_stack][::-1]]
-fig.plot(x=envelope_x, y=envelope_y, fill="gray@70", close=True)
-for step_epoch in step_epochs_tulepond:
-    fig.plot(x=[step_epoch, step_epoch], y=[region_stack[2], region_stack[3]], pen="0.5p," + orange + "@60")
-fig.plot(x=dates[ok_stack], y=band_main_stack["mean"][ok_stack], pen="0.9p,black", label=f"InSAR stack (n = {band_main_stack['n']})")
-fig.plot(x=dates, y=np.where(is_event_epoch, np.nan, model_full), pen="1.2p," + green, label=f"Model: inter-event {band_main_stack['secular']:.1f} mm/yr")
-fig.plot(x=dates, y=np.where(event_epochs_wide, model_full, np.nan), pen="1.2p," + orange,
-         label=f"{step_epochs_tulepond.size} events (sum {np.sum(band_main_stack['steps']):.0f} mm)")
-fig.text(position="TL", text="@%Helvetica-Bold%E@%% @:7p:InSAR stack@::", font="9p,Helvetica", offset="0.1c/-0.1c")
-with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
-    fig.legend(position="JBR+jBR+o0.15c/0.15c", box="+gwhite@30")
-
-# C) cumulative slip per event, right of the hovmoller
-fig.shift_origin(xshift=f"{hov_w + gap_p}c", yshift=f"{stack_h + gap_stack}c")
-xmax_profile = float(np.nanmax(cum_prof)) * 1.1
-fig.basemap(region=[-2, xmax_profile, w_lo, w_hi], projection=f"X{profile_w}c/-{profile_h}c", frame=["wStr", "xa20f10+lEvent slip (mm)", "ya2.5"])
-fig.plot(x=[-2, xmax_profile, xmax_profile, -2], y=[band_lo, band_lo, band_hi, band_hi], fill="gray@85", close=True)
-fig.plot(x=[0, 0], y=[w_lo, w_hi], pen="0.4p,gray70")
-blues = plt.get_cmap("Blues")                       # C: the five events, light (first) to dark (last)
-n_profiles = step_epochs_tulepond.size
-for i, step_epoch in enumerate(step_epochs_tulepond):
-    colour = "/".join(str(int(255 * v)) for v in blues(0.35 + 0.55 * i / (n_profiles - 1))[:3])    # GMT r/g/b
-    fig.plot(x=cum_prof[i], y=km_window, pen=f"0.9p,{colour}", label=f"{step_epoch:.2f}")      # each event labelled by its step epoch
-fig.text(x=-2, y=w_lo, text="@%Helvetica-Bold%C@%% @:7p:Slip per event@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
-with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
-    fig.legend(position="JBR+jBR+o0.1c/0.1c", box=False)
-
-# D) creep rates: its y axis is shared with B, so no annotation
-fig.shift_origin(xshift=f"{profile_w + gap_r}c")
-fig.basemap(region=[-1, 10, w_lo, w_hi], projection=f"X{rates_w}c/-{profile_h}c", frame=["wStr", "xa2f1+lCreep rate (mm/yr)", "ya2.5"])
-fig.plot(x=[-1, 10, 10, -1], y=[band_lo, band_lo, band_hi, band_hi], fill="gray@85", close=True)
-fig.plot(x=[0, 0], y=[w_lo, w_hi], pen="0.4p,gray70")
-# the 5-95 % shading, then the lines, each stacked black (bottom), green, orange (top)
-rate_style = {"total": ("gray50@70", "1.5p,black"), "secular": (green + "@75", "1.2p," + green), "event_rate": (orange + "@70", "1.2p," + orange)}
-for name in ("total", "secular", "event_rate"):
-    band_lo_hi = rate_bands[name]
-    has_band = np.isfinite(band_lo_hi[:, 0])
-    run_id = np.cumsum(np.r_[True, np.diff(has_band.astype(int)) != 0])        # one polygon per run of crossings with a band
-    for run in np.unique(run_id[has_band]):
-        in_run = has_band & (run_id == run)
-        if in_run.sum() < 2:
-            continue
-        fig.plot(x=np.r_[band_lo_hi[in_run, 0], band_lo_hi[in_run, 1][::-1]], y=np.r_[km_budget[in_run], km_budget[in_run][::-1]],
-                 fill=rate_style[name][0], close=True)
-rate_labels = {"total": "Inter-event + event-driven", "secular": "Inter-event rate", "event_rate": f"Event-driven rate (sum of steps / {span:.1f} yr)"}
-for name in ("total", "secular", "event_rate"):
-    fig.plot(x=rate_lines[name], y=km_budget, pen=rate_style[name][1])
-# legend entries in the reading order (inter-event, event-driven, sum, shading): plotted off-region, so only the legend records them
+# --- everything Fig 1 draws, in one file for notebook 14
+cm_codes = list(cm_rates.keys())                                    # creepmeter order of TulePond_filepaths
+fig1_in = dict(
+    # A) the map: the referenced grid, its axes, and what rebuilds the strike frame (EPSG, strike, trace)
+    fp_lonlat=fp_lonlat, lon_axis=lon_axis, lat_axis=lat_axis, epsg=int(attrs["EPSG"]), strike_map=strike_map,
+    trace_lon=x_fault["ft_lon"].to_numpy(float), trace_lat=x_fault["ft_lat"].to_numpy(float),
+    len_lo=len_lo, len_hi=len_hi,
+    # B) the Hovmöller diagram, its colour limits, the window, the band and the catalogues in the window
+    hovmoller=hovmoller, hov_km=grid, t_regular=t_regular, vmin=vmin, vmax=vmax,
+    t0=t0, t1=t1, w_lo=w_lo, w_hi=w_hi, band_lo=band_lo, band_hi=band_hi, band_main=band_main,
+    seis_yr=seis_window.YYYY.to_numpy(float), seis_km=seis_window.km.to_numpy(float),
+    seis_mag=seis_window.Mag.to_numpy(float), seis_depth=seis_window.Depth.to_numpy(float),
+    cre_yr=cre_window.YYYY.to_numpy(float), cre_km=cre_window.km.to_numpy(float),
+    # C) the per-event cumulative profiles
+    cum_prof=cum_prof, km_window=km_window, step_epochs=step_epochs_tulepond,
+    # D) the creep rates, the alignment arrays and the creepmeters
+    km_budget=km_budget, rate_band_half_km=rate_band_half_km, span=span,
+    aa_km=aa_rates.km.to_numpy(float), aa_rate_window=aa_rates.rate_window.to_numpy(float),
+    aa_rate_window_se=aa_rates.rate_window_se.to_numpy(float),
+    cm_codes=np.array(cm_codes), cm_km=np.array([cm_rates[code][0] for code in cm_codes], float),
+    cm_rate=np.array([cm_rates[code][1] for code in cm_codes], float),
+    cm_rate_sigma=np.array([cm_rate_sigma[code] for code in cm_codes], float),
+    # E) the band stack and its model
+    dates=dates, stack_mean=band_main_stack["mean"], stack_std=band_main_stack["std"], stack_n=band_main_stack["n"],
+    stack_secular=band_main_stack["secular"], stack_steps=band_main_stack["steps"],
+    model_full=model_full, is_event_epoch=is_event_epoch, event_epochs_wide=event_epochs_wide)
 for name in ("secular", "event_rate", "total"):
-    fig.plot(x=[-50, -49], y=[w_lo, w_lo], pen=rate_style[name][1], label=rate_labels[name])
-fig.plot(x=[-50], y=[w_lo], style="s0.2c", fill="gray50@70", label=f"5-95 % of crossings within ±{rate_band_half_km:g} km")
-arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi)]
-arrays_refit = arrays_window[arrays_window.rate_window.notna()]
-aa_grey = "gray30"                                                    # dark grey, distinct from the black total
-fig.plot(data=np.column_stack([arrays_refit.rate_window.values, arrays_refit.km.values, arrays_refit.rate_window_se.values]),
-         error_bar="x+p0.6p," + aa_grey + "+w0.08c", style="s0.16c", fill=aa_grey, pen="0.3p," + aa_grey,
-         label=f"Alignment arrays {t0:.1f} to {t1:.1f}")                   # +/- 1 sigma
-creepmeter_legend_done = False                                        # one legend entry for the creepmeters
-for code, (km_cm, rate_cm) in cm_rates.items():
-    if w_lo <= km_cm <= w_hi:
-        if creepmeter_legend_done:
-            legend_label = None
-        else:
-            legend_label = f"Creepmeter {t0:.1f} to {t1:.1f}"
-            creepmeter_legend_done = True
-        fig.plot(data=[[rate_cm, km_cm, cm_rate_sigma[code]]], error_bar="x+p0.6p,black+w0.08c", style="i0.25c", fill=gold, pen="0.5p,black",
-                 label=legend_label)                                                                             # +/- 1 sigma
-        fig.text(x=rate_cm, y=km_cm, text=code, justify="RM", offset="-0.2c/0c", font="7p", no_clip=True)
-fig.text(x=-1, y=w_lo, text="@%Helvetica-Bold%D@%% @:7p:Creep rates@::", justify="BL", offset="0c/0.12c", font="9p,Helvetica", no_clip=True)
-# legend entries for the symbols drawn in B: plotted off-region (clipped), so only the legend records them
-fig.plot(x=[-50], y=[w_lo], style="c0.17c", pen="0.6p,black", label="Seismicity (size = magnitude)")
-fig.plot(x=[-50], y=[w_lo], style="s0.16c", fill="white", pen="0.6p,black", label="Repeating earthquakes")
-# the legend of D in the free space under C and D
-left_of_C = profile_w + gap_r                                          # from D's origin back to C's left edge
-with pygmt.config(FONT_ANNOT_PRIMARY="7p"):                          # clear of the axis labels above it
-    fig.legend(position=f"JBL+jTL+o-{left_of_C}c/1.2c+w{left_of_C + rates_w}c", box=False)
-# the two colour bars of B, side by side, on the same line as the map's bar (0.4 cm below the map bottom)
-cb_y = gap_stack + stack_h + 0.4
-with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):          # -> ~6.5 pt at this bar thickness, as A's
-    fig.colorbar(cmap=cpt_hov, position=f"x-{left_of_C}c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa20f10+lCumulative displacement (mm)")
-    fig.colorbar(cmap=cpt_dep, position=f"x0c/-{cb_y:.2f}c+w{cb_w}c/0.3c+h+jTL", frame="xa4f2+lEarthquake depth (km)")
-
-f_fig1 = os.path.join(fig_dir, f"fig1_tulepond_{params}_band{int(band_main * 100)}")
-fig.savefig(f_fig1 + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
-fig.savefig(f_fig1 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
-print("Saved Fig 1 to:", f_fig1 + ".png")
-fig.show()
+    fig1_in[f"rate_line_{name}"] = rate_lines[name]
+    fig1_in[f"rate_band_{name}"] = rate_bands[name]
+f_fig1_in = os.path.join(out_dir, "fig1_inputs.npz")
+np.savez_compressed(f_fig1_in, provenance=utils.provenance_stamp(notebook, repo_dir), **fig1_in)
+print("wrote", f_fig1_in)
 
 # %% [markdown]
-# ## 16. Figure: the creep rate along the whole fault (supplement)
+# ## 15. Figure: the creep rate along the whole fault (supplement)
 #
 # Three panels on one along-fault axis, every profile smoothed with the same 0.5 km Gaussian (`rate_smooth_km`, as the
 # rate profile of notebook 03) and the Tule Pond section shaded. (A) The cross-fault azimuth of the mapped trace at every 100 m
@@ -1644,6 +1530,9 @@ johnson = johnson[johnson["Fault"].str.contains("Hayward") & (johnson["Type"] ==
 johnson["km"] = to_km(johnson["Latitude"].values)
 johnson["sig"] = pd.to_numeric(johnson["sig (mm/yr)"], errors="coerce")
 johnson = johnson[(johnson.km >= km_lim[0]) & (johnson.km <= km_lim[1])]
+green = "#009E73"                                # Okabe-Ito bluish green: inter-event rate
+orange = "#E69F00"                               # Okabe-Ito orange: event-driven
+gold = "#F0E442"                                 # Okabe-Ito yellow: creepmeters
 purple = "#CC79A7"                               # Okabe-Ito reddish purple: Johnson et al. (2022)
 line_width = 1.5
 cm_km = [v[0] for v in cm_rates.values()]
@@ -1706,7 +1595,7 @@ print("Saved figure to:", f_budget)
 plt.show()
 
 # %% [markdown]
-# ## 17. Register
+# ## 16. Register
 #
 # The stats file `04_events_stats.txt` (the numbers above, in words) and the registry rows `04_*` that the paper
 # quotes.
