@@ -1,14 +1,15 @@
-"""dip_rows.py: the fault-dip sweep on the DEFAULT mesh (the dip column of the sweeps figure; register #12). Ported 2026-10-30
-from dip_checks_2026-10-26/dip_inversions.py + analytic_west_scan.py + rescore_dips_depth90.py (which exec'd 07a / 08c)
-onto scripts/sensitivity/common.py: one solve, one corner rule (model_config), one scoring.
+"""dip_rows.py: the fault-dip sweep on the default (250 m) mesh (the dip column of the sweeps figure of notebook 08b).
 
-Geometries: vertical, 80 E / 80 W, 70 E / 70 W (PyLith order-2 SFSVM runs on the default mesh, `gf_default[_dip..]_sfcvm_order2`)
-and 60 W / 50 W (no PyLith run: analytic only). Families: "3D N^0" (the locked weighting), "3D full Cd" (nugget / N^0.5 +
-exponential) and "Homogeneous analytic N^0" (CSI Meade triangular dislocations on the SAME tents, model_utils.analytic_tent_G).
-The analytic matrices are the caches of 26 Oct (n_sub 4; dip_checks_2026-10-26/G_analytic_<run>_nsub4.npy in each run's impulse
-order, gf_analytic/G_analytic_dip{60w,50w}_nsub4.npz): n_sub 4 vs 8 differs by up to 1.5 % for surface tents on this mesh
-(validate_analytic.py), recomputing at n_sub 8 would take ~2.5 h per geometry. Each analytic matrix is checked against its
-PyLith run (same-sign columns) before use.
+Author: Danielle Lindsay
+
+Geometries: vertical, 80 E / 80 W, 70 E / 70 W (PyLith order-2 SFSVM runs on the default mesh,
+`gf_default[_dip..]_sfcvm_order2`) and 60 W / 50 W (no PyLith run: analytic only). Families: "3D N^0" (the weighting of
+model_config, equal weights), "3D full Cd" (nugget / N^0.5 plus the exponential term) and "Homogeneous analytic N^0"
+(CSI triangular dislocations, Meade 2007, on the same tents, model_utils.analytic_tent_G). Each geometry uses one solve,
+one corner rule (model_config) and one scoring (scripts/sensitivity/common.py).
+The analytic matrices are read from stored files computed with n_sub 4 (DIP_CHECKS/G_analytic_<run>_nsub4.npy in the
+impulse order of each run; DIP_CHECKS/gf_analytic/G_analytic_dip{60w,50w}_nsub4.npz). Each analytic matrix is checked
+against its PyLith run (same-sign columns) before use.
 Output (model_config.sensitivity_dir): dip_rows.csv, lcurve_<geometry>_<family>.csv.
 Run (repo root): PYTHONPATH=. nice -n 15 python scripts/sensitivity/dip_rows.py      (~2 h)
 """

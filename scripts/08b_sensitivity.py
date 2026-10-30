@@ -15,19 +15,19 @@
 # ---
 
 # %% [markdown]
-# # 08b Sensitivity of the slip model: the supplementary figures and table (plots only)
+# # 08b Sensitivity of the slip model: the supplementary figures and table
 #
 # ```
-# Created on Fri Oct 30 2026 (the rewire, code_audit_2026-10-28/REWIRE_BRIEF.md); replaces 08b_3d_model_tests and
-# 08c_3d_model_sensitivity (drafts/retired_2026-10-28/).
-# @author: daniellelindsay
-# Run in opera_disp_feb13, after 07a, 08a and the scripts in scripts/sensitivity/. Seconds: nothing is inverted here.
+# Author: Danielle Lindsay
+# Environment: environment.yml. Runs after 07a, 08a and the scripts in scripts/sensitivity/. Seconds: no inversion is
+# run here.
 # ```
 #
-# **What this notebook does.** It draws the archived results of the sensitivity scripts (`scripts/sensitivity/*.py`, run
-# once; their csvs are archived on Zenodo) and of 07a / 08a: the sensitivity table, the sweeps figure (dip, sigma,
-# lambda), the fixed-depth scan with its noise test, buried top and the SFSVM basement depth, the Green's-function error
-# against the analytic solution, and the semivariogram of the noise model. Every csv says which script made it ([2]).
+# **What this notebook does.** Draws the stored results of the sensitivity scripts (`scripts/sensitivity/*.py`; their csv
+# files are archived on Zenodo) and of 07a / 08a: the sensitivity table, the sweeps figure (dip, sigma, lambda), the
+# fixed-depth scan with its noise test, the buried-top test and the SFSVM basement depth, the error of the PyLith Green's
+# functions against the analytic solution, and the semivariogram of the noise model. Each csv records the script that
+# wrote it ([2]).
 #
 # **Inputs** (`model_config.sensitivity_dir`): `sensitivity_rows.csv`, `dip_rows.csv`, `depth_scan.csv`,
 # `depth_scan_noise.csv`, `depth_scan_buried_top.csv`, `basement_depth.csv`, `gf_check.csv`; 07a `noise_model_5km.csv`,
@@ -38,8 +38,8 @@
 # **Registry keys** `08b_*`.
 #
 # **What to check**
-# - [2] every csv's provenance names its script and a clean git hash.
-# - [3] the baseline row equals 08a's selected model (same method, two routes).
+# - [2] The provenance of each csv names its script and a clean git hash.
+# - [3] Check: the baseline row equals the preferred model of 08a (same method, computed independently).
 
 # %% [markdown]
 # ## [1] Imports, inputs, style
@@ -88,7 +88,7 @@ def save(fig, name):
 # %% [markdown]
 # ## [2] Which script made each csv
 #
-# Every row of every csv carries the script and the git hash of the run that made it (`provenance`).
+# Every row of every csv carries the script and the git hash of the run that wrote it (`provenance`).
 
 # %%
 ## [2]
@@ -102,10 +102,12 @@ for name, table in tables.items():
 #
 # One row per choice, each at its own L-curve corner (except the sigma rows), all scored on the same fitted samples
 # (60 m cut): RMS (all, within 500 m west / east), Mw at 30 GPa and at the harmonic SFSVM rigidity, peak slip and depth,
-# depth50 / depth90 of the potency, the Fig 2K band step. The inversion choices are measured on the selected model (3D
-# SFSVM, fault dipping 70 W, 60 m mesh; model_config.gf_run, Dani 2026-10-30) against its baseline; the forward-model
-# choices on the VERTICAL fault on the default (250 m) mesh against the default-mesh vertical baseline.
-# CHECK: the baseline row (the selected run, locked settings) is 08a's selected model.
+# depth50 / depth90 of the potency, the Fig 2K band step. The inversion choices and the fault dip are varied about the
+# preferred model (`model_config.gf_run`: 3D SFSVM, fault dipping 70 deg W, 60 m mesh) and compared with its baseline
+# row; the forward-model choices (SFSVM as delivered, SFSVM alignment, data coherence) are varied on the vertical fault
+# on the default (250 m) mesh and compared with the default-mesh vertical baseline.
+# Check: the baseline row (`model_config.gf_run` with the settings of `model_config.py`) equals the preferred model of
+# 08a.
 
 # %%
 ## [3]
@@ -119,7 +121,7 @@ for row_name in ("Regularization sigma", "Prior lengths", "Near-trace exclusion"
     assert (rows[rows.row == row_name].run == cfg.gf_run).all(), f"the {row_name} rows are not around the selected run {cfg.gf_run}"
 for key in ("sigma", "Mw_30gpa", "Mw_sfcvm", "rms_mm", "rms_west_mm", "rms_east_mm", "peak_slip_mm", "depth50_m", "depth90_m"):
     assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 08a {float(selected[key])}"
-print("PASS: the baseline row of sensitivity_rows.csv is 08a's selected model")
+print("PASS: the baseline row of sensitivity_rows.csv equals the preferred model of 08a")
 columns = dict(row="Choice", variant="Variant", sigma="Sigma", Mw_30gpa="Mw (30 GPa)", Mw_sfcvm="Mw (harmonic SFSVM)",
                rms_mm="RMS (mm)", rms_west_mm="RMS 500 m west (mm)", rms_east_mm="RMS 500 m east (mm)", peak_slip_mm="Peak slip (mm)",
                peak_depth_m="Peak depth (m)", depth50_m="Depth50 (m)", depth90_m="Depth90 (m)", band_step_mean_mm="Band step (mm)")
@@ -140,11 +142,11 @@ print(f"depth90 over sigma x0.25-x4 and the corner: {min(sigma_rows.depth90_m.mi
 # %% [markdown]
 # ## [4] The sweeps figure (SM)
 #
-# Columns: the fault dip, the regularization sigma, the prior lengths lambda (the order the tests were made); rows: RMS
-# within 500 m (west solid, east dashed), RMS of all fitted samples, Mw (30 GPa), peak slip, depth90 of the potency.
-# Dip: the default (250 m) mesh with PyLith 3D (equal weights) and the analytic homogeneous solution (to 50 W, where no
-# PyLith run exists), and the 60 m mesh at 50 W / 60 W (when their weekend runs are in) / 70 W (selected) / vertical / 70 E.
-# Grey: the selected value.
+# Columns: the fault dip, the regularization sigma, the prior lengths lambda; rows: RMS within 500 m (west solid, east
+# dashed), RMS of all fitted samples, Mw (30 GPa), peak slip, depth90 of the potency. Dip: the default (250 m) mesh with
+# PyLith 3D SFSVM Green's functions (equal weights) and with the analytic homogeneous solution (to 50 W, beyond the
+# PyLith runs), and the 60 m mesh at 50 W / 60 W / 70 W (preferred) / vertical / 70 E (`scripts/sensitivity/dip_rows.py`
+# and the "Fault dip, fine mesh" rows of `sensitivity_rows.py`). Grey band: the preferred value.
 
 # %%
 ## [4]
@@ -227,12 +229,12 @@ legend_ax.legend(handles=list(handles.values()), loc="center", ncol=3, frameon=F
 save(fig, "figS_sweeps")
 
 # %% [markdown]
-# ## [5] The fixed-depth scan (SM): can the data tell how deep the slip goes?
+# ## [5] The fixed-depth scan (SM)
 #
 # Uniform slip from the surface to D (`scripts/sensitivity/depth_scan.py`): RMS within 500 m west / east, RMS of all
-# fitted samples, and the best-fit slip with its Mw, against D. Dotted: the selected (distributed-slip) model. Grey band:
+# fitted samples, and the best-fit slip with its Mw, against D. Dotted: the preferred (distributed-slip) model. Grey band:
 # the base of the Cenozoic sediment west of the fault in the SFSVM (`basement_depth.py`, 90 % band). The noise test
-# (the spread of the best D under correlated noise) and the buried-top test are printed, for the caption.
+# (the spread of the best D under correlated noise) and the buried-top test are printed for the caption.
 
 # %%
 ## [5]
@@ -251,7 +253,7 @@ ax.plot(scan.D_km, scan.rms_W500_mm, "o-", color=OKABE["vermillion"], lw=lw, ms=
 ax.plot(scan.D_km, scan.rms_E500_mm, "s--", color=OKABE["blue"], lw=lw, ms=ms, mfc="white", label="East")
 ax.axhline(baseline.rms_west_mm, color=OKABE["vermillion"], ls=":", lw=lw)
 ax.axhline(baseline.rms_east_mm, color=OKABE["blue"], ls=":", lw=lw)
-ax.legend(loc="upper right", frameon=False)   # Dani 2026-10-30: no in-plot notes (caption); West/East top right
+ax.legend(loc="upper right", frameon=False)   # notes are in the caption, not on the panels
 ax = axes[1]
 ax.plot(scan.D_km, scan.rms_all_mm, "o-", color="k", lw=lw, ms=ms)
 ax.axhline(baseline.rms_mm, color="0.4", ls=":", lw=lw)
@@ -273,7 +275,7 @@ for ax, letter, ylabel in ((axes[0], "A", "RMS within 500 m (mm)"),
     ax.set_xticklabels(["0.05", "0.1", "0.2", "0.5", "1", "2", "3"])
     ax.grid(True, lw=0.3, color="0.85")
 print(f"caption: grey band = base of the Cenozoic sediment west of the fault (SFSVM), {1e3 * b_median:.0f} m "
-      f"({1e3 * b_lo:.0f}-{1e3 * b_hi:.0f} m); dotted = the selected distributed-slip model")
+      f"({1e3 * b_lo:.0f}-{1e3 * b_hi:.0f} m); dotted = the preferred distributed-slip model")
 for axis, fraction in ((axes[0], 0.25), (axes[1], 0.05), (axes[2], 0.05), (twin, 0.05)):
     lo, hi = axis.get_ylim()
     axis.set_ylim(lo, hi + fraction * (hi - lo))
@@ -283,14 +285,14 @@ save(fig, "figS_depth_scan")
 # ## [6] The Green's functions against the analytic solution (SM)
 #
 # Per impulse, the relative RMS error of the homogeneous PyLith Green's function against the analytic solution for the
-# same tent (`scripts/sensitivity/gf_check.py`). A: element order 1 vs 2 on the default mesh. B: the three meshes at order 2
-# in the strip km 58.85-59.25; the selected mesh (60 m cells within 1 km of the fault) in blue.
+# same tent (`scripts/sensitivity/gf_check.py`). A: element order 1 vs 2 on the default mesh. B: the three meshes at
+# order 2 in the strip km 58.85-59.25; the mesh of the preferred model (60 m cells within 1 km of the fault) in blue.
 
 # %%
 ## [6]
 gf = tables["gf_check.csv"]
-# a PyLith impulse whose sign disagrees with the analytic solution is a PyLith error (the analytic sign is fixed and tested):
-# shown, listed, never flipped. Only order-1 runs may have one (2026-10-30: impulse 1030, km 60.23, 87 m, at Lake Elizabeth).
+# a PyLith impulse whose sign disagrees with the analytic solution (whose sign is fixed and tested) is drawn and listed,
+# not flipped. Check: only order-1 runs may have one.
 disagree = gf[~gf.sign_agrees]
 print(f"impulses whose PyLith sign disagrees with the analytic solution: {len(disagree)}")
 print(disagree[["panel", "run", "impulse", "km", "depth_m", "rel_rms"]].to_string(index=False))
@@ -322,7 +324,7 @@ save(fig, "figS_gf_error_vs_depth")
 # %% [markdown]
 # ## [7] The noise model: semivariogram of the far field (Methods / SM)
 #
-# 07a's products: the binned semivariogram of the pixels farther than 5 km from the trace (plane removed) and the fitted
+# Products of 07a: the binned semivariogram of the pixels farther than 5 km from the trace (plane removed) and the fitted
 # model (`model_utils.semivariogram_model`).
 
 # %%
@@ -348,6 +350,8 @@ save(fig, "figS_semivariogram")
 
 # %% [markdown]
 # ## [8] Registry
+#
+# The numbers quoted in the supplementary material, with the stats sidecar `08b_sensitivity_stats.txt`.
 
 # %%
 ## [8]

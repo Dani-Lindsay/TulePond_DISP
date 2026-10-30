@@ -1,15 +1,19 @@
-"""depth_scan.py: the fixed-depth scan of the selected forward model (register #19 stress drop, #22 depth). Ported 2026-10-30
-from depth_scan_2026-10-28/depth_scan.py + depth_scan_noise.py (which exec'd 07a / 08c) onto common.py and the one depth-scan
-kernel of model_utils (`uniform_slip_shape`, `uniform_slip_fit`).
+"""depth_scan.py: the fixed-depth scan of the preferred forward model (model_config.gf_run), used for the depth extent of
+slip and the stress drop (notebook 08a [11]). The depth-scan functions are model_utils.uniform_slip_shape and
+model_utils.uniform_slip_fit.
 
-For each D: uniform right-lateral slip from the surface to D over the SSE section (04's creep length, tapered to zero over
-0.5 km at each end), on the selected run (model_config.gf_run: since 2026-10-30 the fault dipping 70 W; D is the VERTICAL
-depth, the section ends are along strike on the unrolled fault, TentFault.imp_km); ONE slip amplitude + a plane (1, x, y) by least squares with the locked
-weighting (equal weights), samples within 60 m of the trace left out. No smoothing, no sigma. Tents: full slip at vertices
-down to D, zero at the next vertex row (one mesh cell, 60 m above 600 m).
+Author: Danielle Lindsay
+
+For each D: uniform right-lateral slip from the surface to D over the SSE section (the creep length of notebook 04,
+tapered to zero over 0.5 km at each end), on the fault of model_config.gf_run (dipping 70 deg W; D is the vertical
+depth; the section ends are along strike on the unrolled fault, TentFault.imp_km); one slip amplitude and a plane
+(1, x, y) solved by least squares with the weighting of model_config (equal weights), samples within 60 m of the trace
+left out. No smoothing, no sigma. Tents: full slip at the vertices down to D, zero at the next vertex row (one mesh
+cell, 60 m above 600 m depth).
 Metrics against the plane-removed data: RMS of the fitted samples; RMS within 500 m west / east in the SSE section.
-Noise test: the best box (smallest RMS) predicts synthetic data; 100 correlated-noise realisations (full covariance of the
-5 km noise model, nugget / N^0.5, seed model_config.mc_seed) are scanned like the data; the best D of each gives the spread.
+Noise test: the best uniform-slip model (smallest RMS) predicts synthetic data; 100 correlated-noise realisations (full
+covariance of the 5 km noise model, nugget / N^0.5, seed model_config.mc_seed) are scanned in the same way as the
+data; the best D of each realisation gives the spread.
 Buried top: the scan repeated with zero slip above 50 / 100 / 200 m.
 Outputs (model_config.sensitivity_dir): depth_scan.csv, depth_scan_noise.csv, depth_scan_buried_top.csv.
 Run (repo root): PYTHONPATH=. nice -n 15 python scripts/sensitivity/depth_scan.py      (~5 min)
@@ -61,7 +65,8 @@ if __name__ == "__main__":
     print(table.round(3).to_string(index=False))
     print(f"best D {best.D_km:.2f} km (RMS {best.rms_all_mm:.3f} mm, slip {best.slip_mm:.2f} mm); wrote {path} ({elapsed()})", flush=True)
 
-    # noise test: the best box + plane predicts the data; correlated noise added; each realisation scanned
+    # noise test: the best uniform-slip model plus its plane predicts the data; correlated noise is added; each
+    # realisation is scanned
     shape = model_utils.uniform_slip_shape(tents, section, cfg.depth_scan_taper_km, best.D_km)
     _, residual = model_utils.uniform_slip_fit(G, shape, data, x_km, y_km, setup["keep"])
     prediction = data - residual

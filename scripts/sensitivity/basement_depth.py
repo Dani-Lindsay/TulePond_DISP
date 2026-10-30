@@ -1,11 +1,13 @@
 """basement_depth.py: the SFSVM sediment / basement contact beside the Tule Pond section (the grey band of the depth-scan
-figure). Ported 2026-10-30 from basement_depth_2026-10-28/basement_depth.py (paths and section from the repo, no literals).
+figure of notebook 08b).
 
-Basement = the shallowest grid level whose geologic zone is NOT Cenozoic (zone names starting Cenozoic / QT_ / T_) and not
-water or <null>, i.e. the top of Franciscan (Kjf_*), Great Valley / Valley Sequence, San Leandro or Logan gabbro, Kgr_*.
-Sampled on the PyLith material grid (model_config.sfcvm_grid_npz, what the 3D model uses; nearest grid point; the grid is
-rectilinear in the mesh CRS) along the trace normal at signed distances -500..+500 m (east +), every 0.1 km over the SSE
-section (04). Also the Vs at 0, 100, 300, 500 m depth.
+Author: Danielle Lindsay
+
+Basement = the shallowest grid level whose geologic zone is not Cenozoic (zone names starting Cenozoic / QT_ / T_) and
+not water or <null>, i.e. the top of Franciscan (Kjf_*), Great Valley / Valley Sequence, San Leandro or Logan gabbro,
+Kgr_*. Sampled on the PyLith material grid (model_config.sfcvm_grid_npz, the grid of the 3D model; nearest grid point;
+the grid is rectilinear in the mesh CRS) along the trace normal at signed distances -500..+500 m (east +), every 0.1 km
+over the SSE section (04). Also the Vs at 0, 100, 300, 500 m depth.
 Output (model_config.sensitivity_dir): basement_depth.csv.
 Run (repo root): PYTHONPATH=. python scripts/sensitivity/basement_depth.py      (seconds)
 """

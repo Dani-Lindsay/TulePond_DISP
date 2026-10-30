@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Material check figures for the SFCVM grids (sfcvm_grid.py): (a) map of rigidity mu = rho vs^2 at 50 m depth, as is
-and aligned, with the mesh trace; (b) cross-section of mu through the Tule Pond section at X-X' (lat 37.5612 N),
-as is and aligned; (c) the boundary offset b(km) that the alignment removes.
-Grid values are interpolated linearly (as PyLith's SimpleGridDB query_type = linear).
+Author: Danielle Lindsay
 
-Ported from drafts/pylith (2026-09-30) for notebook 08a: `main(spatialdb_dir, fig_dir, sse_km)` reads the two grids
-from spatialdb_dir (modeling_SFCVM/spatialdb, TulePond_filepaths.paths_sfcvm) and writes figS_pylith_materials_sfcvm_v26.png (journal size, 7 pt)
-and qc08a_materials_boundary_offset.png into fig_dir.
-Run in opera_disp_feb13:  python scripts/model_plots/plot_materials.py
+Material check figures for the SFSVM grids (written by sfcvm_grid.py): (a) map of rigidity mu = rho vs^2 at 50 m depth,
+as delivered and aligned, with the mesh trace; (b) cross-section of mu through the Tule Pond section at X-X'
+(lat 37.5612 N), as delivered and aligned; (c) the boundary offset b(km) that the alignment removes.
+Grid values are interpolated linearly (as PyLith's SimpleGridDB with query_type = linear).
+
+`main(spatialdb_dir, fig_dir, sse_km)` reads the two grids from spatialdb_dir (modeling_SFCVM/spatialdb,
+TulePond_filepaths.paths_sfcvm) and writes figS_pylith_materials_sfcvm_v26.png (journal size, 7 pt) and
+qc08a_materials_boundary_offset.png into fig_dir.
+Run (repo root, environment.yml):  python scripts/model_plots/plot_materials.py
 """
 import os
 import sys

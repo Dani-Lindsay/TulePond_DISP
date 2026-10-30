@@ -1,14 +1,14 @@
-"""gf_check.py: verification of the PyLith Green's functions (registers #8, #9): per impulse, the homogeneous PyLith G against
-the ANALYTIC solution for the same tent (CSI triangular dislocations, Meade 2007, on the same fault mesh:
-model_utils.analytic_tent_G, n_sub 8). Ported 2026-10-30 from order2_surface_tent_check_2026-10-25/tent_check.py and
-tent_check_mesh.py, which built their own sub-triangles and set each analytic column's sign to agree with PyLith
-(tent_check.py l.116). Here the analytic sign is FIXED (analytic_tent_G, tested); a column whose sign disagrees is recorded
-(`sign_agrees` False), not flipped.
+"""gf_check.py: verification of the PyLith Green's functions. Per impulse, the homogeneous PyLith G is compared with the
+analytic solution for the same tent (CSI triangular dislocations, Meade 2007, on the same fault mesh:
+model_utils.analytic_tent_G, n_sub 8). The sign of the analytic solution is fixed (analytic_tent_G, tested); a PyLith
+column whose sign disagrees is recorded (`sign_agrees` False), not flipped.
+
+Author: Danielle Lindsay
 
 A  element order on the default mesh: gf_default_homog (order 1) and gf_default_homog_order2, 32 impulses in km 57.5-61
-   (14 at the surface, 6 each near 100, 300, 1000 m; the 2026-10-25 selection).
+   (14 at the surface, 6 each near 100, 300, 1000 m).
 B  mesh refinement at order 2 in the strip km 58.85-59.25: gf_default_homog_order2, gf_fine_homog_order2_strip,
-   gf_shallow_homog_order2_strip (up to 6 impulses per depth group; the 2026-10-25 selection).
+   gf_shallow_homog_order2_strip (up to 6 impulses per depth group).
 Metric per impulse: relative RMS error |G_PyLith - G_analytic| / |G_analytic| over the 2386 samples; amplitude ratio.
 Output (model_config.sensitivity_dir): gf_check.csv (one row per run and impulse; `panel` A or B).
 Run (repo root): PYTHONPATH=. nice -n 15 python scripts/sensitivity/gf_check.py      (~10 min)
@@ -36,7 +36,7 @@ PANEL_B = dict(runs=("gf_default_homog_order2", "gf_fine_homog_order2_strip", "g
 
 
 def choose(tents, km_range, take):
-    """The 2026-10-25 impulse selection: in each depth range (m), n impulses evenly spread along strike in km_range."""
+    """The impulse selection: in each depth range (m), n impulses evenly spread along strike in km_range."""
     km, depth = tents.imp_km, tents.imp_depth_km * 1e3
     in_zone = (km >= km_range[0]) & (km <= km_range[1])
     chosen = []

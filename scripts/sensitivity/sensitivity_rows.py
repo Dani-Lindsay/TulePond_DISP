@@ -1,16 +1,15 @@
-"""sensitivity_rows.py: every sensitivity row of the selected model at the locked settings (model_config), each case at its
-OWN L-curve corner (model_config rule) unless the row is the sigma sweep. Ported 2026-10-30 from
-sensitivity_2026-10-27/sensitivity_rows.py (which exec'd 07a / 08c) onto scripts/sensitivity/common.py, with the rows the
-rewire brief added: the full-Cd weighting on the selected (shallow) mesh, and the 30 m cut scored on the same 1787
-samples as every other row.
+"""sensitivity_rows.py: the sensitivity rows of the preferred slip model, with the settings of model_config. Each case is
+solved at its own L-curve corner (the rule of model_config), except the rows of the sigma sweep.
 
-Rows (2026-10-30: the selected model dips 70 W, model_config.gf_run). Inversion choices on the selected run
-(gf_shallow_dip70w_sfcvm_order2, fine mesh): baseline; near-trace exclusion 30 m;
-reference frame constant; prior lengths x0.5 / x2; regularization sigma x0.25 / x0.5 / x2 / x4 (x the baseline corner);
-data weighting full Cd (nugget / N^0.5 + exponential, the Jolivet 2012 / Neyrinck 2024 / Vavra & Fialko 2026 choice);
-fault dip vertical / 70 E / 60 W / 50 W (the fine-mesh dip runs). Forward-model choices on the VERTICAL fault on the DEFAULT
-mesh against the default-mesh vertical baseline: SFSVM unshifted, alignment +50 / -50 m, coherence-0.7 data (its own
-samples, the same noise model).
+Author: Danielle Lindsay
+
+Rows. Inversion choices and fault dip, on the preferred run (model_config.gf_run: 3D SFSVM, fault dipping 70 deg W,
+fine mesh): baseline; near-trace exclusion 30 m (scored on the same 60 m sample set as every other row); reference
+frame constant; prior lengths x0.5 / x2; regularization sigma x0.25 / x0.5 / x2 / x4 (times the baseline corner); data
+weighting full Cd (nugget / N^0.5 plus the exponential term, as in Jolivet et al. 2012, Neyrinck et al. 2024 and Vavra &
+Fialko 2026); fault dip vertical / 70 E / 60 W / 50 W (PyLith runs on the same fine mesh). Forward-model choices, on the
+vertical fault on the default (250 m) mesh, compared with the default-mesh vertical baseline: SFSVM as delivered
+(unshifted), SFSVM alignment +50 / -50 m, coherence-0.7 data (its own samples, the same noise model).
 Metrics (common.score): RMS of the fitted samples, within 500 m west / east in the SSE section; Mw at 30 GPa and at the
 harmonic SFSVM rigidity of the run; potency; peak slip and depth; depth50 / depth90 of the potency; Fig 2K band step.
 
@@ -26,13 +25,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common                                         # noqa: E402
 from common import cfg                                # noqa: E402
 
-SH, DF = cfg.gf_run, "gf_default_sfcvm_order2"     # SH = the SELECTED run (70 W, fine mesh, since 2026-10-30); DF = vertical, 250 m mesh
-# (row, variant, baseline it belongs to, run, points, cut km, ramp, lambda factor, weighting, nugget power, sigma rule)
-#   sigma rule "corner" = own L-curve corner; ("x", f) = f x the corner of the row's baseline
+SH, DF = cfg.gf_run, "gf_default_sfcvm_order2"     # SH = the preferred run (70 W, fine mesh); DF = vertical, 250 m mesh
+# The settings of model_config, used by every case except where the case sets its own value
 LOCKED = dict(points="default", cut=cfg.near_trace_cut_km, ramp=cfg.ramp_spec, lam=1.0, weighting=cfg.weighting, power=cfg.nugget_power,
               sigma="corner")
-# 2026-10-30 (Dani): the selected model dips 70 W (model_config.gf_run). The inversion-choice rows are around it; the fine-mesh
-# dip rows are the other geometries; the forward-model rows stay on the vertical default (250 m) mesh against their own baseline.
+# The cases: (row, variant, baseline it belongs to, run, points, cut km, ramp, lambda factor, weighting, nugget power,
+# sigma rule); sigma rule "corner" = own L-curve corner; ("x", f) = f x the corner of the row's baseline.
+# The inversion-choice rows vary one setting of the preferred run; the fine-mesh dip rows are the other fault
+# geometries on the same mesh; the forward-model rows use the vertical fault on the default (250 m) mesh and are compared
+# with their own baseline.
 CASES = [
     dict(row="Baseline (fine mesh, 70 W)", variant="Selected", base=SH, run=SH),
     dict(row="Near-trace exclusion", variant="30 m", base=SH, run=SH, cut=0.03),
@@ -46,7 +47,6 @@ CASES = [
     dict(row="Data weighting", variant="Full Cd", base=SH, run=SH, weighting="full", power=0.5),
     dict(row="Fault dip, fine mesh", variant="Vertical", base=SH, run=cfg.gf_run_vertical),
     dict(row="Fault dip, fine mesh", variant="70 E", base=SH, run="gf_shallow_dip70e_sfcvm_order2"),
-    # Dani 2026-10-30: does the 3D fit plateau toward shallower west dips, as the homogeneous one does? (weekend runs)
     dict(row="Fault dip, fine mesh", variant="60 W", base=SH, run="gf_shallow_dip60w_sfcvm_order2"),
     dict(row="Fault dip, fine mesh", variant="50 W", base=SH, run="gf_shallow_dip50w_sfcvm_order2"),
     dict(row="Baseline (default mesh, vertical)", variant="Selected", base=DF, run=DF),

@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
+Author: Danielle Lindsay
+
 One-page diagnostic figure per PyLith model run (mesh preset, dip, medium, Cd mode, surface constraint), made from
-the cached products of a run alone:
+the stored products of a run alone:
   <gf_dir>/inversion_products<tag>.npz, <gf_dir>/results_comparison<tag>.csv, <gf_dir>/lcurve_<medium><tag>.csv
 Panels: (a-c) data / model / residual at the quadtree blocks, (d) X-X' profile data vs model, (e) slip on the fault,
 (f) L-curve with the selected sigma, (g) text: settings and numbers.
 Output: <fig_dir>/<prefix>_<run>_<medium>.png (run = "default" + tag), 300 dpi, white, Helvetica/Arial, Okabe-Ito.
 
-Ported from drafts/pylith (2026-09-30) for notebook 08b: `main(tag, media, gf_dir, fig_dir, prefix)`; gf_dir defaults
-to 08c's products (outputs/08c_3d_model_sensitivity), fig_dir to the figure folder, prefix to "qc08b_summary".
-Run in opera_disp_feb13:  python scripts/model_plots/plot_run_summary.py [<tag> [<medium> ...]]
-Old products (before 2026-09-30) lack settings / signed distance / block polygons: settings are inferred from the tag,
-the signed distance is recomputed from 07a's trace and the block polygons come from fig2_model_row.npz (samples asserted equal).
+`main(tag, media, gf_dir, fig_dir, prefix)`; gf_dir defaults to paths_out["08c_3d_model_sensitivity"], fig_dir to the
+figure folder, prefix to "qc08b_summary".
+Run (repo root, environment.yml):  python scripts/model_plots/plot_run_summary.py [<tag> [<medium> ...]]
+Products without saved settings, signed distance or block polygons: the settings are inferred from the tag, the signed
+distance is recomputed from the trace of 07a and the block polygons are read from fig2_model_row.npz (samples asserted
+equal).
 """
 import json
 import os
@@ -32,7 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 sys.path.insert(0, REPO)
 from TulePond_filepaths import paths_inputs, paths_out, common_paths, medium_paths   # noqa: E402
-from model_utils import signed_distance_m   # noqa: E402,F401  (one definition; imported here by older callers)
+from model_utils import signed_distance_m   # noqa: E402,F401  (defined in model_utils; also importable from here)
 
 OKABE = dict(blue="#0072B2", orange="#E69F00", vermillion="#D55E00", purple="#CC79A7", black="#000000", grey="#999999")
 PROFILE_LAT = 37.5612                                       # X-X' (06), for the title only; the line comes from fig2_inputs
@@ -40,7 +43,7 @@ SSE_KM = None                                               # filled from 04's s
 
 
 def trace_07():
-    """07a's trace (cell [2]): the KML trace between lat 37.47-37.65, north to south, CSI-discretised every 20 m.
+    """The trace of 07a: the KML trace between lat 37.47-37.65, north to south, CSI-discretised every 20 m.
     Returns lon, lat, x_m, y_m in the CSI/mesh frame."""
     from insar_utils import load_trace
     from csi import TriangularPatches
@@ -79,7 +82,7 @@ def run_time_from_log(run_name):
 
 
 def settings_from_tag(tag):
-    """Settings of a product made before settings were saved (inferred from its suffix)."""
+    """Settings of a product without saved settings (inferred from its suffix)."""
     mesh = "shallow" if "_shallow" in tag else "default"
     cd = "diag" if "_diagcd" in tag else "full"
     return dict(mesh=mesh, dip="90 (vertical)", cd_mode=cd, cd_floor=None, use_surface="_nosurf" not in tag,
@@ -87,7 +90,8 @@ def settings_from_tag(tag):
 
 
 def load_run(tag, gf_dir):
-    """Everything the figure needs, from the cached products (with the fallbacks for old products)."""
+    """Everything the figure needs, from the stored products (with the fallbacks for products without saved settings,
+    signed distance or block polygons)."""
     prod = np.load(os.path.join(gf_dir, f"inversion_products{tag}.npz"), allow_pickle=True)
     results = pd.read_csv(os.path.join(gf_dir, f"results_comparison{tag}.csv")).set_index("model")
     media = [k[5:-3] for k in prod.files if k.startswith("slip_") and k.endswith("_mm")]
@@ -109,7 +113,7 @@ def load_run(tag, gf_dir):
     else:
         row = np.load(os.path.join(paths_out["07a_uniform_model"], "fig2_model_row.npz"))
         assert np.array_equal(row["sample_lon"], lon) and np.array_equal(row["sample_lat"], lat), \
-            "old products without block polygons must be on 07a's 2386 samples"
+            "products without block polygons must be on the 2386 samples of 07a"
         block_lon, block_lat = row["block_lon"], row["block_lat"]
     if "trace_lon" in prod.files:
         trace_lon, trace_lat = prod["trace_lon"], prod["trace_lat"]
@@ -233,7 +237,7 @@ def _main(tag, media, gf_dir, fig_dir, prefix):
         ax = fig.add_subplot(gs[1, 2])
         tri = mtri.Triangulation(run["imp_km"], run["imp_xyz"][:, 2] / 1e3, run["sub_faces"])
         tp = ax.tripcolor(tri, slip, shading="gouraud", cmap="magma", vmin=0, vmax=max(1.0, slip.max()))
-        ax.set_xlim(54, 65); ax.set_ylim(-1.5, 0)          # 54 -> 65 km, north on the left, as Fig 2L (was reversed until 2026-10-16)
+        ax.set_xlim(54, 65); ax.set_ylim(-1.5, 0)          # 54 -> 65 km, north on the left, as Fig 2L
         ax.hlines(-0.02, SSE_KM[0], SSE_KM[1], color=OKABE["orange"], lw=6)
         ax.set_xlabel("km from Point Pinole, north to south (orange bar: SSE section)"); ax.set_ylabel("z (km)")
         ax.set_title(f"(e) slip, sigma {res.sigma:g}: peak {slip.max():.1f} mm", loc="left")

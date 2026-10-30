@@ -1,13 +1,14 @@
 """common.py: the set-up and the scoring shared by every sensitivity script (scripts/sensitivity/*.py).
 
-Written 2026-10-30 (the rewire, code_audit_2026-10-28/REWIRE_BRIEF.md) from the sweep scripts of 25-28 Oct
-(sensitivity_2026-10-27/sensitivity_rows.py, dip_checks_2026-10-26/*.py, depth_scan_2026-10-28/*.py), which exec'd the
-old 07a / 08c notebooks. Here nothing is exec'd: the settings come from model_config.py, the data from 07a's products,
-the maths from model_utils.py. ONE set-up (`make_setup`), ONE solve (`solve`), ONE corner finder (`own_corner`, the
-locked rule of model_config), ONE scoring (`score`: RMS of the fitted samples, near-field RMS, Mw, peak, depth50/90).
+Author: Danielle Lindsay
 
-Outputs of every script go to model_config.sensitivity_dir (archived on Zenodo); 08b_sensitivity draws them.
-Run a script from the repo root with the env of the notebooks, at low priority:
+The settings come from model_config.py, the data from the products of notebook 07a, the modelling functions from
+model_utils.py. One set-up (`make_setup`), one solve (`solve`), one corner finder (`own_corner`, the rule of
+model_config) and one scoring (`score`: RMS of the fitted samples, near-field RMS, Mw, peak slip, depth50 / depth90)
+are shared by all scripts.
+
+The outputs of every script go to model_config.sensitivity_dir (archived on Zenodo); notebook 08b_sensitivity draws them.
+Run a script from the repository root in the environment of the notebooks, at low priority:
     PYTHONPATH=. nice -n 15 python scripts/sensitivity/<script>.py
 """
 import os
@@ -35,7 +36,7 @@ def stamp(script):
 
 
 def load_inputs():
-    """07a's data products and everything the set-ups need (no notebook is exec'd)."""
+    """The data products of 07a and everything the set-ups need."""
     model_data_file = os.path.join(paths_out["07a_uniform_model"], "model_data.npz")
     model_data = np.load(model_data_file)
     assert str(model_data["field_fingerprint"]) == model_utils.field_fingerprint(
@@ -53,7 +54,7 @@ def load_inputs():
 
 
 def samples_for(inputs, points_set):
-    """A point set (07a's npz) as a csi.insar data set (positions, data, block pixel counts)."""
+    """A point set (npz of 07a) as a csi.insar data set (positions, data, block pixel counts)."""
     p = np.load(inputs["points"][points_set])
     return model_utils.samples_from_arrays(f"fault-parallel {points_set}", p["lon"], p["lat"], p["x_km"], p["y_km"], p["vel_mm"],
                                            p["wgt"], inputs["look"], inputs["frame_lonlat"], inputs["cov_p"], cfg.nugget_power)
@@ -73,7 +74,7 @@ def make_setup(inputs, run, points_set="default", cut_km=cfg.near_trace_cut_km, 
 
 def solve(inputs, setup, G, samples, sigma, weighting=cfg.weighting, nug_power=cfg.nugget_power, lam_xz=cfg.lam_xz_km,
           ramp_spec=cfg.ramp_spec, keep_fit=None, label="", vel=None):
-    """One inversion by the locked method (model_utils.invert_tents), with the data covariance of `weighting` /
+    """One inversion by the method of model_config (model_utils.invert_tents), with the data covariance of `weighting` /
     `nug_power` (model_utils.data_cd) over the fitted samples keep_fit (default: the set-up's keep)."""
     keep_fit = setup["keep"] if keep_fit is None else keep_fit
     Cd = model_utils.data_cd(weighting, samples, inputs["cov_p"], nug_power, keep=keep_fit)
@@ -82,7 +83,7 @@ def solve(inputs, setup, G, samples, sigma, weighting=cfg.weighting, nug_power=c
 
 
 def own_corner(inputs, setup, G, samples, label, keep_fit=None, **settings):
-    """The model's own L-curve corner by the locked rule (model_utils.own_corner); the L-curve is saved as
+    """The model's own L-curve corner by the rule of model_config (model_utils.own_corner); the L-curve is saved as
     lcurve_<label>.csv in OUT. Returns (corner, base-grid corner)."""
     keep_fit = setup["keep"] if keep_fit is None else keep_fit
 
@@ -112,10 +113,10 @@ def mu_harmonic_of(run, setup):
 
 
 def score(inputs, setup, fault_model, insar_data, score_setup=None, mu_per_triangle=None):
-    """The metrics of one model (the metric policy of 2026-10-28; no chi2/N): model_utils.tent_numbers over the fitted
-    samples and the near-field masks of score_setup (default: the model's own set-up; the 30 m row is scored on the
-    60 m set), plus Fig 2K's band step: data minus model step 60-150 m at 04's crossings in the 90 % band (mean, RMS).
-    Residuals are against the plane-removed data (CSI removes the fitted frame from vel)."""
+    """The metrics of one model: model_utils.tent_numbers over the fitted samples and the near-field masks of
+    score_setup (default: the model's own set-up; the 30 m row is scored on the 60 m set), plus the band step of Fig 2K:
+    data minus model step 60-150 m at the crossings of 04 in the 90 % band (mean, RMS). Residuals are against the
+    plane-removed data (CSI removes the fitted frame from vel)."""
     score_setup = setup if score_setup is None else score_setup
     slip = fault_model.slip[:, 0].copy()
     numbers = model_utils.tent_numbers(slip, insar_data, setup["tents"], score_setup["keep"], score_setup["west_near"],
@@ -132,7 +133,8 @@ def score(inputs, setup, fault_model, insar_data, score_setup=None, mu_per_trian
 
 
 def write(rows, name, script):
-    """The table, with the provenance column, to OUT/name (rewritten after every row: a crash keeps what is done)."""
+    """The table, with the provenance column, to OUT/name (rewritten after every row, so that an interrupted run keeps
+    the rows already computed)."""
     os.makedirs(OUT, exist_ok=True)
     table = pd.DataFrame(rows)
     table["provenance"] = stamp(script)
@@ -142,5 +144,6 @@ def write(rows, name, script):
 
 
 def timer():
+    # returns a function that gives the elapsed time since this call, in minutes, as text
     start = time.time()
     return lambda: f"{(time.time() - start) / 60:.1f} min"
