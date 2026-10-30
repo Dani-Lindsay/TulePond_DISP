@@ -45,7 +45,7 @@
 #   rigidity.
 # - L: the slip on the fault in the top 1 km (tents: slip at the vertices, linear between them).
 #
-# **Inputs**: `06_event_field_geometry/fig2_inputs.npz`; `08_3d_model/selected_model.npz`;
+# **Inputs**: `06_event_field_geometry/fig2_inputs.npz`; `09_model_3d/selected_model.npz`;
 # `07_model_data/homogeneous_model.npz` and `model_data.npz`; `04_event_detection/event_fraction_by_crossing.csv`;
 # `hayward_fault_profiles.csv`; the alignment-array summary; the GHCN file of the Fremont rain gauge; the GNSS station
 # list of the descending frame (`GPS/11115_StaList.txt`, with the reference station ZOA1); the CFW1 position.
@@ -117,8 +117,8 @@ aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"),     # HGIL left of its symbol
 
 f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz")
 aa_file = common_paths["aa_summary"]
-selected_file = os.path.join(paths_out["08_3d_model"], "selected_model.npz")          # the preferred model (notebook 08, section 13)
-homogeneous_file = os.path.join(paths_out["07_model_data"], "homogeneous_model.npz")  # the homogeneous model of 07
+selected_file = os.path.join(paths_out["09_model_3d"], "selected_model.npz")          # the preferred model (notebook 08, section 13)
+homogeneous_file = os.path.join(paths_out["08_model_homogeneous"], "homogeneous_model.npz")  # the homogeneous model of 07
 model_data_file = os.path.join(paths_out["07_model_data"], "model_data.npz")         # 07's samples
 model_tag = "_selected3d"                                                                 # in the Fig 2 file name
 profile_half_width_m = 300.0    # G: model samples within this distance of each profile line (06's pixels: +/- 150 m)
@@ -691,7 +691,7 @@ def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, col
 
 # %%
 for path in (selected_file, homogeneous_file, model_data_file):
-    assert os.path.exists(path), f"missing {path}: run 07_model_data and 08_3d_model first"
+    assert os.path.exists(path), f"missing {path}: run 07_model_data and 09_model_3d first"
 model = np.load(selected_file)
 compare = np.load(homogeneous_file)
 model_data = np.load(model_data_file)

@@ -51,7 +51,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `05_validation` | Comparison with the five USGS creepmeters; the aperture ladder. | Validation, aperture ladder |
 | `06_event_field_geometry` | Per-pixel step maps of each event on both tracks, burst-seam correction, mean event, fault-parallel and vertical maps, cross-fault profiles X-X' and Y-Y'. | Fig 2 (data rows), step maps |
 | `07_model_data` | The data of the slip models (quadtree samples, noise model) and the homogeneous slip model on the same fault. | |
-| `08_3d_model` | The preferred slip model (3D SFSVM, PyLith Green's functions, fault dipping 70 deg west): fit, moment, depth extent, Monte Carlo of correlated noise, stress drop. | Model figures, SFSVM materials |
+| `09_model_3d` | The preferred slip model (3D SFSVM, PyLith Green's functions, fault dipping 70 deg west): fit, moment, depth extent, Monte Carlo of correlated noise, stress drop. | Model figures, SFSVM materials |
 | `09_fig2` | Draws Fig 2 from 06, 07 and 08. | Fig 2, LOS maps and profiles |
 | `10_model_sensitivity` | Draws the sensitivity tests of `scripts/sensitivity/`: sweeps, depth scan, semivariogram. | Sensitivity figures |
 | `11_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |

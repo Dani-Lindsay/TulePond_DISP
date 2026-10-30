@@ -4,7 +4,7 @@
 @author: Danielle Lindsay
 
 model_config.py: the settings of the Tule Pond slip models. Every modelling constant is declared here once, with its
-unit, its value and its source. Imported by 07_model_data, 08_3d_model, 10_model_sensitivity and
+unit, its value and its source. Imported by 07_model_data, 09_model_3d, 10_model_sensitivity and
 scripts/sensitivity/*.py; no notebook re-types these numbers.
 
 Paths are in TulePond_filepaths.py; the modelling functions are in model_utils.py. The section limits (the SSE section

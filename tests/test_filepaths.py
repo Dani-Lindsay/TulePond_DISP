@@ -59,7 +59,7 @@ def test_paths_out_keys_are_notebooks():
     scripts_dir = os.path.join(fp.repo_dir, "scripts")
     for nb in fp.paths_out:
         assert os.path.exists(os.path.join(scripts_dir, nb + ".py")), f"paths_out key {nb} has no scripts/{nb}.py"
-    assert {"07_model_data", "09_fig2", "08_3d_model", "10_model_sensitivity"} <= set(fp.paths_out)
+    assert {"07_model_data", "09_fig2", "09_model_3d", "10_model_sensitivity"} <= set(fp.paths_out)
 
 
 @pytest.mark.parametrize("group,key", [("inputs", "mesh"), ("inputs", "points"), ("inputs", "spatialdb"),

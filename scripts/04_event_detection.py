@@ -44,12 +44,12 @@
 # `onset_lo` to `onset_hi` in decimal years, its first calendar day `onset_day`, which also labels the COZ1
 # events in the registry, and the step size), `creepmeter_events_COZ1.csv` (the creepmeter's own detections;
 # `detect_yr` is the time of the detector's flag), `event_fraction_by_crossing.csv`, `section_lengths.csv`,
-# `04_events_stats.txt`, registry rows `04_*`.
+# `fig1_inputs.npz` (the arrays Fig 1 is drawn from, section 14), `04_events_stats.txt`, registry rows `04_*`.
 #
 # **Figures** (in the dated figure folder, .png and .pdf): `figS_event_detection_<params>_k3_win3`
-# (detection QC, supplement); `fig1_tulepond_<params>_band90` (Fig 1: rotated map, Hovmöller diagram,
-# per-event profiles, creep rates, band stack); `figS_creep_rate_along_fault_<params>` (trace azimuth, creep
-# rate per crossing and slip budget along the whole fault, supplement).
+# (detection QC, supplement); `figS_creep_rate_along_fault_<params>` (trace azimuth, creep rate per crossing
+# and slip budget along the whole fault, supplement). Fig 1 (rotated map, Hovmöller diagram, per-event
+# profiles, creep rates, band stack) is drawn in notebook 14 from `fig1_inputs.npz`.
 #
 # **What to check.** The printed event list (section 5): five Tule Pond events, and the Oakland control
 # events, which must include the two large COZ1 events of January 2019 and February 2022 (asserted) and are
@@ -75,9 +75,7 @@ from TulePond_filepaths import (common_paths, segments, creepmeters, params, coh
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
 import h5py                                      # fault-parallel velocity map (notebook 02)
-import xarray as xr                              # grids for pygmt
 import matplotlib.pyplot as plt
-import pygmt
 
 # %% [markdown]
 # ## 2. Paths and parameters

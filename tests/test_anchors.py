@@ -48,9 +48,9 @@ ANCHORS = {
     "06_XX_rate_step_mm_yr": (1.17, 2), "06_XX_event_step_mm": (9.17, 2),   # X-X' at 58.5 km, local strike, +/- 2 km (2026-09-23)
     "06_YY_rate_step_mm_yr": (6.54, 2), "06_YY_event_step_mm": (0.88, 2),
     # 08 the selected model, rewired 2026-10-30 (model_config.py: order 2, shallow mesh, N^0, 60 m cut, plane, own corner)
-    "08_mw_30gpa": (3.86, 2), "08_mw_harmonic": (3.26, 2), "08_rms_mm": (1.15, 2), "08_rms_west500_mm": (1.44, 2),
-    "08_rms_east500_mm": (1.10, 2), "08_potency_m3": (25997, 0), "08_sigma": (43.2, 1), "08_depth90_m": (933, 0),
-    "07_hom_mw_30gpa": (3.80, 2),
+    "09_mw_30gpa": (3.86, 2), "09_mw_harmonic": (3.26, 2), "09_rms_mm": (1.15, 2), "09_rms_west500_mm": (1.44, 2),
+    "09_rms_east500_mm": (1.10, 2), "09_potency_m3": (25997, 0), "09_sigma": (43.2, 1), "09_depth90_m": (933, 0),
+    "08_hom_mw_30gpa": (3.80, 2),
     # 09 alignment arrays: detector on the bimonthly era only, steps under 2 sigma dropped (Dani 2026-10-02);
     # the repeat intervals live only in 11
     "11_hrkt_n_surveys": (159, 0), "11_hrkt_n_events": (9, 0), "11_hrkt_amp_median_mm": (8.2, 1),

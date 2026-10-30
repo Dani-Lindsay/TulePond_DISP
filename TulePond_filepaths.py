@@ -446,7 +446,7 @@ paths_gps = {
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
-    "07_model_data", "08_3d_model", "09_fig2", "10_model_sensitivity",
+    "07_model_data", "08_model_homogeneous", "09_model_3d", "09_fig2", "10_model_sensitivity",
     "11_alignment_arrays", "12_rain_seasonality", "13_forecast", "14_paper_figures")}
 
 

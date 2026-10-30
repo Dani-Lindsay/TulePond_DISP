@@ -48,7 +48,7 @@
 # `event_fraction_by_crossing.csv`, `creep_events.csv`; the stored outputs of `scripts/sensitivity/` listed in
 # `model_config.archived` (the fine-mesh baseline row of the sensitivity table, for a check, and the fixed-depth scan).
 #
-# **Outputs** (`outputs/08_3d_model/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane, residual
+# **Outputs** (`outputs/09_model_3d/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane, residual
 # and crossing steps; Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
 # `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `near_fault_deflection.csv`,
 # `08_selected_stats.txt`. **Registry keys** `08_*`.
@@ -90,9 +90,10 @@ import insar_utils as utils
 import model_config as cfg                          # the settings of the slip models
 import model_utils                                  # the modelling functions
 
-notebook = "08_3d_model"
+notebook = "09_model_3d"
 out_dir = paths_out[notebook]
-dir_07a = paths_out["07_model_data"]
+dir_07 = paths_out["07_model_data"]
+dir_hom = paths_out["08_model_homogeneous"]
 field_dir = paths_out["06_event_field_geometry"]
 events_dir = paths_out["04_event_detection"]
 fig_dir = common_paths["fig_dir"]
@@ -101,12 +102,12 @@ os.makedirs(fig_dir, exist_ok=True)
 made = time.strftime("%Y-%m-%d %H:%M")
 creep_lo_km, creep_hi_km = cfg.sse_section_km()
 band_lo_km, band_hi_km = cfg.band90_km()
-model_data_file = os.path.join(dir_07a, "model_data.npz")
-homogeneous_file = os.path.join(dir_07a, "homogeneous_model.npz")
+model_data_file = os.path.join(dir_07, "model_data.npz")
+homogeneous_file = os.path.join(dir_hom, "homogeneous_model.npz")
 fig2_inputs_file = os.path.join(field_dir, "fig2_inputs.npz")
 crossings_file = os.path.join(events_dir, "event_fraction_by_crossing.csv")
 REG = utils.Registry(notebook, common_paths, repo_dir)
-REG.inputs(model_data_file, homogeneous_file, os.path.join(dir_07a, "homogeneous_lcurve.csv"), fig2_inputs_file, crossings_file,
+REG.inputs(model_data_file, homogeneous_file, os.path.join(dir_hom, "homogeneous_lcurve.csv"), fig2_inputs_file, crossings_file,
            os.path.join(events_dir, "section_lengths.csv"), os.path.join(events_dir, "creep_events.csv"), cfg.gf_files["G"],
            cfg.archived["sensitivity_rows"], cfg.archived["depth_scan"])
 OKABE = dict(blue="#0072B2", orange="#E69F00", vermillion="#D55E00", purple="#CC79A7", black="#000000", grey="#999999")
@@ -420,7 +421,7 @@ print(deflection.round(2).to_string(index=False))
 # The last figure shows the SFSVM shear modulus at 50 m depth and across X-X' (`scripts/model_plots/plot_materials.py`).
 
 # %%
-lcurve_hom = pd.read_csv(os.path.join(dir_07a, "homogeneous_lcurve.csv"))
+lcurve_hom = pd.read_csv(os.path.join(dir_hom, "homogeneous_lcurve.csv"))
 
 
 def save(fig, name):
@@ -642,43 +643,43 @@ np.savez(selected_file, sample_lon=model_data["sample_lon"], sample_lat=model_da
          **{k: v for k, v in numbers.items()}, run=cfg.gf_run, field_fingerprint=field_fingerprint,
          provenance=f"{notebook} {made}: {cfg.gf_run}, settings of model_config, sigma {sigma:.3f}")
 mc = mc_summary.set_index("quantity")
-stats = REG.sidecar("08_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
+stats = REG.sidecar("09_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
                                                       mc_summary.to_string(index=False), deflection.to_string(index=False),
                                                       stress_drop.to_string(index=False)]
                     + [f"{k} = {v}" for k, v in numbers.items()])
 where = "M8"
-REG.register("08_n_samples_fitted", numbers["n_fitted"], "count", 0, where, "[3]", stats)
-REG.register("08_sigma", sigma, "mm", 1, where, "[5]", stats)
-REG.register("08_sigma_base_corner", sigma_base, "mm", 1, where, "[5]", stats)
-REG.register("08_mw_30gpa", numbers["Mw_30gpa"], "Mw", 2, where, "[6]", stats)
-REG.register("08_mw_harmonic", numbers["Mw_sfcvm"], "Mw", 2, where, "[6]", stats)
-REG.register("08_mu_effective_harmonic_gpa", numbers["mu_effective_gpa"], "GPa", 1, where, "[6]", stats)
-REG.register("08_potency_m3", numbers["potency_m3"], "m3", 0, where, "[6]", stats)
-REG.register("08_peak_slip_mm", numbers["peak_slip_mm"], "mm", 1, where, "[6]", stats)
-REG.register("08_peak_depth_m", numbers["peak_depth_m"], "m", 0, where, "[6]", stats)
-REG.register("08_depth50_m", numbers["depth50_m"], "m", 0, where, "[6]", stats)
-REG.register("08_depth90_m", numbers["depth90_m"], "m", 0, where, "[6]", stats)
-REG.register("08_rms_mm", numbers["rms_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "[6]", stats)
+REG.register("09_n_samples_fitted", numbers["n_fitted"], "count", 0, where, "[3]", stats)
+REG.register("09_sigma", sigma, "mm", 1, where, "[5]", stats)
+REG.register("09_sigma_base_corner", sigma_base, "mm", 1, where, "[5]", stats)
+REG.register("09_mw_30gpa", numbers["Mw_30gpa"], "Mw", 2, where, "[6]", stats)
+REG.register("09_mw_harmonic", numbers["Mw_sfcvm"], "Mw", 2, where, "[6]", stats)
+REG.register("09_mu_effective_harmonic_gpa", numbers["mu_effective_gpa"], "GPa", 1, where, "[6]", stats)
+REG.register("09_potency_m3", numbers["potency_m3"], "m3", 0, where, "[6]", stats)
+REG.register("09_peak_slip_mm", numbers["peak_slip_mm"], "mm", 1, where, "[6]", stats)
+REG.register("09_peak_depth_m", numbers["peak_depth_m"], "m", 0, where, "[6]", stats)
+REG.register("09_depth50_m", numbers["depth50_m"], "m", 0, where, "[6]", stats)
+REG.register("09_depth90_m", numbers["depth90_m"], "m", 0, where, "[6]", stats)
+REG.register("09_rms_mm", numbers["rms_mm"], "mm", 2, where, "[6]", stats)
+REG.register("09_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "[6]", stats)
+REG.register("09_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "[6]", stats)
+REG.register("09_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "[6]", stats)
+REG.register("09_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "[6]", stats)
 for key, tag, units, precision in (("Mw_30gpa", "mw_30gpa", "Mw", 3), ("Mw_sfcvm", "mw_harmonic", "Mw", 3),
                                    ("potency_m3", "potency_m3", "m3", 0), ("peak_slip_mm", "peak_slip_mm", "mm", 2),
                                    ("depth50_m", "depth50_m", "m", 0), ("depth90_m", "depth90_m", "m", 0)):
-    REG.register(f"08_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "[10]", stats)
-    REG.register(f"08_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "[10]", stats)
-    REG.register(f"08_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "[10]", stats)
+    REG.register(f"09_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "[10]", stats)
+    REG.register(f"09_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "[10]", stats)
+    REG.register(f"09_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "[10]", stats)
 for _, row in deflection[deflection.far_band == "selected"].iterrows():
     tag = {"Data (3D model's plane removed)": "data", "3D model": "model", "Data (homogeneous model's plane removed)": "data_homplane",
            "Homogeneous model": "hom"}[row.field]
-    REG.register(f"08_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "[8b]", stats)
-    REG.register(f"08_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "[8b]", stats)
-REG.register("08_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
-REG.register("08_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
-REG.register("08_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)
-REG.register("08_stress_drop_width_m", width_m, "m", 0, where, "[11]", stats)
-REG.register("08_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "[11]", stats)
-REG.register("08_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "[11]", stats)
+    REG.register(f"09_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "[8b]", stats)
+    REG.register(f"09_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "[8b]", stats)
+REG.register("09_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
+REG.register("09_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
+REG.register("09_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)
+REG.register("09_stress_drop_width_m", width_m, "m", 0, where, "[11]", stats)
+REG.register("09_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "[11]", stats)
+REG.register("09_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "[11]", stats)
 REG.render()
 print(f"wrote {selected_file}")

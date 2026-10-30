@@ -1,7 +1,7 @@
 # pylith/: the PyLith side of the 3D slip model
 
 This folder holds everything needed to remake the PyLith 5.0.2 runs behind the slip models. No notebook runs PyLith:
-`07_model_data`, `08_3d_model` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
+`07_model_data`, `09_model_3d` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
 built from the run products in the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit). 08's
 "PyLith files" cell lists every file of the preferred run with its path. The preferred run and every setting of the model
 are declared in `model_config.py` (`gf_run`, `gf_files`).

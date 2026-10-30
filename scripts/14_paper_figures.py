@@ -30,7 +30,7 @@
 # | S: arrays and InSAR, threshold sweep, HRKT and HAPP histories | 11_alignment_arrays | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*`, `qc09_aa_history_HRKT_*`, `qc09_aa_history_HAPP_*` |
 # | S: rainfall conditioning | 12_rain_seasonality | `figS_precip_conditioning_*` |
 # | S: renewal models, single fits | 13_forecast | `qc11_renewal_models_single_fits` |
-# | S: slip model (L-curves, slip, fit maps, profiles, Monte Carlo, materials) | 08_3d_model | `figS_model_*`, `figS_pylith_materials_sfcvm_v26` |
+# | S: slip model (L-curves, slip, fit maps, profiles, Monte Carlo, materials) | 09_model_3d | `figS_model_*`, `figS_pylith_materials_sfcvm_v26` |
 # | S: sensitivity (sweeps, fixed-depth scan, Green's-function check, semivariogram) | 10_model_sensitivity | `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` |
 #
 # The dictionary `wanted` holds the same table and names the source notebook of each figure for the staleness
@@ -96,12 +96,12 @@ wanted = {
     "Fig_S_aa_history_HAPP": ("qc09_aa_history_HAPP_*.png", "11_alignment_arrays"),
     "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "12_rain_seasonality"),
     "Fig_S_renewal_single_fits": ("qc11_renewal_models_single_fits.png", "13_forecast"),
-    "Fig_S_model_lcurve": ("figS_model_lcurve.png", "08_3d_model"),
-    "Fig_S_model_slip": ("figS_model_slip.png", "08_3d_model"),
-    "Fig_S_model_fit_maps": ("figS_model_fit_maps.png", "08_3d_model"),
-    "Fig_S_model_profiles": ("figS_model_profiles.png", "08_3d_model"),
-    "Fig_S_model_montecarlo": ("figS_model_montecarlo.png", "08_3d_model"),
-    "Fig_S_pylith_materials": ("figS_pylith_materials_sfcvm_v26.png", "08_3d_model"),       # scripts/model_plots/plot_materials.py
+    "Fig_S_model_lcurve": ("figS_model_lcurve.png", "09_model_3d"),
+    "Fig_S_model_slip": ("figS_model_slip.png", "09_model_3d"),
+    "Fig_S_model_fit_maps": ("figS_model_fit_maps.png", "09_model_3d"),
+    "Fig_S_model_profiles": ("figS_model_profiles.png", "09_model_3d"),
+    "Fig_S_model_montecarlo": ("figS_model_montecarlo.png", "09_model_3d"),
+    "Fig_S_pylith_materials": ("figS_pylith_materials_sfcvm_v26.png", "09_model_3d"),       # scripts/model_plots/plot_materials.py
     "Fig_S_sweeps": ("figS_sweeps.png", "10_model_sensitivity"),
     "Fig_S_depth_scan": ("figS_depth_scan.png", "10_model_sensitivity"),
     "Fig_S_gf_error_vs_depth": ("figS_gf_error_vs_depth.png", "10_model_sensitivity"),
@@ -115,9 +115,9 @@ reads_from = {
     "05_validation": ["02_velocity_decomposition", "03_creep_timeseries", "04_event_detection"],
     "06_event_field_geometry": ["04_event_detection"],
     "07_model_data": ["04_event_detection", "06_event_field_geometry"],
-    "08_3d_model": ["04_event_detection", "06_event_field_geometry", "07_model_data"],
-    "09_fig2": ["04_event_detection", "06_event_field_geometry", "07_model_data", "08_3d_model"],
-    "10_model_sensitivity": ["07_model_data", "08_3d_model"],
+    "09_model_3d": ["04_event_detection", "06_event_field_geometry", "07_model_data"],
+    "09_fig2": ["04_event_detection", "06_event_field_geometry", "07_model_data", "09_model_3d"],
+    "10_model_sensitivity": ["07_model_data", "09_model_3d"],
     "11_alignment_arrays": ["03_creep_timeseries", "04_event_detection", "06_event_field_geometry"],
     "12_rain_seasonality": ["03_creep_timeseries", "04_event_detection", "11_alignment_arrays"],
     "13_forecast": ["03_creep_timeseries", "04_event_detection", "11_alignment_arrays", "12_rain_seasonality"],

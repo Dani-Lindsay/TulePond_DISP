@@ -73,7 +73,7 @@ csv_files = {name: os.path.join(sens, name) for name in ("sensitivity_rows.csv",
                                                           "depth_scan_buried_top.csv", "basement_depth.csv", "gf_check.csv")}
 noise_file = os.path.join(paths_out["07_model_data"], "noise_model_5km.csv")
 bins_file = os.path.join(paths_out["07_model_data"], "semivariogram_bins_5km.csv")
-selected_file = os.path.join(paths_out["08_3d_model"], "selected_model.npz")
+selected_file = os.path.join(paths_out["09_model_3d"], "selected_model.npz")
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(*csv_files.values(), noise_file, bins_file, selected_file)
 tables = {name: pd.read_csv(path) for name, path in csv_files.items()}
