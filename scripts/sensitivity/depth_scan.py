@@ -3,7 +3,8 @@ from depth_scan_2026-10-28/depth_scan.py + depth_scan_noise.py (which exec'd 07a
 kernel of model_utils (`uniform_slip_shape`, `uniform_slip_fit`).
 
 For each D: uniform right-lateral slip from the surface to D over the SSE section (04's creep length, tapered to zero over
-0.5 km at each end), on gf_shallow_sfcvm_order2; ONE slip amplitude + a plane (1, x, y) by least squares with the locked
+0.5 km at each end), on the selected run (model_config.gf_run: since 2026-10-30 the fault dipping 70 W; D is the VERTICAL
+depth, the section ends are along strike on the unrolled fault, TentFault.imp_km); ONE slip amplitude + a plane (1, x, y) by least squares with the locked
 weighting (equal weights), samples within 60 m of the trace left out. No smoothing, no sigma. Tents: full slip at vertices
 down to D, zero at the next vertex row (one mesh cell, 60 m above 600 m).
 Metrics against the plane-removed data: RMS of the fitted samples; RMS within 500 m west / east in the SSE section.
