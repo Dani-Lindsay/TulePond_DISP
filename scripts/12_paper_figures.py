@@ -24,9 +24,10 @@
 # | S: LOS maps and profiles per track, with the model row | 07c_fig2 | `figS_los_maps_profiles_*` |
 # | S: per-event step maps | 06_event_field_geometry | `figS_event_step_maps_*` |
 # | S: creepmeter validation, aperture ladder | 05_validation | `figS_validation_*`, `figS_binning_ladder_*` |
-# | S: arrays and InSAR, threshold sweep | 09_alignment_arrays | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*` |
+# | S: arrays and InSAR, threshold sweep, HRKT and HAPP histories | 09_alignment_arrays | `figS_tulepond_arrays_insar_*`, `figS_hrkt_threshold_sweep_*`, `qc09_aa_history_HRKT_*`, `qc09_aa_history_HAPP_*` |
 # | S: rainfall conditioning | 10_rain_seasonality | `figS_precip_conditioning_*` |
-# | S: slip model (L-curves, slip, fit maps, profiles, Monte Carlo) | 08a_3d_model | `figS_model_*` |
+# | S: renewal models, single fits | 11_forecast | `qc11_renewal_models_single_fits` |
+# | S: slip model (L-curves, slip, fit maps, profiles, Monte Carlo, materials) | 08a_3d_model | `figS_model_*`, `figS_pylith_materials_sfcvm_v26` |
 # | S: sensitivity (sweeps, fixed-depth scan, Green's-function check, semivariogram) | 08b_sensitivity | `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` |
 #
 # The same table is the dictionary `wanted` below, which also names the source
@@ -79,12 +80,16 @@ wanted = {
     "Fig_S_binning_ladder": ("figS_binning_ladder_*.png", "05_validation"),
     "Fig_S_arrays_insar": ("figS_tulepond_arrays_insar_*.png", "09_alignment_arrays"),
     "Fig_S_hrkt_threshold": ("figS_hrkt_threshold_sweep_*.png", "09_alignment_arrays"),
+    "Fig_S_aa_history_HRKT": ("qc09_aa_history_HRKT_*.png", "09_alignment_arrays"),
+    "Fig_S_aa_history_HAPP": ("qc09_aa_history_HAPP_*.png", "09_alignment_arrays"),
     "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "10_rain_seasonality"),
+    "Fig_S_renewal_single_fits": ("qc11_renewal_models_single_fits.png", "11_forecast"),
     "Fig_S_model_lcurve": ("figS_model_lcurve.png", "08a_3d_model"),
     "Fig_S_model_slip": ("figS_model_slip.png", "08a_3d_model"),
     "Fig_S_model_fit_maps": ("figS_model_fit_maps.png", "08a_3d_model"),
     "Fig_S_model_profiles": ("figS_model_profiles.png", "08a_3d_model"),
     "Fig_S_model_montecarlo": ("figS_model_montecarlo.png", "08a_3d_model"),
+    "Fig_S_pylith_materials": ("figS_pylith_materials_sfcvm_v26.png", "08a_3d_model"),       # scripts/model_plots/plot_materials.py
     "Fig_S_sweeps": ("figS_sweeps.png", "08b_sensitivity"),
     "Fig_S_depth_scan": ("figS_depth_scan.png", "08b_sensitivity"),
     "Fig_S_gf_error_vs_depth": ("figS_gf_error_vs_depth.png", "08b_sensitivity"),

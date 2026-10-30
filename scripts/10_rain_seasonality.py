@@ -23,8 +23,8 @@
 #    the rainfall around the window (`event_table.csv`).
 # 3. **Onset seasonality**: every season-resolved onset (the InSAR windows and the bimonthly-era
 #    array windows, all `aa_dense_window_days` (130 d) or less) on the water year over the rainfall.
-#    This notebook draws a working figure; the paper's Fig 3B is drawn by 11_forecast from the panel
-#    products saved here. The wet season is October to April (`TulePond_filepaths.wet_season_months`),
+#    The paper's Fig 3B is drawn by 11_forecast from the panel products saved here. The wet season
+#    is October to April (`TulePond_filepaths.wet_season_months`),
 #    the same months as the "WY2027 wet season" of 11_forecast.
 # 4. **Rainfall conditioning of the onsets**: for each onset window, the water-year rainfall
 #    accumulated by then, the lag after fixed cumulative thresholds (rule A) and the lag after the
@@ -72,9 +72,7 @@
 # and `rain_conditioning_summary.csv` (one row per quantity quoted in the prediction statement of
 # 11_forecast: name, value, unit), the stats sidecar `10_rain_stats.txt`, and registry rows `10_*`.
 #
-# **Figures**: `qc10_onset_seasonality_wateryear_density7d_vmax80mm` (working figure); the cumulative
-# rainfall of every water year (`figS_wy_cumulative_rain_onsets`) and the rainfall conditioning with
-# the p of every setting of the rainfall-total test
+# **Figures**: the rainfall conditioning with the p of every setting of the rainfall-total test
 # (`figS_precip_conditioning_bestY<Y>mm_rain3d_sweep16_nnull<n>`), supplement.
 #
 # **Checks.** The Fremont/Newark water-year ratio over the complete years (printed; no rescaling);
@@ -104,7 +102,6 @@ from TulePond_filepaths import frames, insar_dic_list
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 
 # %% [markdown]
@@ -159,21 +156,18 @@ for k in range((last_wet_month - first_wet_month) % 12 + 1):
 wet_season_tag = f"{calendar.month_abbr[first_wet_month].lower()}_{calendar.month_abbr[last_wet_month].lower()}"   # in the registry keys
 wet_season_text = f"{calendar.month_name[first_wet_month]} to {calendar.month_name[last_wet_month]}"
 print(f"wet season {wet_season_text}, months {wet_season_months} ({wet_season_source})")
-density_days = 7           # the figure: running rainfall total (days)
+density_days = 7           # Fig 3B: running rainfall total (days)
 density_max = 80           # ... mm at full colour
 rain_colours = ["#FFFFFF", "#C6DBEF", "#4292C6", "#08306B"]      # sequential blues for the rainfall (no other blue on the panel)
 insar_bar_colour = "#D55E00"      # Okabe-Ito vermillion
-array_bar_colour = "0.15"         # near black
 x0, x1 = 1979.0, 2026.5           # the time axis of Fig 3: the HRKT record starts 1979.7
 loma_prieta = loma_prieta_yr      # 17 Oct 1989 (TulePond_filepaths), saved for Fig 3A
 
-# the rainfall conditioning ([17]-[24])
+# the rainfall conditioning ([15]-[20])
 y_grid = [50, 75, 100, 125, 150, 175, 200, 250, 300, 400]   # WY cumulative thresholds, mm (rule A)
 z_grid = [15, 20, 25, 30, 40, 50, 75]                       # first-storm sizes (3-day totals), mm (rule B)
 rain_total_grid_mm = [20, 30, 40, 50]                       # rainfall-total test: 3-day rainfall total of at least Z mm ...
 rain_lag_grid_d = [7, 14, 21, 30]                           # ... within X days before the InSAR onset
-antecedent_storm_mm = 20     # the "days since a storm" columns of precip_conditioning_events.csv use this smaller storm
-#                              (a 3-day total >= 20 mm), not rain_total_mm (40 mm, used in the event table)
 n_draws = 2000               # rainfall-total test: onset draws per InSAR event, uniform over the days of its window
 n_null = 20000               # rainfall-total test: null realisations (each event in its own water year, on a day of the onset season)
 rain_test_seed = 7           # seed of the random-number generator of the rainfall-total test
@@ -539,7 +533,7 @@ stats_lines += ["Day convention: InSAR windows converted to local rain days (hea
 # equally likely anywhere in its window, so every rainfall quantity is given at both ends of the window (never at
 # the midpoint): the day of the water year, the season, the water-year rainfall to date, and the days since the
 # last storm, defined as a `rain_total_days`-day total of at least `rain_total_mm` (TulePond_filepaths; a
-# description of each window only, the grid of totals and lags is tested in [20]).
+# description of each window only, the grid of totals and lags is tested in [18]).
 # The step is the fitted amplitude of 04 or 09 with its 1-sigma error (the InSAR 95 % bootstrap bounds / 3.92).
 # Missing rainfall days in the water year up to the window are counted, so that gaps in the composite are
 # recorded. The fraction of each window inside the wet season (`wet_season_months`) is added; the table is
@@ -613,67 +607,7 @@ print(f"onset windows: {n_wet_inside} of {len(event_table)} wholly inside the we
       f"{int((wet_fraction[~is_insar] == 1).sum())} of {(~is_insar).sum()} array), {n_wet_partly} partly, {n_wet_outside} wholly outside")
 
 # %% [markdown]
-# ## [15] Working figure: onsets on the water year over the rainfall (the paper's Fig 3B is drawn by 11_forecast)
-#
-# Each water year is a column filled with the running 7-day rainfall total; the
-# water year runs down the page from 1 October. Onsets are drawn as bars spanning the
-# observation window, without a midpoint marker, because the event is equally likely
-# anywhere inside its window. The array detections are all from the bimonthly era (09
-# runs the detector only there), so every array bar constrains the season.
-
-# %%
-# [16]
-def onset_bar(ax, x, day_lo, day_hi, color, lw):
-    """A vertical bar from day_lo to day_hi of the water year at x, wrapping across Oct 1 if needed."""
-    if day_hi >= day_lo:
-        segments = [(day_lo, day_hi)]
-    else:
-        segments = [(day_lo, 366), (1, day_hi)]
-    for segment_lo, segment_hi in segments:
-        ax.plot([x, x], [segment_lo, segment_hi], "-", color=color, lw=lw, solid_capstyle="butt", zorder=5)
-    for y in (day_lo, day_hi):
-        ax.plot([x - 0.28, x + 0.28], [y, y], "-", color=color, lw=lw * 0.8, zorder=5)
-
-
-insar_window_days = (insar_events.onset_hi - insar_events.onset_lo) * 365.25
-utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
-fig, ax = plt.subplots(figsize=(7.2, 3.4), constrained_layout=True)
-rain_plot = rain[(rain.wy >= int(np.floor(x0)) + 1) & (rain.wy <= int(np.ceil(x1)))]
-rain_7d = rain_plot.prcp_mm.fillna(0).rolling(density_days, min_periods=1).sum()
-water_years = sorted(rain_plot.wy.unique())
-rain_grid = np.full((367, len(water_years)), np.nan)          # day of water year x water year
-x_edges = []
-for j, wy in enumerate(water_years):
-    this_year = rain_plot[rain_plot.wy == wy]
-    rain_grid[this_year.dowy.values, j] = rain_7d[this_year.index].values
-    x_edges.append(wy - 1 + 273 / 365.25)
-x_edges.append(water_years[-1] + 273 / 365.25)
-cmap = LinearSegmentedColormap.from_list("rain", rain_colours)
-mesh = ax.pcolormesh(np.array(x_edges), np.arange(-0.5, 367.5), rain_grid, cmap=cmap, vmin=0, vmax=density_max, shading="flat", rasterized=True, zorder=0)
-for src, bar_colour, bar_width in (("aa_dense", array_bar_colour, 1.8), ("insar", insar_bar_colour, 2.6)):
-    for event in onset_days[onset_days.src == src].itertuples():        # the local days (the day convention)
-        onset_bar(ax, event.onset_mid, dowy([event.day_lo])[0], dowy([event.day_hi])[0], bar_colour, bar_width)
-ax.set_xlim(x0, x1)
-ax.set_ylim(366, 1)
-ax.set_yticks([1, 62, 124, 182, 244, 305, 366])
-ax.set_yticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1"])
-ax.set_xlabel("Year")
-ax.set_ylabel("Day of water year")
-cb = fig.colorbar(mesh, ax=ax, pad=0.01, fraction=0.03, extend="max")
-cb.set_label(f"Precipitation, {density_days}-day total (mm)", fontsize=7)
-cb.ax.tick_params(labelsize=6)
-ax.legend(handles=[Line2D([], [], color=array_bar_colour, lw=1.8, label="Array onset window (bimonthly surveys)"),
-                   Line2D([], [], color=insar_bar_colour, lw=2.6,
-                          label=f"InSAR onset window ({insar_window_days.min():.0f} to {insar_window_days.max():.0f} d)")],
-          fontsize=6, loc="lower left")
-f_season = os.path.join(fig_dir, f"qc10_onset_seasonality_wateryear_density{density_days}d_vmax{density_max}mm.png")
-fig.savefig(f_season, dpi=300)
-fig.savefig(f_season.replace(".png", ".pdf"))
-print("Saved figure to:", f_season)
-plt.show()
-
-# %% [markdown]
-# ## [17] Rainfall conditioning of the onset timing: rules A and B
+# ## [15] Rainfall conditioning of the onset timing: rules A and B
 #
 # Every quantity is a range over the onset window (the event is equally likely
 # anywhere in it), with the window in local calendar days (`onset_days`, [12]). Rule A: the lag after the
@@ -681,12 +615,12 @@ plt.show()
 # Z mm. Both rules use the composite rainfall of [8] (Fremont, then Newark) and are scored on the InSAR onsets,
 # with the array onsets as a consistency count. The spread of each rule's lags is compared with the calendar
 # spread of the InSAR onsets. The test of a 3-day rainfall total before the onset, on the InSAR onsets and the
-# Fremont gauge only, is in [19] and [20]. The water years drawn run from the first complete one (`complete_wy`)
+# Fremont gauge only, is in [17] and [18]. The water years drawn run from the first complete one (`complete_wy`)
 # to the last in the rainfall series; the WY-total percentiles are over every water year of `complete_wy` in the
 # composite, including WY1984 (25 days missing).
 
 # %%
-# [18]
+# [16]
 n_insar_events = len(insar_events)
 n_aa_events = len(aa_dense)
 wy_years = (complete_wy[0], int(rain.wy.max()))              # the water years drawn: the first complete one to the last in the series
@@ -713,15 +647,6 @@ def lag_days(day, crossing):
     return (day - crossing).days
 
 
-# antecedent rain at every day: 30-day total, largest storm in 30 days, days since the last >= antecedent_storm_mm storm
-rain_daily = rain.prcp_mm.fillna(0)
-storm_3d = rain_daily.rolling(rain_total_days, min_periods=1).sum()
-antecedent = pd.DataFrame(index=rain.index)
-antecedent["rain_30d"] = rain_daily.rolling(30, min_periods=1).sum()
-antecedent["max_storm_30d"] = storm_3d.rolling(30, min_periods=1).max()
-last_storm_day = pd.Series(np.where(storm_3d >= antecedent_storm_mm, np.arange(len(rain)), np.nan), index=rain.index).ffill()
-antecedent["days_since_storm20"] = np.arange(len(rain)) - last_storm_day
-
 # per event (array bimonthly era + InSAR): the rain state over its onset window (local days, onset_days), and the lags
 # after each rule A / rule B threshold
 events = onset_days[["src", "onset_lo", "onset_hi", "day_lo", "day_hi"]].copy()
@@ -738,10 +663,6 @@ for event in events.itertuples():
                cum_at_lo=cum_at_lo, cum_at_hi=float(this_year.cum.asof(date_hi)), gauge=this_year.src.mode().iloc[0])
     row["frac_at_lo"] = row["cum_at_lo"] / row["wy_total_mm"]      # the onset is anywhere in its window (uniform):
     row["frac_at_hi"] = row["cum_at_hi"] / row["wy_total_mm"]      # its fraction runs from the window start to the end
-    window_antecedent = antecedent.loc[date_lo:date_hi]
-    for column in ("rain_30d", "max_storm_30d", "days_since_storm20"):
-        row[f"{column}_min"] = float(window_antecedent[column].min())
-        row[f"{column}_max"] = float(window_antecedent[column].max())
     for Y in y_grid:
         crossing = first_date(this_year, "cum", Y)
         row[f"lagY{Y}_lo"] = lag_days(date_lo, crossing)
@@ -795,13 +716,12 @@ threshold_scores.to_csv(os.path.join(out_dir, "precip_conditioning_thresholds.cs
 calendar_spread = int(insar_rain.dowy_hi.max() - insar_rain.dowy_lo.min())
 wy_total_series = rain.groupby("wy").prcp_mm.sum(min_count=1)
 wy_total_series = wy_total_series[(wy_total_series.index >= complete_wy[0]) & (wy_total_series.index <= complete_wy[1])]
-conditioning_lines = ["", "RAINFALL CONDITIONING (per event: WY rain accumulated by the window start..end; antecedent quantities are min-max over the window)"]
+conditioning_lines = ["", "RAINFALL CONDITIONING (per event: WY rain accumulated by the window start..end)"]
 for event in event_rain.itertuples():
     conditioning_lines.append(
         f"  {event.source:<5} {event.onset_lo}..{event.onset_hi} ({event.window_days:3d} d) WY{event.wy} total {event.wy_total_mm:5.0f} mm "
-        f"(P{(wy_total_series < event.wy_total_mm).mean() * 100:2.0f}) | cum {event.cum_at_lo:4.0f}-{event.cum_at_hi:4.0f} mm, frac {event.frac_at_lo:.2f}-{event.frac_at_hi:.2f} | "
-        f"rain 30 d {event.rain_30d_min:3.0f}-{event.rain_30d_max:3.0f} mm, max {rain_total_days}-d storm {event.max_storm_30d_min:3.0f}-{event.max_storm_30d_max:3.0f} mm, "
-        f"{event.days_since_storm20_min:3.0f}-{event.days_since_storm20_max:3.0f} d since >= {antecedent_storm_mm} mm storm [{event.gauge}]")
+        f"(P{(wy_total_series < event.wy_total_mm).mean() * 100:2.0f}) | cum {event.cum_at_lo:4.0f}-{event.cum_at_hi:4.0f} mm, frac {event.frac_at_lo:.2f}-{event.frac_at_hi:.2f} "
+        f"[{event.gauge}]")
 wy_percentiles = []
 for value in insar_rain.wy_total_mm:
     wy_percentiles.append(f"P{(wy_total_series < value).mean() * 100:.0f}")
@@ -840,7 +760,7 @@ stats_lines += conditioning_lines
 print("\n".join(conditioning_lines))
 
 # %% [markdown]
-# ## [19] A 3-day rainfall total before the InSAR onsets: the sweep, with a correction for the search
+# ## [17] A 3-day rainfall total before the InSAR onsets: the sweep, with a correction for the search
 #
 # The test asks whether an InSAR onset follows heavy rainfall more often than a random day of the same season.
 # A day counts as wet when its rainfall and that of the two days before it (`rain_total_days`) add up to
@@ -863,7 +783,7 @@ print("\n".join(conditioning_lines))
 # (`rain_test_seed`, 7) makes the test reproducible.
 
 # %%
-# [20]
+# [18]
 def days_since(flag):
     """Days since the last True in a daily boolean Series (NaN before the first)."""
     day_number = pd.Series(np.arange(len(flag)), index=flag.index, dtype=float)
@@ -967,73 +887,20 @@ stats_lines += sweep_lines
 print("\n".join(sweep_lines))
 
 # %% [markdown]
-# ## [21] Cumulative rainfall of every water year, with the onsets (supplement)
-#
-# The cumulative rainfall of every water year (the composite of [8]) as a grey line, the InSAR event
-# years in colour with the onset window as a thick segment, and the array event years in dark grey.
-# The shaded band spans the rainfall accumulated at the InSAR onsets, from the earliest window start
-# to the latest window end. The result of the 3-day rainfall-total test of [20] (`10_rain_sweep_*`) is
-# printed under the figure.
-
-# %%
-# [22]
-insar_colour = insar_bar_colour         # Okabe-Ito vermillion: InSAR, as in every figure of 10 and 11
-fig, ax = plt.subplots(figsize=(7.2, 3.6), constrained_layout=True)
-# the band of accumulated rain at the InSAR onsets (window start to window end)
-cum_lo = float(insar_rain.cum_at_lo.min())
-cum_hi = float(insar_rain.cum_at_hi.max())
-ax.axhspan(cum_lo, cum_hi, color=insar_colour, alpha=0.08, lw=0)
-# every water year
-for wy in range(wy_years[0], wy_years[1] + 1):
-    this_year = wy_series(wy)
-    ax.plot(this_year.dowy, this_year.cum, "-", color="0.82", lw=0.6, zorder=1)
-# the array event years (bimonthly era), onset window as a dark segment
-for event in aa_rain.itertuples():
-    this_year = wy_series(event.wy)
-    ax.plot(this_year.dowy, this_year.cum, "-", color="0.55", lw=0.8, zorder=2)
-    segment = this_year[(this_year.dowy >= event.dowy_lo) & (this_year.dowy <= event.dowy_hi)]
-    ax.plot(segment.dowy, segment.cum, "-", color="0.2", lw=2.6, solid_capstyle="butt", zorder=3)
-# the InSAR event years in colour, onset window as a thick vermillion segment, labelled by water year
-event_colours = ["#0072B2", "#E69F00", "#CC79A7", "#000000", "#56B4E9"]   # Okabe-Ito, no green
-assert len(event_colours) >= n_insar, "more InSAR events than distinct colours"
-for colour, event in zip(event_colours, insar_rain.itertuples()):
-    this_year = wy_series(event.wy)
-    ax.plot(this_year.dowy, this_year.cum, "-", color=colour, lw=1.4, zorder=4, label=f"WY{event.wy} ({event.wy_total_mm:.0f} mm)")
-    ax.plot([event.dowy_lo, event.dowy_hi], [event.cum_at_lo, event.cum_at_hi], "-", color=insar_colour, lw=4, solid_capstyle="butt", zorder=5)
-    ax.text(event.dowy_hi + 3, event.cum_at_hi, f"{event.cum_at_hi:.0f} mm, {event.frac_at_hi:.0%} of WY", fontsize=6, color=colour, va="center", zorder=6,
-            bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=1))
-ax.set_xlim(1, 366)
-ax.set_xticks([1, 62, 124, 182, 244, 305, 366])
-ax.set_xticklabels(["Oct 1", "Dec 1", "Feb 1", "Apr 1", "Jun 1", "Aug 1", "Oct 1"])
-ax.set_ylabel("Cumulative precipitation in the water year (mm)")
-ax.set_xlabel("Day of water year")
-array_years_text = f"{int(np.floor(aa_dense.onset_lo.min()))} to {int(np.floor(aa_dense.onset_hi.max()))}"
-legend_handles = ax.get_legend_handles_labels()[0]
-legend_handles += [Line2D([], [], color=insar_colour, lw=4, label="InSAR onset window"),
-                   Line2D([], [], color="0.2", lw=2.6, label=f"Array onset window ({array_years_text})"),
-                   Line2D([], [], color="0.82", lw=0.6, label=f"Every water year {wy_years[0]} to {wy_years[1]}"),
-                   plt.Rectangle((0, 0), 1, 1, facecolor=insar_colour, alpha=0.15, edgecolor="none",
-                                 label=f"Rain accumulated at the InSAR onsets: {cum_lo:.0f} to {cum_hi:.0f} mm")]
-ax.legend(handles=legend_handles, fontsize=6, loc="upper left")
-f_cumulative = os.path.join(fig_dir, "figS_wy_cumulative_rain_onsets.png")
-fig.savefig(f_cumulative, dpi=300)
-fig.savefig(f_cumulative.replace(".png", ".pdf"))
-print("Saved figure to:", f_cumulative)
-plt.show()
-print(f"rain accumulated at the InSAR onsets: {cum_lo:.0f} to {cum_hi:.0f} mm, {insar_rain.frac_at_lo.min():.0%} to {insar_rain.frac_at_hi.max():.0%} of the water-year total; "
-      f"the 3-day rain-total test (Fremont): best {best_sweep.Z_mm:.0f} mm within {best_sweep.X_d:.0f} d, hits {best_sweep.hits:.2f} of {n_insar_events} "
-      f"vs {best_sweep.null_mean:.2f} for a random day in the same season, p = {best_sweep.p:.3f}, {p_search_paid:.3f} corrected for all {n_settings} settings")
-
-# %% [markdown]
-# ## [23] Supplementary figure: the rainfall conditioning
+# ## [19] Supplementary figure: the rainfall conditioning
 #
 # (A) Water-year accumulation with the onsets; (B) the lag after each rule A threshold; (C) onset
 # day against the day the best rule A threshold was crossed; (D) the p of every
-# setting of the 3-day rainfall-total test of [20] (rows Z, columns X, the best
+# setting of the 3-day rainfall-total test of [18] (rows Z, columns X, the best
 # setting outlined), with the search-corrected p in the panel title.
 
 # %%
-# [24]
+# [20]
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
+insar_colour = insar_bar_colour         # Okabe-Ito vermillion: InSAR, as in every figure of 10 and 11
+event_colours = ["#0072B2", "#E69F00", "#CC79A7", "#000000", "#56B4E9"]   # Okabe-Ito, no green
+assert len(event_colours) >= n_insar, "more InSAR events than distinct colours"
+array_years_text = f"{int(np.floor(aa_dense.onset_lo.min()))} to {int(np.floor(aa_dense.onset_hi.max()))}"
 fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.8))
 # a) every water year's accumulation, the InSAR event years in colour, the onset windows as thick segments
 ax = axes[0, 0]
@@ -1139,7 +1006,7 @@ plt.show()
 
 
 # %% [markdown]
-# ## [25] The summary read by 11_forecast: `rain_conditioning_summary.csv`
+# ## [21] The summary read by 11_forecast: `rain_conditioning_summary.csv`
 #
 # Part (3) of the prediction statement of 11_forecast and its data line quote the rainfall conditioning.
 # The quantities are written here, one row per scalar (name, value, unit, description), and 11_forecast
@@ -1149,7 +1016,7 @@ plt.show()
 # spread, and the last day with a Fremont reading.
 
 # %%
-# [26]
+# [22]
 fremont_last_day = rain.index[(rain.src == "FREMONT") & rain.prcp_mm.notna()].max()
 summary_rows = [
     ("n_insar_onsets", n_insar, "count", "InSAR onset windows"),
@@ -1185,14 +1052,26 @@ print(rain_summary.to_string(index=False))
 print("saved rain_conditioning_summary.csv for 11_forecast")
 
 # %% [markdown]
-# ## [27] The Fig 3 panels: the HRKT history and the onsets on the water year
+# ## [23] The Fig 3 panels: the HRKT history and the onsets on the water year
 #
 # Fig 3 is drawn by 11_forecast, which also computes the repeat intervals and the forecast. This cell saves
-# the inputs of its left column: the rainfall grid on the water year, the onset windows of both catalogues
+# the inputs of its left column: the rainfall grid on the water year (one column per water year, filled with the
+# running `density_days`-day rainfall total on the day of the water year), the onset windows of both catalogues
 # (day of water year of each window end), and the end of the bimonthly HRKT surveys.
 
 # %%
-# [28]
+# [24]
+# the rainfall grid: day of water year x water year, the running density_days-day total
+rain_plot = rain[(rain.wy >= int(np.floor(x0)) + 1) & (rain.wy <= int(np.ceil(x1)))]
+rain_7d = rain_plot.prcp_mm.fillna(0).rolling(density_days, min_periods=1).sum()
+water_years = sorted(rain_plot.wy.unique())
+rain_grid = np.full((367, len(water_years)), np.nan)          # day of water year x water year
+x_edges = []
+for j, wy in enumerate(water_years):
+    this_year = rain_plot[rain_plot.wy == wy]
+    rain_grid[this_year.dowy.values, j] = rain_7d[this_year.index].values
+    x_edges.append(wy - 1 + 273 / 365.25)
+x_edges.append(water_years[-1] + 273 / 365.25)
 hrkt = utils.load_aa(common_paths["aa_dir"], "HRKT")
 hrkt_stack = pd.read_csv(stacks_file).query("code == 'HRKT'")
 # the bimonthly surveys end at the last HRKT survey that closes an interval of resolvable_days or less (as
@@ -1215,10 +1094,10 @@ np.savez(os.path.join(out_dir, "fig3_rain_panel.npz"), rain_grid=rain_grid, x_ed
 print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 11_forecast")
 
 # %% [markdown]
-# ## [29] Registry: the stats sidecar `10_rain_stats.txt` and the `10_*` numbers
+# ## [25] Registry: the stats sidecar `10_rain_stats.txt` and the `10_*` numbers
 
 # %%
-# [30]
+# [26]
 stats_lines += ["", f"onset windows against the wet season ({wet_season_text}, months {wet_season_months}, {wet_season_source}; "
                 f"{100 * wet_share.median():.0f} % of the year's rain): "
                 f"{n_wet_inside} of {len(event_table)} wholly inside, {n_wet_partly} partly, {n_wet_outside} wholly outside; "
@@ -1237,7 +1116,7 @@ REG.register(f"10_n_wet_{wet_season_tag}_partly", n_wet_partly, "count", 0, wher
 REG.register(f"10_n_wet_{wet_season_tag}_outside", n_wet_outside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
 REG.register(f"10_n_insar_wet_{wet_season_tag}_inside", n_insar_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
 REG.register(f"10_wet_{wet_season_tag}_rain_pct", 100 * wet_share.median(), "%", 0, where="P10", cell="seasonality", sidecar=sidecar)
-# the rainfall conditioning ([18], [20])
+# the rainfall conditioning ([16], [18])
 REG.register("10_insar_onset_dowy_min", int(insar_rain.dowy_lo.min()), "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_insar_onset_dowy_max", int(insar_rain.dowy_hi.max()), "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
 REG.register("10_insar_onset_earliest", dowy_label(insar_rain.dowy_lo.min()), "date", 0, where="P10", cell="conditioning", sidecar=sidecar)

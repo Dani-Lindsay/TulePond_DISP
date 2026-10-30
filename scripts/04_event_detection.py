@@ -48,9 +48,7 @@
 # calendar day `onset_day`, the label of the COZ1 events in the registry, and the
 # step size), `creepmeter_events_COZ1.csv` (the creepmeter's own detections,
 # `detect_yr` = the time of the detector's flag), `event_fraction_by_crossing.csv`,
-# `section_lengths.csv`, `band_stack_75pct.csv`, `band_stack_90pct.csv`,
-# `slip_budget_by_crossing.csv`, `aa_rates.csv`, `creepmeter_rates.csv`,
-# `04_events_stats.txt`, registry rows `04_*`.
+# `section_lengths.csv`, `04_events_stats.txt`, registry rows `04_*`.
 #
 # **Figures** (in the dated figure folder, .png and .pdf):
 # `figS_event_detection_<params>_k3_win3` (detection QC, supplement);
@@ -716,8 +714,7 @@ print(f"window re-centred on the cumulative-slip peak at {peak_km:.1f} km: {w_lo
 #    over which the cumulative event slip (sum of the five steps, 0.4 km
 #    smoothed, short gaps bridged) stays above a threshold: the median plus 3
 #    robust sigma of the same profile on the flanks (52 to 56 and 64 to 68
-#    km). The spans above 10% and 20% of the peak are printed beside it as a
-#    sensitivity test. Edge widths: the 10-90 % edge width at each end, the
+#    km). Edge widths: the 10-90 % edge width at each end, the
 #    along-trace distance over which the
 #    same profile falls from 90 % to 10 % of its peak, walking out from the peak
 #    north and south (linear between crossings).
@@ -756,11 +753,6 @@ len_lo, len_hi, len_n = contiguous_span(km_sorted, cum_event_slip_window, length
 print(f"cumulative event slip: peak {peak_cum:.1f} mm at {km_sorted[np.nanargmax(cum_event_slip_window)]:.1f} km; "
       f"flanks median {flank_median:.1f} mm, robust sigma {flank_sigma:.2f} mm -> threshold {length_threshold:.1f} mm")
 print(f"  length of fault hosting the events (above threshold): {len_lo:.1f} to {len_hi:.1f} km = {len_hi - len_lo:.1f} km ({len_n} crossings)")
-lengths = {"threshold": (len_lo, len_hi)}
-for pct in (10, 20):
-    pct_lo, pct_hi, _ = contiguous_span(km_sorted, cum_event_slip_window, pct / 100 * peak_cum)
-    lengths[f"{pct}pct"] = (pct_lo, pct_hi)
-    print(f"  sensitivity, above {pct}% of peak: {pct_lo:.1f} to {pct_hi:.1f} km = {pct_hi - pct_lo:.1f} km")
 
 
 def level_crossing_km(km_axis, values, level, step):
@@ -839,27 +831,13 @@ band_results = {}
 for band_frac, (lo_km, hi_km, n_band) in bands.items():
     result = band_stack(lo_km, hi_km, step_epochs_tulepond)
     band_results[band_frac] = result
-    pd.DataFrame({"t": dates, "stack_mm": result["mean"], "std_mm": result["std"]}
-                 ).to_csv(os.path.join(out_dir, f"band_stack_{int(band_frac * 100)}pct.csv"), index=False)
     print(f"band {100 * band_frac:.0f}%: {lo_km:.1f} to {hi_km:.1f} km, n = {result['n']} crossings; secular {result['secular']:.2f} mm/yr, "
           f"annual {result['annual']:.2f} mm, rms {result['rms']:.2f} mm")
     for step_epoch, step, ci_lo, ci_hi in zip(step_epochs_tulepond, result["steps"], result["ci_lo"], result["ci_hi"]):
         print(f"    {step_epoch:.3f}: {step:5.2f} mm  [{ci_lo:.2f}, {ci_hi:.2f}]")
     print(f"    sum {np.sum(result['steps']):.1f} mm, mean {np.mean(result['steps']):.1f} mm, "
           f"range {np.min(result['steps']):.1f} to {np.max(result['steps']):.1f} mm")
-    # does each event's 95% CI overlap the others'? one y/n per event
-    overlap_lines = []
-    for step_epoch, lo_1, hi_1 in zip(step_epochs_tulepond, result["ci_lo"], result["ci_hi"]):
-        flags = ""
-        for lo_2, hi_2 in zip(result["ci_lo"], result["ci_hi"]):
-            if lo_1 <= hi_2 and lo_2 <= hi_1:
-                flags += "y"
-            else:
-                flags += "n"
-        overlap_lines.append(f"{step_epoch:.0f}:{flags}")
-    print("    95% CI overlap with the others (y/n per event): " + ", ".join(overlap_lines))
     print("")
-print("draft (July 2026, 75% band 57.7 to 60.1 km, 25 crossings): 10.84, 10.46, 10.70, 11.16, 7.67 mm, sum 50.8, secular 1.08 mm/yr")  # PREPUB
 step_epochs_coz1 = coz1_events["onset_lo"].to_numpy(float)          # every COZ1 control event ([10])
 coz1_band = band_stack(coz1_lo, coz1_hi, step_epochs_coz1)
 print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_band['n']}): steps "
@@ -908,20 +886,14 @@ slip_budget["total_oakland"] = slip_budget["secular"] + slip_budget["event_rate_
 slip_budget = slip_budget.sort_values("km").reset_index(drop=True)
 for name in ("secular", "event_rate", "total"):
     slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["km"].values, profile_smooth_km)   # = Fig 1C
-slip_budget.to_csv(os.path.join(out_dir, "slip_budget_by_crossing.csv"), index=False)
 
 # alignment arrays within aa_max_dist_km of the trace: refit over the InSAR window and the archive's whole-record rate
-# Arrays in the summary with no survey file are named here and skipped (the list is empty); every other array must
-# load (a missing or unreadable survey file stops the notebook).
-aa_no_survey_file = []
+# Every array must load (a missing or unreadable survey file stops the notebook).
 aa_summary = utils.load_aa_summary(common_paths["aa_summary"])
 aa_summary = utils.project_to_fault(aa_summary, x_fault, lon_col="long_deg", lat_col="lat_deg")
 aa_rows = []
 for _, site in aa_summary.iterrows():
     if abs(site.dist_fault_km) > aa_max_dist_km:
-        continue
-    if site.site_code in aa_no_survey_file:
-        print(f"  AA {site.site_code}: no survey file (listed in aa_no_survey_file), skipped")
         continue
     array = utils.load_aa(common_paths["aa_dir"], site.site_code)
     surveys_in_window = array[(array.year >= t0) & (array.year <= t1)]
@@ -938,13 +910,11 @@ for _, site in aa_summary.iterrows():
                         rate_window=rate_window, rate_window_se=rate_window_se, n_window=len(surveys_in_window), span_window=span_in_window,
                         rate_longterm=float(site["rate_lnrr"]), first_yr=float(site["first_yr"]), last_yr=float(site["last_yr"])))
 aa_rates = pd.DataFrame(aa_rows).sort_values("km")
-aa_rates.to_csv(os.path.join(out_dir, "aa_rates.csv"), index=False)
 print(f"{len(aa_rates)} Hayward arrays within {aa_max_dist_km:g} km of the trace; {aa_rates.rate_window.notna().sum()} refit over the InSAR window")
 
 # creepmeter rates over the InSAR window: code -> (km, mm/yr), and their 1-sigma from the whole-year gains
 cm_rates = {}
 cm_rate_sigma = {}
-cm_rate_rows = []
 for code, lat, lon, name in creepmeters:
     cm_dates, cm_slip = utils.daily_creepmeter(common_paths["creepmeter_dir"], code, t0, t1, creepmeter_glitches)
     km_cm = float(to_km([lat])[0])
@@ -953,8 +923,6 @@ for code, lat, lon, name in creepmeters:
     mean_gain, cm_rate_sigma[code], n_years = utils.annual_increment_rate(cm_dates, cm_slip)
     assert abs(mean_gain - rate_cm) < 0.5, f"{code}: mean yearly gain {mean_gain:.2f} vs fitted rate {rate_cm:.2f} mm/yr"
     print(f"  creepmeter {code}: {rate_cm:.2f} +/- {cm_rate_sigma[code]:.2f} mm/yr (1 sigma, {n_years} whole years; mean yearly gain {mean_gain:.2f})")
-    cm_rate_rows.append(dict(code=code, km=km_cm, rate=rate_cm, rate_se=cm_rate_sigma[code]))
-pd.DataFrame(cm_rate_rows).to_csv(os.path.join(out_dir, "creepmeter_rates.csv"), index=False)
 in_section = aa_rates[(aa_rates.km >= len_lo - 1.0) & (aa_rates.km <= len_hi + 1.0) & aa_rates.rate_window.notna()]   # as budget_block
 aa_window_text = f"{utils.decimal_year_to_day(t0).date()} to {utils.decimal_year_to_day(t1).date()}"   # the InSAR window
 print(f"  arrays at Tule Pond ({len_lo - 1:.1f}-{len_hi + 1:.1f} km), refit over the InSAR window {aa_window_text}, +/- 1 sigma (mm/yr):")
@@ -1436,8 +1404,7 @@ for key, stats in frac_stats.items():
 stats_lines += ["", f"window {w_lo:.1f} to {w_hi:.1f} km (re-centred on the cumulative-slip peak at {peak_km:.1f} km); "
                 f"median of the per-crossing inter-event rates in the window {inter_event_rate_median:.2f} mm/yr",
                 f"cumulative event slip peak {peak_cum:.1f} mm; flank threshold {length_threshold:.2f} mm (median {flank_median:.2f} + 3 x {flank_sigma:.2f})",
-                f"length hosting the events: {len_lo:.1f} to {len_hi:.1f} km ({len_hi - len_lo:.1f} km, {len_n} crossings); "
-                f"10%: {lengths['10pct'][1] - lengths['10pct'][0]:.1f} km; 20%: {lengths['20pct'][1] - lengths['20pct'][0]:.1f} km",
+                f"length hosting the events: {len_lo:.1f} to {len_hi:.1f} km ({len_hi - len_lo:.1f} km, {len_n} crossings)",
                 "10-90% edge widths of the cumulative event slip: " + "; ".join(
                     f"{end} {width:.2f} km (90% at {km_90:.2f}, 10% at {km_10:.2f} km)" for end, (km_90, km_10, width) in edge_widths.items()),
                 f"fraction peak {peak_frac:.1f}%"]
@@ -1497,8 +1464,6 @@ REG.register("04_creep_length_lo_km", len_lo, "km", 1, where="P3", cell="section
 REG.register("04_creep_length_hi_km", len_hi, "km", 1, where="P3", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_n_crossings", len_n, "count", 0, where="P3", cell="section-length", sidecar=sidecar)
 REG.register("04_creep_length_threshold_mm", length_threshold, "mm", 2, where="M6", cell="section-length", sidecar=sidecar)
-REG.register("04_creep_length_10pct_km", lengths["10pct"][1] - lengths["10pct"][0], "km", 1, where="M6", cell="section-length", sidecar=sidecar)
-REG.register("04_creep_length_20pct_km", lengths["20pct"][1] - lengths["20pct"][0], "km", 1, where="M6", cell="section-length", sidecar=sidecar)
 for end, (km_90, km_10, width) in edge_widths.items():
     REG.register(f"04_edge_{end}_10_90_km", width, "km", 1, where="P3", cell="section-length", sidecar=sidecar)
 REG.register("04_fraction_peak_pct", peak_frac, "pct", 0, where="P3", cell="fraction", sidecar=sidecar)

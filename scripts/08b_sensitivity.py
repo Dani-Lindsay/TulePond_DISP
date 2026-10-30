@@ -151,7 +151,6 @@ print(f"depth90 over sigma x0.25-x4 and the corner: {min(sigma_rows.depth90_m.mi
 # %%
 ## [4]
 dips = tables["dip_rows.csv"]
-fine = rows[rows.run.str.startswith("gf_shallow")]
 
 
 def pick(row, variant):
