@@ -2,9 +2,10 @@
 """
 Author: Danielle Lindsay
 
-Material check figures for the SFSVM grids (written by sfcvm_grid.py): (a) map of rigidity mu = rho vs^2 at 50 m depth,
-as delivered and aligned, with the mesh trace; (b) cross-section of mu through the Tule Pond section at X-X'
-(lat 37.5612 N), as delivered and aligned; (c) the boundary offset b(km) that the alignment removes.
+Material figures for the SFSVM grids of the slip models (no Poisson cap; written by pylith/build/sfcvm_grid.py):
+(a) map of the shear modulus mu = rho vs^2 at 50 m depth, as delivered and aligned on the mapped trace; (b) cross-section
+of mu through the Tule Pond section at X-X' (lat 37.5612 N), as delivered and aligned, with the fault of the preferred
+model (dip_deg); (c) the boundary offset b(km) that the alignment removes.
 Grid values are interpolated linearly (as PyLith's SimpleGridDB with query_type = linear).
 
 `main(spatialdb_dir, fig_dir, sse_km)` reads the two grids from spatialdb_dir (modeling_SFCVM/spatialdb,
@@ -31,11 +32,12 @@ lat_xx = 37.5612
 VERMILLION, BLUE, ORANGE = "#D55E00", "#0072B2", "#E69F00"   # Okabe-Ito
 
 
-def main(spatialdb_dir, fig_dir, sse_km, name_materials="figS_pylith_materials_sfcvm_v26",
+def main(spatialdb_dir, fig_dir, sse_km, dip_deg=90.0, name_materials="figS_pylith_materials_sfcvm_v26",
          name_offset="qc08a_materials_boundary_offset"):
-    """sse_km = (km_lo, km_hi) of the SSE section (04 section_lengths.csv), drawn on the offset panel."""
+    """sse_km = (km_lo, km_hi) of the SSE section (04 section_lengths.csv), drawn on the offset panel; dip_deg = dip of
+    the modelled fault (deg, dipping west), drawn on the cross-sections."""
     os.makedirs(fig_dir, exist_ok=True)
-    grids = {tag: np.load(os.path.join(spatialdb_dir, f"sfcvm_v26-0_{tag}_grid.npz")) for tag in ("asis", "aligned")}
+    grids = {tag: np.load(os.path.join(spatialdb_dir, f"sfcvm_v26-0_{tag}_nocap_grid.npz")) for tag in ("asis", "aligned")}
     g0 = grids["aligned"]
     tx, ty, tkm, normal = g0["trace_x"], g0["trace_y"], g0["trace_km"], g0["trace_normal"]
     mu = {tag: (g["density"].astype(float) * g["vs"].astype(float) ** 2 / 1e9) for tag, g in grids.items()}
@@ -56,23 +58,24 @@ def main(spatialdb_dir, fig_dir, sse_km, name_materials="figS_pylith_materials_s
     for ax, tag, letter in zip(axes[0], ("asis", "aligned"), "AB"):
         vals = interp[tag](np.c_[XS.ravel(), YS.ravel(), np.full(XS.size, -50.0)]).reshape(XS.shape)
         pc = ax.pcolormesh(xs / 1e3, ys / 1e3, vals.T, norm=norm, cmap="cividis", shading="auto")
-        ax.plot(tx / 1e3, ty / 1e3, color=VERMILLION, lw=1.0, label="mesh fault (mapped trace)")
+        ax.plot(tx / 1e3, ty / 1e3, color=VERMILLION, lw=1.0, label="Mapped trace")
         ax.axhline(ty[i_xx] / 1e3, color="k", ls=":", lw=0.7)
-        ax.set_aspect("equal"); ax.set_xlabel("x east (km, local tmerc)"); ax.set_ylabel("y north (km)")
-        ax.set_title(r"$\bf{" + letter + r"}$  " + f"mu at 50 m depth, SFSVM v26 {'as is' if tag == 'asis' else 'aligned'}", loc="left", fontsize=7)
+        ax.set_aspect("equal"); ax.set_xlabel("Easting (km)"); ax.set_ylabel("Northing (km)")
+        ax.set_title(r"$\bf{" + letter + r"}$  " + f"50 m depth, {'as delivered' if tag == 'asis' else 'aligned on the trace'}", loc="left", fontsize=7)
         ax.legend(loc="lower left", fontsize=6)
-    fig.colorbar(pc, ax=axes[0], label="Shear modulus mu (GPa)", shrink=0.8)
+    fig.colorbar(pc, ax=axes[0], label="Shear modulus (GPa)", shrink=0.8)
     offs, deps = np.linspace(-3000, 3000, 601), np.linspace(0, 1500, 151)
     O, D = np.meshgrid(offs, deps, indexing="ij")
     for ax, tag, letter in zip(axes[1], ("asis", "aligned"), "CD"):
         px, py = tx[i_xx] + O * normal[i_xx, 0], ty[i_xx] + O * normal[i_xx, 1]
         vals = interp[tag](np.c_[px.ravel(), py.ravel(), -D.ravel()]).reshape(O.shape)
         pc2 = ax.pcolormesh(offs, deps, vals.T, norm=norm, cmap="cividis", shading="auto")
-        ax.axvline(0, color=VERMILLION, lw=1.2, label="mapped trace")
-        ax.set_ylim(1500, 0); ax.set_xlabel("Distance from the trace, east + (m)"); ax.set_ylabel("Depth (m)")
-        ax.set_title(r"$\bf{" + letter + r"}$  " + f"X-X' (km {tkm[i_xx]:.1f}): {'as is' if tag == 'asis' else 'aligned'}", loc="left", fontsize=7)
+        ax.plot([0, -deps[-1] / np.tan(np.radians(dip_deg))], [0, deps[-1]], color=VERMILLION, lw=1.2,
+                label=f"Fault ({dip_deg:g}\N{DEGREE SIGN} W)" if dip_deg < 90 else "Fault (vertical)")
+        ax.set_ylim(1500, 0); ax.set_xlabel("Distance from the trace, east positive (m)"); ax.set_ylabel("Depth (m)")
+        ax.set_title(r"$\bf{" + letter + r"}$  " + f"X-X' (km {tkm[i_xx]:.1f}), {'as delivered' if tag == 'asis' else 'aligned on the trace'}", loc="left", fontsize=7)
         ax.legend(loc="lower left", fontsize=6)
-    fig.colorbar(pc2, ax=axes[1], label="Shear modulus mu (GPa)", shrink=0.8)
+    fig.colorbar(pc2, ax=axes[1], label="Shear modulus (GPa)", shrink=0.8)
     path_a = os.path.join(fig_dir, f"{name_materials}.png")
     fig.savefig(path_a, dpi=300)
     plt.close(fig)
@@ -96,5 +99,7 @@ if __name__ == "__main__":
     import pandas as pd
     from TulePond_filepaths import paths_out
     s = pd.read_csv(os.path.join(paths_out["04_event_detection"], "section_lengths.csv")).set_index("name")
+    import model_config
     main(paths_sfcvm["spatialdb"], common_paths["fig_dir"],
-         (float(s.loc["tulepond_creep_length", "km_lo"]), float(s.loc["tulepond_creep_length", "km_hi"])))
+         (float(s.loc["tulepond_creep_length", "km_lo"]), float(s.loc["tulepond_creep_length", "km_hi"])),
+         dip_deg=model_config.selected_dip_deg)

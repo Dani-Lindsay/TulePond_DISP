@@ -40,7 +40,8 @@
 # residual, crossings steps: Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
 # `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `near_fault_deflection.csv`, `08a_selected_stats.txt`.
 # **Figures** (`Figures_<fig_date>/`): `figS_model_lcurve`, `figS_model_slip`, `figS_model_fit_maps`,
-# `figS_model_profiles`, `figS_model_montecarlo`. **Registry keys** `08a_*`.
+# `figS_model_profiles`, `figS_model_montecarlo`, `figS_pylith_materials_sfcvm_v26` (`scripts/model_plots/plot_materials.py`).
+# **Registry keys** `08a_*`.
 #
 # **What to check**
 # - [2] Every PyLith file exists, including the run's completion marker.
@@ -55,6 +56,7 @@
 # %%
 ## [1]
 import os
+import sys
 import time
 import warnings
 
@@ -68,7 +70,7 @@ from cmcrameri import cm as cmc
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise only; numerical warnings stay visible
 warnings.filterwarnings("ignore", category=FutureWarning)
-from TulePond_filepaths import common_paths, repo_dir, paths_out, model_crs
+from TulePond_filepaths import common_paths, repo_dir, paths_out, paths_sfcvm, model_crs
 import insar_utils as utils
 import model_config as cfg                          # the settings of the slip models
 import model_utils                                  # the modelling functions
@@ -409,6 +411,11 @@ for ax, letter, line in ((axes[0], "A", "X"), (axes[1], "B", "Y")):
 axes[0].set_ylabel("Fault-parallel displacement (mm)")
 axes[0].legend(loc="upper left")
 save(fig, "figS_model_profiles")
+
+# the SFSVM shear modulus at 50 m depth and across X-X', as delivered and aligned, with the modelled fault
+sys.path.insert(0, os.path.join(repo_dir, "scripts", "model_plots"))
+import plot_materials                                                   # noqa: E402
+plot_materials.main(paths_sfcvm["spatialdb"], fig_dir, (creep_lo_km, creep_hi_km), dip_deg=cfg.selected_dip_deg)
 
 # %% [markdown]
 # ## [10] Monte Carlo of correlated noise
