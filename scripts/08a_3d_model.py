@@ -355,12 +355,17 @@ save(fig, "figS_model_lcurve")
 triangulation = mtri.Triangulation(tents.imp_km, tents.imp_depth_km, tents.sub_faces)
 fig, axes = plt.subplots(2, 1, figsize=(18.3 * cm, 9.0 * cm), sharex=True, constrained_layout=True)
 vmax = float(max(slip.max(), homogeneous["slip_mm"].max()))
-for ax, letter, values, title in ((axes[0], "A", slip, f"3D (SFSVM), Mw {numbers['Mw_30gpa']:.2f} (30 GPa), "
-                                   f"{numbers['Mw_sfcvm']:.2f} (harmonic SFSVM)"),
-                                  (axes[1], "B", homogeneous["slip_mm"], f"Homogeneous, Mw {float(homogeneous['Mw_30gpa']):.2f} (30 GPa)")):
+# Dani 2026-10-30: the SSE-section bar covered the top ~45 m (the slip peak); the section ends are now thin dashed lines
+# (caption), and each label carries the structure, the dip and the key numbers
+for ax, letter, values, title in ((axes[0], "A", slip,
+                                   f"3D SFSVM, vertical fault, Mw {numbers['Mw_30gpa']:.2f} (30 GPa) and {numbers['Mw_sfcvm']:.2f} "
+                                   f"(SFSVM rigidity), RMS {numbers['rms_mm']:.2f} mm, depth extent {numbers['depth90_m'] / 1e3:.2f} km"),
+                                  (axes[1], "B", homogeneous["slip_mm"],
+                                   f"Homogeneous half-space, vertical fault, Mw {float(homogeneous['Mw_30gpa']):.2f} (30 GPa), "
+                                   f"RMS {float(homogeneous['rms_mm']):.2f} mm, depth extent {float(homogeneous['depth90_m']) / 1e3:.2f} km")):
     image = ax.tripcolor(triangulation, values, shading="gouraud", cmap=cmc.lajolla, vmin=0, vmax=vmax)
-    ax.axvspan(creep_lo_km, creep_hi_km, ymin=0.97, ymax=1.0, color="k")
-    ax.text(creep_hi_km + 0.1, 0.03, "SSE section (04)", va="top", ha="left", fontsize=6.5, color="0.85")
+    for section_end_km in (creep_lo_km, creep_hi_km):
+        ax.axvline(section_end_km, color="0.85", ls="--", lw=0.6)
     ax.set_ylim(1.5, 0)
     ax.set_xlim(54.5, 64.5)
     ax.set_ylabel("Depth (km)")
