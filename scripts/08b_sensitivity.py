@@ -102,15 +102,21 @@ for name, table in tables.items():
 #
 # One row per choice, each at its own L-curve corner (except the sigma rows), all scored on the same fitted samples
 # (60 m cut): RMS (all, within 500 m west / east), Mw at 30 GPa and at the harmonic SFSVM rigidity, peak slip and depth,
-# depth50 / depth90 of the potency, the Fig 2K band step. The inversion choices are measured on the selected (60 m)
-# mesh against its baseline; the forward-model choices on the default (250 m) mesh against the default-mesh baseline.
-# CHECK: the fine-mesh baseline row is 08a's selected model.
+# depth50 / depth90 of the potency, the Fig 2K band step. The inversion choices are measured on the selected model (3D
+# SFSVM, fault dipping 70 W, 60 m mesh; model_config.gf_run, Dani 2026-10-30) against its baseline; the forward-model
+# choices on the VERTICAL fault on the default (250 m) mesh against the default-mesh vertical baseline.
+# CHECK: the baseline row (the selected run, locked settings) is 08a's selected model.
 
 # %%
 ## [3]
 rows = tables["sensitivity_rows.csv"]
 selected = np.load(selected_file)
-baseline = rows[(rows.row == "Baseline (fine mesh)")].iloc[0]
+is_baseline = rows.row.str.startswith("Baseline (fine mesh") & (rows.run == cfg.gf_run)
+assert is_baseline.sum() == 1, (f"sensitivity_rows.csv has {is_baseline.sum()} fine-mesh baseline rows on {cfg.gf_run}: "
+                                f"re-run scripts/sensitivity/sensitivity_rows.py after a change of model_config.gf_run")
+baseline = rows[is_baseline].iloc[0]
+for row_name in ("Regularization sigma", "Prior lengths", "Near-trace exclusion", "Reference frame", "Data weighting"):
+    assert (rows[rows.row == row_name].run == cfg.gf_run).all(), f"the {row_name} rows are not around the selected run {cfg.gf_run}"
 for key in ("sigma", "Mw_30gpa", "Mw_sfcvm", "rms_mm", "rms_west_mm", "rms_east_mm", "peak_slip_mm", "depth50_m", "depth90_m"):
     assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 08a {float(selected[key])}"
 print("PASS: the baseline row of sensitivity_rows.csv is 08a's selected model")
@@ -137,7 +143,8 @@ print(f"depth90 over sigma x0.25-x4 and the corner: {min(sigma_rows.depth90_m.mi
 # Columns: the fault dip, the regularization sigma, the prior lengths lambda (the order the tests were made); rows: RMS
 # within 500 m (west solid, east dashed), RMS of all fitted samples, Mw (30 GPa), peak slip, depth90 of the potency.
 # Dip: the default (250 m) mesh with PyLith 3D (equal weights) and the analytic homogeneous solution (to 50 W, where no
-# PyLith run exists), and the selected 60 m mesh at 70 W / vertical / 70 E (the mesh cross-check). Grey: the selected value.
+# PyLith run exists), and the 60 m mesh at 50 W / 60 W (when their weekend runs are in) / 70 W (selected) / vertical / 70 E.
+# Grey: the selected value.
 
 # %%
 ## [4]
@@ -157,22 +164,25 @@ for family, colour, marker, label in (("3D N^0", OKABE["vermillion"], "o", "3D S
     series = dips[dips.family == family].copy()
     series["x"] = series.dip_from_vertical_deg
     dip_series.append((label, colour, marker, series.sort_values("x")))
-fine_west = [(variant, x) for variant, x in (("50 W", -40), ("60 W", -30))     # weekend runs of 2026-10-31 (Dani)
-             if ((rows.row == "Fault dip, fine mesh") & (rows.variant == variant)).any()]
-fine_dips = pd.DataFrame([pick("Fault dip, fine mesh", v) for v, _ in fine_west]
-                         + [pick("Fault dip, fine mesh", "70 W"), baseline, pick("Fault dip, fine mesh", "70 E")])
-fine_dips["x"] = [x for _, x in fine_west] + [-20, 0, 20]
-dip_series.append(("3D SFSVM, 60 m surface cells (selected)", OKABE["blue"], "s", fine_dips))
+dip_x = {"50 W": -40, "60 W": -30, "70 W": -20, "80 W": -10, "Vertical": 0, "80 E": 10, "70 E": 20}   # degrees from vertical, W < 0
+fine_rows = rows[rows.row == "Fault dip, fine mesh"]
+fine_dips = pd.concat([fine_rows, baseline.to_frame().T], ignore_index=True)
+fine_dips["x"] = [dip_x[v] for v in fine_rows.variant] + [dip_x[cfg.selected_dip_label]]
+assert fine_dips.x.is_unique, "two fine-mesh rows at the same dip"
+fine_dips = fine_dips.sort_values("x")
+selected_label = f"3D SFSVM, 60 m surface cells (selected {cfg.selected_dip_label})"
+dip_series.append((selected_label, OKABE["blue"], "s", fine_dips))
 sigma_labels = ["x0.25", "x0.5", "Corner", "x2", "x4"]
 sigma_frame = pd.DataFrame([baseline if lab == "Corner" else pick("Regularization sigma", lab) for lab in sigma_labels])
 sigma_frame["x"] = np.arange(len(sigma_labels))
 lambda_labels = ["x0.5", "x1", "x2"]
 lambda_frame = pd.DataFrame([baseline if lab == "x1" else pick("Prior lengths", lab) for lab in lambda_labels])
 lambda_frame["x"] = np.arange(len(lambda_labels))
-selected_series = ("3D SFSVM, 60 m surface cells (selected)", OKABE["blue"], "s")
+selected_series = (selected_label, OKABE["blue"], "s")
 metrics = [("near", "RMS within\n500 m (mm)"), ("rms_mm", "RMS, all\nsamples (mm)"), ("Mw_30gpa", "Mw (30 GPa)"),
            ("peak_slip_mm", "Peak slip (mm)"), ("depth90_m", "Depth extent (m)\n90 % of potency")]
-sweeps = [("Fault dip", dip_series, [-40, -30, -20, -10, 0, 10, 20], ["50 W", "60 W", "70 W", "80 W", "90", "80 E", "70 E"], 4),
+dip_ticks = [-40, -30, -20, -10, 0, 10, 20]
+sweeps = [("Fault dip", dip_series, dip_ticks, ["50 W", "60 W", "70 W", "80 W", "90", "80 E", "70 E"], dip_ticks.index(dip_x[cfg.selected_dip_label])),
           ("Regularization $\\sigma$", [selected_series + (sigma_frame,)], list(range(5)), sigma_labels, 2),
           ("Prior lengths $\\lambda$", [selected_series + (lambda_frame,)], list(range(3)), lambda_labels, 1)]
 lw, ms = 0.8, 2.8

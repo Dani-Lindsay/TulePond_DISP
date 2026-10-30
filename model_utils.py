@@ -880,8 +880,19 @@ class TentFault:
         top = self.fault_xyz[np.abs(self.fault_xyz[:, 2]) < 1e-6]                 # the mesh fault's top-edge vertices
         self.top = top[np.argsort(top[:, 1])]                                      # ... sorted south to north (mesh y)
         top_km = km_from_pinole(to_mesh.transform(self.top[:, 0], self.top[:, 1], direction="INVERSE")[1], profile_lats)
-        self.imp_km = np.interp(self.imp_xyz[:, 1], self.top[:, 1], top_km)       # km from Point Pinole of every impulse vertex
-        self.tri_km = np.interp(self.tri_cen[:, 1], self.top[:, 1], top_km)       # ... and of every triangle centroid
+        # along-strike km of every vertex and triangle: the km of the top-edge point it lies below. A dipping fault (the
+        # pylith/build/generate_gmsh_dip.py meshes: the trace shifted by depth / tan(dip) along ONE horizontal normal) is
+        # first unrolled: xy - depth * w, w = n_h n_z / |n_h|^2 from the median unit normal n of the fault triangles
+        # (the horizontal shift per metre of depth). w = 0 for a vertical fault (|n_z| < 1e-3), i.e. the y rule of before.
+        median_normal = np.median(tri_n, axis=0)
+        horizontal = median_normal[:2]
+        self.shift_per_depth = np.zeros(2) if abs(median_normal[2]) < 1e-3 else horizontal * median_normal[2] / np.dot(horizontal, horizontal)
+
+        def km_below(xyz):
+            unrolled_y = xyz[:, 1] - (-xyz[:, 2]) * self.shift_per_depth[1]
+            return np.interp(unrolled_y, self.top[:, 1], top_km)
+        self.imp_km = km_below(self.imp_xyz)                                       # km from Point Pinole of every impulse vertex
+        self.tri_km = km_below(self.tri_cen)                                       # ... and of every triangle centroid
         self.tri_depth_m = -self.tri_cen[:, 2]                                     # m, depth positive
         self.imp_depth_km = -self.imp_xyz[:, 2] / 1e3
         self.imp_lon, self.imp_lat = to_mesh.transform(self.imp_xyz[:, 0], self.imp_xyz[:, 1], direction="INVERSE")

@@ -62,22 +62,32 @@ sigma_refine_factors = [2.0 ** (k / 16.0) for k in range(-4, 5)]
 # =====================================================================================================================
 # Forward models (register #8-#13)
 # =====================================================================================================================
-gf_run = "gf_shallow_sfcvm_order2"   # the selected PyLith 5.0.2 GreensFns run (#8 order 2, #9 shallow mesh, #10 SFSVM no cap,
-#                                      #11 aligned, #12 vertical); its G is read from the archive, PyLith is never run here
+# The preferred model (Dani 2026-10-30, register #12): the 3D SFSVM model with a fault dipping 70 deg WEST on the fine mesh.
+# Why: the CFW1 creepmeter borehole (south end of the SSE section, km 62.6) cut the fault at ~21 m with a 70.5 +/- 2 deg SW
+# dip (Bilham & Whitehead 1997, GRL 24, 1307, doi 10.1029/97GL01244), and the InSAR fits best dipping west (RMS 0.895 vs
+# 1.146 mm vertical, sensitivity_2026-10-30). Caveat: the Alameda Creek reflection line (Williams et al. 2005, GRL 32,
+# L13301, doi 10.1029/2005GL023113) gives ~70 deg EAST at 100-650 m at the north end of the section; the two observations
+# bound the section (evidence: dip_deflection_2026-10-30/README.md). Vertical, 70 E, 60 W and 50 W are sensitivity rows.
+# Until 2026-10-30 the selected run was the vertical gf_shallow_sfcvm_order2 (its products in outputs/*/retired_2026-10-30/).
+gf_run = "gf_shallow_dip70w_sfcvm_order2"   # the selected PyLith 5.0.2 GreensFns run (#8 order 2, #9 shallow mesh, #10 SFSVM no
+#                                             cap, #11 aligned, #12 70 W); its G is read from the archive, PyLith is never run here
+selected_dip_label = "70 W"                 # the dip of gf_run as the sensitivity rows and figures name it
+gf_run_vertical = "gf_shallow_sfcvm_order2"  # the vertical fault on the same (fine) mesh: a sensitivity row since 2026-10-30
 gf_pylith_output_dir = paths_sfcvm["pylith_output"]
 gf_gf_dir = paths_sfcvm["gf"]
 sfcvm_grid_npz = os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_aligned_nocap_grid.npz")   # the grid PyLith read (#10, #11)
 gf_files = dict(                                     # every PyLith file of the selected run (08a's "PyLith files" cell)
-    mesh=os.path.join(paths_inputs["mesh"], "mesh_vertical_tet_shallow.msh"),
-    mesh_report=os.path.join(paths_inputs["mesh"], "mesh_vertical_tet_shallow_report.txt"),
+    mesh=os.path.join(paths_inputs["mesh"], "mesh_dip70w_tet_shallow.msh"),
+    mesh_report=os.path.join(paths_inputs["mesh"], "mesh_dip70w_tet_shallow_report.txt"),
+    mesh_log=os.path.join(paths_inputs["mesh"], "gen_dip70w_shallow_2026-10-26.log"),
     cfg=["pylith/cfg/pylithapp.cfg", "pylith/cfg/mat_sfcvm_nocap.cfg", "pylith/cfg/gf.cfg", "pylith/cfg/order2.cfg"],
     material_db=os.path.join(paths_sfcvm["spatialdb"], "mat_sfcvm_v26-0_aligned_nocap.spatialdb"),
     material_grid=sfcvm_grid_npz,
     impulse_db=os.path.join(paths_inputs["spatialdb"], "impulses_km54-65_z3000.spatialdb"),
     points=os.path.join(paths_inputs["points"], "insar_points.txt"),
-    command=("bash $REPO/pylith/run_gf.sh gf_shallow_sfcvm_order2 mat_sfcvm_nocap.cfg modeling_inputs/mesh/mesh_vertical_tet_shallow.msh "
+    command=("bash $REPO/pylith/run_gf.sh gf_shallow_dip70w_sfcvm_order2 mat_sfcvm_nocap.cfg modeling_inputs/mesh/mesh_dip70w_tet_shallow.msh "
              "modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb 5 modeling_inputs/points/insar_points.txt order2.cfg"),   # run from the data root
-    queue_script="run_production_2026-10-25.sh",   # the queue that ran it (data root), job line 1
+    queue_script="run_shallow_dips_2026-10-26.sh",   # the queue that ran it (data root; 70 E and 70 W side by side, 26-28 Oct)
     log=os.path.join(paths_sfcvm["runs"], f"{gf_run}.log"),
     done_marker=os.path.join(os.path.dirname(paths_sfcvm["root"]), "runs_done_2026-10-25", gf_run),
     outputs=[os.path.join(paths_sfcvm["pylith_output"], f"{gf_run}-{part}") for part in
@@ -91,6 +101,7 @@ analytic_nsub_options = (4, 8)
 analytic_nsub_check_tents = 20
 analytic_nsub_tolerance = 0.01
 analytic_G_dir = paths_uniform["gf"]   # cache: G_analytic_<gf_run>_nsub<n>.npz
+analytic_n_workers = 3                 # parallel processes for a missing cache (1 BLAS thread each: the laptop rule of 3)
 
 # =====================================================================================================================
 # Outputs and metrics (register #18-#22)
@@ -125,8 +136,11 @@ depth_scan_depths_km = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0
 sensitivity_dir = os.path.join(data_dir, "sensitivity_2026-10-30")   # where scripts/sensitivity/*.py write (re-run 2026-10-30)
 archived = dict(
     sensitivity_nodip=os.path.join(data_dir, "sensitivity_2026-10-27", "sensitivity_rows_nodip.csv"),
+    # the 2026-10-30 run of scripts/sensitivity/sensitivity_rows.py around the vertical model, frozen (the Sunday re-run
+    # rewrites sensitivity_rows.csv): its "Fault dip, fine mesh" / "70 W" row is 08a's reproduction check of the 70 W model
+    sensitivity_rows_20261030=os.path.join(data_dir, "sensitivity_2026-10-30", "sensitivity_rows_before_70w_2026-10-30.csv"),
     sensitivity_dip=os.path.join(data_dir, "sensitivity_2026-10-27", "sensitivity_rows_dip.csv"),
-    depth_scan=os.path.join(data_dir, "depth_scan_2026-10-28", "depth_scan.csv"),
+    depth_scan=os.path.join(sensitivity_dir, "depth_scan.csv"),          # scripts/sensitivity/depth_scan.py on gf_run
     depth_scan_noise=os.path.join(data_dir, "depth_scan_2026-10-28", "depth_scan_noise.csv"),
     depth_scan_buried_top=os.path.join(data_dir, "depth_scan_2026-10-28", "depth_scan_buried_top.csv"),
 )
@@ -157,7 +171,7 @@ def summary():
     """The locked settings as printable lines (every notebook prints them in its first cell)."""
     lo, hi = sse_section_km()
     b_lo, b_hi = band90_km()
-    return [f"forward model {gf_run} (PyLith 5.0.2, order 2, shallow mesh, SFSVM v26.0 aligned, no Vs floor, no cap)",
+    return [f"forward model {gf_run} (PyLith 5.0.2, order 2, shallow mesh, fault dipping 70 deg W, SFSVM v26.0 aligned, no Vs floor, no cap)",
             f"data: swath {swath_km:g} km, km {km_window[0]:g}-{km_window[1]:g}, quadtree {start_block_km:g} -> {min_block_km * 1e3:.0f} m; "
             f"near-trace cut {near_trace_cut_km * 1e3:.0f} m",
             f"noise: semivariogram beyond {noise_mask_km:g} km on a {noise_swath_km:g} km swath, pairs < {noise_distmax_km:g} km",

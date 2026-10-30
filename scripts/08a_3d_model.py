@@ -26,7 +26,8 @@
 # ```
 #
 # **What this notebook does.** The paper's slip model, by the locked method (`model_config.py`; register rows in
-# brackets): the archived PyLith Green's functions of `gf_shallow_sfcvm_order2` [8-12], 07a's samples and noise model
+# brackets): the archived PyLith Green's functions of `gf_shallow_dip70w_sfcvm_order2` (fault dipping 70 W, Dani 2026-10-30;
+# the vertical model of the same mesh is a sensitivity row) [8-12], 07a's samples and noise model
 # [1-5], equal weights [6], a plane solved jointly [7], slip >= 0 [14], the CSI exponential prior [15] at the model's own
 # L-curve corner [16], no surface constraint [17]. Then: its fit (maps and profiles from G x slip at the samples), its
 # size (potency, Mw at 30 GPa and at the slip-weighted harmonic SFSVM rigidity [18]), the depths above which 50 % / 90 %
@@ -35,7 +36,7 @@
 #
 # **Inputs**: 07a `model_data.npz`, `homogeneous_model.npz`, `homogeneous_lcurve.csv`; the PyLith products listed in [2];
 # 06 `fig2_inputs.npz` (profile lines); 04 `section_lengths.csv`, `event_fraction_by_crossing.csv`; the archived
-# sweep csvs of `model_config.archived` (checks only: the 2026-10-27 baseline row and the fixed-depth scan).
+# sweep csvs of `model_config.archived` (checks only: the 2026-10-30 '70 W' fine-mesh dip row and the fixed-depth scan).
 #
 # **Outputs** (`outputs/08a_3d_model/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane,
 # residual, crossings steps: Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
@@ -45,7 +46,7 @@
 #
 # **What to check**
 # - [2] every PyLith file exists and the run's done marker is there.
-# - [5] CHECK: on the base grid the corner and every number equal the 2026-10-27 sweep's baseline row.
+# - [5] CHECK: the corners and every number equal the 2026-10-30 sweep's '70 W' fine-mesh dip row.
 # - [6] Mw at 30 GPa vs the harmonic SFSVM rigidity; depth50 / depth90.
 # - [10] the Monte Carlo spread (and its mean against the model: re-inverted noisy synthetics can come back low).
 # - [11] CHECK: the best row of the fixed-depth scan is re-solved here and equals the archived scan.
@@ -92,7 +93,7 @@ crossings_file = os.path.join(events_dir, "event_fraction_by_crossing.csv")
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(model_data_file, homogeneous_file, os.path.join(dir_07a, "homogeneous_lcurve.csv"), fig2_inputs_file, crossings_file,
            os.path.join(events_dir, "section_lengths.csv"), os.path.join(events_dir, "creep_events.csv"), cfg.gf_files["G"],
-           cfg.archived["sensitivity_nodip"], cfg.archived["depth_scan"])
+           cfg.archived["sensitivity_rows_20261030"], cfg.archived["depth_scan"])
 OKABE = dict(blue="#0072B2", orange="#E69F00", vermillion="#D55E00", purple="#CC79A7", black="#000000", grey="#999999")
 utils.mpl_paper_style(base=7)
 cm = 1 / 2.54
@@ -193,15 +194,14 @@ print(f"SSE section, top 100 m: median mu west {np.median(mu_west[top_section]) 
       f"{np.median(mu_east[top_section]) / 1e9:.3f}, harmonic {np.median(mu_harmonic[top_section]) / 1e9:.3f} GPa")
 
 # %% [markdown]
-# ## [5] The L-curve, the model's own corner, and CHECK against the 2026-10-27 sweep
+# ## [5] The L-curve, the model's own corner, and CHECK against the 2026-10-30 sweep
 #
 # `model_utils.own_corner` (register #16): the L-curve on the base grid and its corner, then nine sigmas around it and
 # the corner of the union = the model's sigma (unsnapped).
 #
-# CHECK (two routes to the same numbers): the base grid is the grid of the 2026-10-27 sweep
-# (`scripts/sensitivity/sensitivity_rows.py`, row "baseline (fine mesh)" of `sensitivity_rows_nodip.csv`), so the
-# base-grid corner and the model solved at it must reproduce that row: sigma, Mw, RMS (all, 500 m west / east), peak
-# slip and depth, depth90.
+# CHECK (two routes to the same numbers): `scripts/sensitivity/sensitivity_rows.py` solved the 70 W run by the same rule on
+# 2026-10-30 (row "Fault dip, fine mesh" / "70 W", frozen in `sensitivity_rows_before_70w_2026-10-30.csv`), so both corners
+# and the model must reproduce that row: sigma, Mw, RMS (all, 500 m west / east), peak slip and depth, depth50 / depth90.
 
 # %%
 ## [5]
@@ -211,22 +211,24 @@ sigma, sigma_base, lcurve = model_utils.own_corner(solve_3d, cfg.sigma_grid_base
 lcurve.assign(corner=sigma, base_corner=sigma_base).to_csv(os.path.join(out_dir, "selected_lcurve.csv"), index=False)
 print(f"corner {sigma:.3f} (base grid {sigma_base:.3f}); {len(lcurve)} solves in {(time.time() - t0) / 60:.1f} min")
 
-sweep = pd.read_csv(cfg.archived["sensitivity_nodip"])
-sweep_base = sweep[sweep.row == "baseline (fine mesh)"].iloc[0]
-assert sweep_base.run == cfg.gf_run and sweep_base.cut_m == cfg.near_trace_cut_km * 1e3 and sweep_base.ramp == cfg.ramp_spec
-fault_check, data_check, _ = solve_3d(sigma_base)
+sweep = pd.read_csv(cfg.archived["sensitivity_rows_20261030"])
+sweep_row = sweep[(sweep.row == "Fault dip, fine mesh") & (sweep.variant == cfg.selected_dip_label)]
+assert len(sweep_row) == 1, f"no single '{cfg.selected_dip_label}' fine-mesh dip row in {cfg.archived['sensitivity_rows_20261030']}"
+sweep_row = sweep_row.iloc[0]
+assert sweep_row.run == cfg.gf_run and sweep_row.cut_m == cfg.near_trace_cut_km * 1e3 and sweep_row.ramp == cfg.ramp_spec
+fault_check, data_check, _ = solve_3d(sigma)
 check = model_utils.tent_numbers(fault_check.slip[:, 0].copy(), data_check, tents, keep, west_near, east_near, cfg.mu_ref_pa)
-comparison = pd.DataFrame([("sigma", sigma_base, sweep_base.sigma), ("Mw 30 GPa", check["Mw_30gpa"], sweep_base.Mw_30gpa),
-                           ("RMS all (mm)", check["rms_mm"], sweep_base.rms_all_mm),
-                           ("RMS 500 m west (mm)", check["rms_west_mm"], sweep_base.rms_W500_mm),
-                           ("RMS 500 m east (mm)", check["rms_east_mm"], sweep_base.rms_E500_mm),
-                           ("peak slip (mm)", check["peak_slip_mm"], sweep_base.peak_slip_mm),
-                           ("peak depth (m)", check["peak_depth_m"], sweep_base.peak_depth_m),
-                           ("depth90 (m)", check["depth90_m"], sweep_base.depth90_potency_m)],
-                          columns=["quantity", "this notebook", "sweep 2026-10-27"])
+comparison = pd.DataFrame([("sigma, base grid", sigma_base, sweep_row.sigma_base_corner), ("sigma, refined", sigma, sweep_row.sigma),
+                           ("Mw 30 GPa", check["Mw_30gpa"], sweep_row.Mw_30gpa), ("RMS all (mm)", check["rms_mm"], sweep_row.rms_mm),
+                           ("RMS 500 m west (mm)", check["rms_west_mm"], sweep_row.rms_west_mm),
+                           ("RMS 500 m east (mm)", check["rms_east_mm"], sweep_row.rms_east_mm),
+                           ("peak slip (mm)", check["peak_slip_mm"], sweep_row.peak_slip_mm),
+                           ("peak depth (m)", check["peak_depth_m"], sweep_row.peak_depth_m),
+                           ("depth50 (m)", check["depth50_m"], sweep_row.depth50_m), ("depth90 (m)", check["depth90_m"], sweep_row.depth90_m)],
+                          columns=["quantity", "this notebook", "sweep 2026-10-30"])
 print(comparison.to_string(index=False))
-assert np.allclose(comparison["this notebook"], comparison["sweep 2026-10-27"], rtol=1e-3), "the base-grid model does not reproduce the sweep"
-print("PASS: the base-grid corner and model reproduce the 2026-10-27 sweep baseline")
+assert np.allclose(comparison["this notebook"], comparison["sweep 2026-10-30"], rtol=1e-3), "the model does not reproduce the sweep row"
+print(f"PASS: the corners and the model reproduce the 2026-10-30 sweep row 'Fault dip, fine mesh, {cfg.selected_dip_label}'")
 
 # %% [markdown]
 # ## [6] The selected model and its numbers
@@ -358,10 +360,10 @@ vmax = float(max(slip.max(), homogeneous["slip_mm"].max()))
 # Dani 2026-10-30: the SSE-section bar covered the top ~45 m (the slip peak); the section ends are now thin dashed lines
 # (caption), and each label carries the structure, the dip and the key numbers
 for ax, letter, values, title in ((axes[0], "A", slip,
-                                   f"3D SFSVM, vertical fault, Mw {numbers['Mw_30gpa']:.2f} (30 GPa) and {numbers['Mw_sfcvm']:.2f} "
+                                   f"3D SFSVM, fault dipping {cfg.selected_dip_label}, Mw {numbers['Mw_30gpa']:.2f} (30 GPa) and {numbers['Mw_sfcvm']:.2f} "
                                    f"(SFSVM rigidity), RMS {numbers['rms_mm']:.2f} mm, depth extent {numbers['depth90_m'] / 1e3:.2f} km"),
                                   (axes[1], "B", homogeneous["slip_mm"],
-                                   f"Homogeneous half-space, vertical fault, Mw {float(homogeneous['Mw_30gpa']):.2f} (30 GPa), "
+                                   f"Homogeneous half-space, fault dipping {cfg.selected_dip_label}, Mw {float(homogeneous['Mw_30gpa']):.2f} (30 GPa), "
                                    f"RMS {float(homogeneous['rms_mm']):.2f} mm, depth extent {float(homogeneous['depth90_m']) / 1e3:.2f} km")):
     image = ax.tripcolor(triangulation, values, shading="gouraud", cmap=cmc.lajolla, vmin=0, vmax=vmax)
     for section_end_km in (creep_lo_km, creep_hi_km):

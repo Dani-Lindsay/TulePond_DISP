@@ -281,7 +281,7 @@ print(f"largest n_sub {n_coarse} vs {n_fine} difference {nsub_rel_diff.max():.3f
       f"({'>' if n_sub == n_fine else '<='} {cfg.analytic_nsub_tolerance:g}): n_sub = {n_sub}")
 analytic_cache = os.path.join(cfg.analytic_G_dir, f"G_analytic_{cfg.gf_run}_nsub{n_sub}.npz")
 G_homogeneous = model_utils.analytic_tent_G_cached(analytic_cache, tents, quadtree.lon, quadtree.lat, look, model_frame_lonlat, to_mesh,
-                                                   n_sub, cfg.gf_run, positions_key)
+                                                   n_sub, cfg.gf_run, positions_key, n_workers=cfg.analytic_n_workers)
 assert G_homogeneous.shape == gf_npz["G_rl_m_per_m"].shape, "analytic and PyLith G differ in shape"
 signed_d_km = model_utils.signed_distance_m(trace_xy_m[0], trace_xy_m[1], points_old["x"], points_old["y"]) / 1e3
 near_band = np.abs(signed_d_km) < 0.3
