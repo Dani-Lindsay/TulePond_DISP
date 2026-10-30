@@ -238,20 +238,19 @@ ax.plot(scan.D_km, scan.rms_W500_mm, "o-", color=OKABE["vermillion"], lw=lw, ms=
 ax.plot(scan.D_km, scan.rms_E500_mm, "s--", color=OKABE["blue"], lw=lw, ms=ms, mfc="white", label="East")
 ax.axhline(baseline.rms_west_mm, color=OKABE["vermillion"], ls=":", lw=lw)
 ax.axhline(baseline.rms_east_mm, color=OKABE["blue"], ls=":", lw=lw)
-ax.legend(loc="upper center", title="Dotted: distributed slip\n(selected model)", frameon=False)
+ax.legend(loc="upper center", frameon=False)   # Dani 2026-10-30: no in-plot notes; the dotted lines and grey band go in the caption
 ax = axes[1]
-ax.plot(scan.D_km, scan.rms_all_mm, "o-", color="k", lw=lw, ms=ms, label="Uniform slip to D")
-ax.axhline(baseline.rms_mm, color="0.4", ls=":", lw=lw, label="Distributed slip (selected)")
-ax.legend(loc="upper center", frameon=False)
+ax.plot(scan.D_km, scan.rms_all_mm, "o-", color="k", lw=lw, ms=ms)
+ax.axhline(baseline.rms_mm, color="0.4", ls=":", lw=lw)
 ax = axes[2]
 ax.plot(scan.D_km, scan.slip_mm, "o-", color="k", lw=lw, ms=ms)
 twin = ax.twinx()
 twin.plot(scan.D_km, scan.Mw_30gpa, "s--", color=OKABE["orange"], lw=lw, ms=ms)
 twin.set_ylabel("Mw (30 GPa)", color=OKABE["orange"])
-for ax, letter, title, ylabel in ((axes[0], "A", "Near-field misfit, west vs east", "RMS within 500 m (mm)"),
-                                  (axes[1], "B", "Overall misfit", "RMS, all samples (mm)"),
-                                  (axes[2], "C", "Slip amplitude and Mw", "Best-fit uniform slip (mm)")):
-    utils.panel_title(ax, letter, title)
+for ax, letter, ylabel in ((axes[0], "A", "RMS within 500 m (mm)"),
+                           (axes[1], "B", "RMS, all samples (mm)"),
+                           (axes[2], "C", "Best-fit uniform slip (mm)")):
+    utils.panel_title(ax, letter, "")
     ax.set_ylabel(ylabel)
     ax.set_xlabel("Slip from the surface to D (km)")
     ax.axvspan(b_lo, b_hi, color="0.88", lw=0, zorder=0)
@@ -260,9 +259,9 @@ for ax, letter, title, ylabel in ((axes[0], "A", "Near-field misfit, west vs eas
     ax.set_xticks([0.05, 0.1, 0.2, 0.5, 1, 2, 3])
     ax.set_xticklabels(["0.05", "0.1", "0.2", "0.5", "1", "2", "3"])
     ax.grid(True, lw=0.3, color="0.85")
-axes[2].text(0.5, 0.97, f"Grey: base of the Cenozoic\nsediment, west (SFSVM)\n{1e3 * b_median:.0f} m ({1e3 * b_lo:.0f}-{1e3 * b_hi:.0f} m)",
-             transform=axes[2].transAxes, ha="center", va="top", fontsize=6.5, color="0.3")
-for axis, fraction in ((axes[0], 0.6), (axes[1], 0.35), (axes[2], 0.45), (twin, 0.45)):
+print(f"caption: grey band = base of the Cenozoic sediment west of the fault (SFSVM), {1e3 * b_median:.0f} m "
+      f"({1e3 * b_lo:.0f}-{1e3 * b_hi:.0f} m); dotted = the selected distributed-slip model")
+for axis, fraction in ((axes[0], 0.25), (axes[1], 0.05), (axes[2], 0.05), (twin, 0.05)):
     lo, hi = axis.get_ylim()
     axis.set_ylim(lo, hi + fraction * (hi - lo))
 save(fig, "figS_depth_scan")
