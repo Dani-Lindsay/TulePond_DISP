@@ -15,37 +15,42 @@
 # ---
 
 # %% [markdown]
-# # 10 Sensitivity of the slip model: the supplementary figures and table
+# # 10 Sensitivity of the slip model: supplementary figures and table
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: environment.yml. Runs after 07, 08 and the scripts in scripts/sensitivity/. Seconds: no inversion is
-# run here.
+# Environment: environment.yml. Runs after 07, 08 and the scripts in scripts/sensitivity/. Seconds; no inversion is run here.
 # ```
 #
-# **What this notebook does.** Draws the stored results of the sensitivity scripts (`scripts/sensitivity/*.py`; their csv
-# files are archived on Zenodo) and of 07 / 08: the sensitivity table, the sweeps figure (dip, sigma, lambda), the
-# fixed-depth scan with its noise test, the buried-top test and the SFSVM basement depth, the error of the PyLith Green's
-# functions against the analytic solution, and the semivariogram of the noise model. Each csv records the script that
-# wrote it ([2]).
+# **What this notebook does**
+#
+# 1. Reads the stored results of the sensitivity scripts (`scripts/sensitivity/*.py`, whose csv files are archived on
+#    Zenodo) and of notebooks 07 and 08, and lists the script that wrote each csv (section 2).
+# 2. Writes the sensitivity table and checks its baseline row against the preferred model of notebook 08 (section 3).
+# 3. Draws the sweeps figure: fault dip, regularisation strength $\sigma$ and prior lengths $\lambda$ (section 4).
+# 4. Draws the fixed-depth scan, with its noise test, the buried-top test and the SFSVM basement depth (section 5).
+# 5. Draws the error of the PyLith Green's functions against the analytic solution (section 6).
+# 6. Draws the semivariogram of the noise model (section 7).
 #
 # **Inputs** (`model_config.sensitivity_dir`): `sensitivity_rows.csv`, `dip_rows.csv`, `depth_scan.csv`,
-# `depth_scan_noise.csv`, `depth_scan_buried_top.csv`, `basement_depth.csv`, `gf_check.csv`; 07 `noise_model_5km.csv`,
-# `semivariogram_bins_5km.csv`; 08 `selected_model.npz`.
+# `depth_scan_noise.csv`, `depth_scan_buried_top.csv`, `basement_depth.csv`, `gf_check.csv`; notebook 07
+# `noise_model_5km.csv`, `semivariogram_bins_5km.csv`; notebook 08 `selected_model.npz`.
 #
-# **Outputs** (`outputs/10_model_sensitivity/`): `sensitivity_table.csv`, `10_model_sensitivity_stats.txt`. **Figures**:
-# `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` (Science style, png + pdf).
-# **Registry keys** `08b_*`.
+# **Outputs** (`outputs/10_model_sensitivity/`): `sensitivity_table.csv` and the stats file of the registry.
+# **Registry keys** `10_*`.
+#
+# **Figures**: `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` (Science style, png and
+# pdf).
 #
 # **What to check**
-# - [2] The provenance of each csv names its script and a clean git hash.
-# - [3] Check: the baseline row equals the preferred model of 08 (same method, computed independently).
+# - Section 2: the provenance of each csv names its script and a clean git hash.
+# - Section 3: the check that the baseline row equals the preferred model of notebook 08 (the same method, computed by a
+#   separate script) passes.
 
 # %% [markdown]
-# ## [1] Imports, inputs, style
+# ## 1. Imports, inputs, style
 
 # %%
-## [1]
 import os
 
 import numpy as np
@@ -58,7 +63,7 @@ import insar_utils as utils
 import model_config as cfg
 import model_utils
 
-notebook = "12_model_sensitivity"
+notebook = "10_model_sensitivity"
 out_dir = paths_out[notebook]
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -81,36 +86,51 @@ band_lo_km, band_hi_km = cfg.band90_km()
 
 
 def save(fig, name):
+    """Save a figure as png and pdf in the figure folder.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure.
+    name : str
+        File name without extension.
+    """
     for ext in ("png", "pdf"):
         fig.savefig(os.path.join(fig_dir, f"{name}.{ext}"), dpi=300, facecolor="white")
     print("saved", os.path.join(fig_dir, name + ".png"))
 
 # %% [markdown]
-# ## [2] Which script made each csv
+# ## 2. Which script made each csv
 #
-# Every row of every csv carries the script and the git hash of the run that wrote it (`provenance`).
+# Each row of each csv carries the script and the git hash of the run that wrote it (`provenance`). Each csv must come
+# from a single run (asserted).
 
 # %%
-## [2]
 for name, table in tables.items():
     sources = sorted(set(table.provenance))
     assert len(sources) == 1, f"{name}: rows from {len(sources)} runs: {sources}"
     print(f"{name:28s} {len(table):4d} rows  <- {sources[0]}")
 
 # %% [markdown]
-# ## [3] The sensitivity table (SM)
+# ## 3. The sensitivity table (SM)
 #
-# One row per choice, each at its own L-curve corner (except the sigma rows), all scored on the same fitted samples
-# (60 m cut): RMS (all, within 500 m west / east), Mw at 30 GPa and at the harmonic SFSVM rigidity, peak slip and depth,
-# depth50 / depth90 of the potency, the Fig 2K band step. The inversion choices and the fault dip are varied about the
-# preferred model (`model_config.gf_run`: 3D SFSVM, fault dipping 70 deg W, 60 m mesh) and compared with its baseline
-# row; the forward-model choices (SFSVM as delivered, SFSVM alignment, data coherence) are varied on the vertical fault
-# on the default (250 m) mesh and compared with the default-mesh vertical baseline.
+# The table has one row per choice (`scripts/sensitivity/sensitivity_rows.py`). Each row is solved at its own L-curve
+# corner (Hansen 1992), except the rows of the $\sigma$ sweep, which use multiples of the baseline corner. All rows are
+# scored on the same fitted samples (60 m cut) with the numbers of notebook 08, section 6: the RMS of all fitted samples
+# and within 500 m west and east of the trace, Mw at 30 GPa and at the harmonic-mean SFSVM rigidity
+# (Hanks & Kanamori 1979; Vavrycuk 2013), the peak slip and its depth, depth50 and depth90 of the potency, and the
+# Fig 2K band step.
+#
+# The inversion choices and the fault dip are varied about the preferred model (`model_config.gf_run`: 3D SFSVM, fault
+# dipping 70° to the west, 60 m mesh) and compared with its baseline row. The forward-model choices (the SFSVM not
+# aligned on the trace, the SFSVM shifted 50 m east or west, and the data at temporal coherence 0.7 of notebook 07,
+# section 5) are varied on the vertical fault on the default (250 m) mesh and compared with the vertical baseline on
+# that mesh. The "Full Cd" row uses the full covariance of notebook 07, section 4, with the nugget exponent 0.5.
+#
 # Check: the baseline row (`model_config.gf_run` with the settings of `model_config.py`) equals the preferred model of
-# 08.
+# notebook 08.
 
 # %%
-## [3]
 rows = tables["sensitivity_rows.csv"]
 selected = np.load(selected_file)
 is_baseline = rows.row.str.startswith("Baseline (fine mesh") & (rows.run == cfg.gf_run)
@@ -121,7 +141,7 @@ for row_name in ("Regularization sigma", "Prior lengths", "Near-trace exclusion"
     assert (rows[rows.row == row_name].run == cfg.gf_run).all(), f"the {row_name} rows are not around the selected run {cfg.gf_run}"
 for key in ("sigma", "Mw_30gpa", "Mw_sfcvm", "rms_mm", "rms_west_mm", "rms_east_mm", "peak_slip_mm", "depth50_m", "depth90_m"):
     assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 08 {float(selected[key])}"
-print("PASS: the baseline row of sensitivity_rows.csv equals the preferred model of 08")
+print("Check passed: the baseline row of sensitivity_rows.csv equals the preferred model of 08")
 columns = dict(row="Choice", variant="Variant", sigma="Sigma", Mw_30gpa="Mw (30 GPa)", Mw_sfcvm="Mw (harmonic SFSVM)",
                rms_mm="RMS (mm)", rms_west_mm="RMS 500 m west (mm)", rms_east_mm="RMS 500 m east (mm)", peak_slip_mm="Peak slip (mm)",
                peak_depth_m="Peak depth (m)", depth50_m="Depth50 (m)", depth90_m="Depth90 (m)", band_step_mean_mm="Band step (mm)")
@@ -140,20 +160,35 @@ print(f"depth90 over sigma x0.25-x4 and the corner: {min(sigma_rows.depth90_m.mi
       f"{rows[rows.row == 'Prior lengths'].depth90_m.min():.0f}-{rows[rows.row == 'Prior lengths'].depth90_m.max():.0f} m")
 
 # %% [markdown]
-# ## [4] The sweeps figure (SM)
+# ## 4. The sweeps figure (SM)
 #
-# Columns: the fault dip, the regularization sigma, the prior lengths lambda; rows: RMS within 500 m (west solid, east
-# dashed), RMS of all fitted samples, Mw (30 GPa), peak slip, depth90 of the potency. Dip: the default (250 m) mesh with
-# PyLith 3D SFSVM Green's functions (equal weights) and with the analytic homogeneous solution (to 50 W, beyond the
-# PyLith runs), and the 60 m mesh at 50 W / 60 W / 70 W (preferred) / vertical / 70 E (`scripts/sensitivity/dip_rows.py`
-# and the "Fault dip, fine mesh" rows of `sensitivity_rows.py`). Grey band: the preferred value.
+# The columns are the fault dip, the regularisation strength $\sigma$ and the prior lengths $\lambda$ (both lengths
+# scaled together). The rows are the RMS within 500 m of the trace (west solid, east dashed), the RMS of all fitted
+# samples, Mw at 30 GPa, the peak slip, and depth90 of the potency. The dip column shows three series: the default
+# (250 m) mesh with PyLith 3D SFSVM Green's functions (equal weights), the same mesh with the analytic homogeneous
+# solution (to 50° west, beyond the PyLith runs) from `scripts/sensitivity/dip_rows.py`, and the 60 m mesh at 50° W,
+# 60° W, 70° W (preferred), vertical and 70° E (the "Fault dip, fine mesh" and baseline rows of `sensitivity_rows.py`).
+# The grey band marks the preferred value.
 
 # %%
-## [4]
 dips = tables["dip_rows.csv"]
 
 
 def pick(row, variant):
+    """Return the single row of the sensitivity table with this choice and variant.
+
+    Parameters
+    ----------
+    row : str
+        The choice (`row` column), e.g. "Prior lengths".
+    variant : str
+        The variant (`variant` column), e.g. "x2".
+
+    Returns
+    -------
+    pandas.Series
+        The row.
+    """
     found = rows[(rows.row == row) & (rows.variant == variant)]
     assert len(found) == 1, f"{row} {variant}: {len(found)} rows"
     return found.iloc[0]
@@ -228,15 +263,28 @@ legend_ax.legend(handles=list(handles.values()), loc="center", ncol=3, frameon=F
 save(fig, "figS_sweeps")
 
 # %% [markdown]
-# ## [5] The fixed-depth scan (SM)
+# ## 5. The fixed-depth scan (SM)
 #
-# Uniform slip from the surface to D (`scripts/sensitivity/depth_scan.py`): RMS within 500 m west / east, RMS of all
-# fitted samples, and the best-fit slip with its Mw, against D. Dotted: the preferred (distributed-slip) model. Grey band:
-# the base of the Cenozoic sediment west of the fault in the SFSVM (`basement_depth.py`, 90 % band). The noise test
-# (the spread of the best D under correlated noise) and the buried-top test are printed for the caption.
+# The fixed-depth scan (`scripts/sensitivity/depth_scan.py`) fits uniform slip from the surface to a depth $D$ over the
+# SSE section, tapered over 0.5 km at each end, with one amplitude and a plane, by least squares with equal weights:
+#
+# $$\mathbf{d} \approx \bar{d}\,G\boldsymbol{\phi}_D + B\mathbf{a} ,$$
+#
+# where $\mathbf{d}$ is the vector of fault-parallel samples (mm), $\bar{d}$ the uniform slip (mm), $G$ the Green's
+# functions of the preferred run (m/m), $\boldsymbol{\phi}_D$ the slip pattern (1 at the impulse vertices from the
+# surface to $D$ in the section, 0 elsewhere), $B$ the plane design matrix with rows $(1, x_i, y_i)$, and $\mathbf{a}$
+# the plane coefficients (notebook 08, section 12). The figure shows, against $D$, the RMS within 500 m west and east of
+# the trace, the RMS of all fitted samples, and the best-fit slip with its Mw at 30 GPa,
+# $M_w = \frac{2}{3}\left(\log_{10} M_0 - 9.1\right)$ (Hanks & Kanamori 1979). The dotted lines are the preferred
+# distributed-slip model. The grey band is the base of the Cenozoic sediment west of the fault in the SFSVM, within
+# 500 m of the trace over the 90 % band (`scripts/sensitivity/basement_depth.py`; median as a line, range as the band).
+#
+# Two tests are printed for the caption. In the noise test, the best uniform-slip model plus its plane is used as
+# synthetic data, 100 realisations of correlated noise from the full noise covariance (notebook 07, section 4) are
+# added, and each realisation is scanned in the same way; the spread of the best $D$ is reported. In the buried-top
+# test, the scan is repeated with no slip above 50, 100 and 200 m.
 
 # %%
-## [5]
 scan = tables["depth_scan.csv"]
 noise_test = tables["depth_scan_noise.csv"]
 buried_top = tables["depth_scan_buried_top.csv"]
@@ -281,17 +329,23 @@ for axis, fraction in ((axes[0], 0.25), (axes[1], 0.05), (axes[2], 0.05), (twin,
 save(fig, "figS_depth_scan")
 
 # %% [markdown]
-# ## [6] The Green's functions against the analytic solution (SM)
+# ## 6. The Green's functions against the analytic solution (SM)
 #
-# Per impulse, the relative RMS error of the homogeneous PyLith Green's function against the analytic solution for the
-# same tent (`scripts/sensitivity/gf_check.py`). A: element order 1 vs 2 on the default mesh. B: the three meshes at
-# order 2 in the strip km 58.85-59.25; the mesh of the preferred model (60 m cells within 1 km of the fault) in blue.
+# For each impulse $j$, the homogeneous PyLith Green's function is compared with the analytic solution for the same tent
+# (`scripts/sensitivity/gf_check.py`; CSI triangular dislocations, Meade 2007, with $n_{sub} = 8$ as in notebook 07,
+# section 7):
+#
+# $$\epsilon_j = \frac{\lVert \mathbf{g}^{PyLith}_j - \mathbf{g}^{analytic}_j \rVert_2}{\lVert \mathbf{g}^{analytic}_j \rVert_2} ,$$
+#
+# where $\mathbf{g}_j$ is the fault-parallel displacement at the samples for unit slip on tent $j$ (m/m) and the norms
+# run over the samples. The figure shows $100\,\epsilon_j$ (%). Panel A compares element order 1 and 2 on the default
+# mesh. Panel B compares the three meshes at order 2 in the strip km 58.85 to 59.25; the mesh of the preferred model
+# (60 m cells within 1 km of the fault) is in blue.
 
 # %%
-## [6]
 gf = tables["gf_check.csv"]
 # a PyLith impulse whose sign disagrees with the analytic solution (whose sign is fixed and tested) is drawn and listed,
-# not flipped. Check: only order-1 runs may have one.
+# not flipped; only order-1 runs may have one (asserted)
 disagree = gf[~gf.sign_agrees]
 print(f"impulses whose PyLith sign disagrees with the analytic solution: {len(disagree)}")
 print(disagree[["panel", "run", "impulse", "km", "depth_m", "rel_rms"]].to_string(index=False))
@@ -321,13 +375,19 @@ print(gf_medians.round(1).to_string())
 save(fig, "figS_gf_error_vs_depth")
 
 # %% [markdown]
-# ## [7] The noise model: semivariogram of the far field (Methods / SM)
+# ## 7. The noise model: semivariogram of the far field (Methods, SM)
 #
-# Products of 07: the binned semivariogram of the pixels farther than 5 km from the trace (plane removed) and the fitted
-# model (`model_utils.semivariogram_model`).
+# The figure shows the products of notebook 07, section 4: the binned semivariogram of the pixels farther than 5 km
+# from the trace (plane removed) and the fitted model (`model_utils.semivariogram_model`; Lohman & Simons 2005; Sudhaus
+# & Jónsson 2009),
+#
+# $$\gamma(h) = n^2 + s_1\left(1 - e^{-h/l_1}\right) + s_2\left(1 - e^{-h/l_2}\right) ,$$
+#
+# where $h$ is the distance between two pixels (km), $\gamma$ the semivariance (mm$^2$), $n^2$ the nugget (mm$^2$),
+# $s_1$ and $s_2$ the sills of a short- and a long-range exponential term (mm$^2$), and $l_1$ and $l_2$ their ranges
+# (km). The dotted line is the nugget.
 
 # %%
-## [7]
 noise = pd.read_csv(noise_file).iloc[0]
 semivariogram = pd.read_csv(bins_file)
 params = (noise.nugget2_mm2, noise.sill_short_mm2, noise.range_short_km, noise.sill_long_mm2, noise.range_long_km)
@@ -348,13 +408,13 @@ print(f"{int(noise.n_pixels):,} pixels beyond {noise.mask_km:g} km; nugget {nois
 save(fig, "figS_semivariogram")
 
 # %% [markdown]
-# ## [8] Registry
+# ## 8. Registry
 #
-# The numbers quoted in the supplementary material, with the stats sidecar `10_model_sensitivity_stats.txt`.
+# The numbers quoted in the supplementary material are registered with a stats file of the csv provenance and the
+# printed tables.
 
 # %%
-## [8]
-stats = REG.sidecar("12_model_sensitivity", [f"{name}: {sorted(set(table.provenance))[0]}" for name, table in tables.items()]
+stats = REG.sidecar("10_model_sensitivity", [f"{name}: {sorted(set(table.provenance))[0]}" for name, table in tables.items()]
                     + [sensitivity_table.to_string(index=False), noise_test.to_string(index=False), buried_top.to_string(index=False),
                        gf_medians.to_string()])
 where = "SM"

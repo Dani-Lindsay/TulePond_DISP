@@ -1,49 +1,50 @@
 # %% [markdown]
-# # [1] 05 Validation against the USGS creepmeters, and the aperture choice
+# # 05 Validation against the USGS creepmeters, and the aperture choice
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: opera_disp_feb13. Run time: ~3 min (bootstraps ~2 min, ladder scoring ~1 min).
+# Environment: opera_disp_feb13. Run time: about 3 min (bootstraps about 2 min, ladder scoring about 1 min).
 # ```
 #
-# **What this notebook does.** It compares the InSAR creep with the five USGS
-# creepmeters over the same window, three ways (Methods M4):
+# **What this notebook does.**
 #
-# - **creepmeter**: the instrument's own rate (already fault-parallel)
-# - **crossing**: the InSAR fault-parallel creep rate from `fp_ts.csv` (notebook 03),
-#   a stack of up to 5 crossings next to the instrument, the narrow-aperture
-#   match to a point instrument
-# - **step**: the fault-crossing step in the fault-parallel velocity field
-#   (notebook 02 transects, +/-1000 m), which also includes any distributed
-#   deformation
+# 1. **Rates.** Compares the InSAR creep with the five USGS creepmeters
+#    (Langbein et al. 2024) over the InSAR window, three ways (Methods M4): the
+#    creepmeter's own rate (already fault-parallel); the crossing rate, from a
+#    stack of up to five `fp_ts.csv` crossings (notebook 03) next to the
+#    instrument; and the step in the fault-parallel velocity across the trace
+#    (notebook 02 transects, +/-1000 m), which also includes any distributed
+#    deformation. Each rate carries a moving-block bootstrap 95 % confidence
+#    interval, because the time series and the profiles are autocorrelated.
+# 2. **Agreement and noise floor.** Summarises the rate differences over the
+#    stations (bias, RMS, largest difference) and takes the noise floor of the
+#    InSAR stack from the detrended InSAR minus creepmeter series.
+# 3. **CFW1 across the Tule Pond windows.** Measures the slip that CFW1, at the
+#    south end of the Tule Pond section, recorded across each Tule Pond onset
+#    window of notebook 04, from the raw 10-minute record.
+# 4. **Creepmeter catalogue.** Checks every InSAR onset window (Tule Pond
+#    against CFW1, Oakland against COZ1) against the creepmeter event catalogue
+#    of Gittins et al. (2026), which is used for timing only. Tabulates the CFW1
+#    catalogue events near each Tule Pond window with the InSAR step at CFW1,
+#    and fits an InSAR step at each catalogued CFW1 event that falls in its own
+#    acquisition interval.
+# 5. **Transient amplitude.** Registers the fraction of the COZ1 creepmeter
+#    steps that the InSAR recovers, from notebook 04's joint-model amplitudes
+#    (`creep_events.csv`).
+# 6. **Aperture ladder.** Scores the cross-fault bins on which the choice of the
+#    30 to 150 m bin is based. The sweep outputs (`sweep_summary_mp5.csv` and one
+#    `fp_ts.csv` per bin) are precomputed inputs. They are fingerprinted in the
+#    registry and re-scored here on a fixed stack; the sweep itself is not re-run.
 #
-# Every rate uncertainty is a moving-block bootstrap 95% confidence interval
-# (blocks of ~1 yr in time, ~100 m in distance), because both the time series
-# and the profiles are autocorrelated. The detrended comparison gives the
-# transient noise floor.
-#
-# It then measures the slip recorded by CFW1 (at the south end of the Tule Pond
-# section) across each Tule Pond InSAR onset window, from the raw 10-minute
-# record, and checks every InSAR onset window (Tule Pond against CFW1, Oakland
-# against COZ1) against the published creepmeter event catalogue of Gittins et
-# al. (2026). The catalogue is used for timing only. The transient amplitude is
-# notebook 04's joint-model COZ1 steps against the creepmeter's, read from 04's
-# `creep_events.csv` and registered here as a recovery percentage.
-#
-# The second part scores the **aperture ladder**, the comparison of
-# cross-fault bins on which the choice of the 30 to 150 m bin is based. The
-# sweep outputs (`sweep_summary_mp5.csv` and one `fp_ts.csv` per bin) are
-# precomputed inputs: they are fingerprinted in the registry and re-scored here
-# on a fixed stack; the sweep itself is not re-run.
-#
-# **Inputs**: `03_creep_timeseries/fp_ts.csv`; the notebook 02 transects
+# **Inputs**: `03_creep_timeseries/fp_ts.csv` and the per-track
+# `creep_ts_LOS_<track>.csv`; the notebook 02 transects
 # (`fp_velocity_xfault_swath200m_dist1000m.csv`) and `fp_velocity_map.h5`;
 # `04_event_detection/creep_events.csv` (the onset windows `onset_lo` to
 # `onset_hi` of the Tule Pond and Oakland events, and the joint-model COZ1
-# amplitudes with the creepmeter steps) and `section_lengths.csv`; the
-# fault trace; the five creepmeter records; the digital catalogue of creepmeter
-# slip events of Gittins et al. (2026, Seismica 5(2), v1.0.0, ends December
-# 2023; `common_paths["gittins_catalogue"]`); the precomputed sweep (above).
+# amplitudes with the creepmeter steps), `event_fraction_by_crossing.csv` and
+# `section_lengths.csv`; the fault trace; the five creepmeter records; the
+# digital catalogue of creepmeter slip events of Gittins et al. (2026, v1.0.0,
+# `common_paths["gittins_catalogue"]`); the precomputed sweep.
 #
 # **Outputs** (`outputs/05_validation/`): `station_agreement.csv`,
 # `gittins_comparison.csv`, `cfw1_gittins_near_windows.csv` (every CFW1
@@ -56,17 +57,18 @@
 # stations, supplement, 600 dpi) and `figS_binning_ladder_coh0.9_mp5_stack4x0.4km`
 # (the aperture ladder, supplement).
 #
-# **What to check.** The per-station rates with their CIs ([8]) and the
-# ensemble agreement and noise floor (the detrended RMSE per station and its
-# mean, [10]); the CFW1 slip across each Tule Pond window beside the InSAR step
-# ([12]); the catalogue match of each InSAR window ([14]); the COZ1 amplitude
-# recovery, per event and the mean over the two large events (January 2019 and
-# February 2022, the two largest creepmeter steps, asserted; [14c]). Only the
-# listed creepmeter glitch days are dropped, and dropping them must leave the
-# catalogued creep steps unchanged (asserted, [14b]).
+# **What to check.** The per-station rates with their confidence intervals
+# (section 4) and the ensemble agreement and noise floor (section 5); the CFW1
+# slip across each Tule Pond window beside the InSAR step (section 6); the
+# catalogue match of each InSAR window (section 7); the COZ1 amplitude recovery,
+# per event and the mean over the two large events (section 10). Section 8
+# asserts that dropping the listed creepmeter glitch days leaves the catalogued
+# creep steps unchanged.
+
+# %% [markdown]
+# ## 1. Imports
 
 # %%
-# [2]
 import os
 import warnings
 
@@ -87,14 +89,13 @@ from matplotlib.lines import Line2D
 import pygmt
 
 # %% [markdown]
-# ## [3] Paths and parameters
+# ## 2. Paths and parameters
 #
-# Every number the notebook uses, with what it is. The aperture-ladder bins are
-# listed here so their precomputed sweep files can be fingerprinted before
-# anything is read.
+# The parameters of every step below, with units. The aperture-ladder bins are
+# listed here so that their precomputed sweep files are fingerprinted in the
+# registry before anything is read.
 
 # %%
-# [4]
 notebook = "05_validation"
 out_dir = paths_out[notebook]
 fig_dir = common_paths["fig_dir"]
@@ -107,22 +108,22 @@ block_m = 100.0       # moving-block length (m) for the spatial step bootstrap
 nboot = 2000          # bootstrap resamples
 seed = 0
 
-# the creepmeter glitch days (an explicit list, no automatic filter) and the widening of the Tule Pond windows for the
-# CFW1 catalogue table are shared parameters in TulePond_filepaths: creepmeter_glitches, gittins_window_pad_days
-step_check_mm = 0.1   # dropping the glitch days must leave every catalogued creep step on the daily record within this (asserted)
+# The creepmeter glitch days (an explicit list, no automatic filter) and the widening of the Tule Pond windows for the
+# CFW1 catalogue table are set in TulePond_filepaths (creepmeter_glitches, gittins_window_pad_days).
+step_check_mm = 0.1   # dropping the glitch days must change no catalogued creep step by this much or more (mm, asserted)
 
-# the InSAR stack at a creepmeter. fp_ts is indexed by latitude; these half-widths are km along the trace
-# (utils.lat_to_km_map of each row against the creepmeter's km)
-stack_km = 0.2        # half-window of fp_ts rows to stack at a creepmeter (matches the 400 m swath)
-stack_widen_km = 1.0  # widen to this if the 0.2 km window has < 2 usable rows (CPP1 at the frame edge)
-stack_max = 5         # cap the stack at the N nearest usable rows
+# The InSAR stack at a creepmeter. fp_ts is indexed by latitude; these half-widths are km along the trace
+# (utils.lat_to_km_map of each row against the creepmeter's km).
+stack_km = 0.2        # half-window of fp_ts rows to stack at a creepmeter (km; matches the 400 m swath)
+stack_widen_km = 1.0  # widened half-window (km) if fewer than 2 rows are usable (CPP1 at the frame edge)
+stack_max = 5         # at most this many usable rows, nearest first
 
 # the notebook 02 transects
 swath_m = 200.0       # swath half-width (m)
 max_dist_m = 1000.0   # transect half-length (m)
 
 # the map panel
-strike = 144.0             # page rotation of the map panel (mean strike, notebook 02); its extent is utils.fault_map_corners (as Fig 1A)
+strike = 144.0             # page rotation of the map panel (deg, mean strike, notebook 02); extent from utils.fault_map_corners (as Fig 1A)
 ref_patch_km = 5.0         # map display reference: CTM1-COZ1 patch, +/- this across the fault
 fp_clim = 5.0              # map colour range +/- this (mm/yr); the detrended panels span +/- 1.5 x this (mm)
 prof_ylim = 7.0            # cross-fault profile panels: y range +/- this (mm/yr)
@@ -137,40 +138,39 @@ gap_col_cm = 0.6           # between the data columns
 annot_offset_cm = 0.1      # B-F: the 'Velocity step' annotation's baseline sits this far above the bottom frame (and in from the right)
 legend_clearance_cm = 0.02 # G-K: the legend box's padding above and below its text (GMT's default 4p would lift the text above the annotation)
 legend_baseline_cm = 0.04  # G-K: GMT puts a legend line's baseline this far above the bottom of its line cell at 6.5p Helvetica
-                           # (measured on a 600 dpi test render: the descenders end on the cell bottom, ~0.04 cm below the baseline)
-# so the BOTTOM line of each G-K legend is on the baseline of the B-F annotation: box bottom = annotation baseline - padding - baseline height
+                           # (measured on a 600 dpi render: the descenders end on the cell bottom, about 0.04 cm below the baseline)
+# The bottom line of each G-K legend sits on the baseline of the B-F annotation: box bottom = annotation baseline - padding - baseline height.
 legend_offset_cm = annot_offset_cm - legend_clearance_cm - legend_baseline_cm
 assert legend_offset_cm >= 0, f"the G-K legend box would hang below the panel frame ({legend_offset_cm:.2f} cm)"
 cm_blue = "#0072B2"        # Okabe-Ito blue: the creepmeters
 insar_grey = "gray55"      # the InSAR
-onset_orange = "#E69F00"   # Okabe-Ito orange, long-dashed 0.9 pt: the InSAR onsets, the colour of Fig 3A's InSAR detection lines (notebook 11)
+onset_orange = "#E69F00"   # Okabe-Ito orange, long-dashed 0.9 pt: the InSAR onsets, as the InSAR detection lines of Fig 3A (notebook 11)
 
-# the step across an event window ([8], event_step): the creepmeter glitch check of [14b] and the aperture
-# ladder, which scores how much of the COZ1 creepmeter's step each aperture recovers (ladder panel D) across
-# the onset windows of the two large Oakland events of notebook 04 (read and selected in [12])
-collar_yr = 0.75      # inter-event collar each side of a window for the local trend
+# The step across an event window (event_step, section 4), used by the creepmeter glitch check (section 8) and by
+# the aperture ladder, which scores how much of the COZ1 creepmeter's step each bin recovers (ladder panel D) across
+# the onset windows of the two large Oakland events of notebook 04 (selected in section 6).
+collar_yr = 0.75      # inter-event collar each side of a window for the local trend (yr)
 min_collar_epochs = 5   # an event is scored only with this many epochs in each collar ...
 min_fit_epochs = 12     # ... and this many finite epochs in the two collars together
 
-# CFW1 vs the Tule Pond InSAR events (the instrument sits at the south end of the section). This notebook
-# measures the creepmeter slip across each InSAR onset window, from the raw record and aware of its gaps;
-# whether CFW1 (or COZ1) recorded a creep event is read from the published catalogue of Gittins et al.
-# (2026) in [14].
+# CFW1 against the Tule Pond InSAR events (the instrument sits at the south end of the section). The creepmeter
+# slip across each InSAR onset window is measured from the raw record, allowing for its gaps (section 6). Whether
+# CFW1 or COZ1 recorded a creep event is read from the catalogue of Gittins et al. (2026) (section 7).
 cfw_edge_hours = 12   # slip across a window = median of the samples in the last 12 h before it closes minus
                       # the median in the first 12 h after it opens (nearest available samples if those are in a gap)
 min_edge_samples = 6  # an edge needs this many 10-minute samples (1 h of data)
 edge_search_days = 5  # if the edge is in a gap, use the nearest data within this many days
-cfw1_insar_half_km = 0.2   # the InSAR step at CFW1 ([14b]): mean of 04's per-crossing steps within +/- this along the trace
-                           # of CFW1; its noise from the same mean at every COZ1 control event in independent windows of
+cfw1_insar_half_km = 0.2   # the InSAR step at CFW1 (section 8): mean of 04's per-crossing steps within +/- this (km) along the
+                           # trace of CFW1; its noise from the same mean at every COZ1 control event in independent windows of
                            # 2 x this along the Tule Pond section
-noise_n_trials = 40        # [14b2]: the noise of a single-interval step at CFW1 = std of the CFW1 mean step at this many trial epochs,
+noise_n_trials = 40        # section 9: the noise of a single-interval step at CFW1 = std of the CFW1 mean step at this many trial epochs,
 noise_seed = 20261005      # drawn with this seed from the acquisition intervals at least
 noise_clear_days = 60      # this far from every 04 onset window and every CFW1 catalogue event of at least
 noise_gittins_min_mm = 0.3 # this slip (start to end), and from both ends of the record
 
-# the ladder: bins scored on a fixed stack (4 rows within 0.4 km, no widening)
-# so every bin averages the same number of rows. The sweep was run at coherence
-# 0.9; the chosen bin is also compared at three coherence thresholds (below).
+# The ladder: bins scored on a fixed stack (4 rows within 0.4 km, no widening), so that every bin averages the
+# same number of rows. The sweep was run at coherence 0.9; the chosen bin is also compared at three coherence
+# thresholds (section 13). Bins are (inner, outer) distances from the trace in m.
 ladder_coh = 0.9
 ladder_stack_km = 0.4
 ladder_n_stack = 4
@@ -181,7 +181,7 @@ inner_edge = [(0, 150), (10, 150), (20, 150), (30, 150), (40, 150), (50, 150), (
 selected = (int(dist_min * 1000), int(dist_max * 1000))      # the bin the paper uses
 excluded_m = 1e3 * model_config.near_trace_cut_km   # m: the near-trace cut of the slip models (the DISP-S1 phase-linking half-width)
 
-# every bin once, in the order of the four sets (a bin already in an earlier set is not repeated)
+# the bins in the order of the four sets; a bin already in an earlier set is not repeated
 ladder_bins = []          # (set name, inner m, outer m)
 already_listed = []
 for set_name, bins in (("fixed", fixed_width), ("growing", growing), ("original", original), ("inner", inner_edge)):
@@ -222,23 +222,43 @@ REG.inputs(fp_ts_file, xf_file, map_file, lengths_file, events_file, event_steps
            *creepmeter_files, common_paths["gittins_catalogue"], sweep_summary_file, *sweep_fp_files)
 
 # %% [markdown]
-# ## [5] Load: the creep time series, the transects and the creepmeters
+# ## 3. Load the creep time series, the transects and the creepmeters
 #
-# The creepmeter records are daily means over the InSAR window with the
-# listed glitch days dropped (`utils.daily_creepmeter` with
-# `creepmeter_glitches` of TulePond_filepaths: instrument, first and last day,
-# reason; identified by inspection, no automatic filter). The InSAR "stack" at
-# a creepmeter is the mean of the nearest
-# usable `fp_ts` rows within 0.2 km along the trace (`utils.lat_to_km_map`), up
-# to 5 rows, matching the 400 m transect swath. Where fewer than 2 rows are
-# usable it widens to 1 km; the printout says which station did. Each
-# creepmeter's km is that of the trace vertex nearest its latitude, checked
-# against the vertex nearest it in distance (within 0.15 km, asserted).
+# The creepmeter records (Langbein et al. 2024) are daily means over the InSAR
+# window, with the listed glitch days dropped (`utils.daily_creepmeter` with
+# `creepmeter_glitches` of TulePond_filepaths, which gives the instrument, the
+# first and last day and the reason). The glitch days were identified by
+# inspection; no automatic filter is applied. The published creepmeter values
+# are fault-parallel slip.
+#
+# The InSAR stack at a creepmeter is the mean and standard deviation of the
+# nearest usable `fp_ts` rows,
+#
+# $$\bar d(t) = \frac{1}{N}\sum_{j=1}^{N} d_j(t), \qquad s(t) = \left[\frac{1}{N}\sum_{j=1}^{N} \big(d_j(t) - \bar d(t)\big)^2\right]^{1/2},$$
+#
+# where $d_j(t)$ is the fault-parallel creep of row $j$ at epoch $t$ (mm) and
+# $N$ is the number of rows with a finite value at $t$. The rows are those within 0.2 km along
+# the trace of the creepmeter (`utils.lat_to_km_map`) with more than 50 % finite
+# epochs, nearest first, at most $N = 5$, which matches the 400 m transect
+# swath. Where fewer than 2 rows are usable, the window widens to 1 km; the
+# printout names the station. Each creepmeter's km is that of the trace vertex
+# nearest its latitude, checked against the vertex nearest it in distance
+# (within 0.15 km, asserted).
 
 # %%
-# [6]
 def read_fp_ts(path):
-    """A fault-parallel time-series table (notebook 03 layout): latitude x decimal year, mm."""
+    """Read a fault-parallel time-series table in the notebook 03 layout.
+
+    Parameters
+    ----------
+    path : str
+        CSV file, rows latitude (deg), columns decimal year, values mm.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The table with float index and columns.
+    """
     table = pd.read_csv(path, index_col=0)
     table.columns = table.columns.astype(float)
     table.index = table.index.astype(float)
@@ -246,12 +266,31 @@ def read_fp_ts(path):
 
 
 def stack_insar(fp_table, lat, half_km=stack_km, widen_km=stack_widen_km, n_stack=stack_max, exact=False):
-    """Mean +/- std of the fp_ts rows nearest `lat` along the trace (rows with > 50% finite epochs, at most
-    n_stack, nearest first). The rows are taken within half_km along the trace (utils.lat_to_km_map of the
-    rows against that of `lat`); if fewer than 2 are usable the window widens to widen_km. `exact=True` (the
-    ladder) requires n_stack usable rows inside half_km and never widens, so every bin is scored on the same
+    """Mean and standard deviation of the fp_ts rows nearest a latitude along the trace.
+
+    Rows with more than 50 % finite epochs within half_km along the trace are used, nearest first, at most
+    n_stack. If fewer than 2 are usable, the window widens to widen_km. With exact=True (the ladder), n_stack
+    usable rows inside half_km are required and the window never widens, so every bin is scored on the same
     number of rows.
-    Returns (dates, mean, std, n_rows, half-width used in km), or None if no stack can be formed."""
+
+    Parameters
+    ----------
+    fp_table : pandas.DataFrame
+        Fault-parallel time series, rows latitude (deg), columns decimal year, values mm.
+    lat : float
+        Latitude of the creepmeter (deg).
+    half_km, widen_km : float
+        Half-window and widened half-window along the trace (km).
+    n_stack : int
+        Largest number of rows stacked.
+    exact : bool
+        Require n_stack rows inside half_km and never widen.
+
+    Returns
+    -------
+    tuple or None
+        (dates, mean, std, n_rows, half-width used in km), or None if no stack can be formed.
+    """
     n_epochs = fp_table.shape[1]
     row_km = to_km(fp_table.index.values)                       # fp_ts is indexed by latitude
     centre_km = float(to_km([lat])[0])
@@ -280,7 +319,7 @@ def stack_insar(fp_table, lat, half_km=stack_km, widen_km=stack_widen_km, n_stac
 
 to_km = utils.lat_to_km_map(common_paths["fault_profiles"])   # latitude -> km from Point Pinole along the trace
 trace = pd.read_csv(common_paths["fault_profiles"])
-for code, lat, lon, name in creepmeters:                         # the creepmeter's km by latitude = by distance to the trace
+for code, lat, lon, name in creepmeters:                         # check: the km by latitude matches the km by distance to the trace
     trace_east_m = (trace.ft_lon.values - lon) * 111190.0 * np.cos(np.radians(lat))
     trace_north_m = (trace.ft_lat.values - lat) * 111190.0
     nearest_vertex_km = (len(trace) - 1 - int(np.argmin(np.hypot(trace_east_m, trace_north_m)))) * 0.1
@@ -312,31 +351,110 @@ for code, lat, lon, name in creepmeters:
           f"InSAR stack of {n_rows} rows{widened_note}")
 
 # %% [markdown]
-# ## [7] Rates with bootstrap confidence intervals
+# ## 4. Rates with bootstrap confidence intervals
 #
-# Per station: the creepmeter rate, the crossing rate and the velocity-field
-# step, each with a moving-block bootstrap 95% CI (residuals resampled in
-# contiguous blocks, re-added to the fitted trend, refitted). Then the
-# cumulative misfit, and the detrended comparison: the correlation of the two
-# detrended series and the detrended RMSE (the noise floor of the stack). The one step measure across an event
-# window is defined here: `event_step` (a collar each side of the window, one
-# straight line for the inter-event trend plus an offset between the collars;
-# the offset is the step). It gives the ladder's ratio ([20]) and the
-# creepmeter glitch check ([14b]).
+# **Rates.** The creepmeter rate $v_{\rm cm}$ and the crossing rate
+# $v_{\rm cr}$ are least-squares straight lines through the daily creepmeter
+# record and through the finite epochs of the InSAR stack,
+#
+# $$y(t) = a + v\,t, \qquad \hat v = \frac{\sum_k (t_k - \bar t)(y_k - \bar y)}{\sum_k (t_k - \bar t)^2},$$
+#
+# where $y_k$ is the cumulative creep at time $t_k$ (mm, decimal years),
+# $\bar t$ and $\bar y$ are their means, $a$ is the intercept (mm) and $v$ the
+# rate (mm/yr).
+#
+# **Velocity step.** The step across the trace in the notebook 02 transect of
+# each creepmeter is fitted as one straight line with an offset at the trace,
+#
+# $$v(x) = c_0 + g\,x + v_{\rm st}\,H(x),$$
+#
+# where $v(x)$ is the fault-parallel velocity (mm/yr) of a pixel at signed
+# distance $x$ from the trace (m, within 1000 m and the 200 m swath),
+# $c_0$ the intercept (mm/yr), $g$ the velocity gradient (mm/yr per m),
+# $H(x) = 1$ for $x > 0$ and 0 otherwise, and $v_{\rm st}$ the
+# fault-crossing creep rate (mm/yr).
+#
+# **Moving-block bootstrap** [citation needed]. The residuals $r_k = y_k - \hat y_k$
+# of each fit are resampled in $\lceil n/L \rceil$ contiguous blocks of $L$
+# samples, each starting at a uniformly drawn index, joined and cut to the $n$
+# samples. The resampled residuals $r^*$ are added to the fitted model,
+# $y^* = \hat y + r^*$, and the model refitted. This is repeated $B = 2000$
+# times (seed 0), and the 95 % confidence interval is the 2.5th to 97.5th
+# percentile of the $B$ refitted rates. $L$ is the number of samples in
+# one year in time (at least 2), and the number of pixels in 100 m along the
+# sorted profile (at least 3), because both the time series and the profiles
+# are autocorrelated. Where a 1-sigma is needed, it is taken from the 95 %
+# interval as if it were Gaussian, $\sigma = (q_{97.5} - q_{2.5}) / 3.92$.
+#
+# **Differences.** Per station, $\Delta_{\rm cross} = v_{\rm cr} - v_{\rm cm}$,
+# $\Delta_{\rm step} = v_{\rm st} - v_{\rm cm}$ and the distributed part
+# $v_{\rm st} - v_{\rm cr}$ (mm/yr), with 1-sigma
+# $(\sigma_{\rm InSAR}^2 + \sigma_{\rm cm}^2)^{1/2}$.
+#
+# **Time series.** The creepmeter record $c(t)$ is interpolated linearly to the
+# InSAR epochs. The cumulative misfit is $m_k = \bar d(t_k) - c(t_k)$ and its RMSE
+# is $\left(\frac{1}{n}\sum_k m_k^2\right)^{1/2}$ (mm). For the detrended
+# comparison, each series has its own least-squares straight line removed,
+# $\tilde d_k$ and $\tilde c_k$ (mm). The detrended correlation is the Pearson
+# $r$ of $\tilde d$ and $\tilde c$, and the detrended RMSE,
+#
+# $$E_{\rm det} = \left[\frac{1}{n}\sum_{k=1}^{n} (\tilde d_k - \tilde c_k)^2\right]^{1/2},$$
+#
+# is the noise floor of the stack (mm), where $n$ is the number of epochs at
+# which both are finite.
+#
+# **Step across an event window.** `event_step` measures the slip across one
+# window $[t_s, t_e]$ against the local inter-event trend. The window edges are
+# the acquisitions either side of the step (`onset_lo` and `onset_hi` of
+# notebook 04), so the edge epochs belong to the collars. In the collars,
+# $t_s - \tau \le t \le t_s$ (pre) and $t_e \le t \le t_e + \tau$ (post),
+# the model
+#
+# $$y(t) = a + b\,(t - \bar t) + \Delta\,P(t)$$
+#
+# is fitted by least squares, where $y$ is cumulative slip (mm), $b$ the common
+# inter-event rate (mm/yr), $\bar t$ the mean time of the collar epochs, $P(t) = 1$
+# in the post collar and 0 in the pre collar, $\tau = 0.75$ yr, and $\Delta$ the
+# step (mm). An event is not scored when a collar has fewer than 5 epochs or the
+# two collars together fewer than 12 finite epochs. The step gives the ladder's
+# recovered fraction (section 13) and the creepmeter glitch check (section 8).
 
 # %%
-# [8]
 rng = np.random.default_rng(seed)
 
 
 def slope(dates, values):
-    """OLS slope in closed form, so the bootstrap refit is fast."""
+    """Least-squares slope of values against dates, in closed form so the bootstrap refit is fast.
+
+    Parameters
+    ----------
+    dates, values : numpy.ndarray
+        Times (decimal years) and values (mm).
+
+    Returns
+    -------
+    float
+        Slope (mm/yr).
+    """
     dates_centred = dates - dates.mean()
     return float(dates_centred @ (values - values.mean()) / (dates_centred @ dates_centred))
 
 
 def block_indices(n_samples, block_len):
-    """One moving-block resample: random contiguous blocks of block_len indices, joined and cut to n_samples."""
+    """Draw one moving-block resample of sample indices.
+
+    Parameters
+    ----------
+    n_samples : int
+        Length of the series.
+    block_len : int
+        Number of contiguous samples per block.
+
+    Returns
+    -------
+    numpy.ndarray
+        Indices of ceil(n_samples / block_len) random contiguous blocks, joined and cut to n_samples.
+    """
     n_blocks = int(np.ceil(n_samples / block_len))
     starts = rng.integers(0, n_samples - block_len + 1, size=n_blocks)
     blocks = []
@@ -346,9 +464,23 @@ def block_indices(n_samples, block_len):
 
 
 def block_bootstrap_slope(dates, values, block_len):
-    """Rate (slope of a straight line) with a moving-block bootstrap 95% CI: the residuals about the line
-    are resampled in blocks of block_len samples, re-added to the line and refitted nboot times.
-    Returns (rate, ci_lo, ci_hi)."""
+    """Rate of a straight line with a moving-block bootstrap 95 % confidence interval.
+
+    The residuals about the line are resampled in blocks of block_len samples, added back to the line and
+    refitted nboot times.
+
+    Parameters
+    ----------
+    dates, values : array_like
+        Times (decimal years) and cumulative creep (mm).
+    block_len : int
+        Block length in samples (bounded to 2 to len(dates)).
+
+    Returns
+    -------
+    tuple of float
+        (rate, ci_lo, ci_hi), mm/yr.
+    """
     dates = np.asarray(dates, float)
     values = np.asarray(values, float)
     n_samples = len(dates)
@@ -363,16 +495,45 @@ def block_bootstrap_slope(dates, values, block_len):
 
 
 def step_fit(dist_m, velocity):
-    """velocity = intercept + slope * dist + step * [dist > 0]: one straight line across the fault with a
-    step at the trace. The step is the fault-crossing creep rate. Returns (intercept, slope, step)."""
+    """Fit one straight line across the fault with a step at the trace.
+
+    velocity = intercept + gradient * dist + step * H(dist), with H = 1 for dist > 0. The step is the
+    fault-crossing creep rate.
+
+    Parameters
+    ----------
+    dist_m : numpy.ndarray
+        Signed distance from the trace (m).
+    velocity : numpy.ndarray
+        Fault-parallel velocity (mm/yr).
+
+    Returns
+    -------
+    tuple of float
+        (intercept mm/yr, gradient mm/yr per m, step mm/yr).
+    """
     design_matrix = np.column_stack([np.ones_like(dist_m), dist_m, (dist_m > 0).astype(float)])
     intercept, gradient, step = np.linalg.lstsq(design_matrix, velocity, rcond=None)[0]
     return intercept, gradient, step
 
 
 def block_bootstrap_step(dist_m, velocity):
-    """Velocity step at the trace with a moving-block bootstrap 95% CI: residuals resampled in blocks of
-    ~block_m along the profile. Returns (step, ci_lo, ci_hi)."""
+    """Velocity step at the trace with a moving-block bootstrap 95 % confidence interval.
+
+    The residuals are resampled in blocks of about block_m along the distance-sorted profile.
+
+    Parameters
+    ----------
+    dist_m : numpy.ndarray
+        Signed distance from the trace (m).
+    velocity : numpy.ndarray
+        Fault-parallel velocity (mm/yr).
+
+    Returns
+    -------
+    tuple of float
+        (step, ci_lo, ci_hi), mm/yr.
+    """
     order = np.argsort(dist_m)
     dist_m = dist_m[order]
     velocity = velocity[order]
@@ -388,18 +549,44 @@ def block_bootstrap_step(dist_m, velocity):
 
 
 def ci95_to_sigma(ci_lo, ci_hi):
-    """1-sigma from a 95% interval, assuming it is Gaussian: (hi - lo) / (2 x 1.96)."""
+    """1-sigma from a 95 % interval, assuming it is Gaussian: (hi - lo) / (2 x 1.96).
+
+    Parameters
+    ----------
+    ci_lo, ci_hi : float
+        Bounds of the 95 % interval.
+
+    Returns
+    -------
+    float
+        The 1-sigma, in the units of the bounds.
+    """
     return (ci_hi - ci_lo) / 3.92
 
 
 def event_step(dates, cumulative, window_start, window_end):
-    """Slip across one event window against the local inter-event trend, the one step method of this
-    notebook: in the collars (collar_yr each side, never inside the window) one straight line (the trend,
-    a common slope) plus an offset that applies after the window are fitted together; the offset is the
-    step. The window edges are the acquisitions either side of the step (04's
-    onset_lo and onset_hi), so the edge epochs belong to the collars: window_start is the last pre-event
-    sample and window_end the first post-event one. Returns NaN (the event is not scored) when a collar has
-    fewer than min_collar_epochs epochs or the two together fewer than min_fit_epochs finite epochs."""
+    """Slip across one event window against the local inter-event trend.
+
+    In the collars (collar_yr each side, never inside the window), one straight line with a common slope
+    and an offset that applies after the window are fitted together; the offset is the step. The window
+    edges are the acquisitions either side of the step (04's onset_lo and onset_hi), so the edge epochs
+    belong to the collars.
+
+    Parameters
+    ----------
+    dates : numpy.ndarray
+        Times (decimal years).
+    cumulative : numpy.ndarray
+        Cumulative slip (mm).
+    window_start, window_end : float
+        Last pre-event and first post-event sample (decimal years).
+
+    Returns
+    -------
+    float
+        The step (mm), or NaN (not scored) when a collar has fewer than min_collar_epochs epochs or the two
+        collars together fewer than min_fit_epochs finite epochs.
+    """
     pre = (dates >= window_start - collar_yr) & (dates <= window_start)
     post = (dates >= window_end) & (dates <= window_end + collar_yr)
     if pre.sum() < min_collar_epochs or post.sum() < min_collar_epochs:
@@ -412,7 +599,7 @@ def event_step(dates, cumulative, window_start, window_end):
 
 
 rows = []
-misfits = {}                              # code -> (InSAR epochs, InSAR minus creepmeter on them, mm); COZ1's is used in [14c]
+misfits = {}                              # code -> (InSAR epochs, InSAR minus creepmeter on them, mm); COZ1's is used in section 10
 for code, lat, lon, name in creepmeters:
     cm_dates, cm_slip = cm_data[code]
     cm_step_yr = np.median(np.diff(cm_dates))
@@ -447,20 +634,39 @@ stations = pd.DataFrame(rows).set_index("code")
 stations.to_csv(os.path.join(out_dir, "station_agreement.csv"))
 
 # %% [markdown]
-# ## [9] Ensemble agreement and the noise floor
+# ## 5. Ensemble agreement and the noise floor
 #
-# Agreement is reported three ways: rate residual statistics (bias, RMS,
-# maximum absolute difference), the same excluding COZ1, and the detrended
-# RMSE. Two noise-floor definitions are printed side by side;
-# the mean detrended RMSE over the five stations is registered as the noise
-# floor (`05_noise_floor_det_rmse_mm`).
+# For one InSAR measure (crossing or velocity step), the differences
+# $\Delta_i$ from section 4 at the $N$ stations give
+#
+# $$\text{bias} = \frac{1}{N}\sum_{i=1}^{N}\Delta_i, \qquad \text{RMS} = \left[\frac{1}{N}\sum_{i=1}^{N}\Delta_i^2\right]^{1/2}, \qquad \max_i |\Delta_i|,$$
+#
+# all in mm/yr. They are computed for the crossing rate at all five stations and
+# without COZ1, and for the velocity step at all five stations. The noise floor
+# registered (`05_noise_floor_det_rmse_mm`) is the mean of the detrended RMSE
+# $E_{\rm det}$ over the five stations. A second definition is registered beside
+# it: the median standard deviation of the detrended InSAR stack at the stations
+# whose detrended creepmeter record has a standard deviation below 1 mm.
 
 # %%
-# [10]
 def agreement(table, key):
-    """Agreement of one InSAR measure with the creepmeters over the stations in `table`, from the differences
-    delta = InSAR - creepmeter (column d_<key>): bias = mean(delta); RMS = sqrt(mean(delta^2));
-    maximum |delta|."""
+    """Agreement of one InSAR measure with the creepmeters over the stations in a table.
+
+    From the differences delta = InSAR - creepmeter (column d_<key>): bias = mean(delta),
+    RMS = sqrt(mean(delta^2)) and the largest |delta|.
+
+    Parameters
+    ----------
+    table : pandas.DataFrame
+        The station table of section 4.
+    key : str
+        'cross' or 'step'.
+
+    Returns
+    -------
+    dict
+        bias, rms and maxabs (mm/yr).
+    """
     delta = table[f"d_{key}"].values
     bias = np.mean(delta)
     return dict(bias=bias, rms=np.sqrt(np.mean(delta ** 2)), maxabs=np.max(np.abs(delta)))
@@ -468,7 +674,7 @@ def agreement(table, key):
 
 agreement_stats = {"cross": agreement(stations, "cross"), "step": agreement(stations, "step"),
                    "cross_excl_coz1": agreement(stations.drop("COZ1"), "cross")}
-steady = stations[stations.det_std_cm < 1.0]                # stations whose creepmeter transient is sub-mm
+steady = stations[stations.det_std_cm < 1.0]                # stations whose detrended creepmeter std is below 1 mm
 floor_steady_std = float(steady.det_std_ins.median())       # median detrended InSAR std at those stations
 floor_rmse = float(stations.det_rmse.mean())
 
@@ -504,28 +710,33 @@ stats_lines += ["", "NOISE FLOOR",
 print("\n".join(stats_lines))
 
 # %% [markdown]
-# ## [11] CFW1: the slip across each Tule Pond InSAR onset window
+# ## 6. CFW1: the slip across each Tule Pond InSAR onset window
 #
 # CFW1 sits at the south end of the Tule Pond section. For each of the five
-# InSAR onset windows of notebook 04 (from the last acquisition before the
-# event to the first one after it), the slip the creepmeter recorded across the
-# window is measured from the raw 10-minute record: the median of the first 12
-# h after the window opens subtracted from the median of the last 12 h before
-# it closes (if an edge falls in a data gap, the nearest 12 h of data within 5
-# d on that side are used, and the span actually measured is printed). The
-# expected slip is CFW1's own long-term rate times that span; the data column
-# is the fraction of hours inside the window with any sample.
+# InSAR onset windows $[t_s, t_e]$ of notebook 04 (from the last acquisition
+# before the event to the first one after it), the slip the creepmeter recorded
+# across the window is measured from the raw 10-minute record,
+#
+# $$S_{\rm win} = \operatorname{med}\{c(t) : t_e - h < t \le t_e\} - \operatorname{med}\{c(t) : t_s \le t < t_s + h\},$$
+#
+# where $c(t)$ is the CFW1 slip (mm) at sample time $t$ and $h = 12$ h. An edge
+# needs at least 6 samples (1 h of data). If an edge falls in a data gap, the
+# nearest 12 h of data on that side within 5 d are used instead. The span
+# actually measured, $\tilde t_e - \tilde t_s$, is the difference of the
+# median times of the two sets of samples (printed in days). The expected slip
+# is $E = v_{\rm CFW1}(\tilde t_e - \tilde t_s)$, where $v_{\rm CFW1}$ is
+# the CFW1 rate over the InSAR window from section 4 (mm/yr). The data column
+# is the percentage of whole hours inside the window with at least one sample.
 #
 # The Oakland (COZ1) control events are read here too: all of them, labelled
 # by `onset_day`, and the two large ones, the two with the largest creepmeter
-# steps (`creepmeter_step_mm`), asserted to be the January 2019 and February
-# 2022 events (`coz1_large_events_yr`, each inside its onset window +/-
-# `coz1_large_tol_days`). The two large events are used for the mean amplitude
-# recovery ([14c]) and the ladder's step score ([20]); the noise estimate of the
-# CFW1 step ([14b]) uses every COZ1 event.
+# steps (`creepmeter_step_mm`). These are asserted to be the January 2019 and
+# February 2022 events (`coz1_large_events_yr`, each inside its onset window
+# +/- `coz1_large_tol_days`). The two large events give the mean amplitude
+# recovery (section 10) and the ladder's step score (section 13); the noise of
+# the CFW1 step (section 8) uses every COZ1 event.
 
 # %%
-# [12]
 events_all = pd.read_csv(events_file)
 events_coz1 = events_all.query("segment == 'COZ1'")
 events_tulepond = events_all.query("segment == 'TULEPOND'")
@@ -552,13 +763,27 @@ cfw_raw = utils.read_creepmeter_10min_raw(utils.creepmeter_file(common_paths["cr
 cfw_dates = cfw_raw.decimal_year.values
 cfw_slip = cfw_raw.slip_mm.values
 one_day_yr = 1 / 365.25
-cfw_rate = stations.loc["CFW1", "cm_rate"]           # the instrument's own long-term rate over the InSAR window, mm/yr
+cfw_rate = stations.loc["CFW1", "cm_rate"]           # the instrument's own rate over the InSAR window, mm/yr
 
 
 def cfw_level(t_edge, side):
-    """Median CFW1 slip in the cfw_edge_hours after (side=+1) or before (side=-1) t_edge. If that span has
-    fewer than min_edge_samples samples (the edge is in a gap), the nearest cfw_edge_hours of data on that
-    side within edge_search_days are used instead. Returns (level mm, median time of the samples used)."""
+    """Median CFW1 slip in the cfw_edge_hours after or before a window edge.
+
+    If that span has fewer than min_edge_samples samples (the edge is in a gap), the nearest cfw_edge_hours
+    of data on that side within edge_search_days are used instead.
+
+    Parameters
+    ----------
+    t_edge : float
+        The window edge (decimal years).
+    side : int
+        +1 for the samples after t_edge, -1 for those before it.
+
+    Returns
+    -------
+    tuple of float
+        (level mm, median time of the samples used in decimal years).
+    """
     edge_span_yr = cfw_edge_hours / 24 * one_day_yr
     if side > 0:
         in_span = (cfw_dates >= t_edge) & (cfw_dates < t_edge + edge_span_yr)
@@ -604,29 +829,44 @@ print("\n".join(cfw_lines))
 stats_lines += [""] + cfw_lines                                   # into the stats file with the rest
 
 # %% [markdown]
-# ## [13] The InSAR onset windows against the published creepmeter catalogue
+# ## 7. The InSAR onset windows against the creepmeter catalogue
 #
-# Gittins et al. (2026) list every aseismic slip event the USGS creepmeters
-# recorded up to December 2023 (digital catalogue v1.0.0). For each InSAR onset
-# window of notebook 04, Tule Pond against CFW1 and Oakland against COZ1, this
-# cell lists the catalogued events at that creepmeter that start inside the
-# window or overlap it (start on or before the window end and end on or after
-# the window start): start, end, displacement, duration and event type. The
+# Gittins et al. (2026) list the aseismic slip events recorded by the USGS
+# creepmeters (digital catalogue v1.0.0). For each InSAR onset window of
+# notebook 04, Tule Pond against CFW1 and Oakland against COZ1, the catalogued
+# events at that creepmeter that start inside the window or overlap it are
+# listed with their start, end, displacement, duration and event type. The
 # InSAR dates carry the acquisition day but not the time of day, so a window
-# runs from the start of the pre-event acquisition day to the end of the
-# post-event acquisition day. A window that ends after the catalogue's last
-# event is marked "not covered" and is not counted. Written to `gittins_comparison.csv`.
+# $W = [D_s, D_e)$ runs from the start of the pre-event acquisition day $D_s$
+# to the end of the post-event acquisition day ($D_e$ is the following
+# midnight). A catalogued event with start $T_1$ and end $T_2$ starts inside the
+# window when $D_s \le T_1 < D_e$, and overlaps it when $T_1 < D_e$ and
+# $T_2 \ge D_s$. A window that ends after the last event of the catalogue (any
+# creepmeter) is marked "not covered" and is not counted. The table is written to
+# `gittins_comparison.csv`.
 
 # %%
-# [14]
 gittins = pd.read_csv(common_paths["gittins_catalogue"], parse_dates=["Start Time", "End Time"])
 catalogue_end = gittins["End Time"].max()                     # the end of the last catalogued event, any creepmeter
 print(f"Gittins et al. (2026) catalogue: {len(gittins)} events, the last one ends {catalogue_end}")
 
 
 def acquisition_day(decimal_year):
-    """The calendar day of an acquisition from its decimal year (03 and 04 write the acquisition date at
-    midnight, to 4 decimals, so the nearest midnight is the day)."""
+    """Calendar day of an acquisition from its decimal year.
+
+    Notebooks 03 and 04 write the acquisition date at midnight to 4 decimals, so the nearest midnight is
+    the day.
+
+    Parameters
+    ----------
+    decimal_year : float
+        Acquisition time (decimal years).
+
+    Returns
+    -------
+    pandas.Timestamp
+        The acquisition day at midnight.
+    """
     return (pd.Timestamp(utils.decimal_year_to_date(decimal_year)) + pd.Timedelta(hours=12)).normalize()
 
 
@@ -681,47 +921,59 @@ print("\n".join(gittins_lines))
 stats_lines += [""] + gittins_lines                               # into the stats file with the rest
 
 # %% [markdown]
-# ## [14b] The CFW1 catalogue around the Tule Pond windows, its background rate, and the glitch check
+# ## 8. The CFW1 catalogue around the Tule Pond windows, its background rate, and the glitch check
 #
 # The catalogue is used for timing only (the transient amplitude is notebook
-# 04's, [14c]) and is not drawn on Fig S validation; it is tabulated in the
-# text. The table's source is
-# `cfw1_gittins_near_windows.csv`: every CFW1 catalogue event, of any type,
-# whose start-to-end overlaps a Tule Pond InSAR onset window widened by
-# `gittins_window_pad_days` (7 d) on each side, with the window (first and
-# last acquisition day, as in [14]), the event's start and end (UTC, as
-# listed in the catalogue), slip and type, its timing relative to the window
-# in words (e.g. "inside", "5 d after", "starts 6 d before, ends inside"; in
-# calendar days between dates, so the dates-only table reproduces them), and
-# the slip CFW1 recorded across the window ([12]). A window that ends after CFW1's last catalogued event is
-# listed once, as not covered.
+# 04's, section 10) and is not drawn on Fig S validation; it is tabulated in the
+# text. The source of that table is `cfw1_gittins_near_windows.csv`. It holds
+# every CFW1 catalogue event, of any type, whose start-to-end span overlaps a
+# Tule Pond InSAR onset window widened by `gittins_window_pad_days` (7 d) on
+# each side. Each row gives the window (first and last acquisition day, as in
+# section 7), the event's start and end (UTC, as listed in the catalogue), its
+# slip and type, the slip CFW1 recorded across the window (section 6), and the
+# timing of the event relative to the window in words ("inside", "5 d after",
+# "starts 6 d before, ends inside"). The timing is counted in calendar days
+# between dates, so that the dates-only table reproduces it. A window that ends
+# after the last catalogued CFW1 event is listed once, as not covered.
 #
-# The InSAR at CFW1, for the same table: the fault-parallel step of each Tule
-# Pond event at CFW1 is the mean of notebook 04's per-crossing joint-model
-# steps (`event_fraction_by_crossing.csv`, `amp_<onset_lo>`, the fit behind
-# Fig 1C; read, not recomputed) over the crossings within
-# `cfw1_insar_half_km` (0.2 km) along the trace of CFW1 (along-trace km from
-# `utils.lat_to_km_map`; CFW1's km from its coordinates). Its 1-sigma is the
-# noise of the same estimator: the standard deviation of the same +/-0.2 km
-# mean for every Oakland (COZ1) control event, taken as null events for the
-# Tule Pond section, over independent 0.4 km windows along
-# the measured Tule Pond creep extent (`section_lengths.csv`); one sigma for
-# all five events (the sigma from the two large COZ1 events alone is printed
-# beside it).
+# **InSAR step at CFW1.** For the same table, the fault-parallel step of Tule
+# Pond event $i$ at CFW1 is the mean of notebook 04's per-crossing joint-model
+# steps (`event_fraction_by_crossing.csv`, columns `amp_<onset_lo>`, the fit
+# behind Fig 1C, read and not recomputed),
 #
-# Background rate: the CFW1 catalogue rate from the first InSAR acquisition
-# day to the end of CFW1's last
-# catalogued event (all event types: count, events per year, median slip).
+# $$\bar A_i = \frac{1}{N}\sum_{j\,:\,|x_j - x_{\rm CFW1}| \le w} A_{ij},$$
 #
-# QC: across every catalogued event inside the InSAR window at each of the
-# five creepmeters, the creepmeter step (`event_step`, [8]; the window runs
-# from the last InSAR acquisition on a day before the event starts to the
-# first one on a day after it ends) on the daily record with the listed
-# glitch days dropped must agree with the step on the record as read within
-# `step_check_mm`.
+# where $A_{ij}$ is the step of event $i$ at crossing $j$ (mm), $x_j$ and
+# $x_{\rm CFW1}$ are distances along the trace from Point Pinole (km, from
+# `utils.lat_to_km_map`), $w$ = `cfw1_insar_half_km` = 0.2 km, and $N \ge 3$ is
+# the number of crossings with a finite step. Its 1-sigma is the noise of the
+# same estimator. The Oakland (COZ1) control events are taken as null events for
+# the Tule Pond section, and the same mean of their steps is formed in
+# independent windows of width $2w$ = 0.4 km centred along the measured Tule
+# Pond creep extent (`section_lengths.csv`), each with at least 3 finite
+# crossings. The sample standard deviation of these null means,
+#
+# $$\sigma_{\rm CFW1} = \left[\frac{1}{M-1}\sum_{m=1}^{M} (\bar A_m - \langle \bar A \rangle)^2\right]^{1/2},$$
+#
+# where $\bar A_m$ is the mean in window $m$ for one COZ1 event (mm), $M$ the
+# number of event-window pairs (at least 10) and $\langle \bar A \rangle$ their
+# mean, is one sigma for all five events. The sigma from the two large COZ1
+# events alone, and the robust sigma $1.4826\,\operatorname{med}|\bar A_m - \operatorname{med}\bar A_m|$
+# [citation needed], are printed beside it.
+#
+# **Background rate.** The CFW1 catalogue rate is the number of catalogued
+# events (all types) that start from the first InSAR acquisition day onward,
+# divided by the time from that day to the end of the last catalogued CFW1
+# event (events per year). Their median slip is also given.
+#
+# **Glitch check.** For every catalogued event inside the InSAR window at each
+# of the five creepmeters, the creepmeter step $\Delta$ (`event_step`,
+# section 4) is measured over the window from the last InSAR acquisition on a
+# day before the event starts to the first one on a day after it ends. The step
+# on the daily record with the listed glitch days dropped must agree with the
+# step on the daily record as read within `step_check_mm` (asserted).
 
 # %%
-# [14b]
 first_day = acquisition_day(t0)
 last_day = acquisition_day(t1)
 pad = pd.Timedelta(days=gittins_window_pad_days)
@@ -731,11 +983,26 @@ cfw1_end = cfw1_catalogue["End Time"].max()                   # the end of CFW1'
 
 
 def timing_text(start, end, first_day, last_day):
-    """Where a catalogued event falls relative to an InSAR window, in words, counted in calendar days between
-    dates so a reader of the dates-only table can reproduce it: days after = event start
-    date - window last day; days before = window first day - event start date; 'inside' when the start date
-    is within [first day, last day] and the end date is not after the last day; 'starts N d before, ends
-    inside' and 'starts inside, ends N d after' for the partial overlaps (N from the start or end date)."""
+    """Describe in words where a catalogued event falls relative to an InSAR window.
+
+    Counted in calendar days between dates, so that a reader of the dates-only table can reproduce it:
+    days after = event start date - window last day; days before = window first day - event end date;
+    'inside' when the start date is within [first day, last day] and the end date is not after the last day;
+    'starts N d before, ends inside' and 'starts inside, ends N d after' for the partial overlaps (N from the
+    start or end date).
+
+    Parameters
+    ----------
+    start, end : pandas.Timestamp
+        Start and end of the catalogued event.
+    first_day, last_day : pandas.Timestamp
+        First and last acquisition day of the window.
+
+    Returns
+    -------
+    str
+        The timing in words.
+    """
     start_date = start.normalize()
     end_date = end.normalize()
     if start_date > last_day:
@@ -752,7 +1019,7 @@ def timing_text(start, end, first_day, last_day):
 
 
 # the InSAR at CFW1: 04's per-crossing joint-model steps within +/- cfw1_insar_half_km along the trace of CFW1
-# (to_km and trace from [6])
+# (to_km and trace from section 3)
 event_steps = pd.read_csv(event_steps_file)
 crossing_km = to_km(event_steps.lat.values)
 assert np.allclose(crossing_km, event_steps.km.values, atol=0.051), "04's km column disagrees with lat_to_km_map"
@@ -767,7 +1034,18 @@ near_cfw1 = np.abs(crossing_km - cfw1_km) <= cfw1_insar_half_km + 1e-6
 
 
 def step_column(onset_lo):
-    """04's per-crossing step column of the event at this step epoch (named by onset_lo, 3 decimals)."""
+    """Name of notebook 04's per-crossing step column of one event.
+
+    Parameters
+    ----------
+    onset_lo : float
+        The step epoch of the event (decimal years); the column is named by it to 3 decimals.
+
+    Returns
+    -------
+    str
+        The column name, asserted to exist.
+    """
     column = f"amp_{onset_lo:.3f}"
     assert column in event_steps.columns, f"no per-crossing step {column} in {event_steps_file}"
     return column
@@ -776,7 +1054,7 @@ def step_column(onset_lo):
 # the noise of a +/- cfw1_insar_half_km mean: every COZ1 control event over independent windows of the Tule Pond extent
 tulepond_extent = pd.read_csv(lengths_file).set_index("name").loc["tulepond_creep_length"]
 null_means = []
-null_is_large = []                        # the window's COZ1 event is one of the two large ones (for the comparison printed)
+null_is_large = []                        # whether the window's COZ1 event is one of the two large ones (printed comparison)
 window_centres = np.arange(tulepond_extent.km_lo + cfw1_insar_half_km, tulepond_extent.km_hi - cfw1_insar_half_km + 1e-6, 2 * cfw1_insar_half_km)
 for event in events_coz1.itertuples():
     steps = event_steps[step_column(event.onset_lo)].values
@@ -812,7 +1090,7 @@ for event in events_tulepond.itertuples():
     window_start = acquisition_day(event.onset_lo)                          # start of the pre-event acquisition day
     window_end = acquisition_day(event.onset_hi) + one_day                  # end of the post-event acquisition day (exclusive)
     window_slip = cfw_windows.loc[np.isclose(cfw_windows.onset_lo, event.onset_lo, rtol=0, atol=1e-6), "slip_win_mm"]
-    assert len(window_slip) == 1, f"window {event.onset_lo}: no single CFW1 window slip in [12]"
+    assert len(window_slip) == 1, f"window {event.onset_lo}: no single CFW1 window slip in section 6"
     row_base = dict(event_year=int(event.onset_lo), window_first_day=window_start.date(), window_last_day=(window_end - one_day).date(),
                     cfw1_window_slip_mm=round(float(window_slip.iloc[0]), 2),
                     insar_step_mm=round(cfw1_insar_steps[int(event.onset_lo)][0], 2))
@@ -831,8 +1109,8 @@ for event in events_tulepond.itertuples():
                               slip_mm=round(float(catalogued["Displacement, mm"]), 2), event_type=catalogued["Event type"], timing=timing))
         near_lines.append(f"{window_text}: {catalogued['Event_id']} {catalogued['Start Time']} to {catalogued['End Time']}, "
                           f"{catalogued['Displacement, mm']:.2f} mm, {catalogued['Event type']}: {timing}")
-    near_lines.append(f"{window_text}: CFW1 slip across the window {row_base['cfw1_window_slip_mm']:.2f} mm ([12])")
-cfw1_near = pd.DataFrame(near_rows)                               # written in [14b2], with the InSAR step at each Gittins event
+    near_lines.append(f"{window_text}: CFW1 slip across the window {row_base['cfw1_window_slip_mm']:.2f} mm (section 6)")
+cfw1_near = pd.DataFrame(near_rows)                               # written in section 9, with the InSAR step at each catalogued event
 
 # the CFW1 background rate: every catalogued event (all types) starting from the first InSAR acquisition day to CFW1's catalogue end
 background = cfw1_catalogue[cfw1_catalogue["Start Time"] >= first_day]
@@ -846,7 +1124,7 @@ for event_type, typed in background.groupby("Event type"):
 near_lines.append(f"  CFW1 background {first_day.date()} to {cfw1_end.date()} ({background_span_yr:.2f} yr): {len(background)} events "
                   f"({', '.join(type_counts)}), {cfw1_rate_per_yr:.1f} per yr, median slip {cfw1_median_slip_mm:.2f} mm")
 
-# QC: the glitch days dropped leave every catalogued creep step inside the InSAR window alone
+# glitch check: dropping the glitch days leaves every catalogued creep step inside the InSAR window unchanged
 glitch_check_rows = []                     # |step with - without the glitch days| per catalogued event with both collars
 n_glitch_candidates = 0
 for code, lat, lon, name in creepmeters:
@@ -878,45 +1156,66 @@ print("\n".join(near_lines))
 stats_lines += [""] + near_lines                                  # into the stats file with the rest
 
 # %% [markdown]
-# ## [14b2] InSAR steps at the catalogued CFW1 events near the Tule Pond windows
+# ## 9. InSAR steps at the catalogued CFW1 events near the Tule Pond windows
 #
 # For each CFW1 catalogue event of `cfw1_gittins_near_windows.csv` whose start
 # falls in a different acquisition interval from the Tule Pond window, a step
-# is added to the paper's joint model (M5) and its amplitude read at CFW1. The
-# model is notebook 04's, replicated here (04 is a notebook, not a module, so
-# it cannot be imported): constant + rate + annual sine and cosine + one
-# Heaviside step H(t > step epoch) per event, on the common-grid dates of
-# `fp_ts.csv`, fitted per crossing by least squares on the finite epochs. It
-# keeps all of 04's steps (the five Tule Pond and every Oakland onset,
-# `creep_events.csv`, step epoch `onset_lo`) and adds, for each such Gittins
-# event, a step at the last common-grid epoch on a day before the event's start
-# date, so the step sits in the interval holding the start. Check: with 04's
-# steps alone the replicated model must reproduce 04's per-crossing amplitudes
-# at these crossings to 1e-6 mm (asserted). The crossings are
-# those of [14b] (within `cfw1_insar_half_km` along the trace of CFW1); the
-# step at CFW1 is their mean. A Gittins event whose start lies in the Tule Pond
-# step's own interval cannot be separated from it; the table carries the Tule
-# Pond step ([14b]) for it.
+# is added to the joint model of the paper (Methods M5) and its amplitude read
+# at CFW1. The model is notebook 04's, replicated here because a notebook
+# cannot be imported:
 #
-# Uncertainty: the noise of a single-interval step of this same estimator at
-# CFW1, the standard deviation of the CFW1 mean step at `noise_n_trials` (40)
-# trial step epochs, each fitted with the same full model plus that one trial
-# step. The trials are drawn (seed `noise_seed`) from the acquisition intervals
-# at least `noise_clear_days` (60 d) from every 04 onset window, from every CFW1
-# catalogue event of at least `noise_gittins_min_mm` (0.3 mm, start to end), and
-# from both ends of the record. The catalogue ends in 2023, so intervals after
-# it are clear only of the 04 onsets (the printout gives how many of the trials
-# are inside the catalogue period, and the sigma from those alone).
+# $$d(t) = a + b\,(t - \bar t) + c_1 \sin(2\pi t) + c_2 \cos(2\pi t) + \sum_{i} A_i\,H(t - t_i),$$
 #
-# Interpolation caveat: the common grid interpolates each track onto the union
-# of dates. For each added interval the printout says whether both tracks were
-# really acquired on its two bounding days (03's per-track dates).
+# where $d(t)$ is the fault-parallel creep of one crossing (mm) at the
+# common-grid epochs $t$ of `fp_ts.csv` (decimal years), $\bar t$ the mean
+# epoch, $a$ a constant (mm), $b$ the rate (mm/yr), $c_1$ and $c_2$ the annual
+# sine and cosine amplitudes (mm), $A_i$ the step of event $i$ (mm), $t_i$ its
+# step epoch (decimal years) and $H(t - t_i) = 1$ for $t > t_i$ and 0
+# otherwise. It is fitted per crossing by least squares on the finite epochs.
+# The model keeps all of notebook 04's steps (the five Tule Pond and every
+# Oakland event of `creep_events.csv`, step epoch $t_i$ = `onset_lo`). For each
+# catalogued event it adds a step at the last common-grid epoch on a day before
+# the event's start date, so that the step falls in the interval holding the
+# start. Check: with notebook 04's steps alone, the replicated model reproduces
+# 04's per-crossing amplitudes at these crossings to 1e-6 mm (asserted). The
+# crossings are those of section 8 (within `cfw1_insar_half_km` along the trace
+# of CFW1), and the step at CFW1 is their mean. A catalogued event whose start
+# lies in the Tule Pond step's own interval cannot be separated from it; the
+# table carries the Tule Pond step (section 8) for it.
+#
+# **Uncertainty.** The noise of a single-interval step of this estimator at
+# CFW1 is the sample standard deviation (ddof 1) of the CFW1 mean step at
+# `noise_n_trials` (40) trial step epochs. Each trial is fitted with the full
+# model plus that one trial step. The trials are drawn without replacement
+# (seed `noise_seed`) from the acquisition intervals at least
+# `noise_clear_days` (60 d) from every notebook 04 onset window, from every
+# CFW1 catalogue event of at least `noise_gittins_min_mm` (0.3 mm, start to
+# end), and from both ends of the record. Intervals after the end of the CFW1
+# catalogue are clear only of the notebook 04 onsets; the printout gives how
+# many of the trials are inside the catalogue period, and the sigma from those
+# alone.
+#
+# **Interpolation.** The common grid interpolates each track onto the union of
+# dates. For each added interval, the printout says whether both tracks were
+# acquired on its two bounding days (the per-track dates of notebook 03).
 
 # %%
-# [14b2]
 def joint_design(dates, step_epochs):
-    """Notebook 04's design ([8] design(), replicated): constant, rate, annual sin and cos, then one
-    Heaviside step H(t > step epoch) per event."""
+    """Design matrix of notebook 04's joint model (its design(), replicated).
+
+    Parameters
+    ----------
+    dates : numpy.ndarray
+        Epochs (decimal years).
+    step_epochs : list of float
+        Step epochs (decimal years).
+
+    Returns
+    -------
+    numpy.ndarray
+        Columns: constant, rate (dates - mean), annual sine and cosine, then one Heaviside step
+        H(t > step epoch) per event.
+    """
     columns = [np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
     for step_epoch in step_epochs:
         columns.append((dates > step_epoch).astype(float))
@@ -924,7 +1223,18 @@ def joint_design(dates, step_epochs):
 
 
 def cfw1_steps(step_epochs):
-    """The joint model fitted at each CFW1 crossing; returns the step amplitudes (n crossings x n steps)."""
+    """Fit the joint model at each CFW1 crossing.
+
+    Parameters
+    ----------
+    step_epochs : list of float
+        Step epochs (decimal years).
+
+    Returns
+    -------
+    numpy.ndarray
+        Step amplitudes (mm), n crossings x n steps.
+    """
     design_matrix = joint_design(grid_dates, step_epochs)
     amplitudes = []
     for values in cfw1_series:
@@ -934,13 +1244,13 @@ def cfw1_steps(step_epochs):
     return np.array(amplitudes)
 
 
-# the CFW1 crossings of [14b], on the common grid
+# the CFW1 crossings of section 8, on the common grid
 grid_dates = fp_ts.columns.values.astype(float)
 grid_days = pd.DatetimeIndex([acquisition_day(grid_date) for grid_date in grid_dates])
 fp_ts_km = to_km(fp_ts.index.values)
 cfw1_rows = np.abs(fp_ts_km - cfw1_km) <= cfw1_insar_half_km + 1e-6
 assert np.allclose(np.sort(fp_ts.index.values[cfw1_rows]), np.sort(event_steps.lat.values[near_cfw1]), rtol=0, atol=1e-6), \
-    "the fp_ts crossings near CFW1 are not 04's crossings of [14b]"
+    "the fp_ts crossings near CFW1 are not 04's crossings of section 8"
 cfw1_series = fp_ts.values[cfw1_rows]
 assert (np.isfinite(cfw1_series).sum(axis=1) >= 0.5 * len(grid_dates)).all(), "a CFW1 crossing has too few epochs for 04's fit"
 
@@ -952,7 +1262,7 @@ for k, event in enumerate(events_all.itertuples()):
     from_04 = event_steps.loc[near_cfw1].sort_values("lat")[step_column(event.onset_lo)].values
     assert np.allclose(base_amplitudes[order, k], from_04, atol=1e-6), f"the replicated joint model misses 04's step at {event.onset_lo}"
 
-# one added step per Gittins event whose start is in a different interval from its Tule Pond window
+# one added step per catalogued event whose start is in a different interval from its Tule Pond window
 added = []                                # (row index in cfw1_near, Event_id, step epoch)
 same_interval = []
 for row_index, near_row in cfw1_near.iterrows():
@@ -1006,7 +1316,7 @@ for track in ("ascending", "descending"):
     track_days[track] = set(acquisition_day(float(track_date)) for track_date in track_dates)
 
 gittins_lines = [f"InSAR AT THE CFW1 CATALOGUE EVENTS (04's joint model replicated, + one step per Gittins event in its own interval; "
-                 f"mean of the {cfw1_rows.sum()} crossings of [14b]); 1-sigma {gittins_step_sigma:.2f} mm = std of the CFW1 mean step at "
+                 f"mean of the {cfw1_rows.sum()} crossings of section 8); 1-sigma {gittins_step_sigma:.2f} mm = std of the CFW1 mean step at "
                  f"{noise_n_trials} trial epochs (seed {noise_seed}) from {len(clear_epochs)} intervals >= {noise_clear_days} d from every 04 "
                  f"onset and CFW1 event >= {noise_gittins_min_mm:g} mm (trial mean {trial_means.mean():+.2f} mm; {in_catalogue.sum()} trials "
                  f"inside the catalogue period, sigma {sigma_in_catalogue:.2f} mm from those alone)"]
@@ -1026,7 +1336,7 @@ for row_index, event_id, step_epoch in added:
 for row_index, event_id in same_interval:
     insar_at_gittins[row_index] = cfw1_near.loc[row_index, "insar_step_mm"]
     gittins_lines.append(f"  {event_id}: starts in the Tule Pond step's own interval, not separable; the Tule Pond step "
-                         f"{cfw1_near.loc[row_index, 'insar_step_mm']:+.2f} mm ([14b]) stands for it")
+                         f"{cfw1_near.loc[row_index, 'insar_step_mm']:+.2f} mm (section 8) stands for it")
 for k, event in enumerate(events_tulepond.itertuples()):
     column = base_steps.index(event.onset_lo)
     gittins_lines.append(f"  Tule Pond {int(event.onset_lo)} step at CFW1 with the added steps in the model: "
@@ -1037,33 +1347,40 @@ print("\n".join(gittins_lines))
 stats_lines += [""] + gittins_lines                               # into the stats file with the rest
 
 # %% [markdown]
-# ## [14c] The transient amplitude: notebook 04's joint model at COZ1
+# ## 10. The transient amplitude: notebook 04's joint model at COZ1
 #
-# The fraction of the slip of the two large COZ1 creepmeter events recovered
-# by the InSAR, from notebook 04's joint model (the InSAR amplitude `amplitude_mm` of each Oakland event against
-# the creepmeter's step `creepmeter_step_mm` over the same window, registry
-# `04_control_coz1_amp_<onset day>_mm` and `04_control_coz1_creepmeter_<onset
-# day>_mm`). Read from 04's `creep_events.csv` (not retyped) and checked
-# against 04's registered values. The recovery of every COZ1 event is
-# registered (`05_coz1_amp_recovery_<onset day>_pct`); the mean
-# (`05_coz1_amp_recovery_mean_pct`) is over the two large events only ([12]:
-# the two largest creepmeter steps, the January 2019 and February 2022
-# events). The smaller October 2022 event is a creep surge lasting longer than
-# its onset window and is not included in the mean.
+# The fraction of the slip of each COZ1 creepmeter event recovered by the
+# InSAR is taken from notebook 04's joint model,
 #
-# The InSAR minus creepmeter difference at COZ1 before and after the first
-# COZ1 event: the difference of [8] (the creepmeter on the InSAR epochs, the
-# station stack) accumulated before the first COZ1 event (from the start of
-# the record to the event's `onset_lo`) and after it (from its `onset_hi` to
-# the end, so the later COZ1 events are in it). Each level is the median of the
-# difference over `collar_yr` (0.75 yr) of epochs: at the start, just before
-# the window, just after it, at the end.
+# $$R_k = 100\,\frac{A_k^{\rm InSAR}}{A_k^{\rm cm}},$$
+#
+# where $A_k^{\rm InSAR}$ is the InSAR step of Oakland event $k$
+# (`amplitude_mm`, mm) and $A_k^{\rm cm}$ the creepmeter's step in the same
+# joint model with the same step epoch (`creepmeter_step_mm`, mm). Both are read
+# from notebook 04's `creep_events.csv` and checked against 04's registered
+# values (`04_control_coz1_amp_<onset day>_mm` and
+# `04_control_coz1_creepmeter_<onset day>_mm`). The recovery of every COZ1 event
+# is registered (`05_coz1_amp_recovery_<onset day>_pct`). The mean
+# (`05_coz1_amp_recovery_mean_pct`) is over the two large events only (section
+# 6), the January 2019 and February 2022 events. The smaller October 2022 event
+# is a creep surge lasting longer than its onset window and is not included in
+# the mean.
+#
+# The InSAR minus creepmeter difference $m(t)$ at COZ1 (section 4) is also
+# measured before and after the first COZ1 event, from levels that are medians
+# of $m$ over $\tau$ = `collar_yr` (0.75 yr) of epochs:
+#
+# $$D_{\rm before} = \operatorname{med}_{[t_{\rm lo} - \tau,\, t_{\rm lo}]} m - \operatorname{med}_{[t_0,\, t_0 + \tau]} m, \qquad D_{\rm after} = \operatorname{med}_{[t_N - \tau,\, t_N]} m - \operatorname{med}_{[t_{\rm hi},\, t_{\rm hi} + \tau]} m,$$
+#
+# where $t_0$ and $t_N$ are the first and last InSAR epochs, $t_{\rm lo}$ and
+# $t_{\rm hi}$ are `onset_lo` and `onset_hi` of the first COZ1 event (decimal
+# years), and each median needs at least 5 epochs. $D_{\rm after}$ includes the
+# later COZ1 events.
 
 # %%
-# [14c]
 latest_registry = REG.latest().set_index("key")
 recovery_lines = ["TRANSIENT AMPLITUDE: NOTEBOOK 04 JOINT-MODEL COZ1 AMPLITUDE / CREEPMETER STEP (creep_events.csv)"]
-recovery_pct = {}                        # key label (onset day, 04's: 2019_01_09) -> recovery %
+recovery_pct = {}                        # key label (onset day as in 04's keys, e.g. 2019_01_09) -> recovery %
 large_labels = [onset_day.replace("-", "_") for onset_day in events_coz1_large.onset_day]
 for event in events_coz1.itertuples():
     label = event.onset_day.replace("-", "_")                         # 04's key label: the onset day of the event
@@ -1081,7 +1398,7 @@ for event in events_coz1.itertuples():
     recovery_lines.append(f"  {event.onset_day} ({kind}): InSAR {event.amplitude_mm:.2f} mm / creepmeter {event.creepmeter_step_mm:.2f} mm "
                           f"= {recovery_pct[label]:.0f}%")
 assert sorted(recovery_pct) == sorted(event.onset_day.replace("-", "_") for event in events_coz1.itertuples()), "a COZ1 event has no recovery"
-recovery_mean_pct = float(np.mean([recovery_pct[label] for label in large_labels]))      # the two large events only ([12])
+recovery_mean_pct = float(np.mean([recovery_pct[label] for label in large_labels]))      # the two large events only (section 6)
 assert 0 < recovery_mean_pct < 150, f"mean COZ1 recovery {recovery_mean_pct:.0f}% is outside 0 to 150%"
 recovery_lines.append(f"  mean of the two large events ({', '.join(events_coz1_large.onset_day)}; the two largest creepmeter steps): "
                       f"{recovery_mean_pct:.0f}%; of all {len(events_coz1)} COZ1 events {np.mean(list(recovery_pct.values())):.0f}% (not registered)")
@@ -1094,7 +1411,18 @@ later_coz1_days = events_coz1.sort_values("onset_lo").onset_day.iloc[1:].tolist(
 
 
 def misfit_level(span_lo, span_hi):
-    """Median InSAR minus creepmeter difference at COZ1 over the epochs in [span_lo, span_hi] (at least 5)."""
+    """Median InSAR minus creepmeter difference at COZ1 over the epochs in [span_lo, span_hi].
+
+    Parameters
+    ----------
+    span_lo, span_hi : float
+        The span (decimal years); at least 5 finite epochs are required.
+
+    Returns
+    -------
+    float
+        The median difference (mm).
+    """
     in_span = (coz1_dates >= span_lo) & (coz1_dates <= span_hi) & np.isfinite(coz1_misfit)
     assert in_span.sum() >= 5, f"only {in_span.sum()} COZ1 epochs in {span_lo:.3f}-{span_hi:.3f}"
     return float(np.median(coz1_misfit[in_span]))
@@ -1115,24 +1443,29 @@ print("\n".join(recovery_lines))
 stats_lines += [""] + recovery_lines                              # into the stats file with the rest
 
 # %% [markdown]
-# ## [15] Figure set-up: the map in the strike frame and its display reference
+# ## 11. Figure set-up: the map in the strike frame and its display reference
 #
 # The map is the rotated fault map of Fig 1A, drawn by the same function
-# (`utils.fault_map_panel`): GMT's oblique Mercator over the same strike-frame
-# rectangle (u along the 144 deg strike from 3 km north of Point Pinole to just
-# south of CFW1, v +/- 10.9 km across the fault, + east), so the fault runs up
-# the page with north at the top, and everything is plotted in lon/lat. The
-# fault-parallel velocity is looked up once on a regular lon/lat grid (nearest
-# UTM pixel). For display only, the mid-point of the two blocks' medians in the
-# CTM1-COZ1 patch is removed, so the fault sits at zero and the colours swing
-# equally blue (west) and red (east). (A plain patch mean is biased toward
-# whichever block has more valid pixels.) The SSE extent bracket is the
-# measured length of fault hosting the events from notebook 04
+# (`utils.fault_map_panel`). It uses GMT's oblique Mercator over the same
+# strike-frame rectangle: $u$ along the 144 deg strike from 3 km north of Point
+# Pinole to just south of CFW1, and $v$ within +/-10.9 km across the fault,
+# positive east. The fault runs up the page with north at the top, and
+# everything is plotted in lon/lat. The fault-parallel velocity is looked up
+# once on a regular lon/lat grid (nearest UTM pixel). For display only, the
+# reference
+#
+# $$v_{\rm ref} = \tfrac{1}{2}\left(\operatorname{med}_{W} v + \operatorname{med}_{E} v\right)$$
+#
+# is removed, where $\operatorname{med}_{W} v$ and $\operatorname{med}_{E} v$
+# are the median fault-parallel velocities (mm/yr) of the west and east blocks
+# within 5 km of the fault between CTM1 and COZ1. The fault then sits at zero
+# and the colours swing equally blue (west) and red (east); a plain patch mean
+# would be biased toward the block with more valid pixels. The SSE extent
+# bracket is the measured length of fault hosting the events from notebook 04
 # (`section_lengths.csv`), as in Fig 1A.
 
 # %%
-# [16]
-utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text (the ladder figure below)
+utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text (the ladder figure, section 14)
 
 with h5py.File(map_file, "r") as map_h5:
     fp_map = map_h5["fp_velocity"][:].astype(float)
@@ -1169,33 +1502,44 @@ section = pd.read_csv(lengths_file).set_index("name").loc["tulepond_creep_length
 print(f"SSE extent bracket: {section.km_lo:.1f} to {section.km_hi:.1f} km")
 
 # %% [markdown]
-# ## [17] Figure: the five creepmeters against the InSAR
+# ## 12. Figure: the five creepmeters against the InSAR
 #
-# Column 1 (A): the fault-parallel velocity map, the same panel as Fig 1A: fault
-# up the page at the mean strike (the trace stays curved, north at the top),
-# creepmeters as yellow triangles, the cities, the SSE extent bracket, the
-# distance from Point Pinole down the left edge. Columns 2 to 4, one row per creepmeter north
-# to south: (B-F) the cross-fault velocity profile with its step; (G-K)
-# cumulative creep, creepmeter (blue) against InSAR (grey, +/-1 std of the
-# stacked rows); (L-P) the same detrended. The InSAR onsets are orange
-# long-dashed lines at each step epoch (`onset_lo`; the orange of Fig 3A's
-# InSAR detection lines) in the rows they belong to (COZ1: the Oakland stack of
-# notebook 04; CFW1: the Tule Pond events), in both the cumulative and the
-# detrended panels, under the data; their key ('InSAR detection') is in N and P. The creepmeter
-# catalogue of Gittins et al. (2026) is not drawn; it is tabulated in the text
-# ([14b]). The G-K legends (and the keys in N and P) sit in the
-# bottom-right corner with their bottom line on the baseline of the
-# 'Velocity step' annotation of B-F. Colours are Okabe-Ito. Saved at 600 dpi.
+# Column 1 (A) is the fault-parallel velocity map, the same panel as Fig 1A:
+# the fault up the page at the mean strike (the trace stays curved, north at
+# the top), creepmeters as yellow triangles, the cities, the SSE extent bracket,
+# and the distance from Point Pinole down the left edge. Columns 2 to 4 have one
+# row per creepmeter, north to south. B-F show the cross-fault velocity profile
+# with its step (section 4). G-K show cumulative creep, the creepmeter (blue)
+# against the InSAR (grey, +/-1 standard deviation of the stacked rows; shifted
+# by its mean offset from the creepmeter for display). L-P show the same
+# series detrended. The InSAR onsets are orange long-dashed lines at each step
+# epoch (`onset_lo`, the orange of the InSAR detection lines of Fig 3A) in the
+# rows they belong to (COZ1: the Oakland events of notebook 04; CFW1: the Tule
+# Pond events), in both the cumulative and the detrended panels, under the
+# data. Their key ('InSAR detection') is in N and P. The creepmeter catalogue of
+# Gittins et al. (2026) is not drawn; it is tabulated in the text (section 8).
+# The G-K legends and the keys in N and P sit in the bottom-right corner, with
+# their bottom line on the baseline of the 'Velocity step' annotation of B-F.
+# Colours are Okabe-Ito. Saved at 600 dpi.
 #
 # The figure follows the Science supplement rules: 18.3 cm wide (single page
 # width), Helvetica 7 to 9 pt, bold panel letters with the description in
-# normal weight, the colour bar labelled. The map is drawn at true scale, so
+# normal weight, and a labelled colour bar. The map is drawn at true scale, so
 # its width follows its height.
 
 # %%
-# [18]
 def runs(mask):
-    """(start, stop) index pairs of the contiguous True runs of a boolean mask, so a gappy series plots with gaps."""
+    """Index pairs of the contiguous True runs of a boolean mask, so that a gappy series plots with gaps.
+
+    Parameters
+    ----------
+    mask : array_like of bool
+
+    Returns
+    -------
+    list of tuple
+        (start, stop) index pairs, stop exclusive.
+    """
     edges = np.flatnonzero(np.diff(np.r_[False, np.asarray(mask, bool), False]))   # where the mask switches on or off
     return list(zip(edges[::2], edges[1::2]))
 
@@ -1307,10 +1651,10 @@ for i, (code, lat, lon, name) in enumerate(creepmeters):
             insar_label = None
         fig.plot(x=stack_dates[run_start:run_stop], y=stack_display[run_start:run_stop], pen=f"1.1p,{insar_grey}", label=insar_label)
     fig.plot(x=cm_dates, y=cm_slip, pen=f"1.0p,{cm_blue}")
-    # legend inside the data: 6.5p text (as the B-F annotations) on the same translucent white box (30%,
-    # utils.text_backed), a fixed narrow width just wide enough for the text, short symbol column, tight
-    # line spacing, in the bottom-right corner (below the curves) with its BOTTOM line on the baseline of
-    # the B-F 'Velocity step' annotation (legend_offset_cm, [4]); a small box padding keeps the box low
+    # Legend inside the data: 6.5p text (as the B-F annotations) on the same translucent white box (30 %,
+    # utils.text_backed), a fixed narrow width just wide enough for the text, a short symbol column and tight
+    # line spacing, in the bottom-right corner (below the curves), with its bottom line on the baseline of
+    # the B-F 'Velocity step' annotation (legend_offset_cm, section 2); a small box padding keeps the box low.
     with pygmt.config(FONT_ANNOT_PRIMARY="6.5p"):
         fig.legend(position=f"JBR+jBR+o0.05c/{legend_offset_cm:g}c+w2.6c+l1.0", box="+gwhite@30+p0p,white@100", S="0.25c",
                    C=f"4p/{legend_clearance_cm:g}c")
@@ -1351,29 +1695,55 @@ print("Saved figure to:", fig_val)
 fig.show()
 
 # %% [markdown]
-# ## [19] The aperture ladder, from the precomputed sweep
+# ## 13. The aperture ladder, from the precomputed sweep
 #
-# Every cross-fault bin that was scored, re-scored here on one fixed stack
-# (4 rows within 0.4 km along the trace of each creepmeter, no widening) so the bins
-# are comparable: the five-station rate RMS (long-term agreement), the fraction
-# of the trace with data (completeness), and at COZ1 the detrended correlation
-# (event shape) and the fraction of the creepmeter's two event steps recovered
-# (event amplitude), each step measured across the onset window of one of the
-# two large Oakland events of notebook 04 (`onset_lo` to `onset_hi`, the same
-# detection and windows as Tule Pond; the two largest creepmeter steps, [12]).
-# The smaller October 2022 COZ1 event is not scored: it is a creep surge rather
-# than a step, and its collars contain the February 2022 event. The selected
-# bin is `dist_min` to `dist_max` (30 to 150 m). A station whose fixed stack
-# cannot be formed in a bin is left out of that bin's rate RMS (the
-# `n_stations` column); a COZ1 event whose collars are too short is left out of
-# the step fraction (printed). The steps use `event_step` of [8] (trend plus
-# offset). This step fraction scores the bins on the 0.9 sweep; the transient
-# amplitude of the paper is notebook 04's joint model at COZ1 ([14c]).
+# Every cross-fault bin of the sweep is re-scored here on one fixed stack (4
+# rows within 0.4 km along the trace of each creepmeter, no widening), so that
+# the bins are comparable. The selected bin is `dist_min` to `dist_max` (30 to
+# 150 m). Four scores are computed per bin:
+#
+# 1. **Rate RMS** (long-term agreement),
+#    $\left[\frac{1}{N}\sum_{i=1}^{N} (v_{{\rm cr},i} - v_{{\rm cm},i})^2\right]^{1/2}$ (mm/yr),
+#    where $v_{{\rm cr},i}$ and $v_{{\rm cm},i}$ are the least-squares
+#    straight-line rates of the InSAR stack and of the daily creepmeter record at
+#    station $i$ (section 4, no bootstrap) and $N$ is the number of stations
+#    whose fixed stack can be formed in that bin (the `n_stations` column).
+# 2. **Valid data** (completeness), $100\,N_{\rm rows} / N_{\rm trace}$ (%),
+#    where $N_{\rm rows}$ is the number of crossings in the bin's `fp_ts.csv`
+#    and $N_{\rm trace}$ the number of 100 m vertices of the fault trace.
+# 3. **COZ1 detrended correlation** (event shape), the Pearson $r$ of the
+#    detrended InSAR and creepmeter series at COZ1 (section 4).
+# 4. **COZ1 step recovered** (event amplitude),
+#    $F = \sum_k \Delta_k^{\rm InSAR} / \sum_k \Delta_k^{\rm cm}$, where
+#    $\Delta_k$ is the `event_step` (section 4) of the InSAR stack and of the
+#    creepmeter on the InSAR epochs across the onset window (`onset_lo` to
+#    `onset_hi`) of large Oakland event $k$ of notebook 04 (section 6). An event
+#    is left out when either step cannot be measured (collars too short;
+#    printed) or the creepmeter step is not positive.
+#
+# The standard deviation of the COZ1 stack residual after constant, rate and
+# annual sine and cosine (mm) is also written to the table. The smaller October
+# 2022 COZ1 event is not scored: it is a creep surge rather than a step, and
+# its collars contain the February 2022 event. The step fraction scores the bins
+# on the coherence 0.9 sweep; the transient amplitude of the paper is notebook
+# 04's joint model at COZ1 (section 10).
 
 # %%
-# [20]
 def rate_annual_residual_sd(dates, values):
-    """Standard deviation (mm) of the residual after constant + rate + annual sine and cosine."""
+    """Standard deviation of the residual after constant, rate and annual sine and cosine.
+
+    Parameters
+    ----------
+    dates : numpy.ndarray
+        Epochs (decimal years).
+    values : numpy.ndarray
+        Cumulative creep (mm).
+
+    Returns
+    -------
+    float
+        The residual standard deviation (mm).
+    """
     design_matrix = np.column_stack([np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)])
     coef = np.linalg.lstsq(design_matrix, values, rcond=None)[0]
     return float(np.std(values - design_matrix @ coef))
@@ -1421,7 +1791,7 @@ for set_name, inner, outer in ladder_bins:
         det_r = float(np.corrcoef(insar_detrended[both_finite], cm_detrended[both_finite])[0, 1])
         insar_steps = []
         cm_steps = []
-        for event in events_coz1_large.itertuples():                # the two large Oakland events' onset windows ([12])
+        for event in events_coz1_large.itertuples():                # the onset windows of the two large Oakland events (section 6)
             insar_steps.append(event_step(insar_dates, insar_slip, event.onset_lo, event.onset_hi))
             cm_steps.append(event_step(insar_dates, cm_on_insar_dates, event.onset_lo, event.onset_hi))
         insar_steps = np.array(insar_steps)
@@ -1458,15 +1828,15 @@ coh_table = pd.DataFrame(coh_rows)
 print(coh_table.round(3).to_string(index=False))
 
 # %% [markdown]
-# ## [21] Figure: the aperture ladder (supplement)
+# ## 14. Figure: the aperture ladder (supplement)
 #
-# Four panels against distance from the trace: each tested bin is a horizontal
-# bar from its inner to its outer edge with a dot at its centre (grey), the
-# selected 30 to 150 m bin (the crossings of the time series) in vermillion. The shaded strip is the 60 m near-trace
-# cut of the slip models (the DISP-S1 phase-linking half-width).
+# Four panels, one per score of section 13, against distance from the trace.
+# Each tested bin is a horizontal bar from its inner to its outer edge with a
+# dot at its centre (grey); the selected 30 to 150 m bin (the crossings of the
+# time series) is in vermillion. The shaded strip is the 60 m near-trace cut of
+# the slip models (the DISP-S1 phase-linking half-width).
 
 # %%
-# [22]
 fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.4), sharex=True)
 axes = axes.ravel()
 is_selected = []
@@ -1477,7 +1847,16 @@ selected_colour = "#D55E00"                                                     
 
 
 def draw_ladder_scores(ax, score_column, scale=1.0):
-    """One bar per bin (inner to outer edge) at the bin's score, a dot at the bin centre; the selected bin in colour."""
+    """Draw one bar per bin (inner to outer edge) at the bin's score, with a dot at the bin centre.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+    score_column : str
+        Column of the ladder table to plot.
+    scale : float
+        Factor applied to the score (100 for a percentage).
+    """
     for _, bin_row in ordered.iterrows():
         if not np.isfinite(bin_row[score_column]):
             continue
@@ -1519,13 +1898,12 @@ print("Saved figure to:", fig_lad)
 plt.show()
 
 # %% [markdown]
-# ## [23] Register
+# ## 15. Register
 #
 # The stats file `05_validation_stats.txt` (every table above) and the registry
-# rows `05_*` the paper quotes.
+# rows `05_*` quoted in the paper.
 
 # %%
-# [24]
 stats_lines += ["", f"APERTURE LADDER (precomputed sweep at coherence {ladder_coh}, fixed {ladder_n_stack}-row stack within {ladder_stack_km} km along the trace)",
                 ladder.drop(columns=["tag"]).round(3).to_string(index=False), "",
                 f"chosen bin {selected[0]}-{selected[1]} m by coherence threshold:", coh_table.round(3).to_string(index=False)]

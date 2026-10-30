@@ -1,73 +1,68 @@
 # %% [markdown]
-# # [1] 04 Creep-event detection, size, extent and the slip budget
+# # 04 Creep-event detection, size, extent and the slip budget
 #
 # ```
 # Author: Danielle Lindsay
 # Environment: opera_disp_feb13. Run time: a few minutes (bootstraps and per-crossing fits).
 # ```
 #
-# **What this notebook does.** The event dates are defined in this notebook
-# only; every later notebook reads them from `creep_events.csv`.
+# **What this notebook does.** It defines the creep-event dates. Every later notebook reads them from
+# `creep_events.csv`.
 #
-# 1. **Detection** on the stacked fault-parallel series of the Tule Pond
-#    section (crossings within +/-2 km along the trace of the section centre):
-#    the rate and annual cycle are removed, a matched filter for a step (mean of
-#    the next 3 epochs minus the mean of the previous 3) is applied, and gaps
-#    where it exceeds 3 robust sigma are flagged. The Oakland section (COZ1
-#    creepmeter) is processed in the same way as a control.
-# 2. **Size and timing** from one joint model per stack (linear + annual + one
-#    step per event), with each step epoch grid-searched over the acquisition
-#    epochs. The onset window runs from the last acquisition before the step
-#    (`onset_lo`) to the first acquisition after it (`onset_hi`): one
-#    acquisition interval, 6 or 12 d. Amplitude confidence intervals are from a
-#    moving-block bootstrap.
-# 3. **Along strike**: the same joint model at every crossing, with the step
-#    epochs held fixed, gives per-event slip profiles, the inter-event (secular)
-#    rate and the event-driven fraction of slip.
-# 4. **Section lengths**: (a) the length of fault hosting the events, where the
-#    cumulative event slip exceeds a threshold set from the flank scatter;
-#    (b) the width of the peak slip zone at 90% of the peak fraction.
-# 5. **Band stack**: the joint model fitted to the mean of the peak-zone
-#    crossings, giving the amplitudes quoted for the five events.
-# 6. **Slip budget**: inter-event + event-driven rate (the five Tule Pond events
-#    only) compared with the alignment arrays (refit over the InSAR window, and
-#    their whole-record rates) and the creepmeters.
-# 7. **Seismicity**: the number of events in Bo Xie's relocated seismicity and
-#    in the repeating-earthquake catalogues within 2 km of the trace, in the
-#    section hosting the events and in the 90 % band, over the InSAR period.
-#    Recurrence intervals are computed in notebook 11.
+# 1. **Detection** on the stacked fault-parallel series of the Tule Pond section (the crossings within 2 km
+#    along the trace of the section centre). The rate and annual cycle are removed, a step statistic (the mean
+#    of the next 3 acquisitions minus the mean of the previous 3) is computed at every gap between
+#    acquisitions, and the gaps where it exceeds 3 robust standard deviations are flagged. The Oakland section
+#    (COZ1 creepmeter) is processed in the same way as a control.
+# 2. **Size and timing** from one joint model per stack (secular rate, annual harmonic and one step per
+#    event), with each step epoch grid-searched over the acquisition epochs. The onset window runs from the
+#    last acquisition before the step (`onset_lo`) to the first acquisition after it (`onset_hi`), one
+#    acquisition interval of 6 or 12 d. The confidence intervals on the steps come from a moving-block
+#    bootstrap.
+# 3. **Along strike**, the same joint model is fitted at every crossing with the step epochs held fixed. It
+#    gives the per-event slip profiles, the inter-event (secular) rate and the event-driven fraction of slip.
+# 4. **Section lengths**: (a) the length of fault hosting the events, where the cumulative event slip exceeds
+#    a threshold set from the scatter on the flanks; (b) the width of the peak slip zone, where the
+#    event-driven fraction is at least 90 % of its peak (the 90 % band).
+# 5. **Band stack**: the joint model fitted to the mean series of the crossings in the 90 % band, which gives
+#    the step amplitudes quoted for the five events.
+# 6. **Slip budget**: the inter-event rate plus the event-driven rate (the five Tule Pond events only),
+#    compared with the alignment arrays (refit over the InSAR window, and their whole-record rates) and the
+#    creepmeters.
+# 7. **Seismicity**: the number of earthquakes in the GrowClust relocated catalogue and in the two
+#    repeating-earthquake catalogues within 2 km of the trace, in the section hosting the events and in the
+#    90 % band, over the InSAR period. The repeat intervals are computed in notebook 13.
 #
 # All series use the 30 to 150 m bin at coherence 0.7.
 #
-# **Inputs**: `03_creep_timeseries/fp_ts.csv`, `02_velocity_decomposition/fp_velocity_map.h5`,
-# the fault trace, the alignment-array summary and survey files, the five
-# creepmeter records, the GrowClust catalogue and the two repeater catalogues.
+# **Inputs**: `03_creep_timeseries/fp_ts.csv`, `02_velocity_decomposition/fp_velocity_map.h5`, the per-track
+# line-of-sight tables `03_creep_timeseries/creep_ts_LOS_<track>.csv` (acquisition dates only), the fault
+# trace, the alignment-array summary and survey files, the five creepmeter records, the GrowClust catalogue,
+# the two repeating-earthquake catalogues and the Johnson et al. (2022) creep-rate compilation.
 #
-# **Outputs** (`outputs/04_event_detection/`): `creep_events.csv` (one row per
-# event: the onset window `onset_lo` to `onset_hi`, in decimal years, its first
-# calendar day `onset_day`, the label of the COZ1 events in the registry, and the
-# step size), `creepmeter_events_COZ1.csv` (the creepmeter's own detections,
-# `detect_yr` = the time of the detector's flag), `event_fraction_by_crossing.csv`,
-# `section_lengths.csv`, `04_events_stats.txt`, registry rows `04_*`.
+# **Outputs** (`outputs/04_event_detection/`): `creep_events.csv` (one row per event: the onset window
+# `onset_lo` to `onset_hi` in decimal years, its first calendar day `onset_day`, which also labels the COZ1
+# events in the registry, and the step size), `creepmeter_events_COZ1.csv` (the creepmeter's own detections;
+# `detect_yr` is the time of the detector's flag), `event_fraction_by_crossing.csv`, `section_lengths.csv`,
+# `04_events_stats.txt`, registry rows `04_*`.
 #
-# **Figures** (in the dated figure folder, .png and .pdf):
-# `figS_event_detection_<params>_k3_win3` (detection QC, supplement);
-# `fig1_tulepond_<params>_band90` (Fig 1: rotated map, hovmoller, per-event
-# profiles, rate budget, band stack); `figS_creep_rate_along_fault_<params>` (trace azimuth, creep rate per
-# crossing and slip budget along the whole fault, supplement).
+# **Figures** (in the dated figure folder, .png and .pdf): `figS_event_detection_<params>_k3_win3`
+# (detection QC, supplement); `fig1_tulepond_<params>_band90` (Fig 1: rotated map, Hovmöller diagram,
+# per-event profiles, creep rates, band stack); `figS_creep_rate_along_fault_<params>` (trace azimuth, creep
+# rate per crossing and slip budget along the whole fault, supplement).
 #
-# **What to check.** The printed event list in [10]: five Tule Pond events, and
-# the Oakland control events, which must include the two large COZ1 events
-# (January 2019, February 2022; asserted) and are compared with the
-# creepmeter's own detections. COZ1 events are labelled by onset day, not year.
-# The band-stack amplitudes ([22]), the event-driven fraction near each section
-# centre ([16]) and the slip-budget blocks against the alignment-array rates
-# ([24]) are printed. Check cell [11] repeats the detection at 3.5 and 4 times
-# the noise level and asserts the same five events, and asserts that every
-# onset window agrees with each track's real acquisitions.
+# **What to check.** The printed event list (section 5): five Tule Pond events, and the Oakland control
+# events, which must include the two large COZ1 events of January 2019 and February 2022 (asserted) and are
+# compared with the creepmeter's own detections. COZ1 events are labelled by onset day, not year. Section 6
+# repeats the detection at 3.5 and 4 times the noise level and asserts the same five events, and asserts that
+# every onset window agrees with each track's real acquisitions. The event-driven fraction near each section
+# centre (section 8), the band-stack amplitudes (section 11) and the slip-budget blocks against the
+# alignment-array rates (section 12) are printed.
+
+# %% [markdown]
+# ## 1. Imports
 
 # %%
-# [2]
 import os
 import warnings
 
@@ -75,20 +70,28 @@ import insar_utils as utils
 from TulePond_filepaths import (common_paths, segments, creepmeters, params, coh_timeseries, insar_dic_list,
                                 max_interp_gap_days, profile_smooth_km, creepmeter_glitches, paper_band_frac,
                                 coz1_large_events_yr, coz1_large_tol_days, rate_smooth_km,
-                                paths_out, repo_dir)   # profile_smooth_km: Fig 1C and 1D, one Gaussian (0.2 km); creepmeter_glitches: the listed glitch days
+                                paths_out, repo_dir)   # profile_smooth_km: the 0.2 km Gaussian of Fig 1C and 1D
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
-import h5py                                      # the FP velocity map from 02
+import h5py                                      # fault-parallel velocity map (notebook 02)
 import xarray as xr                              # grids for pygmt
 import matplotlib.pyplot as plt
 import pygmt
 
 # %% [markdown]
-# ## [3] Paths and parameters
+# ## 2. Paths and parameters
+#
+# The settings of the detector, the along-strike profiles and the slip budget. `SEGS` lists the two sections
+# analysed, Tule Pond and the Oakland control (COZ1). For each it gives a title, the segment key, the name of
+# its fraction column, a search window (centre and half-width, km from Point Pinole) and the creepmeter used
+# as a control. The search window only bounds where the along-fault peak of event slip is looked for: for
+# Tule Pond, the peak of the cumulative slip above the inter-event rate (section 9); for Oakland, the peak of
+# its event-driven fraction (section 10). The section extent and the bands are then measured from the data
+# within it. The Tule Pond half-width also sets the half-width of the along-strike window of section 9. The
+# detection stacks are centred on the section centres of `segments` (TulePond_filepaths).
 
 # %%
-# [4]
 notebook = "04_event_detection"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
@@ -96,12 +99,12 @@ os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
 # the detector
-stack_half_km = 2.0     # half-width of the peak-slip stack about the section centre, km along the trace
-#                         (lat_to_km_map); a narrower stack than the whole section, which includes non-slipping fault
-win_n = 3               # epochs each side in the matched filter (3 x ~6 d)
+stack_half_km = 2.0     # half-width of the detection stack about the section centre, km along the trace
+#                         (lat_to_km_map); narrower than the section, which includes fault that does not slip
+win_n = 3               # acquisitions on each side of the gap in the step statistic
 k_sigma = 3.0           # detection threshold in robust sigma of the statistic
-merge_yr = 0.15         # flags closer than this are one event
-step_search_yr = 0.10   # grid-search the step epoch over acquisition epochs within this of the detection
+merge_yr = 0.15         # flags closer than this (yr) are one event
+step_search_yr = 0.10   # the step epoch is grid-searched over the acquisitions within this (yr) of the detection
 nboot = 2000            # block bootstrap resamples for the amplitude CIs
 block_years = 1.0       # bootstrap block length (years)
 seed = 0                # bootstrap random seed
@@ -112,7 +115,7 @@ smooth_km = 0.4         # along-fault smoothing of the profiles (gap-preserving;
 total_floor_mm = 1.0    # |total slip| below this: fraction undefined
 band_main = paper_band_frac  # the peak slip zone: fraction >= this x its local peak (TulePond_filepaths, also read by 13)
 band_fracs = (band_main,)
-flank_km = ((52.0, 56.0), (64.0, 68.0))   # flanks used for the creep-length threshold (Tule Pond)
+flank_km = ((52.0, 56.0), (64.0, 68.0))   # flanks for the creep-length threshold (Tule Pond, km from Point Pinole)
 seis_max_dist_km = 2.0  # seismicity and repeaters within this of the trace
 neg_floor_frac = 0.2    # hovmoller colour scale starts at -this x vmax so early-epoch noise is not clipped to white
 
@@ -134,7 +137,7 @@ SEGS = [("Tule Pond", "TULEPOND", "tulepond", 58.0, 10.0, ""),
 
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 map_file = os.path.join(paths_out["02_velocity_decomposition"], "fp_velocity_map.h5")
-# each track's real acquisition dates (the columns of 03's per-track LOS tables), for the window check [12]
+# each track's real acquisition dates (the columns of the per-track LOS tables of 03), for the check of section 6
 track_files = {}
 for dic in insar_dic_list:
     track_files[dic["ORBIT_DIRECTION"]] = os.path.join(paths_out["03_creep_timeseries"], f"creep_ts_LOS_{dic['ORBIT_DIRECTION']}.csv")
@@ -148,10 +151,14 @@ REG.inputs(fp_ts_file, map_file, *track_files.values(), common_paths["fault_prof
            *creepmeter_files)
 
 # %% [markdown]
-# ## [5] Load: the fault-parallel time series, the along-fault axis, the trace
+# ## 3. Load the fault-parallel time series, the along-fault axis and the trace
+#
+# The fault-parallel series of notebook 03 has one row per 100 m crossing and one column per acquisition
+# (mm). Each crossing is placed at its distance $x$ along the trace from Point Pinole (km, positive to the
+# south). `load_stack` averages the rows within 2 km along the trace of a section centre that have finite
+# values at more than half of the epochs.
 
 # %%
-# [6]
 # the fault-parallel time series from 03: lat x decimal year, mm, rows south -> north
 fp_ts = pd.read_csv(fp_ts_file, index_col=0)
 fp_ts.columns = fp_ts.columns.astype(float)
@@ -172,7 +179,18 @@ lats_sorted = lats[north_to_south]
 
 
 def lat_of_km(km_value):
-    """Latitude of the crossing at km_value from Point Pinole (linear interpolation along the sorted axis)."""
+    """Latitude of the crossing at a distance along the trace.
+
+    Parameters
+    ----------
+    km_value : float
+        Distance from Point Pinole along the trace (km).
+
+    Returns
+    -------
+    float
+        Latitude (deg), linearly interpolated along the sorted axis.
+    """
     return float(np.interp(km_value, km_sorted, lats_sorted))
 
 
@@ -182,8 +200,25 @@ print(f"fp_ts: {len(lats)} crossings ({km.min():.1f} to {km.max():.1f} km from P
 
 
 def load_stack(seg):
-    """Mean of the fp_ts rows within +/- stack_half_km along the trace of the section centre (rows with >50%
-    valid epochs). Returns (dates, stack_mm, n_crossings) at the epochs where the mean is finite."""
+    """Mean fault-parallel series of the crossings near a section centre.
+
+    Averages the rows of fp_ts within +/- stack_half_km along the trace of the section centre that have
+    finite values at more than half of the epochs.
+
+    Parameters
+    ----------
+    seg : dict
+        Section entry of `segments` (TulePond_filepaths); "lat" is the section centre (deg).
+
+    Returns
+    -------
+    dates : ndarray
+        Epochs at which the mean is finite (decimal years).
+    stack : ndarray
+        Mean fault-parallel displacement at those epochs (mm).
+    n_crossings : int
+        Number of crossings averaged.
+    """
     centre_km = float(to_km([seg["lat"]])[0])          # fp_ts is indexed by latitude; km is its along-trace position
     nearby = fp_ts[np.abs(km - centre_km) <= stack_half_km + 1e-6]
     nearby = nearby[nearby.notna().sum(axis=1) > 0.5 * fp_ts.shape[1]]
@@ -194,47 +229,99 @@ def load_stack(seg):
     return dates[ok], stack[ok], len(nearby)
 
 # %% [markdown]
-# ## [7] The detector and the joint model
+# ## 4. The step detector and the joint model
 #
-# A creep event is modelled as a step in the residual after removal of the
-# rate and annual cycle. Because the residual varies over periods of months
-# (residual atmospheric delay), the detector uses a short-window difference
-# rather than the residual level. It is one-sided: only forward steps are
-# flagged, on the assumption that the fault does not slip backwards. Timing is
-# taken from the detector and amplitude from the joint fit, because a fit made
-# locally around one event absorbs part of the step into its own trend. The
-# same functions are applied to both stacks, to the creepmeter and along
-# strike.
+# A creep event is modelled as a step in the series after removal of the rate and annual cycle. The residual
+# varies over periods of months (residual atmospheric delay), so the detector uses a short-window difference
+# rather than the residual level. It is one-sided: only forward steps are flagged, because the fault is
+# assumed not to slip backwards. The timing comes from the detector and the amplitude from the joint fit,
+# because a fit made locally around one event absorbs part of the step into its own trend. The same
+# functions are applied to both stacks, to the creepmeter and along strike.
 #
-# **The joint model** fits all terms simultaneously: constant + rate + annual
-# sine and cosine + one Heaviside step per event. `rss` is its residual sum of
-# squares, the sum over epochs of (data - model)^2 in mm^2; the rms in the
-# printouts is sqrt(rss / n epochs).
+# **The joint model.** All terms are fitted together by least squares (`design`, `fit_joint`):
 #
-# **Timing, then amplitude.** `grid_search` finds the timing of one event: it
-# moves that event's step over the acquisition epochs within +/- 0.10 yr of the
-# detector's flag, refits the joint model with the other events held fixed, and
-# keeps the epoch with the lowest rss; the epochs whose rss is within one
-# variance unit of the best are the candidate step epochs. The step is
-# H(t > step epoch), so a step epoch is the last acquisition before the event.
-# The onset window runs from the earliest candidate (`onset_lo`) to the first
-# acquisition after the latest one (`onset_hi`); the onset is treated as
-# uniformly distributed inside it. With one candidate per event (asserted), the
-# fitted step epoch is `onset_lo`. `fit_all_events` runs that search for each
-# event in turn, in two passes, then makes one final joint fit with the step
-# epochs fixed: the step coefficients of that fit are the amplitudes, and the
-# block bootstrap on the same fit gives their 95% intervals.
+# $$d(t_j) = a + b\,(t_j - \bar{t}) + c_1 \sin(2\pi t_j) + c_2 \cos(2\pi t_j) + \sum_{k=1}^{K} A_k\,H(t_j - \tau_k) + \epsilon_j,$$
 #
-# **Step model.** Each event is modelled as an instantaneous step because at
-# 6 to 12 day sampling the onset and the end of an event are not separately
-# resolved. The residuals are temporally correlated, so the amplitude
-# confidence intervals are from a moving-block bootstrap rather than ordinary
-# least-squares standard errors.
+# where $d(t_j)$ is the fault-parallel displacement at acquisition $j$ (mm), $t_j$ its epoch (decimal
+# years), $\bar{t}$ the mean epoch (decimal years), $a$ a constant (mm), $b$ the secular (inter-event) rate
+# (mm/yr), $c_1$ and $c_2$ the amplitudes of the annual sine and cosine (mm), $A_k$ the step of event $k$
+# (mm), $\tau_k$ its step epoch (decimal years), $K$ the number of events, $\epsilon_j$ the misfit (mm), and
+# $H(x)$ the Heaviside function, 1 for $x > 0$ and 0 otherwise. The step therefore appears at the first
+# acquisition after $\tau_k$, and $\tau_k$ is the last acquisition before the event. The printed annual
+# amplitude is $\sqrt{c_1^2 + c_2^2}$ (mm). The residual sum of squares is
+#
+# $$\mathrm{RSS} = \sum_{j=1}^{N} \left(d(t_j) - \hat{d}(t_j)\right)^2,$$
+#
+# where $\hat{d}$ is the fitted model, $N$ the number of acquisitions and RSS is in mm$^2$. The printed RMS
+# is $\sqrt{\mathrm{RSS}/N}$ (mm). The model without steps ($K = 0$, `detrend_rate_annual`) is fitted first
+# and subtracted, which gives the residual $r_j$ (mm) that the detector uses.
+#
+# **The step statistic.** At the gap between acquisitions $i-1$ and $i$ (`step_statistic`),
+#
+# $$s_i = \frac{1}{n}\sum_{m=0}^{n-1} r_{i+m} \;-\; \frac{1}{n}\sum_{m=1}^{n} r_{i-m}, \qquad n + 1 \le i \le N - n,$$
+#
+# placed at the gap midpoint $(t_{i-1} + t_i)/2$, where $s_i$ is in mm and $n = 3$ is the window, the number
+# of acquisitions on each side (`win_n`). Three acquisitions span 18 d at the 6 d repeat and 36 d at the
+# 12 d repeat, so a step must persist beyond a single acquisition. The noise level of the statistic is its
+# robust standard deviation over the section's whole record (`utils.robust_sigma`) [citation needed],
+#
+# $$\sigma_s = 1.4826\;\mathrm{median}_i \left|s_i - \mathrm{median}(s)\right|,$$
+#
+# in mm, where the factor 1.4826 scales the median absolute deviation (MAD) to the standard deviation of a
+# normal distribution. A gap is flagged when (`detect`)
+#
+# $$s_i > k\,\sigma_s,$$
+#
+# with $k = 3$ (`k_sigma`). A flag closer than 0.15 yr (`merge_yr`) to the previous flag belongs to the same
+# event, and the larger statistic is kept. The detection time `detect_yr` is the gap where the statistic
+# peaks.
+#
+# **Timing, then amplitude.** `grid_search` finds the step epoch of one event with the other events held
+# fixed. It tries as $\tau_k$ every acquisition epoch within 0.10 yr (`step_search_yr`) of the current
+# estimate, refits the joint model at each trial and keeps the epoch with the lowest RSS. The candidate step
+# epochs are the trials with
+#
+# $$\mathrm{RSS}(\tau_k) - \mathrm{RSS}_{\min} \le \hat{\sigma}^2, \qquad \hat{\sigma}^2 = \frac{\mathrm{RSS}_{\min}}{N - P},$$
+#
+# where $\mathrm{RSS}_{\min}$ is the lowest RSS of the trials (mm$^2$), $\hat{\sigma}^2$ the residual
+# variance (mm$^2$) and $P = 4 + K$ the number of model parameters. The onset window runs from the earliest
+# candidate (`onset_lo`) to the first acquisition after the latest candidate (`onset_hi`), and the onset is
+# treated as uniformly distributed inside it. Each event has a single candidate (asserted), so the fitted
+# step epoch is `onset_lo` and the window is one acquisition interval. `fit_all_events` starts from the
+# detector's flags and runs the search for each event in turn, twice through. One joint fit with the step
+# epochs fixed then gives the amplitudes $A_k$.
+#
+# **Confidence intervals.** Each event is modelled as an instantaneous step because at 6 to 12 day sampling
+# its onset and its end are not resolved separately. The residuals are correlated in time, so the
+# confidence intervals on $A_k$ come from a moving-block bootstrap (`bootstrap_amplitudes`) [citation
+# needed] rather than from the least-squares standard errors. With the step epochs fixed, the residuals
+# $e_j = d(t_j) - \hat{d}(t_j)$ are resampled in blocks of $L$ consecutive acquisitions,
+#
+# $$L = \max\!\left(2,\ \min\!\left(\mathrm{round}\!\left(\frac{T_b}{\Delta t}\right),\ N\right)\right),$$
+#
+# where $T_b = 1$ yr is the block length (`block_years`) and $\Delta t$ the median acquisition interval (yr).
+# Each resample draws $\lceil N/L \rceil$ blocks with start indices uniform over $1, \ldots, N - L + 1$,
+# joins them in order and keeps the first $N$ values, $e^*_j$. The model is refitted to
+# $\hat{d}(t_j) + e^*_j$, and the 95 % interval of each $A_k$ runs from the 2.5th to the 97.5th percentile of
+# $B = 2000$ resamples (`nboot`, random seed 0).
 
 # %%
-# [8]
 def design(dates, step_epochs):
-    """Columns: constant, rate, annual sin and cos, then one Heaviside step H(t > step epoch) per event."""
+    """Design matrix of the joint model.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    step_epochs : sequence of float
+        Step epoch of each event (decimal years).
+
+    Returns
+    -------
+    ndarray
+        Columns: constant, epoch minus its mean, sin(2 pi t), cos(2 pi t), then one Heaviside step
+        H(t > step epoch) per event.
+    """
     columns = [np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
     for step_epoch in step_epochs:
         columns.append((dates > step_epoch).astype(float))
@@ -242,16 +329,47 @@ def design(dates, step_epochs):
 
 
 def detrend_rate_annual(dates, values):
-    """Remove constant + rate + annual cycle (the joint model with no steps). Returns (residual, coefficients)."""
+    """Remove the constant, rate and annual cycle (the joint model with no steps).
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    values : ndarray
+        Displacement (mm).
+
+    Returns
+    -------
+    residual : ndarray
+        Values minus the fitted model (mm).
+    coef : ndarray
+        Constant (mm), rate (mm/yr), annual sine and cosine amplitudes (mm).
+    """
     design_matrix = design(dates, [])
     coef, *_ = np.linalg.lstsq(design_matrix, values, rcond=None)
-    model = np.dot(design_matrix, coef)                   # the model at every epoch
+    model = np.dot(design_matrix, coef)
     return values - model, coef
 
 
 def step_statistic(dates, residual, n_window=win_n):
-    """Mean of the next n_window epochs minus the mean of the previous n_window, at each gap
-    between epochs. Returns (gap midpoints, statistic)."""
+    """Step statistic at each gap between acquisitions.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    residual : ndarray
+        Residual after removal of the rate and annual cycle (mm).
+    n_window : int
+        Acquisitions on each side of the gap.
+
+    Returns
+    -------
+    stat_dates : ndarray
+        Midpoint of each gap (decimal years).
+    stat_values : ndarray
+        Mean of the next n_window residuals minus the mean of the previous n_window (mm).
+    """
     stat_dates = []
     stat_values = []
     for i in range(n_window, len(dates) - n_window):
@@ -263,9 +381,31 @@ def step_statistic(dates, residual, n_window=win_n):
 
 
 def detect(dates, residual, n_window=win_n, threshold_sigma=k_sigma):
-    """Forward steps above threshold_sigma robust sigma of the statistic; flags within merge_yr are one
-    event (the larger kept). Returns ([(detect_yr, statistic), ...], sigma, stat_dates, stat_values),
-    detect_yr = the gap where the statistic peaks."""
+    """Flag forward steps whose statistic exceeds threshold_sigma robust standard deviations.
+
+    A flag closer than merge_yr to the previous flag belongs to the same event, and the larger statistic
+    is kept.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    residual : ndarray
+        Residual after removal of the rate and annual cycle (mm).
+    n_window : int
+        Acquisitions on each side of the gap.
+    threshold_sigma : float
+        Threshold in robust standard deviations of the statistic.
+
+    Returns
+    -------
+    detections : list of (float, float)
+        (detect_yr, statistic in mm) per event; detect_yr is the gap where the statistic peaks.
+    stat_sigma : float
+        Robust standard deviation of the statistic, 1.4826 x MAD (mm).
+    stat_dates, stat_values : ndarray
+        The statistic, as returned by step_statistic.
+    """
     stat_dates, stat_values = step_statistic(dates, residual, n_window)
     stat_sigma = utils.robust_sigma(stat_values)
     detections = []
@@ -279,8 +419,24 @@ def detect(dates, residual, n_window=win_n, threshold_sigma=k_sigma):
 
 
 def fit_joint(dates, values, step_epochs):
-    """Least-squares fit of the joint model (constant + rate + annual + a Heaviside step at each step epoch).
-    Returns (coefficients, rss), rss = sum over epochs of (data - model)^2 in mm^2."""
+    """Least-squares fit of the joint model.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    values : ndarray
+        Displacement (mm).
+    step_epochs : sequence of float
+        Step epoch of each event (decimal years).
+
+    Returns
+    -------
+    coef : ndarray
+        Constant (mm), rate (mm/yr), annual sine and cosine (mm), then one step amplitude per event (mm).
+    rss : float
+        Residual sum of squares (mm^2).
+    """
     design_matrix = design(dates, step_epochs)
     coef, *_ = np.linalg.lstsq(design_matrix, values, rcond=None)
     model = np.dot(design_matrix, coef)
@@ -289,10 +445,30 @@ def fit_joint(dates, values, step_epochs):
 
 
 def grid_search(dates, values, step_epochs, i):
-    """Timing of event i, the other steps held fixed: try every acquisition epoch within
-    +/- step_search_yr of the detector's flag as the step epoch, refit the whole joint model
-    each time, keep the epoch with the lowest rss. Returns (best step epoch, (lo, hi)) where lo-hi
-    spans the candidate epochs whose rss is within one variance unit (rss / dof) of the best."""
+    """Step epoch of event i, with the other steps held fixed.
+
+    Every acquisition epoch within +/- step_search_yr of the current estimate is tried as the step epoch,
+    the joint model is refitted at each trial, and the epoch with the lowest RSS is kept.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    values : ndarray
+        Displacement (mm).
+    step_epochs : list of float
+        Current step epochs of all events (decimal years).
+    i : int
+        Index of the event searched.
+
+    Returns
+    -------
+    best : float
+        Step epoch with the lowest RSS (decimal years).
+    (lo, hi) : tuple of float
+        Earliest and latest candidate epochs, whose RSS is within one variance unit, RSS / (N - P),
+        of the lowest.
+    """
     flag_yr = step_epochs[i]
     candidates = dates[(dates > flag_yr - step_search_yr) & (dates < flag_yr + step_search_yr)]
     assert len(candidates) > 0, f"event {i}: no acquisition within {step_search_yr} yr of the flag {flag_yr:.4f}"
@@ -301,7 +477,7 @@ def grid_search(dates, values, step_epochs, i):
     for candidate in candidates:
         trial[i] = candidate
         _, rss_at[candidate] = fit_joint(dates, values, trial)
-    best = min(rss_at, key=rss_at.get)                                  # the candidate with the lowest rss
+    best = min(rss_at, key=rss_at.get)
     n_parameters = 4 + len(step_epochs)
     variance = rss_at[best] / max(len(dates) - n_parameters, 1)
     within = []
@@ -312,8 +488,25 @@ def grid_search(dates, values, step_epochs, i):
 
 
 def bootstrap_amplitudes(dates, values, step_epochs):
-    """Moving-block bootstrap 95% CI on each step (step epochs fixed): the residuals are resampled in
-    contiguous blocks of ~block_years, re-added to the fitted model and refitted. Returns (ci_lo, ci_hi) per event."""
+    """Moving-block bootstrap 95 % confidence intervals on the steps, with the step epochs fixed.
+
+    The residuals of the fit are resampled in contiguous blocks of about block_years, added back to the
+    fitted model, and the model is refitted, nboot times.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    values : ndarray
+        Displacement (mm).
+    step_epochs : sequence of float
+        Step epoch of each event (decimal years).
+
+    Returns
+    -------
+    ci_lo, ci_hi : ndarray
+        2.5th and 97.5th percentiles of each step amplitude (mm).
+    """
     rng = np.random.default_rng(seed)
     design_matrix = design(dates, step_epochs)
     pinv = np.linalg.pinv(design_matrix)
@@ -335,10 +528,32 @@ def bootstrap_amplitudes(dates, values, step_epochs):
 
 
 def fit_all_events(dates, values, detect_yrs, npass=2):
-    """Timing then amplitude. Starting from the detector's flags, grid-search each step epoch in turn
-    holding the others, twice through; then one joint fit with the step epochs fixed gives the amplitudes
-    (the step coefficients), and the block bootstrap on that fit gives their 95% CIs.
-    Returns ([one dict per event], coefficients, rss)."""
+    """Timing, then amplitude, of every event.
+
+    Starting from the detector's flags, each step epoch is grid-searched in turn with the others held
+    fixed, npass times through. One joint fit with the step epochs fixed then gives the amplitudes (the
+    step coefficients), and the block bootstrap on that fit gives their 95 % confidence intervals.
+
+    Parameters
+    ----------
+    dates : ndarray
+        Epochs (decimal years).
+    values : ndarray
+        Displacement (mm).
+    detect_yrs : sequence of float
+        Detection times from detect (decimal years).
+    npass : int
+        Passes of the grid search.
+
+    Returns
+    -------
+    fits : list of dict
+        Per event: step_epoch, onset_lo, onset_hi (decimal years), amplitude_mm, amp_lo, amp_hi (mm).
+    coef : ndarray
+        Coefficients of the final joint fit.
+    rss : float
+        Its residual sum of squares (mm^2).
+    """
     step_epochs = list(detect_yrs)
     bounds = [(flag_yr, flag_yr) for flag_yr in step_epochs]
     for _ in range(npass):
@@ -348,9 +563,9 @@ def fit_all_events(dates, values, detect_yrs, npass=2):
     amp_lo, amp_hi = bootstrap_amplitudes(dates, values, step_epochs)
     fits = []
     for i, step_epoch in enumerate(step_epochs):
-        # The step column is (dates > step_epoch), so the step epoch is the last pre-event acquisition and
-        # the event happened between it and the next acquisition. The onset window runs from the earliest
-        # candidate step epoch (onset_lo) to the first acquisition after the latest one (onset_hi).
+        # The step column is (dates > step_epoch), so the step epoch is the last acquisition before the event.
+        # The onset window runs from the earliest candidate (onset_lo) to the first acquisition after the
+        # latest candidate (onset_hi).
         after = dates[dates > bounds[i][1]]
         assert len(after) > 0, f"event {i}: no acquisition after its last candidate step epoch {bounds[i][1]:.4f}"
         # one candidate per event, so the fitted step epoch is onset_lo (the event tables carry only the window)
@@ -361,18 +576,28 @@ def fit_all_events(dates, values, detect_yrs, npass=2):
     return fits, coef, rss
 
 # %% [markdown]
-# ## [9] RUN: detect and fit on the two stacks
+# ## 5. Detection and fit on the two stacks
 #
-# Everything the QC figure and the registry need for each section is kept in
-# `solutions[key]`. Asserted: five Tule Pond events; at least two COZ1 events,
-# the two large known ones among them (`coz1_large_events_yr`, each inside
-# exactly one COZ1 onset window, +/- `coz1_large_tol_days`). Any further COZ1
-# detection is kept as a control event. Every event carries `onset_day`, the
-# calendar day of `onset_lo`, unique within its section: the COZ1 registry keys
-# are labelled by it (two COZ1 events in 2022, so the year would collide).
+# The detector and the joint model of section 4 are applied to the Tule Pond and Oakland stacks, and the
+# results for each section are kept in `solutions[key]` for the figure and the registry. For Oakland, the
+# daily COZ1 creepmeter record (Langbein et al. 2024) is treated in two ways. The joint model with the InSAR
+# step epochs gives the creepmeter step at each event. The detector is also run on the creepmeter alone,
+# with a window matched in time,
+#
+# $$n_{\mathrm{cm}} = \max\!\left(2,\ \mathrm{round}\!\left(\frac{n\,\Delta t}{\Delta t_{\mathrm{cm}}}\right)\right),$$
+#
+# where $n_{\mathrm{cm}}$ is the number of creepmeter samples on each side, $\Delta t$ the median InSAR
+# acquisition interval (yr) and $\Delta t_{\mathrm{cm}}$ the median creepmeter sample interval (yr). For
+# each creepmeter detection the InSAR statistic at the nearest gap is printed in units of $\sigma_s$,
+# together with whether an InSAR event lies within 0.15 yr of it.
+#
+# Asserted: five Tule Pond events; at least two COZ1 events, with the two large known ones among them
+# (`coz1_large_events_yr`), each inside a single COZ1 onset window widened by `coz1_large_tol_days` on each
+# side. Any further COZ1 detection is kept as a control event. Every event carries `onset_day`, the calendar
+# day of `onset_lo`, which is unique within its section. The COZ1 registry keys are labelled by it, because
+# two COZ1 events fall in 2022.
 
 # %%
-# [10]
 event_rows = []
 solutions = {}
 for title, key, _, _, _, cmcode in SEGS:
@@ -401,7 +626,7 @@ for title, key, _, _, _, cmcode in SEGS:
         coef_cm, _ = fit_joint(cm_dates, cm_slip, fitted_step_epochs)
         cm_amps = [float(amp) for amp in coef_cm[4:]]
         cm_residual, _ = detrend_rate_annual(cm_dates, cm_slip)
-        n_cm = max(2, int(round(win_n * np.median(np.diff(stack_dates)) / np.median(np.diff(cm_dates)))))   # days in the time-matched window
+        n_cm = max(2, int(round(win_n * np.median(np.diff(stack_dates)) / np.median(np.diff(cm_dates)))))   # samples in the time-matched window
         cm_detections, cm_sigma, _, _ = detect(cm_dates, cm_residual, n_cm)
         cm_series = (cm_dates, cm_slip)
         # each independent creepmeter detection: the InSAR statistic at that time (in sigma), and whether InSAR flagged it
@@ -452,7 +677,7 @@ tulepond_events = creep_events[creep_events.segment == "TULEPOND"].reset_index(d
 step_epochs_tulepond = tulepond_events["onset_lo"].to_numpy(float)
 assert len(tulepond_events) == 5, f"expected the five Tule Pond events, got {len(tulepond_events)}"
 # the control: any number of COZ1 events, but the two large known ones (TulePond_filepaths coz1_large_events_yr)
-# must be among them, each in exactly one onset window; events are labelled by their onset day (unique)
+# must be among them, each in a single onset window; events are labelled by their onset day (unique)
 coz1_events = creep_events[creep_events.segment == "COZ1"].reset_index(drop=True)
 assert len(coz1_events) >= 2, f"expected at least the two large COZ1 events, got {len(coz1_events)}"
 coz1_tol_yr = coz1_large_tol_days / 365.25
@@ -465,25 +690,21 @@ for segment, events_in_segment in creep_events.groupby("segment"):
 print(f"COZ1 control: {len(coz1_events)} events, onset days {coz1_events.onset_day.tolist()}")
 
 # %% [markdown]
-# ## [11] Check: detection threshold, and onset windows against the real acquisitions
+# ## 6. Check: detection threshold, and onset windows against the real acquisitions
 #
-# The detector flags a step when it exceeds 3 times the noise level (3 robust
-# sigma of the step statistic). Check: the detection is repeated at 3.5 and 4
-# times the noise level, and the same five Tule Pond events must be found (each
-# within `merge_yr` of a flag at 3 times).
+# The detector flags a step that exceeds 3 times the noise level ($k = 3$). The detection is repeated at
+# $k = 3.5$ and $k = 4$, and the same five Tule Pond events must be found, each within `merge_yr` of a flag at
+# $k = 3$.
 #
-# Check: the onset windows against each track's real acquisitions (the dates
-# of 03's `creep_ts_LOS_<track>.csv`). The windows are found on the two-track
-# common grid, where one track can be interpolated at a window end. For every
-# event, Tule Pond and the COZ1 control, each track's bracket runs from its
-# last real acquisition at or before `onset_lo` to its first at or after
-# `onset_hi` (printed). Asserted: the window lies inside every track's bracket;
-# each window end is a real acquisition of at least one track, so the window is
-# the intersection of the brackets; and no bracket is longer than the 45 d
-# interpolation limit of 03.
+# The onset windows are found on the common grid of the two tracks, where one track can be interpolated at a
+# window end. They are therefore checked against each track's real acquisitions (the dates of
+# `creep_ts_LOS_<track>.csv` from notebook 03). For every event, Tule Pond and the COZ1 control, each track's
+# bracket runs from its last real acquisition at or before `onset_lo` to its first at or after `onset_hi`
+# (printed). Asserted: the window lies inside every track's bracket; each window end is a real acquisition
+# of at least one track, so the window is the intersection of the brackets; and no bracket is longer than
+# the 45 d interpolation limit of notebook 03.
 
 # %%
-# [12]
 stack_dates, stack, _ = load_stack(segments["TULEPOND"])
 residual, _ = detrend_rate_annual(stack_dates, stack)
 flags_at_3_sigma = []
@@ -530,16 +751,14 @@ for event in creep_events.itertuples():
           f"{utils.decimal_year_to_day(event.onset_hi).date()}: inside " + "; ".join(bracket_text))
 
 # %% [markdown]
-# ## [13] Figure: detection QC
+# ## 7. Figure: detection QC
 #
-# Top: the stacked series with the joint model and the detections (dashed) and,
-# for Oakland, the creepmeter (offset) with its own independent detections
-# (solid). Bottom: the step statistic against the threshold. A solid line
-# without a dashed line marks a creepmeter detection at which the InSAR
+# Top: the stacked series with the joint model and the InSAR detections (dashed) and, for Oakland, the
+# creepmeter (offset by 5 mm) with its own detections (solid). Bottom: the step statistic $s_i$ against the
+# threshold $k\,\sigma_s$. A solid line without a dashed line marks a creepmeter detection at which the InSAR
 # statistic is below the threshold.
 
 # %%
-# [14]
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
 fig, axes = plt.subplots(2, 2, figsize=(7.2, 4.6), sharex=True)
 for j, (title, key, _, _, _, cmcode) in enumerate(SEGS):
@@ -582,22 +801,44 @@ print("Saved figure to:", f_detect)
 plt.show()
 
 # %% [markdown]
-# ## [15] Along strike: the joint model at every crossing
+# ## 8. Along strike: the joint model at every crossing
 #
-# The same design (linear + annual + a step at each step epoch, held fixed)
-# fitted crossing by crossing; the along-strike extent of each event is read
-# from these per-crossing amplitudes. The event-driven fraction is the
-# section's summed event slip over the total slip (inter-event rate x record
-# length + summed event slip); it is a regression ratio and is not confined to
-# 0 to 100%.
+# The joint model of section 4, with every event of both sections as a step at its `onset_lo` (held fixed),
+# is fitted at each crossing $x$ that has finite values at more than half of the epochs
+# (`min_epoch_frac`). It gives the inter-event rate $b_x$ (mm/yr) and the step $A_{k,x}$ (mm) of each event
+# at that crossing; the along-strike extent of each event is read from these steps. For a section with
+# event set $E$ (the five Tule Pond events, or the COZ1 control events), the summed event slip, the total
+# slip and the event-driven fraction are
+#
+# $$S_x = \sum_{k \in E} A_{k,x}, \qquad T_x = b_x\,T + S_x, \qquad F_x = 100\,\frac{S_x}{T_x},$$
+#
+# where $T = t_N - t_1$ is the record length (yr), $S_x$ and $T_x$ are in mm and $F_x$ is in %. $F_x$ is
+# undefined where $|T_x| \le 1$ mm (`total_floor_mm`). It is a ratio of regression coefficients and is not
+# confined to 0 to 100 %. The profiles are smoothed along the fault with `utils.gaussian_smooth_km`, a
+# Gaussian of standard deviation 0.4 km (`smooth_km`) on the regular 100 m grid of crossings, whose weights
+# are renormalised over the finite neighbours; the result is NaN where less than 15 % of the kernel weight
+# is data, and wherever the input is NaN. The median and the 5 to 95 % range of the unsmoothed $F_x$ over the
+# crossings within 2 km of each section centre are printed.
 
 # %%
-# [16]
-gaussian_smooth_km = utils.gaussian_smooth_km      # NaN-aware, gap-preserving Gaussian along the fault (one definition, insar_utils)
+gaussian_smooth_km = utils.gaussian_smooth_km      # NaN-aware, gap-preserving Gaussian along the fault (insar_utils)
 
 
 def interp_nan(x, y):
-    """Bridge NaN gaps inside the data range by linear interpolation (x must be sorted)."""
+    """Bridge NaN gaps inside the data range by linear interpolation.
+
+    Parameters
+    ----------
+    x : ndarray
+        Sorted positions (km).
+    y : ndarray
+        Values, NaN at the gaps.
+
+    Returns
+    -------
+    ndarray
+        Copy of y with the gaps between its first and last finite values filled.
+    """
     y = np.asarray(y, float).copy()
     ok = np.isfinite(y)
     if ok.sum() >= 2:
@@ -647,26 +888,34 @@ event_fraction = pd.DataFrame(columns)
 event_fraction.to_csv(os.path.join(out_dir, "event_fraction_by_crossing.csv"), index=False)
 
 # %% [markdown]
-# ## [17] The window around the section, and the slip above the inter-event rate
+# ## 9. The slip above the inter-event rate, and the window around the section
 #
-# Per crossing, a linear + annual model is fitted to the inter-event epochs only,
-# with one step column per event so the offsets between events do not drag the
-# rate up (each column is 0 before the event's 6 to 12 day acquisition interval
-# and 1 after it; no duration is fitted). The constant + rate + annual part is
-# subtracted from every epoch: what is left is the cumulative slip above the
-# inter-event rate, the hovmoller of Fig 1. The 20 km window for everything
-# along strike is centred on the peak of that cumulative slip at the end of
-# the record, rather than on the seed centre.
+# At each crossing a second model is fitted to the inter-event epochs only, the epochs outside every Tule
+# Pond onset window (at least 10 per crossing):
+#
+# $$d_x(t_j) = a_x + b_x t_j + c_{1,x} \sin(2\pi t_j) + c_{2,x} \cos(2\pi t_j) + \sum_{k=1}^{5} B_{k,x}\,\rho_k(t_j), \qquad \rho_k(t) = \min\!\left(\max\!\left(\frac{t - t^{\mathrm{lo}}_k}{t^{\mathrm{hi}}_k - t^{\mathrm{lo}}_k},\ 0\right),\ 1\right),$$
+#
+# where $d_x(t_j)$ is the fault-parallel displacement at crossing $x$ (mm), $a_x$ a constant (mm), $b_x$
+# the inter-event rate of that crossing (mm/yr), $c_{1,x}$ and $c_{2,x}$ the annual amplitudes (mm),
+# $t^{\mathrm{lo}}_k$ and $t^{\mathrm{hi}}_k$ the `onset_lo` and `onset_hi` of Tule Pond event $k$ (decimal
+# years) and $B_{k,x}$ the offset across event $k$ (mm). On the inter-event epochs $\rho_k$ is 0 before the
+# window and 1 after it, so each event column acts as a step and the offsets between events do not drag the
+# rate up; no event duration is fitted. The slip above the inter-event rate is then, at every epoch,
+#
+# $$u_x(t_j) = d_x(t_j) - \left(\hat{a}_x + \hat{b}_x t_j + \hat{c}_{1,x} \sin(2\pi t_j) + \hat{c}_{2,x} \cos(2\pi t_j)\right),$$
+#
+# in mm, smoothed along the fault at each epoch (0.4 km Gaussian). It is the Hovmöller diagram of Fig 1B.
+# The 20 km window used for everything along strike is centred on the peak of $u_x$ averaged over the last
+# five epochs, searched within the Tule Pond search window of `SEGS`, and kept inside the data. The median
+# of the per-crossing rates $\hat{b}_x$ in the window is printed for the Fig 1 caption.
 
 # %%
-# [18]
 _, _, tulepond_column, seed_centre_km, half_span_km, _ = SEGS[0]           # Tule Pond
 windows = list(zip(tulepond_events["onset_lo"], tulepond_events["onset_hi"]))
 
-# design: constant, rate, annual, plus one column per event that is 0 before its acquisition interval
-# (onset_lo to onset_hi, 6 to 12 d) and 1 after it. Only the inter-event epochs are fitted, so to the fit
-# each column is a plain step: it absorbs that event's offset so the staircase does not drag the rate up.
-# (The linear slope inside the interval is never fitted; it only touches the excluded epochs.)
+# design: constant, rate, annual, and one column per event that is 0 before its onset window and 1 after it.
+# Only the inter-event epochs are fitted, so each event column acts as a step that absorbs the event's offset;
+# the ramp inside the window touches only the excluded epochs.
 ramp_columns = [np.ones_like(dates), dates, np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
 for start, end in windows:
     ramp_columns.append(np.clip((dates - start) / (end - start), 0, 1))
@@ -683,7 +932,7 @@ for i in range(fp_matrix.shape[0]):
     if ok.sum() < min_inter_event_epochs:
         continue
     coef_i = np.linalg.lstsq(design_ramp[ok], values[ok], rcond=None)[0]
-    slip_above_rate[i] = values - np.dot(design_ramp[:, :4], coef_i[:4])          # only constant + rate + annual subtracted: the steps stay
+    slip_above_rate[i] = values - np.dot(design_ramp[:, :4], coef_i[:4])          # constant, rate and annual subtracted; the steps stay
     crossing_rates[i] = coef_i[1]
 for j in range(slip_above_rate.shape[1]):                       # smooth each epoch along the fault
     slip_above_rate[:, j] = gaussian_smooth_km(slip_above_rate[:, j], km, smooth_km)
@@ -697,8 +946,7 @@ peak_km = float(km[seed_window][np.nanargmax(final_slip[seed_window])])
 window_centre_km = min(max(peak_km, km.min() + half_span_km), km.max() - half_span_km)     # kept inside the data
 w_lo = window_centre_km - half_span_km
 w_hi = window_centre_km + half_span_km
-# the Fig 1 caption quotes the typical removed rate: the median of the per-crossing rates over the window
-# (each crossing has its own rate removed; this number only describes them)
+# the median of the per-crossing rates over the window, for the Fig 1 caption (each crossing has its own rate removed)
 in_window_crossings = (km >= w_lo) & (km <= w_hi)
 inter_event_rate_median = float(np.nanmedian(crossing_rates[in_window_crossings]))
 print(f"window re-centred on the cumulative-slip peak at {peak_km:.1f} km: {w_lo:.1f} to {w_hi:.1f} km; "
@@ -707,26 +955,55 @@ print(f"window re-centred on the cumulative-slip peak at {peak_km:.1f} km: {w_lo
       f"{np.nanpercentile(crossing_rates[in_window_crossings], 95):.2f})")
 
 # %% [markdown]
-# ## [19] Section lengths
+# ## 10. Section lengths
 #
-# Two lengths on the cumulative event slip profile of Tule Pond:
+# Two lengths on the Tule Pond profiles, on the north-to-south sorted axis, inside the window of section 9,
+# with short gaps bridged by linear interpolation.
 #
-# 1. **Length of fault hosting the events**: the contiguous span around the peak
-#    over which the cumulative event slip (sum of the five steps, 0.4 km
-#    smoothed, short gaps bridged) stays above a threshold: the median plus 3
-#    robust sigma of the same profile on the flanks (52 to 56 and 64 to 68
-#    km). Edge widths: the 10-90 % edge width at each end, the
-#    along-trace distance over which the
-#    same profile falls from 90 % to 10 % of its peak, walking out from the peak
-#    north and south (linear between crossings).
-# 2. **Width of the peak slip zone**: the contiguous run where the smoothed
-#    event-driven fraction is at least 90% of its peak.
+# 1. **Length of fault hosting the events.** The cumulative event slip $C_x$ is the summed slip of the five
+#    Tule Pond events, $S_x$ of section 8, smoothed with the 0.4 km Gaussian. The threshold is the median
+#    plus 3 robust standard deviations of the same profile on the flanks,
+#
+#    $$C_{\mathrm{thr}} = \mathrm{median}_{x \in \mathcal{F}}(C_x) + 3\,\sigma_{\mathcal{F}}, \qquad \sigma_{\mathcal{F}} = 1.4826\;\mathrm{median}_{x \in \mathcal{F}} \left|C_x - \mathrm{median}_{x \in \mathcal{F}}(C_x)\right|,$$
+#
+#    where $\mathcal{F}$ is the set of flank crossings, 52 to 56 km and 64 to 68 km from Point Pinole
+#    (`flank_km`), and $C_x$, $C_{\mathrm{thr}}$ and $\sigma_{\mathcal{F}}$ are in mm. The length is the
+#    contiguous run of crossings around the peak of $C_x$ with $C_x \ge C_{\mathrm{thr}}$, from
+#    $x_{\mathrm{lo}}$ to $x_{\mathrm{hi}}$ (km). The 10-90 % edge width at each end is
+#    $|x_{10} - x_{90}|$ (km), where $x_{90}$ and $x_{10}$ are the positions at which $C_x$, followed from
+#    the peak to the north or to the south, first falls below 90 % and 10 % of its peak, interpolated
+#    linearly between crossings.
+# 2. **Width of the peak slip zone (the 90 % band).** The contiguous run of crossings around the peak of the
+#    smoothed event-driven fraction $\tilde{F}_x$ (section 8) where
+#
+#    $$\tilde{F}_x \ge f \max_x \tilde{F}_x,$$
+#
+#    with $f = 0.90$ (`band_main`, `paper_band_frac` in TulePond_filepaths).
+#
+# The Oakland control band is found in the same way on the Oakland event-driven fraction, at $f = 0.75$ of
+# its own peak, inside the Oakland search window of `SEGS`. The extents are saved to `section_lengths.csv`
+# for the map brackets (notebook 05) and the text.
 
 # %%
-# [20]
 def contiguous_span(km_axis, values, threshold):
-    """Span (km_lo, km_hi, n) of the contiguous run around the peak of values where values >= threshold;
-    km_axis sorted."""
+    """Contiguous run of samples around the peak of a profile where it stays at or above a threshold.
+
+    Parameters
+    ----------
+    km_axis : ndarray
+        Sorted along-trace positions (km).
+    values : ndarray
+        Profile (NaN allowed).
+    threshold : float
+        Threshold, in the units of values.
+
+    Returns
+    -------
+    km_lo, km_hi : float
+        Positions of the first and last samples of the run (km).
+    n : int
+        Number of samples in the run.
+    """
     peak = int(np.nanargmax(values))
     above = np.isfinite(values) & (values >= threshold)
     lo = peak
@@ -756,8 +1033,24 @@ print(f"  length of fault hosting the events (above threshold): {len_lo:.1f} to 
 
 
 def level_crossing_km(km_axis, values, level, step):
-    """km where values first falls below level walking out from the peak (step -1: north, +1: south, on the
-    north -> south axis km_axis), linear between the last crossing at or above level and the first below it."""
+    """Position at which a profile first falls below a level, followed out from its peak.
+
+    Parameters
+    ----------
+    km_axis : ndarray
+        Along-trace positions, sorted north to south (km).
+    values : ndarray
+        Profile (mm).
+    level : float
+        Level (mm).
+    step : int
+        -1 to go north, +1 to go south.
+
+    Returns
+    -------
+    float
+        Position (km), linear between the last crossing at or above the level and the first below it.
+    """
     i = int(np.nanargmax(values))
     while 0 <= i + step < len(values) and np.isfinite(values[i + step]) and values[i + step] >= level:
         i += step
@@ -784,7 +1077,7 @@ for band_frac in band_fracs:
     print(f"  peak slip zone at {100 * band_frac:.0f}% of the fraction peak ({peak_frac:.0f}%): {band_lo:.1f} to {band_hi:.1f} km = "
           f"{band_hi - band_lo:.1f} km, {band_n} crossings")
 
-# the control: COZ1's 75% band on its own fraction, inside its seed window
+# the Oakland control band: 75 % of the peak of its own fraction, inside its search window
 _, _, _, coz1_centre_km, coz1_half_span_km, _ = SEGS[1]
 coz1_band_frac = 0.75
 fraction_coz1 = interp_nan(km_sorted, event_fraction["event_frac_coz1_smooth"].values[north_to_south])
@@ -802,17 +1095,36 @@ section_lengths.to_csv(os.path.join(out_dir, "section_lengths.csv"), index=False
 print("Saved section_lengths.csv")
 
 # %% [markdown]
-# ## [21] The band stack: the five events
+# ## 11. The band stack: the five events
 #
-# Mean of the crossings inside the peak slip zone, then the joint model with
-# the steps at the step epochs of `creep_events.csv` and block-bootstrap CIs on
-# the steps. Done for both band definitions; the figures draw the 90% band.
+# The mean series of the crossings in the 90 % band,
+#
+# $$\bar{d}(t_j) = \frac{1}{M_j} \sum_{x \in \mathrm{band}} d_x(t_j),$$
+#
+# where $M_j$ is the number of band crossings with a finite value at epoch $j$ and $\bar{d}$ is in mm, is
+# zeroed at its first finite epoch and fitted with the joint model of section 4, with the steps at the five
+# Tule Pond step epochs (`onset_lo` of `creep_events.csv`) and moving-block bootstrap intervals on the steps.
+# The steps $A_k$ of this fit are the amplitudes quoted for the five events. The standard deviation across
+# the band crossings is the grey envelope of Fig 1E. The Oakland control band is stacked in the same way with
+# the COZ1 control events.
 
 # %%
-# [22]
 def band_stack(lo_km, hi_km, step_epochs):
-    """Mean series of the crossings between lo_km and hi_km, zeroed at its first finite epoch, with the
-    joint fit and bootstrap CIs on the steps."""
+    """Mean series of the crossings in a band, with the joint fit and bootstrap intervals on the steps.
+
+    Parameters
+    ----------
+    lo_km, hi_km : float
+        Band limits along the trace (km from Point Pinole).
+    step_epochs : sequence of float
+        Step epoch of each event (decimal years).
+
+    Returns
+    -------
+    dict
+        n (crossings), mean and std (mm, per epoch; the mean is zeroed at its first finite epoch), coef,
+        steps, ci_lo, ci_hi (mm), secular (mm/yr), annual amplitude (mm) and rms (mm) of the fit.
+    """
     in_band = (km >= lo_km) & (km <= hi_km)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -837,33 +1149,45 @@ for band_frac, (lo_km, hi_km, n_band) in bands.items():
     print(f"    sum {np.sum(result['steps']):.1f} mm, mean {np.mean(result['steps']):.1f} mm, "
           f"range {np.min(result['steps']):.1f} to {np.max(result['steps']):.1f} mm")
     print("")
-step_epochs_coz1 = coz1_events["onset_lo"].to_numpy(float)          # every COZ1 control event ([10])
+step_epochs_coz1 = coz1_events["onset_lo"].to_numpy(float)          # every COZ1 control event (section 5)
 coz1_band = band_stack(coz1_lo, coz1_hi, step_epochs_coz1)
 print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_band['n']}): steps "
       f"{np.round(coz1_band['steps'], 2).tolist()} mm, secular {coz1_band['secular']:.2f} mm/yr")
 
 # %% [markdown]
-# ## [23] The slip budget, the alignment arrays and the creepmeters
+# ## 12. The slip budget, the alignment arrays and the creepmeters
 #
-# Per crossing: inter-event rate, the summed event steps divided by the record
-# length, and their sum, smoothed as Fig 1C (one Gaussian, sigma
-# `profile_smooth_km` = 0.2 km). Each block counts the events of its own
-# section: Fig 1C, 1D and the Tule Pond blocks add the five Tule Pond events
-# only; the Oakland control block adds all of its own (COZ1) events. Both sets
-# of steps stay in the joint model at every crossing (cell [16]). The alignment
-# arrays enter twice: refit over the InSAR window from their survey files (dark
-# grey in Fig 1, black in the supplement; requires 4 surveys spanning 5 yr),
-# and the archive's whole-record rate (grey). Creepmeter rates are over the
-# InSAR window.
+# At each crossing the event-driven rate and the total rate are
 #
-# Error bars are 1 sigma. Alignment arrays: the least-squares standard error of
-# the refit, from the scatter of the surveys about the line. Creepmeters: the
-# standard error of the slip gained in each whole year (daily samples are not
-# independent, so the regression standard error is not used).
+# $$r^{\mathrm{ev}}_x = \frac{S_x}{T}, \qquad r^{\mathrm{tot}}_x = b_x + r^{\mathrm{ev}}_x,$$
+#
+# where $S_x$ is the summed step of the section's own events (mm, section 8), $T$ the record length (yr),
+# $b_x$ the inter-event rate (mm/yr), and both rates are in mm/yr. Fig 1C, 1D and the Tule Pond blocks count
+# the five Tule Pond events only; the Oakland control block counts all of its own COZ1 events. Both sets of
+# steps stay in the joint model at every crossing (section 8). For Fig 1C the profiles are smoothed with a
+# 0.2 km Gaussian (`profile_smooth_km`). A block, the span of crossings from $x_{\mathrm{lo}}$ to
+# $x_{\mathrm{hi}}$, reports the means of $b_x$, $r^{\mathrm{ev}}_x$ and $r^{\mathrm{tot}}_x$ over its
+# crossings and the event-driven share $100\,\overline{r^{\mathrm{ev}}} / \overline{r^{\mathrm{tot}}}$ (%).
+#
+# The alignment arrays (McFarland et al. 2017) within 2 km of the trace enter twice. Each is refit over the
+# InSAR window by an ordinary least-squares line through the surveys inside it, if there are at least 4
+# surveys spanning at least 5 yr (dark grey in Fig 1, black in the supplement); its 1-sigma error is the
+# standard error of the slope, from the scatter of the surveys about the line. The archive's whole-record
+# rate is also shown (grey). A block is compared with the mean of the arrays within 1 km of it.
+#
+# The creepmeter rates (Langbein et al. 2024) are least-squares slopes of the daily records over the InSAR
+# window. Daily samples are not independent, so their 1-sigma error comes from the slip gained in each whole
+# year from the first sample (`utils.annual_increment_rate`):
+#
+# $$\Delta y_m = y(t_1 + m) - y(t_1 + m - 1), \quad m = 1, \ldots, M, \qquad \sigma_r = \frac{\mathrm{std}(\Delta y)}{\sqrt{M}},$$
+#
+# where $y$ is the creepmeter slip (mm) interpolated linearly to whole years after the first sample $t_1$,
+# $M$ the number of whole years, std the sample standard deviation (one degree of freedom removed) and
+# $\sigma_r$ the 1-sigma error of the rate (mm/yr). The mean of $\Delta y_m$ must agree with the fitted rate
+# within 0.5 mm/yr (asserted).
 
 # %%
-# [24]
-# the step columns of the five Tule Pond events (cell [16] names each by its step epoch)
+# the step columns of the five Tule Pond events (section 8 names each by its step epoch)
 tulepond_amp_columns = []
 for step_epoch in step_epochs_tulepond:
     column = f"amp_{step_epoch:.3f}"
@@ -931,8 +1255,24 @@ for array_row in in_section.itertuples():
 
 
 def budget_block(name, lo, hi, event_column="event_rate", total_column="total"):
-    """Mean rates of the crossings between lo and hi km, and the arrays within 1 km of that block. The event
-    columns are the Tule Pond events by default; the Oakland control block passes its own."""
+    """Mean rates of the crossings in a block, and of the alignment arrays within 1 km of it.
+
+    Parameters
+    ----------
+    name : str
+        Block name, printed and stored.
+    lo, hi : float
+        Block limits along the trace (km from Point Pinole).
+    event_column, total_column : str
+        Columns of slip_budget with the event-driven and total rates (the Tule Pond events by default;
+        the Oakland control block passes its own).
+
+    Returns
+    -------
+    dict
+        Mean inter-event, event-driven and total rates (mm/yr), the event-driven share (%), and the mean
+        window and whole-record rates of the nearby arrays (mm/yr) with their counts.
+    """
     in_block = (slip_budget.km >= lo) & (slip_budget.km <= hi)
     arrays_near = aa_rates[(aa_rates.km >= lo - 1.0) & (aa_rates.km <= hi + 1.0)]
     block = dict(name=name, lo=lo, hi=hi, n=int(in_block.sum()),
@@ -956,22 +1296,19 @@ budget["coz1"] = budget_block(f"Oakland control 75% band (its own {len(step_epoc
                               event_column="event_rate_oakland", total_column="total_oakland")
 
 # %% [markdown]
-# ## [25] Seismicity near the section
+# ## 13. Seismicity near the section
 #
-# Seismicity is Bo Xie's GrowClust relocated catalogue (relocated plus
-# unrelocated NCSS events); repeaters are Taira GEN3 plus Waldhauser and
-# Schaff; both within 2 km of the trace and inside the InSAR window.
-#
-# The counts quoted in the discussion (registered): earthquakes (all, and the relocated ones,
-# `source == "growclust"`) and repeating earthquakes within `seis_max_dist_km` of the trace,
-# from the first to the last InSAR acquisition (`t0`, `t1`), along strike (the km of the nearest
-# trace vertex) inside (a) the section hosting the events (`len_lo` to `len_hi`, the creep length of
-# [20]) and (b) the paper's peak-slip band (`band_main`, 90 %). The two repeater catalogues are
-# counted separately as well as together: they overlap in time (Waldhauser and Schaff to their end
-# year, Taira GEN3 to 2025) and may list the same earthquake, so the sum is an upper bound.
+# The earthquakes are from the GrowClust relocated catalogue of the Hayward area [citation needed], which
+# holds the relocated events and the unrelocated NCSS events; an event counts as relocated where
+# `source == "growclust"`. The repeating earthquakes are from the Taira GEN3 catalogue [citation needed] and
+# from Waldhauser and Schaff (2021). Each event is placed along strike at the distance of its nearest trace
+# vertex. The counts quoted in the discussion (registered) are the earthquakes (all, and the relocated ones)
+# and the repeating earthquakes within `seis_max_dist_km` (2 km) of the trace, from the first to the last
+# InSAR acquisition (`t0`, `t1`), inside (a) the section hosting the events (`len_lo` to `len_hi`, section
+# 10) and (b) the 90 % band (`band_main`). The two repeater catalogues are also counted separately. They
+# overlap in time and may list the same earthquake, so their sum is an upper bound.
 
 # %%
-# [26]
 seis = utils.load_growclust_catalog(common_paths["growclust_cat"], bbox=common_paths["aoi_bbox"])
 seis = utils.project_to_fault(seis, x_fault)
 seis = seis[(seis.dist_fault_km.abs() <= seis_max_dist_km) & (seis.YYYY >= t0) & (seis.YYYY <= t1)].copy()
@@ -1020,16 +1357,17 @@ print("\n".join(seis_count_lines))
 print("events in the window by catalogue span: " + "; ".join(catalogue_spans))
 
 # %% [markdown]
-# ## [27] Figure 1 data: the rotated map, the hovmoller, the per-event profiles
+# ## 14. Figure 1 data: the rotated map, the Hovmöller diagram, the per-event profiles
 #
-# The map is fault-parallel velocity (notebook 02) looked up on a lon/lat grid
-# and referenced, for DISPLAY only, to the CTM1-COZ1 patch so the fault sits at
-# zero. The hovmoller is the slip above the inter-event rate on a regular 6-day
-# grid (GMT grids must be regular). The per-event profiles are the cumulative
-# sum of the five fitted steps along strike.
+# The map is the fault-parallel velocity (notebook 02) sampled on a longitude-latitude grid and referenced,
+# for display only, to the CTM1-COZ1 patch, so that the fault sits at zero: the reference is the mid-point of
+# the medians of the two blocks within 5 km of the fault in that patch. The Hovmöller diagram is the slip
+# above the inter-event rate $u_x(t)$ of section 9 on a regular 6 day grid (GMT grids must be regular), each
+# node taking the nearest acquisition and left blank where none lies within 9 d. The per-event profiles are
+# the running sums of the five per-crossing steps $A_{k,x}$ of section 8 along strike, smoothed with the
+# 0.2 km Gaussian.
 
 # %%
-# [28]
 # --- the strike frame of the map: u along the mean strike from Point Pinole (km, + south), v across the fault (km, + east)
 with h5py.File(map_file, "r") as hf:
     fp_map = hf["fp_velocity"][:].astype(float)
@@ -1042,7 +1380,7 @@ with h5py.File(map_file, "r") as hf:
 fp_map[fp_map == 0] = np.nan
 frame = utils.strike_frame(int(attrs["EPSG"]), strike_map, x_fault["ft_lon"].values, x_fault["ft_lat"].values)   # u along strike from Point Pinole, v across
 
-# The map is drawn by utils.fault_map_panel (the same panel as the 05 and 09 supplements): GMT's oblique
+# The map is drawn by utils.fault_map_panel (the same panel as the 05 and 11 supplements): GMT's oblique
 # Mercator, x axis along strike_map - 90 (north-east, across the fault), so the fault runs up the page with
 # north at the top. The region is the rectangle of the strike frame utils.fault_map_corners gives: u from
 # -3 km (north of Point Pinole) to 70 km (just south of CFW1), v +/- 10.9 km. Every point is plotted in
@@ -1089,7 +1427,7 @@ hovmoller = hov_rows[:, nearest_epoch]
 hovmoller[:, np.abs(t_regular - dates[nearest_epoch]) > 9.0 / 365.25] = np.nan     # no real epoch within 9 d: blank
 grid_hov = xr.DataArray(hovmoller, coords={"y": grid, "x": t_regular}, dims=("y", "x"))
 
-# --- c) per-event cumulative slip profiles along strike: the per-crossing steps of the joint fit of [16] (event_fraction,
+# --- c) per-event cumulative slip profiles along strike: the per-crossing steps of the joint fit of section 8 (event_fraction,
 # the same crossings and fit as D), smoothed and bridged across gaps as D
 km_window = km[in_window_rows][south_to_north]
 event_amp_window = np.column_stack([event_fraction[column].values[in_window_rows][south_to_north] for column in tulepond_amp_columns])
@@ -1131,24 +1469,21 @@ event_epochs_wide[:-1] |= is_event_epoch[1:]
 
 
 # %% [markdown]
-# ## [29] Figure 1 (all pygmt, one font)
+# ## 15. Figure 1 (pygmt, one font)
 #
-# A) Map: fault-parallel velocity (notebook 02) on a page rotated to the mean
-# strike; creepmeters as gold triangles (as in D), city labels, a distance axis
-# down the left edge; the bracket is the measured length of fault hosting the
-# events. B) Tule Pond, slip above each crossing's own inter-event rate at every
-# crossing in the window, with the seismicity of [26] (circles, depth colour,
-# size by magnitude) and the repeaters (white squares); dashed lines at the
-# band. C) Cumulative slip per event along strike (blues, light to dark in time).
-# D) Creep rates: inter-event (bluish green), event-driven (orange: the five Tule Pond events), their sum (black);
-# creepmeters over the InSAR window (gold), alignment arrays refit over the same
-# window (dark grey); error bars +/- 1 sigma. E) InSAR stack: the plain mean of
-# the fault-parallel series of the band crossings, zeroed at the first epoch,
-# nothing subtracted; the joint model (bluish green between events, orange across the
-# steps) is drawn over it. Colours are Okabe-Ito (bluish green against orange).
+# (A) The fault-parallel velocity (notebook 02) on a page rotated to the mean strike, with the creepmeters
+# (gold triangles, as in D), city labels and a distance axis down the left edge. The bracket is the length of
+# fault hosting the events (section 10). (B) Tule Pond: the slip above each crossing's own inter-event rate in
+# the window (section 9), with the earthquakes of section 13 (circles coloured by depth and sized by
+# magnitude) and the repeating earthquakes (white squares). The dashed lines mark the 90 % band. (C) The
+# cumulative slip of each event along strike (blues, light to dark in time). (D) The creep rates: inter-event
+# (bluish green), event-driven (orange, the five Tule Pond events) and their sum (black), with the
+# creepmeters over the InSAR window (gold) and the alignment arrays refit over the same window (dark grey);
+# error bars are 1 sigma. (E) The InSAR stack: the mean fault-parallel series of the band crossings, zeroed at
+# the first epoch with nothing subtracted, and the joint model drawn over it (bluish green between events,
+# orange across the steps). The colours are from the Okabe-Ito palette.
 
 # %%
-# [30]
 # --- sizes in cm, double-column width, one font ---
 green = "#009E73"                                # Okabe-Ito bluish green: inter-event rate
 orange = "#E69F00"                               # Okabe-Ito orange: event-driven
@@ -1170,7 +1505,7 @@ fig = pygmt.Figure()
 pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", FONT_TITLE="9p,Helvetica-Bold",
              MAP_FRAME_TYPE="plain", MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p")
 
-# A) the map: the shared rotated fault map (utils.fault_map_panel, also the 05 and 09 supplements): oblique
+# A) the map: the shared rotated fault map (utils.fault_map_panel, also the 05 and 11 supplements): oblique
 # Mercator, fault up the page, north at the top, true scale, map_h tall. The bracket ("SSE extent") spans the
 # Tule Pond creep length (len_lo-len_hi, the length of fault hosting the events; section_lengths.csv), not the
 # narrower stacked band, which is drawn as the dashed lines in B. The cities, the creepmeter triangles (drawn
@@ -1287,18 +1622,17 @@ print("Saved Fig 1 to:", f_fig1 + ".png")
 fig.show()
 
 # %% [markdown]
-# ## [31] Figure: the creep rate along the whole fault (supplement)
+# ## 16. Figure: the creep rate along the whole fault (supplement)
 #
 # Three panels on one along-fault axis, every profile smoothed with the same 0.5 km Gaussian (`rate_smooth_km`, as the
-# rate profile of 03) and the Tule Pond section shaded. (A) The cross-fault azimuth of the mapped trace at every 100 m
-# crossing. (B) The fault-parallel creep rate of every crossing kept by 03 (`creep_rate_fp.csv`; crossings flagged by
-# the along-fault rate test of 03 are not shown), the creepmeter rates over the InSAR window, and the interseismic
+# rate profile of notebook 03) and the Tule Pond section shaded. (A) The cross-fault azimuth of the mapped trace at every 100 m
+# crossing. (B) The fault-parallel creep rate of every crossing kept by notebook 03 (`creep_rate_fp.csv`; crossings
+# flagged by its along-fault rate test are not shown), the creepmeter rates over the InSAR window, and the interseismic
 # Hayward Fault rates of the Johnson et al. (2022) compilation (alignment arrays, InSAR and cultural offsets, 1 sigma).
 # (C) The slip budget: the inter-event, event-driven (five Tule Pond events) and total rates, with the creepmeter rates;
 # the Oakland control band also shaded.
 
 # %%
-# [32]
 creep_rate_fp = pd.read_csv(os.path.join(paths_out["03_creep_timeseries"], "creep_rate_fp.csv"))
 creep_rate_fp["km"] = to_km(creep_rate_fp["lat"].values)
 flagged = creep_rate_fp["landslide_flag"].values.astype(bool)
@@ -1374,13 +1708,12 @@ print("Saved figure to:", f_budget)
 plt.show()
 
 # %% [markdown]
-# ## [33] Register
+# ## 17. Register
 #
-# The stats file `04_events_stats.txt` (every number above, in words) and the
-# registry rows `04_*` the paper quotes.
+# The stats file `04_events_stats.txt` (the numbers above, in words) and the registry rows `04_*` that the paper
+# quotes.
 
 # %%
-# [34]
 stats_lines = ["04 EVENT DETECTION",
                f"stream {params}; stack +/-{stack_half_km:g} km along the trace of the section centre; matched filter {win_n} epochs, "
                f"{k_sigma:g} sigma; joint model linear + annual + steps; {nboot} block bootstraps (~{block_years:g} yr blocks)", ""]
@@ -1497,7 +1830,7 @@ for span_name in seis_count_spans:
     REG.register(f"04_n_cre_{span_name}", seis_counts[(span_name, "cre_all")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
     REG.register(f"04_n_cre_taira_{span_name}", seis_counts[(span_name, "cre_taira")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
     REG.register(f"04_n_cre_wald_{span_name}", seis_counts[(span_name, "cre_wald")], "count", 0, where="Discussion (seismicity)", cell="catalogues", sidecar=sidecar)
-# the COZ1 control events ([10]: the two large known ones among them), labelled by onset day (2019_01_09, ...)
+# the COZ1 control events (section 5: the two large known ones among them), labelled by onset day (2019_01_09, ...)
 # because two COZ1 events fall in 2022
 coz1_detect_sigma_mm = float(coz1_events.detect_sigma_mm.iloc[0])      # one statistic sigma per stack (the same on every row)
 assert (coz1_events.detect_sigma_mm == coz1_events.detect_sigma_mm.iloc[0]).all(), "the COZ1 rows carry different detection sigmas"
@@ -1505,7 +1838,7 @@ REG.register("04_control_coz1_n_events", len(coz1_events), "count", 0, where="M5
 REG.register("04_control_coz1_detect_sigma_mm", coz1_detect_sigma_mm, "mm", 3, where="M5 (control)", cell="detect", sidecar=sidecar)
 REG.register("04_control_coz1_threshold_mm", k_sigma * coz1_detect_sigma_mm, "mm", 2, where="M5 (control)", cell="detect", sidecar=sidecar)
 for event in coz1_events.itertuples():
-    label = event.onset_day.replace("-", "_")                          # the onset day (unique, asserted in [10])
+    label = event.onset_day.replace("-", "_")                          # the onset day (unique, asserted in section 5)
     REG.register(f"04_control_coz1_onset_{label}", event.onset_lo, "decyear", 3, where="M5 (control)", cell="detect", sidecar=sidecar)   # the step epoch = onset_lo
     REG.register(f"04_control_coz1_onset_hi_{label}", event.onset_hi, "decyear", 4, where="M5 (control)", cell="detect", sidecar=sidecar)
     REG.register(f"04_control_coz1_amp_{label}_mm", event.amplitude_mm, "mm", 2, where="M5 (control)", cell="detect", sidecar=sidecar)

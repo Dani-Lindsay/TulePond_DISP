@@ -11,7 +11,7 @@
 # ---
 
 # %% [markdown]
-# # [1] 06 The event field: per-pixel step maps, the mean event and its cross-fault shape
+# # 06 The event field: per-pixel step maps, the mean event and its cross-fault shape
 #
 # ```
 # Author: Danielle Lindsay
@@ -19,72 +19,75 @@
 # ```
 #
 # **What this notebook does.** Notebook 04 measures the events on cross-fault
-# differences (east minus west medians). This notebook maps them: every pixel in
-# a box around Tule Pond is fitted with its own time function, which gives the
-# cross-fault shape of each event as well as its size. Notebooks
-# `07_model_data` and `08_3d_model` invert the mean event for slip at depth;
-# `09_fig2` draws Fig 2 from this notebook's maps and profiles and the slip
-# model. Each event's step is placed at 04's step epoch, the start of its onset
-# window (`onset_lo`).
+# differences of the fault-parallel series. This notebook maps them: every pixel
+# in a box around Tule Pond is fitted with its own time function, which gives
+# the cross-fault shape of each event as well as its size. Each event's step is
+# placed at the step epoch of notebook 04 (`onset_lo` in `creep_events.csv`, the
+# start of the onset window).
 #
-# 1. **Per-pixel model** on each track: MintPy's `timeseries2velocity` model
-#    (intercept + linear rate + annual cycle + one Heaviside step per event, step
-#    dates from `creep_events.csv`), solved per pixel with NaN-aware least
-#    squares, because `timeseries2velocity.py` does not accept records with gaps.
-# 2. **Burst-boundary correction**: the offset across the one burst seam each
-#    track has in the box is measured per event and removed. The seam is placed
-#    from the OPERA CSLC static bounding polygons (cell [4]); both tracks are
-#    corrected the same way.
-# 3. **Mean event**: the mean of the five step maps per track, written in the
-#    layout `07_model_data` (CSI) reads.
+# 1. **Per-pixel model** on each track: the time-function model of MintPy's
+#    `timeseries2velocity` (Yunjun et al. 2019): intercept, linear rate, annual
+#    cycle and one Heaviside step per event. It is solved per pixel by least
+#    squares over the epochs with data, because `timeseries2velocity` does not
+#    accept records with gaps.
+# 2. **Burst-seam correction**: the offset across the one burst seam each track
+#    has in the box is measured per event and removed. The seam orientation is
+#    taken from the OPERA CSLC static bounding polygons (section 2); both tracks
+#    are corrected in the same way.
+# 3. **Mean event**: the mean of the five step maps per track and its per-pixel
+#    scatter.
 # 4. **Decomposition** of the inter-event rate and the mean event into
 #    fault-parallel and vertical components with MintPy's `asc_desc2horz_vert`,
-#    as in notebook 02 for the whole fault, here with the mean local strike of the
-#    creep-event section.
-# 5. **Profiles** X-X' (the Tule Pond peak) and Y-Y' (CFW1) across the
-#    fault-parallel maps (the values quoted in the text) and across each track's
-#    LOS maps: the pixels, the model-free near-fault step (east band minus
-#    west band, the aperture of notebook 04) and the near-fault amplitude of
-#    each block against its own far field. No model is fitted here; the slip
-#    models are in `07_model_data` and `08_3d_model`.
-# 6. **Inputs for Fig 2**: the maps and profiles, written to one file, drawn by
-#    `09_fig2` after the slip model.
-# 7. **Mean-event statistics**: the fault-parallel near-fault deflection of each
-#    block at X-X' and Y-Y', the distance from the trace beyond which the X-X' event profile stays
-#    within the far-field scatter (each side), and the vertical displacement around Lake Elizabeth east of
-#    the fault.
+#    as in notebook 02, here with the mean local strike of the section hosting
+#    the events.
+# 5. **Profiles** X-X' (the Tule Pond peak) and Y-Y' (creepmeter CFW1) across the
+#    fault-parallel, vertical and LOS maps: the pixels, the near-fault step (east
+#    band minus west band, the aperture of notebook 04) and the near-fault
+#    amplitude of each block against its own far field. No model is fitted to
+#    the profiles; the slip models are in notebooks 07 and 08.
+# 6. **Inputs for Fig 2**: the maps and profiles, written to one file that
+#    notebook 09 draws after the slip model.
+# 7. **Mean-event statistics**: the near-fault fault-parallel deflection of each
+#    block at X-X' and Y-Y', the decay distance of the X-X' event profile on
+#    each side of the trace, and the vertical displacement around Lake Elizabeth
+#    east of the fault.
 #
-# **Inputs**: `timeseries_tropo.h5`, `geometryGeo.h5`, `maskTempCoh_07.h5` (the
-# fit mask, `coh_timeseries`) and `maskTempCoh_09.h5` (the map mask,
-# `coh_maps`) per track; `04_event_detection/creep_events.csv` and
-# `section_lengths.csv`; `hayward_fault_profiles.csv`; the OPERA
-# `CSLC-S1-STATIC` files of the bursts covering the box (`static_dir` per track,
-# their bounding polygons place the burst seams).
+# Every near-fault step is the median of an east band minus the median of a
+# west band, 30 to 150 m from the trace (`dist_min` to `dist_max`), the same
+# aperture as notebook 04, so that both notebooks measure the same quantity.
+#
+# **Inputs**: per track, the MintPy stack `timeseries_tropo.h5`, `geometryGeo.h5`,
+# `maskTempCoh_07.h5` (the fit mask, `coh_timeseries`) and `maskTempCoh_09.h5`
+# (the map mask, `coh_maps`); notebook 04 `creep_events.csv` and
+# `section_lengths.csv`; the fault trace `hayward_fault_profiles.csv`; the OPERA
+# `CSLC-S1-STATIC` files of the bursts covering the box (`static_dir` per track).
 #
 # **Outputs** (`outputs/06_event_field_geometry/`): `tulepond_steps_<track>.h5`
-# (every per-event LOS step map, raw and burst-fixed, each tagged with its track
-# `step_date` and 04's `step_epoch`; mean, scatter, rate, geometry), `csi_mean_event_<track>.npz` (07's input), `fp_maps.npz`
-# (fault-parallel and vertical rate and mean event; read by 07, 07b, 08),
-# `profile_<XX|YY>_<field>[_<track>].csv`,
-# `fig2_inputs.npz` (for `09_fig2`, also read by 07 and 08),
-# `timefunc_fit_<track>.npz` (the cached per-pixel fit), `06_event_field_stats.txt`,
-# registry rows `06_*`.
+# (every per-event LOS step map, before and after the burst-seam correction,
+# each tagged with its `step_date` on that track and its `step_epoch` from
+# notebook 04; the mean, scatter, rate and geometry; read by notebook 07),
+# `csi_mean_event_<track>.npz` (the mean event as a flat table of pixels),
+# `fp_maps.npz` (fault-parallel and vertical rate and mean event; read by
+# notebooks 07 and 08), `profile_<XX|YY>_<field>[_<track>].csv`,
+# `fig2_inputs.npz` (read by notebooks 08, 09 and 11),
+# `timefunc_fit_<track>.npz` (the cached per-pixel fit),
+# `06_event_field_stats.txt`, registry rows `06_*`.
 #
-# **Figures**: `figS_event_step_maps_coh0.9` (.png and .pdf, the step-map grid, supplement).
+# **Figures**: `figS_event_step_maps_coh0.9` (.png and .pdf, the step-map grid,
+# supplement).
 #
-# **What to check.** The near-fault LOS steps on the two tracks (asserted:
-# the mean event negative on ascending and positive on descending, every
-# descending step positive); the per-event asc/desc ratio, printed beside the
-# geometric ratio; the burst offsets (asserted below 2 mm on both tracks);
-# the mean event's fault-parallel profiles at X-X' and Y-Y'; the vertical
-# component, printed beside the fault-parallel one.
-#
-# **Apertures.** Every near-fault step here is median(east band) minus
-# median(west band) with the same band as notebook 04 (`dist_min` to
-# `dist_max`, 30 to 150 m), so that both notebooks measure the same quantity.
+# **What to check.** The printed near-fault LOS steps on the two tracks
+# (section 7, asserted: the mean event is negative on ascending and positive
+# on descending, and every descending step is positive) and the per-event
+# ascending/descending ratio printed beside the geometric ratio; the burst
+# offsets (section 6, asserted below 2 mm); the fault-parallel profiles at X-X'
+# and Y-Y' (section 10); the vertical step printed beside the fault-parallel
+# one (section 9); the mean-event statistics (section 12).
+
+# %% [markdown]
+# ## 1. Imports
 
 # %%
-# [2]
 import glob
 import os
 import re
@@ -92,7 +95,7 @@ import re
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, insar_dic_list, box_lonlat,
                                 coh_timeseries, az_smooth_n, dist_min, dist_max, paths_out, repo_dir,
-                                lake_elizabeth_lonlat, lake_elizabeth_radius_m)   # the Lake Elizabeth area of [24]
+                                lake_elizabeth_lonlat, lake_elizabeth_radius_m)   # the Lake Elizabeth area of section 12
 
 import numpy as np
 import pandas as pd
@@ -105,51 +108,77 @@ from mintpy.utils import time_func                                    # the desi
 from mintpy.asc_desc2horz_vert import asc_desc2horz_vert              # the asc/desc decomposition (MintPy)
 
 # %% [markdown]
-# ## [3] Paths and parameters
+# ## 2. Paths, parameters and the burst seams
 #
-# Every parameter the notebook uses, with its definition.
+# Every parameter the notebook uses, with its definition, and the position of
+# the burst seam of each track in the box.
+#
+# **Burst seams.** The OPERA CSLC-S1-STATIC files carry the bounding polygon of
+# each burst (`identification/bounding_polygon`, lon/lat). A seam is the shared
+# edge of two consecutive bursts of one subswath; the polygons tile the frame
+# without overlap (asserted). Across the box the edge is replaced by the
+# straight line through its latitudes at the box's west and east longitudes,
+#
+# $$\varphi_s(\lambda) = b + s\,(\lambda + 122^\circ), \qquad s = \frac{\varphi_E - \varphi_W}{\lambda_E - \lambda_W}, \qquad b = \varphi_W - s\,(\lambda_W + 122^\circ),$$
+#
+# where $\lambda$ is longitude (deg), $\varphi_s$ the seam latitude (deg),
+# $\lambda_W$ and $\lambda_E$ the box's west and east longitudes (deg),
+# $\varphi_W$ and $\varphi_E$ the latitudes of the polygon edge there (deg),
+# $s$ the slope (deg/deg) and $b$ the latitude at $122^\circ$ W (deg). The edge
+# departs from this line by less than `burst_line_tol_deg` (about one 30 m
+# pixel, asserted). Each track has one seam in the box (asserted).
+#
+# The displacement discontinuity in the DISP-S1 mosaic (OPERA 2025) does not lie
+# on the polygon edge. The polygon line gives the seam's orientation, and the
+# line is moved north by `burst_seam_shift_m` (m, per track, converted to
+# latitude at 111.2 km per degree). The shifts were found by scanning the shift
+# in 10 m steps on the mean of the five step maps before correction; section 6
+# checks that the jump across the shifted line is larger than the jump across
+# the polygon line. The shifts must be found again if the products change.
 
 # %%
-# [4]
-# Burst seams are derived from the CSLC static bounding polygons (burst_seams below), one per track; both are corrected.
 notebook = "06_event_field_geometry"
 out_dir = paths_out[notebook]
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-unit = 1000                     # 1000 = mm
+unit = 1000                     # m -> mm
 periodic = [1.0]                # annual cycle in the per-pixel model (years)
-min_obs = 60                    # a pixel needs this many finite epochs to be fitted
+min_obs = 60                    # a pixel with gaps needs this many finite epochs to be fitted
 geom_step = 20                  # MintPy's decomposition window (pixels), as notebook 02
 
-# Burst seams in the box, from the product geometry: the OPERA CSLC-S1-STATIC bounding polygon
-# ('identification/bounding_polygon', WKT lon/lat) of every burst covering the box (`static_dir` per track).
-# A seam is the shared edge of two consecutive bursts of one subswath (the polygons tile the frame without
-# overlap, asserted), kept as the straight line through its latitudes at the box's west and east longitudes,
-# lat = b + s * (lon + 122) (the edge departs from that line by less than burst_line_tol_deg, asserted).
-# Every burst seam in the box is corrected on both tracks: the offset across it
-# is measured per event in +/- burst_band_deg bands (excluding +/- burst_far_m around the trace) and removed
-# as a step. The side held fixed is the one holding most of the track's valid (fit-mask) pixels in the box,
-# so the smaller side is the one that moves (cell [12]; the datum of these maps is the box median, not ZOA1).
-burst_band_deg = 0.0015
-burst_far_m = 400.0
-burst_line_tol_deg = 0.0003     # ~30 m, one pixel: the seam's polygon edge must be this close to the straight line
-burst_min_pixels = 200          # finite pixels each band needs, every event: a median of fewer is not an offset
+# burst-seam correction (sections 2 and 6)
+burst_band_deg = 0.0015         # width of the band on each side of the seam (deg of latitude)
+burst_far_m = 400.0             # band pixels closer than this to the trace are excluded (m)
+burst_line_tol_deg = 0.0003     # about one 30 m pixel: the polygon edge must lie this close to the straight line
+burst_min_pixels = 200          # finite pixels each band needs for every event
                                 # (the ascending seam runs along the box's northern edge, so its north band is clipped)
 burst_corrected = ("ascending", "descending")
-# The DISP-S1 mosaic discontinuity does not lie at the polygon edge; it is displaced along track on both tracks.
-# The polygon edge gives the seam's orientation; its along-track position is the shift below, located by scanning
-# the shift at 10 m steps on the five-event mean raw step maps. These values must be relocated when the products
-# change; cell [12] checks that the mean-map jump across the shifted line exceeds the jump across the polygon line.
-burst_seam_shift_m = {"ascending": 550.0, "descending": -690.0}     # m along track, north positive
+burst_seam_shift_m = {"ascending": 550.0, "descending": -690.0}     # seam shift from the polygon line (m, north positive)
 
 
 def burst_seams(static_dir, box):
-    """Seams between consecutive bursts of one subswath crossing `box` (W, S, E, N), from the CSLC-S1-STATIC
-    bounding polygons in `static_dir`. Returns the seams (burst ids north / south, slope and intercept of
-    lat = intercept + slope * (lon + 122), latitude at the box's west and east longitudes) and the static
-    files of the bursts covering the box."""
+    """Find the burst seams that cross a box.
+
+    A seam is the shared edge of two consecutive bursts of one subswath, read from the CSLC-S1-STATIC
+    bounding polygons, and kept as the straight line lat = intercept + slope * (lon + 122).
+
+    Parameters
+    ----------
+    static_dir : str
+        Folder of the OPERA_L2_CSLC-S1-STATIC_*.h5 files of one track.
+    box : tuple of float
+        (W, S, E, N) in degrees.
+
+    Returns
+    -------
+    seams : list of dict
+        Per seam: the north and south burst ids, slope (deg/deg), intercept (deg, at 122 W), the latitudes at the
+        box's west and east longitudes, and the largest departure of the edge from the line (deg).
+    box_files : list of str
+        The static files of the bursts that cover the box.
+    """
     static_files = sorted(glob.glob(os.path.join(static_dir, "OPERA_L2_CSLC-S1-STATIC_*.h5")))
     assert static_files, f"no CSLC-S1-STATIC files in {static_dir} (see 'static_dir' in TulePond_filepaths)"
     box_polygon = shapely.box(*box)
@@ -208,34 +237,33 @@ for orbit in ("ascending", "descending"):
     assert len(burst_seam_list[orbit]) == 1, f"expected one {orbit} burst seam in the box, found {burst_seam_list[orbit]}"
 des_seam = burst_seam_list["descending"][0]
 asc_seam = burst_seam_list["ascending"][0]
-# checks against the seam positions read from the polygons by hand: descending 37.5384 N at -121.97 E;
-# ascending T035-073249-IW2 / T035-073250-IW2, 37.6149 N at -122.10 E to 37.6504 N at -121.84 E (along the box's
-# northern edge, leaving through it at ~-121.84 E)
+# check against the seam positions read from the polygons: descending 37.5384 N at -121.97 E; ascending
+# T035-073249-IW2 / T035-073250-IW2, 37.6149 N at -122.10 E to 37.6504 N at -121.84 E (along the box's northern edge)
 assert abs(des_seam["intercept"] + des_seam["slope"] * (-121.97 + 122.0) - 37.54) < 0.01, f"descending seam moved: {des_seam}"
 assert abs(asc_seam["lat_west"] - 37.6149) < 0.01 and abs(asc_seam["lat_east"] - 37.6504) < 0.01, f"ascending seam moved: {asc_seam}"
 zoa1_seam_lat = des_seam["intercept"] + des_seam["slope"] * (common_paths["ref_lon"] + 122.0)
 print(f"ZOA1 ({common_paths['ref_lat']} N) is {abs(common_paths['ref_lat'] - zoa1_seam_lat) * 111.2e3:.0f} m "
       f"{'north' if common_paths['ref_lat'] > zoa1_seam_lat else 'south'} of the descending seam")
-burst_lines = {}                # (slope, intercept) of each corrected seam, the form cells [12] and [26] read
+burst_lines = {}                # (slope, intercept) of each corrected seam, as sections 6 and 13 read them
 for orbit in burst_corrected:
     burst_lines[orbit] = [(seam["slope"], seam["intercept"]) for seam in burst_seam_list[orbit]]
 
-# profiles across the fault-parallel maps, perpendicular to the local strike
-profile_pts = {"X": (-121.97816, 37.56270),      # X-X': the trace point 58.5 km from Point Pinole, inside the 90% band (selected from event profiles at 200 m spacing)
+# profiles across the maps, perpendicular to the local strike
+profile_pts = {"X": (-121.97816, 37.56270),      # X-X': the trace point 58.5 km from Point Pinole, inside the 90% band
                "Y": (-121.95233, 37.53214)}      # Y-Y': CFW1
-cross_m = 2000.0                # +/- profile length (m)
-swath_m = 150.0                 # +/- along-strike half-width
-coh_maps = 0.9                  # temporal-coherence mask for the per-pixel maps and the decomposed field the slip model inverts;
-                                # the crossings and the LOS checks use coh_timeseries
-far_m = (1500.0, 2000.0)        # same-block far field the near-fault amplitude of each block is measured against
+cross_m = 2000.0                # profile half-length (m)
+swath_m = 150.0                 # along-strike half-width of the profile swath (m)
+coh_maps = 0.9                  # temporal-coherence mask of the maps and of the decomposed field the slip model inverts;
+                                # the per-pixel fit and the LOS checks use coh_timeseries
+far_m = (1500.0, 2000.0)        # far field of each block for the block amplitudes (m from the trace)
 block_seed = 20260923           # each block-amplitude bootstrap starts its own generator from this seed
 n_boot_blocks = 2000            # bootstrap resamples for the block amplitudes
-event_far_m = 1500.0            # the event profile is zeroed on |x| >= this (far field, both blocks)
-rate_zero_m = 1000.0            # the rate profile is zeroed on the mid-point of the two block medians within this of the trace
+event_far_m = 1500.0            # the event profile is zeroed on its pixels at |distance| >= this (m, both blocks)
+rate_zero_m = 1000.0            # the rate profile is zeroed on the mid-point of the two block medians within this (m)
 min_far_pixels = 20             # the event profile needs this many far-field pixels to be zeroed
-xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault step band, the aperture of notebook 04 (m)
-decay_bin_m = 150.0             # [24] the decay distance: the binned median of the event profile, 150 m bins outward from the
-                                # trace on each side (09_fig2's running median, median_bin_m, the black line of Fig 2)
+xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault band, the aperture of notebook 04 (m)
+decay_bin_m = 150.0             # bin width of the decay distance (section 12); the running median of Fig 2
+                                # (notebook 09, median_bin_m) uses the same bins
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
@@ -255,29 +283,43 @@ for dic in insar_dic_list:
 REG.inputs(events_file, lengths_file, common_paths["fault_profiles"], *stack_files, *map_mask_files, *burst_static_files)
 
 # %% [markdown]
-# ## [5] Load: the events, the trace and the box
+# ## 3. Load the events, the trace and the box
 #
-# The box is `box_lonlat` (W, S, E, N) converted to a row/column slice of the
-# product grid. Both tracks are on the same grid (asserted), so one slice
-# serves both and the two LOS maps line up pixel for pixel. The decomposition
-# strike is the mean local strike of the creep-event section of notebook 04.
+# The step epoch of each Tule Pond event is `onset_lo` from notebook 04, the
+# last acquisition before the step. The box is `box_lonlat` (W, S, E, N)
+# converted to a row and column slice of the product grid. Both tracks are on
+# the same grid (asserted), so one slice serves both and the two LOS maps line
+# up pixel for pixel.
+#
+# The decomposition strike is the mean local strike of the section hosting the
+# events (`tulepond_creep_length` in notebook 04 `section_lengths.csv`),
+#
+# $$\theta = \frac{1}{N}\sum_{j=1}^{N} \left(\beta_j + 90^\circ\right),$$
+#
+# where $\beta_j$ is the cross-fault azimuth of trace vertex $j$ (deg clockwise
+# from north), smoothed by a running median over `az_smooth_n` vertices, and
+# $N$ the number of trace vertices in the section. Each pixel gets a signed
+# distance from the trace,
+#
+# $$d = (\mathbf{x} - \mathbf{x}_v) \cdot \hat{\mathbf{n}}, \qquad \hat{\mathbf{n}} = \left(\sin(\theta - 90^\circ),\ \cos(\theta - 90^\circ)\right),$$
+#
+# where $\mathbf{x}$ is the pixel centre (easting, northing in m, UTM),
+# $\mathbf{x}_v$ the nearest trace vertex (m) and $\hat{\mathbf{n}}$ the unit
+# normal to the strike, so that $d$ (m) is positive on the east (north-east)
+# side of the fault.
 
 # %%
-# [6]
 events = pd.read_csv(events_file)
 tulepond_events = events[events.segment == "TULEPOND"].sort_values("onset_lo").reset_index(drop=True)
-# 04's step is H(t > step epoch), the step epoch being the last acquisition before the event, which is the
-# start of the onset window: onset_lo
+# the step of notebook 04 is H(t > step epoch), with the step epoch the last acquisition before the event (onset_lo)
 step_epochs = tulepond_events.onset_lo.to_numpy(float)
 print(f"{len(tulepond_events)} Tule Pond events, step epochs (onset_lo): {step_epochs}")
 
 x_fault = pd.read_csv(common_paths["fault_profiles"])
 x_fault["az_smooth"] = x_fault["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()
 lengths = pd.read_csv(lengths_file).set_index("name")
-band = lengths.loc["tulepond_band90"]          # the band Fig 1 stacks (the 90% band)
-# the decomposition strike is the mean local strike of the SSE section (the
-# creep-event section from 04): the fault-parallel direction
-# of the slipping patch, not of the whole 20 km map box
+band = lengths.loc["tulepond_band90"]          # the 90% band that Fig 1 stacks
+# the decomposition strike: the mean local strike of the section hosting the events, not of the whole box
 section = lengths.loc["tulepond_creep_length"]
 in_section = (x_fault.ft_lat >= section.lat_lo) & (x_fault.ft_lat <= section.lat_hi)
 strike = float(np.nanmean(x_fault.loc[in_section, "az_smooth"] + 90.0))
@@ -314,7 +356,7 @@ print(f"box rows {r0}:{r1} cols {c0}:{c1} = {nr} x {nc} pixels of {abs(dx):.0f} 
 # pixel-centre coordinates of the box
 Xg, Yg = np.meshgrid(x0 + (np.arange(c0, c1) + 0.5) * dx, y0 + (np.arange(r0, r1) + 0.5) * dy)
 lon_g, lat_g = to_ll.transform(Xg, Yg)
-# trace in UTM and the signed cross-fault distance of every pixel (+ = east / north-east side)
+# the trace in UTM and the signed cross-fault distance of every pixel (m, positive on the north-east side)
 trace_x, trace_y = to_utm.transform(x_fault.ft_lon.values, x_fault.ft_lat.values)
 tree = cKDTree(np.c_[trace_x, trace_y])
 d_trace, nearest_vertex = tree.query(np.c_[Xg.ravel(), Yg.ravel()])
@@ -323,27 +365,57 @@ d_signed = ((np.c_[Xg.ravel(), Yg.ravel()] - np.c_[trace_x, trace_y][nearest_ver
 d_trace = d_trace.reshape(nr, nc)
 
 # %% [markdown]
-# ## [7] The per-pixel time-function model
+# ## 4. The per-pixel time-function model
 #
-# MintPy's Heaviside is $H(t > t_{step})$, the same step as notebook 04's
-# `(dates > step epoch)`. 04's step epoch (`onset_lo`, the start of the onset
-# window) is the last date before the event on the two-track grid, so on each
-# track the step date is the last acquisition on or before it: it counts as
-# pre-event and the next acquisition is the first post-event sample. The onset
-# window runs from the last acquisition before the step to the first
-# acquisition after it. The design matrix comes from
-# `mintpy.utils.time_func` (so it is `timeseries2velocity`'s model); only its
-# batch solver is replaced, by a per-pixel one that skips missing epochs.
-# Pixels with complete records are solved in one matrix operation; the rest
-# one by one.
+# Each pixel's LOS time series on one track is modelled with the time functions
+# of MintPy's `timeseries2velocity` (Yunjun et al. 2019),
+#
+# $$d(t) = a + v\,(t - t_0) + c\,\cos\!\big(2\pi (t - t_0)\big) + s\,\sin\!\big(2\pi (t - t_0)\big) + \sum_{k=1}^{K} A_k\, H(t - \tau_k),$$
+#
+# where $d$ is the LOS displacement (mm, positive toward the satellite), $t$
+# the acquisition time (decimal years), $t_0$ the first acquisition of the
+# track (decimal years), $a$ the intercept (mm), $v$ the inter-event LOS rate
+# (mm/yr), $c$ and $s$ the cosine and sine amplitudes of the annual cycle (mm),
+# $A_k$ the step of event $k$ (mm), $K$ the number of events (five), and $H$ the
+# Heaviside function, $H(x) = 1$ for $x > 0$ and 0 otherwise. This is the
+# joint model of notebook 04 applied to one pixel. The step date $\tau_k$ is
+# the last acquisition on this track on or before the step epoch of notebook 04
+# (`onset_lo`, the last acquisition before the event on the two-track grid), so
+# it counts as pre-event and the next acquisition is the first post-event
+# sample.
+#
+# The design matrix $\mathbf{G}$ comes from `mintpy.utils.time_func`. Only the
+# solver is replaced, by a per-pixel one that skips missing epochs. For each
+# pixel the least-squares solution and its formal errors over the $N$ epochs
+# with data are
+#
+# $$\hat{\mathbf{m}} = (\mathbf{G}^\top \mathbf{G})^{-1} \mathbf{G}^\top \mathbf{d}, \qquad \hat{\sigma}^2 = \frac{\lVert \mathbf{d} - \mathbf{G}\hat{\mathbf{m}} \rVert^2}{N - P}, \qquad \sigma_{m_j} = \sqrt{\hat{\sigma}^2 \left[(\mathbf{G}^\top \mathbf{G})^{-1}\right]_{jj}},$$
+#
+# where $\mathbf{d}$ is the vector of observed displacements (mm),
+# $\hat{\mathbf{m}} = (a, v, c, s, A_1, \dots, A_K)$ the parameters, $P = 4 + K$
+# their number, $\hat{\sigma}^2$ the residual variance (mm$^2$) and
+# $\sigma_{m_j}$ the formal 1-sigma error of parameter $j$. The residual RMS is
+# $\sqrt{\lVert \mathbf{d} - \mathbf{G}\hat{\mathbf{m}} \rVert^2 / N}$ (mm).
+# Pixels with complete records are solved in one matrix operation; the others
+# one at a time, and only if they have at least `min_obs` epochs.
 
 # %%
-# [8]
 def step_dates_for(dates_yyyymmdd, step_epochs_yr):
-    """(step_date, step_epoch) per event: step_epoch is 04's step epoch (decimal year, onset_lo), the last
-    pre-event date on the common (two-track) grid; step_date (YYYYMMDD) is the last acquisition on this track
-    on or before it, so with MintPy's H(t > t_step) that acquisition stays pre-event and the next one is the
-    first post-event sample."""
+    """Place each step epoch of notebook 04 on one track's acquisitions.
+
+    Parameters
+    ----------
+    dates_yyyymmdd : list of str
+        The track's acquisition dates (YYYYMMDD).
+    step_epochs_yr : array of float
+        Step epochs of notebook 04 (decimal years, onset_lo).
+
+    Returns
+    -------
+    list of tuple
+        (step_date, step_epoch) per event: step_date (YYYYMMDD) is the last acquisition on this track on or before
+        the step epoch, so with MintPy's H(t > t_step) it stays pre-event.
+    """
     dts = pd.to_datetime(dates_yyyymmdd, format="%Y%m%d")
     yrs = np.array([utils.date_to_decimal_year(d) for d in dates_yyyymmdd])
     out = []
@@ -358,9 +430,28 @@ def step_dates_for(dates_yyyymmdd, step_epochs_yr):
 
 
 def fit_time_func(cube, dates, keep, step_dates):
-    """Per-pixel least squares of MintPy's model (polynomial 1 + periodic + steps).
-    cube (nt, nr, nc) in mm with NaN gaps; keep (nr, nc) bool. Returns (dict of coefficient maps (mm, mm/yr),
-    their formal errors ("<name>Std") and the residual RMS; the design matrix; the coefficient names)."""
+    """Per-pixel least squares of MintPy's time-function model (linear, annual, one step per event).
+
+    Parameters
+    ----------
+    cube : ndarray
+        (n_dates, n_rows, n_cols) LOS displacement (mm), NaN where missing.
+    dates : list of str
+        Acquisition dates (YYYYMMDD).
+    keep : ndarray of bool
+        (n_rows, n_cols) pixels to fit.
+    step_dates : list of str
+        Step dates (YYYYMMDD).
+
+    Returns
+    -------
+    out : dict
+        Coefficient maps (mm, mm/yr), their formal errors ("<name>Std") and "residualRMS" (mm).
+    G : ndarray
+        The design matrix.
+    names : list of str
+        The coefficient names, in the column order of G.
+    """
     model = dict(polynomial=1, periodic=periodic, stepDate=list(step_dates), polyline=[], exp={}, log={})
     G = time_func.get_design_matrix4time_func(dates, model).astype(float)
     names = ["intercept", "velocity"]
@@ -408,16 +499,14 @@ def fit_time_func(cube, dates, keep, step_dates):
     return out, G, names
 
 # %% [markdown]
-# ## [9] Run: fit each track, or read the cached fit
+# ## 5. Fit each track, or read the cached fit
 #
 # The per-pixel fit is the slow step, so it is cached in
 # `timefunc_fit_<track>.npz`. The cache is reused only if it was made from the
-# same step dates, the same input dates, the same box, the same fit mask and
-# the same model settings (`periodic`, `min_obs`); otherwise it is refitted
-# and the reason printed.
+# same step dates, input dates, box, fit mask and model settings (`periodic`,
+# `min_obs`); otherwise the pixels are refitted and the reason is printed.
 
 # %%
-# [10]
 cache_meta_keys = ("step_dates", "names", "input_dates", "box_rows_cols", "periodic", "min_obs", "fit_mask")
 fits = {}           # per track: the coefficient maps, the geometry, the step dates
 for dic in insar_dic_list:
@@ -433,9 +522,8 @@ for dic in insar_dic_list:
     with h5py.File(dic["geo_file"], "r") as geo_h5:              # loaded as notebook 02 does (float32, as MintPy wrote it)
         inc = geo_h5["incidenceAngle"][r0:r1, c0:c1].astype(np.float32)
         azi = geo_h5["azimuthAngle"][r0:r1, c0:c1].astype(np.float32)
-    # The cache is keyed on everything the fit depends on. The step dates lie in 2017-2024, so a data
-    # refresh that appends epochs leaves them unchanged; they are not a sufficient key on their own.
-    # A cache that does not match is recomputed, not an error.
+    # The cache is keyed on everything the fit depends on; the step dates alone are not enough, because
+    # appending epochs leaves them unchanged. A cache that does not match is recomputed.
     box_rows_cols = np.array([r0, r1, c0, c1])
     cache_ok = False
     if os.path.exists(f_fit):
@@ -475,26 +563,43 @@ for dic in insar_dic_list:
     print(f"  {orbit}: steps at {step_dates} (04's step epochs {[round(step_epoch, 4) for _, step_epoch in steps]})")
 
 # %% [markdown]
-# ## [11] Run: read the step maps, mask, remove the box median, correct the burst offsets
+# ## 6. The step maps, the box median and the burst-seam correction
 #
-# The box median of each step map is removed (the InSAR datum is ZOA1, an
-# arbitrary constant here). The burst correction then measures, per event, the
-# median offset between two thin bands either side of each track's burst seam
-# (cell [4]), away from the fault, and shifts the side with fewer valid pixels
-# onto the side with more (ascending: the seam runs along the box's northern
-# edge, so the north side moves; descending: printed). The box median is
-# removed before the correction and not again after it, so the choice of the
-# side held fixed shifts a whole map by a constant (that event's offset); every
-# value taken from these maps is a difference (east band minus west band, a
-# profile zeroed on its far field) and the slip models fit a constant per
-# dataset, so a constant does not change them.
+# The step maps $A_k(\mathbf{x})$ and the rate map $v(\mathbf{x})$ are masked
+# with the fit mask, and the box median of each step map is removed,
+# $A_k(\mathbf{x}) \leftarrow A_k(\mathbf{x}) - \operatorname{median}_{\text{box}} A_k$,
+# because the datum of the InSAR series (GNSS station ZOA1) is an arbitrary
+# constant here.
 #
-# The seam is the polygon line from the CSLC static bounding polygons shifted
-# along track by `burst_seam_shift_m` (cell [4]), because the mosaic
-# discontinuity does not lie at the polygon edge.
+# **Burst-seam correction.** Each pixel at longitude $\lambda$ and latitude
+# $\varphi$ (deg) is placed relative to the seam by
+# $\eta = \varphi - s\,(\lambda + 122^\circ)$, and the seam is
+# $\eta = \ell$, with $\ell = b + \Delta / 111.2\ \text{km}$, where $s$ and $b$
+# are the slope and intercept of the polygon line (section 2) and $\Delta$ the
+# shift `burst_seam_shift_m` (m). For each event $k$ the offset across the seam
+# is
+#
+# $$O_k = \operatorname{median}_{\ell < \eta < \ell + w} A_k - \operatorname{median}_{\ell - w < \eta < \ell} A_k,$$
+#
+# where $O_k$ is the offset, north band minus south band (mm), and
+# $w$ = `burst_band_deg` the band width (deg). Pixels within `burst_far_m` of
+# the trace are left out of both bands, and each band needs `burst_min_pixels`
+# finite pixels. The side of the seam holding most of the track's valid pixels
+# is held fixed and $O_k$ is removed from the other side: $A_k \leftarrow A_k +
+# O_k$ south of the seam, or $A_k \leftarrow A_k - O_k$ north of it.
+#
+# The box median is not removed again after the correction, so the choice of the
+# fixed side shifts a whole map by a constant. Every value taken from these
+# maps is a difference (east band minus west band, or a profile zeroed on its
+# far field), and the slip models fit a constant per data set, so a constant
+# does not change them.
+#
+# Check: on the mean of the five uncorrected step maps, the jump across the
+# shifted seam (north band minus south band) must be larger in magnitude than
+# the jump across the polygon line (asserted, printed). Every offset must be
+# below 2 mm (asserted).
 
 # %%
-# [12]
 event_maps = {}
 burst_log = []
 for dic in insar_dic_list:
@@ -510,8 +615,8 @@ for dic in insar_dic_list:
     step_maps_raw = step_maps.copy()
     if orbit in burst_lines:
         far_from_trace = d_trace > burst_far_m
-        # the seam: the polygon line shifted along track by burst_seam_shift_m (see the constants above), checked on
-        # the five-event mean raw map against the polygon line itself
+        # the seam: the polygon line shifted by burst_seam_shift_m, checked on the mean of the uncorrected maps
+        # against the polygon line itself
         mean_raw = np.nanmean(step_maps, axis=0)
         located = []
         for line_slope, poly_lat in burst_lines[orbit]:
@@ -528,7 +633,7 @@ for dic in insar_dic_list:
             assert abs(jumps["seam"]) > abs(jumps["polygon"]), f"[{orbit}] the jump at the shifted seam does not exceed the jump at the polygon line: {jumps}"
             located.append(dict(slope=line_slope, line_lat=poly_lat + burst_seam_shift_m[orbit] / 111.2e3, polygon_line_lat=poly_lat,
                                 seam_shift_m=burst_seam_shift_m[orbit], mean_jump_at_seam_mm=jumps["seam"], mean_jump_at_polygon_mm=jumps["polygon"]))
-        burst_lines[orbit] = [(seam["slope"], seam["line_lat"]) for seam in located]      # the data seams: the figure cell draws these
+        burst_lines[orbit] = [(seam["slope"], seam["line_lat"]) for seam in located]      # the shifted seams, drawn in section 13
         for seam in located:
             line_slope, line_lat = seam["slope"], seam["line_lat"]
             above_line = lat_g - line_slope * (lon_g + 122.0)                    # > line_lat north of the burst line
@@ -567,19 +672,35 @@ assert (burst_df.offset_mm.abs() < 2.0).all(), "a burst offset of 2 mm or more; 
 assert sorted(set(burst_df.track)) == sorted(burst_corrected), f"burst correction ran on {sorted(set(burst_df.track))}, not on {burst_corrected}"
 
 # %% [markdown]
-# ## [13] Check: the near-fault LOS step of every event, both tracks
+# ## 7. Check: the near-fault LOS step of every event on both tracks
 #
-# Model-free: median of the east band minus median of the west band
-# (30 to 150 m from the trace, notebook 04's aperture) within the 90% band
-# that Fig 1 stacks. Fault-parallel creep projects with opposite signs into the
-# two geometries (ascending looks west, descending east), so the expected
-# ascending step is negative and the descending positive. Check: the mean event
-# has these signs and every descending step is positive (asserted); ascending
-# events with a non-negative step are printed. The asc/desc ratio is printed
-# beside the geometric value from the two LOS vectors but not asserted.
+# The near-fault step of a map $u(\mathbf{x})$ is
+#
+# $$S = \operatorname{median}_{\,d_1 < d < d_2} u - \operatorname{median}_{\,-d_2 < d < -d_1} u,$$
+#
+# where $S$ is the step (mm, or mm/yr for a rate map), $d$ the signed distance
+# from the trace (m, section 3), and $d_1$, $d_2$ = 30 and 150 m
+# (`xfault_step_m`, the aperture of notebook 04). Only pixels between the
+# latitudes of the 90 % band of notebook 04 (the band Fig 1 stacks) are used.
+#
+# Right-lateral creep projects with opposite signs into the two geometries, so
+# the ascending step is expected negative and the descending step positive. The
+# expected ratio of the two is
+#
+# $$R = \frac{\hat{\mathbf{l}}_{\text{asc}} \cdot \hat{\mathbf{f}}}{\hat{\mathbf{l}}_{\text{desc}} \cdot \hat{\mathbf{f}}}, \qquad \hat{\mathbf{l}} = \left(-\sin i \sin \alpha,\ \sin i \cos \alpha,\ \cos i\right), \qquad \hat{\mathbf{f}} = (\sin\theta,\ \cos\theta,\ 0),$$
+#
+# where $\hat{\mathbf{l}}$ is the unit vector (east, north, up) from the ground
+# to the satellite, $i$ the incidence angle (deg), $\alpha$ the LOS azimuth
+# (deg, anticlockwise from north, MintPy convention), both the medians over the
+# band, $\hat{\mathbf{f}}$ the unit vector along the strike $\theta$ (deg) and
+# $R$ the ratio for pure strike slip (dimensionless).
+#
+# Check: the mean of the event steps is negative on ascending and positive on
+# descending, and every descending step is positive (asserted). Ascending
+# events with a step that is not negative are printed. The ratio of the
+# observed steps is printed beside $R$ and is not asserted.
 
 # %%
-# [14]
 in_band = (lat_g >= band.lat_lo) & (lat_g <= band.lat_hi)
 east = in_band & (d_signed > xfault_step_m[0]) & (d_signed < xfault_step_m[1])
 west = in_band & (d_signed < -xfault_step_m[0]) & (d_signed > -xfault_step_m[1])
@@ -594,8 +715,18 @@ print(f"LOS . strike: asc {los_dot_strike_asc:+.3f}, desc {los_dot_strike_desc:+
 
 
 def block_step(field_map):
-    """Model-free near-fault step of a map: median of the east band minus median of the west band
-    (xfault_step_m from the trace, inside the 90% band)."""
+    """Near-fault step of a map inside the 90% band.
+
+    Parameters
+    ----------
+    field_map : ndarray
+        (n_rows, n_cols) map on the box grid (mm or mm/yr).
+
+    Returns
+    -------
+    float
+        Median of the east band minus median of the west band, xfault_step_m from the trace.
+    """
     return float(np.nanmedian(field_map[east]) - np.nanmedian(field_map[west]))
 
 
@@ -618,21 +749,38 @@ ascending_not_negative = steps_df[steps_df.ascending_step_mm >= 0]
 for _, step_row in ascending_not_negative.iterrows():
     print(f"Note {step_row.step_epoch:.2f}: ascending step {step_row.ascending_step_mm:+.2f} mm, ratio {step_row.ratio_asc_desc:+.2f}: "
           f"ascending step not negative (not asserted)")
-print("PASS: the mean event steps negative on ascending and positive on descending; every descending step is positive")
+print("Check passed: the mean event steps negative on ascending and positive on descending; every descending step is positive")
 
 # %% [markdown]
-# ## [15] Run: the mean event per track, written for the slip model
+# ## 8. The mean event per track
 #
-# Mean of the events per pixel (only where all of them are valid), the
-# per-pixel scatter across events, and the formal error of the mean. Written
-# to `tulepond_steps_<track>.h5` (everything) and `csi_mean_event_<track>.npz`
-# (the flat table `07_model_data` reads: lon, lat, LOS mm, error, incidence, azimuth).
+# At every pixel where all $K$ step maps are valid,
+#
+# $$\bar{A}(\mathbf{x}) = \frac{1}{K}\sum_{k=1}^{K} A_k(\mathbf{x}), \qquad s_A(\mathbf{x}) = \sqrt{\frac{1}{K-1}\sum_{k=1}^{K}\left(A_k(\mathbf{x}) - \bar{A}(\mathbf{x})\right)^2}, \qquad \sigma_{\bar{A}}(\mathbf{x}) = \frac{1}{\sqrt{K}}\sqrt{\frac{1}{K}\sum_{k=1}^{K}\sigma_{A_k}^2(\mathbf{x})},$$
+#
+# where $\bar{A}$ is the mean event (mm), $s_A$ the per-pixel scatter of the
+# events about it (1 s.d., mm), $\sigma_{A_k}$ the formal error of step $k$
+# (section 4, mm) and $\sigma_{\bar{A}}$ the formal error of the mean (mm).
+# Everything is written to `tulepond_steps_<track>.h5`, and the mean event as a
+# flat table of pixels (lon, lat, LOS, error, incidence, azimuth, scatter) to
+# `csi_mean_event_<track>.npz`.
 
 # %%
-# [16]
 def mean_event_error(step_std_maps, n_events):
-    """Formal 1-sigma error of the mean of n_events step maps: the rms of their per-pixel formal errors
-    divided by sqrt(n_events)."""
+    """Formal 1-sigma error of the mean of n_events step maps.
+
+    Parameters
+    ----------
+    step_std_maps : ndarray
+        (n_events, n_rows, n_cols) formal errors of the steps (mm).
+    n_events : int
+        Number of events.
+
+    Returns
+    -------
+    ndarray
+        The RMS of the per-pixel formal errors divided by sqrt(n_events) (mm).
+    """
     return np.sqrt(np.nanmean(step_std_maps ** 2, 0)) / np.sqrt(n_events)
 
 
@@ -673,21 +821,44 @@ for dic in insar_dic_list:
           f"median scatter {np.nanmedian(scatter):.2f} mm; wrote {os.path.basename(f_h5)} and csi_mean_event_{orbit}.npz")
 
 # %% [markdown]
-# ## [17] Run: fault-parallel and vertical maps
+# ## 9. Fault-parallel and vertical maps
 #
-# `asc_desc2horz_vert` (MintPy) on the inter-event rate and on the mean event,
-# with each track's own incidence and azimuth and `horz_az_angle = -strike`
-# (MintPy counts anticlockwise), as in notebook 02. The Up maps serve as a
-# check: for pure strike-slip creep the vertical step across the trace is
-# expected near zero (printed). From here on the maps are masked at the
-# stricter `coh_maps`.
+# From here on the maps are masked at the stricter temporal coherence
+# `coh_maps`; that mask lies inside the fit mask (asserted), so it only removes
+# pixels. The inter-event rate, the mean event and each event are decomposed
+# with MintPy's `asc_desc2horz_vert` (Yunjun et al. 2019), as in notebook 02.
+# At each pixel valid on both tracks it solves
+#
+# $$\begin{pmatrix} d_{\text{asc}} \\ d_{\text{desc}} \end{pmatrix} = \begin{pmatrix} \sin i_{\text{asc}} \cos(\alpha_{\text{asc}} - \psi) & \cos i_{\text{asc}} \\ \sin i_{\text{desc}} \cos(\alpha_{\text{desc}} - \psi) & \cos i_{\text{desc}} \end{pmatrix} \begin{pmatrix} u_\parallel \\ u_z \end{pmatrix}, \qquad \psi = -\theta,$$
+#
+# where $d$ is the LOS displacement or rate of each track (mm or mm/yr,
+# positive toward the satellite), $i$ the incidence angle (deg), $\alpha$ the
+# LOS azimuth (deg, anticlockwise from north), $\psi$ the azimuth of the
+# horizontal direction in MintPy's anticlockwise convention (deg), $\theta$ the
+# strike of section 3 (deg clockwise from north), $u_\parallel$ the
+# fault-parallel component (positive toward the strike direction, south-east)
+# and $u_z$ the vertical component (positive up), in the units of $d$. The
+# fault-perpendicular motion is assumed zero. MintPy takes $i$ and $\alpha$ as
+# the medians over windows of `geom_step` x `geom_step` pixels and solves with
+# the pseudo-inverse. For pure strike-slip creep the vertical step across the
+# trace is expected near zero (printed).
 
 # %%
-# [18]
 def decompose(los_asc, los_desc, inc_both, azi_both):
-    """Fault-parallel and vertical maps from the two LOS maps (MintPy's asc_desc2horz_vert, horizontal
-    direction = the decomposition strike; only pixels valid on both tracks). inc_both / azi_both are the
-    (2, nr, nc) incidence and azimuth stacks, ascending first. Returns (fault-parallel, up)."""
+    """Fault-parallel and vertical maps from the two LOS maps (MintPy asc_desc2horz_vert, Yunjun et al. 2019).
+
+    Parameters
+    ----------
+    los_asc, los_desc : ndarray
+        (n_rows, n_cols) LOS maps (mm or mm/yr, positive toward the satellite); only pixels valid on both are used.
+    inc_both, azi_both : ndarray
+        (2, n_rows, n_cols) incidence and azimuth angles (deg), ascending first.
+
+    Returns
+    -------
+    fault_parallel, up : ndarray
+        (n_rows, n_cols) components along the strike and vertical, in the units of the input.
+    """
     valid_both = np.isfinite(los_asc) & np.isfinite(los_desc)
     los_stack = np.stack([los_asc, los_desc]).astype(np.float32)
     los_stack[:, ~valid_both] = np.nan
@@ -695,9 +866,7 @@ def decompose(los_asc, los_desc, inc_both, azi_both):
     return fault_parallel.astype(float), up.astype(float)
 
 
-# the per-pixel maps from here on (decomposition, profiles, Fig 2) use the
-# stricter coh_maps mask; it lies inside the coh_timeseries mask the step
-# maps were fitted on, so it only removes pixels
+# the maps from here on (decomposition, profiles, Fig 2) use the stricter coh_maps mask
 if coh_maps != coh_timeseries:
     for dic in insar_dic_list:
         orbit = dic["ORBIT_DIRECTION"]
@@ -713,7 +882,7 @@ if coh_maps != coh_timeseries:
             mean_event[orbit][field] = np.where(mask_maps, mean_event[orbit][field], np.nan)
         event_maps[orbit]["rate"] = np.where(mask_maps, event_maps[orbit]["rate"], np.nan)
         event_maps[orbit]["ev"] = np.where(mask_maps[None], event_maps[orbit]["ev"], np.nan)
-        event_maps[orbit]["ev_raw"] = np.where(mask_maps[None], event_maps[orbit]["ev_raw"], np.nan)   # only the supplement grid reads it after here
+        event_maps[orbit]["ev_raw"] = np.where(mask_maps[None], event_maps[orbit]["ev_raw"], np.nan)   # read after here only by section 13
         print(f"[{orbit}] maps masked at temporal coherence {coh_maps}: {mask_maps.mean():.0%} of the box "
               f"(fit mask {coh_timeseries}: {fits[orbit]['keep'].mean():.0%})")
 
@@ -737,29 +906,74 @@ for step_epoch, fp_event_map in fp_events.items():
 np.savez(os.path.join(out_dir, "fp_maps.npz"), **fp_maps)
 
 # %% [markdown]
-# ## [19] Run: the cross-fault profiles X-X' and Y-Y'
+# ## 10. The cross-fault profiles X-X' and Y-Y'
 #
-# Perpendicular to the local strike at each point (the smoothed strike of the
-# mapped trace there, not the box mean), +/- `cross_m`, all pixels within
-# +/- `swath_m` along strike. The inter-event profile is zeroed at the fault
-# (mid-point of the two block medians within 1 km); the event profile on its
-# far field. The same functions run on the fault-parallel maps (the values
-# quoted in the text) and on each track's LOS maps (shown in Fig 2). For each
-# LOS profile the near-fault amplitude of each block is measured against that
-# block's own far field, with a bootstrap standard error.
+# Each profile runs perpendicular to the local strike $\theta_\ell$ at its
+# point $\mathbf{x}_0$ (the smoothed strike of the trace vertex nearest the
+# point, not the box mean). Each pixel gets a cross-fault and an along-strike
+# coordinate,
+#
+# $$p = (\mathbf{x} - \mathbf{x}_0) \cdot \hat{\mathbf{c}}, \qquad q = (\mathbf{x} - \mathbf{x}_0) \cdot \hat{\mathbf{a}}, \qquad \hat{\mathbf{c}} = \left(\sin(\theta_\ell - 90^\circ),\ \cos(\theta_\ell - 90^\circ)\right), \qquad \hat{\mathbf{a}} = \left(-\cos(\theta_\ell - 90^\circ),\ \sin(\theta_\ell - 90^\circ)\right),$$
+#
+# where $\mathbf{x}$ and $\mathbf{x}_0$ are UTM coordinates (m), $p$ the
+# distance across the fault (m, positive east) and $q$ the distance along
+# strike (m). The profile holds every finite pixel with $|q| \le$ `swath_m` and
+# $|p| \le$ `cross_m`.
+#
+# The rate profile is zeroed at the fault,
+# $v(p) \leftarrow v(p) - \tfrac{1}{2}\left[\operatorname{median}_{-r \le p < 0} v + \operatorname{median}_{0 < p \le r} v\right]$
+# with $r$ = `rate_zero_m`, and the event profile on its
+# far field, $e(p) \leftarrow e(p) - \operatorname{median}_{|p| \ge p_f} e$ with
+# $p_f$ = `event_far_m`, where $v$ is the rate (mm/yr) and $e$ the mean event
+# (mm). The near-fault step $S$ of section 7 is then taken on each profile.
+#
+# The near-fault amplitude of each block is measured against that block's own
+# far field,
+#
+# $$B_W = \operatorname{median}_{d_1 \le -p < d_2} e - \operatorname{median}_{f_1 \le -p < f_2} e, \qquad B_E = \operatorname{median}_{d_1 \le p < d_2} e - \operatorname{median}_{f_1 \le p < f_2} e,$$
+#
+# where $B_W$ and $B_E$ are the west and east block amplitudes (mm), $d_1$,
+# $d_2$ = 30 and 150 m the near-fault band and $f_1$, $f_2$ = 1500 and 2000 m
+# the far field (`far_m`). Its standard error is the standard deviation of
+# $B$ over `n_boot_blocks` bootstrap resamples, each drawing the near-band and
+# far-field pixels with replacement [citation needed]. The bootstrap treats the
+# pixels as independent.
+#
+# The same functions run on the fault-parallel maps (the values quoted in the
+# text), on the vertical maps (section 11) and on each track's LOS maps (shown
+# in Fig 2).
 
 # %%
-# [20]
 def local_strike(lonlat):
-    """Smoothed local strike of the mapped trace (compass bearing) at the trace point nearest lonlat."""
+    """Smoothed local strike of the trace (deg, compass bearing) at the trace vertex nearest lonlat."""
     point_x, point_y = to_utm.transform(*lonlat)
     vertex = int(tree.query([float(point_x), float(point_y)])[1])
     return float(x_fault.az_smooth.iloc[vertex] + 90.0)
 
 
 def profile(field_map, lonlat, strike_deg=None):
-    """Cross-fault profile of field_map through lonlat, perpendicular to the LOCAL strike there (or to
-    strike_deg). Returns (distance m, + east; values; the line's end points in UTM; the strike used)."""
+    """Cross-fault profile of a map through a point.
+
+    Parameters
+    ----------
+    field_map : ndarray
+        (n_rows, n_cols) map on the box grid.
+    lonlat : tuple of float
+        (lon, lat) of the profile point (deg).
+    strike_deg : float, optional
+        Strike to use (deg); the local strike at the point if None.
+
+    Returns
+    -------
+    distance : ndarray
+        Cross-fault distance of each pixel (m, positive east), sorted.
+    values : ndarray
+        The map values at those pixels.
+    ends : tuple of float
+        The line's end points in UTM (x0, y0, x1, y1), m.
+    strike_deg : float
+        The strike used (deg).
+    """
     point_x, point_y = to_utm.transform(*lonlat)
     point_x = float(point_x)
     point_y = float(point_y)
@@ -780,10 +994,24 @@ def profile(field_map, lonlat, strike_deg=None):
 
 
 def block_amplitudes(distance, values):
-    """Per-block near-fault amplitude of a profile: median of the near band (`xfault_step_m`, 30 to
-    150 m) minus the median of the same block's far field (`far_m`), with a bootstrap standard error over
-    the pixels (n_boot_blocks resamples, its own generator seeded with block_seed, so the result does not
-    depend on what was bootstrapped before). No model is fitted."""
+    """Near-fault amplitude of each block of a profile against its own far field.
+
+    The bootstrap uses its own generator seeded with block_seed, so the result does not depend on what was
+    drawn before.
+
+    Parameters
+    ----------
+    distance : ndarray
+        Cross-fault distance (m, positive east).
+    values : ndarray
+        Profile values (mm).
+
+    Returns
+    -------
+    dict
+        Per block ("W", "E"): amp (median of the xfault_step_m band minus median of the far_m band, mm), se
+        (bootstrap standard error, mm), far (far-field median, mm), n_near and n_far (pixel counts).
+    """
     rng = np.random.default_rng(block_seed)
     out = {}
     for block_name, side in (("W", -1), ("E", 1)):
@@ -803,7 +1031,21 @@ def block_amplitudes(distance, values):
 
 
 def near_fault_step(distance, values):
-    """Median of the east band minus median of the west band (xfault_step_m from the trace) of a profile."""
+    """Near-fault step of a profile: median of the east band minus median of the west band, xfault_step_m from
+    the trace.
+
+    Parameters
+    ----------
+    distance : ndarray
+        Cross-fault distance (m, positive east).
+    values : ndarray
+        Profile values (mm or mm/yr).
+
+    Returns
+    -------
+    float
+        The step, in the units of values.
+    """
     band_lo, band_hi = xfault_step_m
     east_values = values[(distance > band_lo) & (distance < band_hi)]
     west_values = values[(distance < -band_lo) & (distance > -band_hi)]
@@ -811,9 +1053,26 @@ def near_fault_step(distance, values):
 
 
 def zeroed_profiles(rate_map, event_map, lonlat):
-    """The rate and event profiles through lonlat, zeroed (rate: mid-point of the block medians within
-    rate_zero_m; event: its far field beyond event_far_m), and their near-fault steps (east minus west
-    medians, the 30 to 150 m aperture of notebook 04)."""
+    """Rate and event profiles through a point, zeroed, with their near-fault steps.
+
+    The rate profile is zeroed on the mid-point of the two block medians within rate_zero_m of the trace, the
+    event profile on its median at |distance| >= event_far_m.
+
+    Parameters
+    ----------
+    rate_map : ndarray
+        (n_rows, n_cols) rate map (mm/yr).
+    event_map : ndarray
+        (n_rows, n_cols) event map (mm).
+    lonlat : tuple of float
+        (lon, lat) of the profile point (deg).
+
+    Returns
+    -------
+    dict
+        d, v (rate profile distance in m and values), de, ve (event profile), ends, lonlat, strike, and
+        rate_step, event_step (near-fault steps).
+    """
     rate_dist, rate_values, ends, strike_used = profile(rate_map, lonlat)
     near_trace = np.abs(rate_dist) <= rate_zero_m
     rate_values = rate_values - 0.5 * (np.median(rate_values[near_trace & (rate_dist < 0)]) + np.median(rate_values[near_trace & (rate_dist > 0)]))
@@ -825,7 +1084,7 @@ def zeroed_profiles(rate_map, event_map, lonlat):
                 rate_step=near_fault_step(rate_dist, rate_values), event_step=near_fault_step(event_dist, event_values))
 
 
-# fault-parallel: the values quoted in the text
+# fault-parallel profiles (the values quoted in the text)
 profile_names = list(profile_pts)
 profiles = {}
 for name, lonlat in profile_pts.items():
@@ -837,8 +1096,8 @@ for name, lonlat in profile_pts.items():
           f"near-fault steps ({xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m): "
           f"rate {fp_profile['rate_step']:+.2f} mm/yr, event {fp_profile['event_step']:+.2f} mm")
 
-# line of sight, per track, as shown in Fig 2 (LOS positive toward the satellite, so
-# right-lateral slip steps negative on ascending and positive on descending)
+# LOS profiles per track, as shown in Fig 2 (positive toward the satellite, so right-lateral slip steps
+# negative on ascending and positive on descending)
 tracks = ["ascending", "descending"]
 los_profiles = {}
 for orbit in tracks:
@@ -860,16 +1119,16 @@ print(f"X-X' event asc/desc LOS step ratio {xx_ratio:+.2f} (geometric, pure stri
 assert los_profiles["ascending"]["X"]["event_step"] < 0 < los_profiles["descending"]["X"]["event_step"], "the X-X' LOS event steps have the wrong signs"
 
 # %% [markdown]
-# ## [21] Run: write the maps and profiles for Fig 2
+# ## 11. The maps and profiles for Fig 2
 #
-# Fig 2 is drawn in its own notebook (`09_fig2`) after the slip model,
-# so that it can include the model row. It needs the per-track LOS maps (masked
-# at `coh_maps`), the fault-parallel maps and the profiles; they go into one
-# file. The fault-parallel and vertical profiles get their block amplitudes
-# here too.
+# Fig 2 is drawn in notebook 09 after the slip model, so that it can include
+# the model row. It needs the per-track LOS maps (masked at `coh_maps`), the
+# fault-parallel and vertical maps and the profiles, written to one file,
+# `fig2_inputs.npz`. The fault-parallel and vertical profiles get their block
+# amplitudes (section 10) here, and the vertical profiles are zeroed in the
+# same way as the others.
 
 # %%
-# [22]
 for name in profile_names:
     profiles[name]["blocks"] = block_amplitudes(profiles[name]["de"], profiles[name]["ve"])
 # the vertical field through the same lines (Fig 2's second column)
@@ -884,7 +1143,7 @@ fig2_in = dict(lon=lon_g, lat=lat_g, X=Xg, Y=Yg, epsg=epsg, strike=strike, coh_m
 for orbit in tracks:
     fig2_in[f"rate_{orbit}"] = event_maps[orbit]["rate"]
     fig2_in[f"event_{orbit}"] = mean_event[orbit]["mean"]
-profile_sets = {"fp": profiles, "up": up_profiles}            # the field name in the npz key -> its profiles
+profile_sets = {"fp": profiles, "up": up_profiles}            # field name in the npz key -> its profiles
 for orbit in tracks:
     profile_sets[orbit] = los_profiles[orbit]
 for field, profile_set in profile_sets.items():
@@ -900,44 +1159,82 @@ np.savez(f_fig2_in, provenance=utils.provenance_stamp(notebook, repo_dir), **fig
 print("wrote", f_fig2_in)
 
 # %% [markdown]
-# ## [23] Mean-event statistics: near-fault deflections, decay distance, the Lake Elizabeth vertical
+# ## 12. Mean-event statistics: block deflections, decay distance and the Lake Elizabeth vertical
 #
-# Three quantities quoted in the text, all from the mean-event maps above (registered in [28]):
+# Three quantities quoted in the text, all from the mean-event maps (registered
+# in section 14).
 #
-# 1. **Near-fault deflection of each block** on the fault-parallel profiles X-X' and Y-Y' ([22]'s
-#    `blocks`, the same definition as the LOS blocks of Fig 2): the median of the pixels 30 to
-#    150 m from the trace (`xfault_step_m`) minus the median of the same block's far field
-#    (`far_m`, 1.5 to 2 km), with the bootstrap standard error over the pixels.
-# 2. **Decay distance** of the mean event on each side of X-X': how far from the trace the event
-#    deformation reaches. The fault-parallel event profile (zeroed on its far field, [20]) is binned
-#    outward from the trace in `decay_bin_m` (150 m) bins on each side, the median of each bin with
-#    at least 3 pixels (the running median Fig 2 draws). The far field of that side is its pixels at
-#    `far_m` (1.5 to 2 km), its level their median and its scatter their robust sd (1.4826 x the
-#    median absolute deviation). The decay distance is the inner edge of the first bin from which
-#    every bin out to the far field (`far_m[0]`) lies within the far-field level +/- the far-field
-#    scatter: beyond it the profile stays within the scatter of the far-field pixels. Resolution:
-#    one bin, 150 m.
-# 3. **The Lake Elizabeth vertical**: the mean-event vertical map (`up_evt`, [18]) over the area
-#    around Lake Elizabeth (TulePond_filepaths `lake_elizabeth_lonlat`, `lake_elizabeth_radius_m`:
-#    every valid pixel within the radius (1 km) of the lake centre that lies east of the trace beyond the near-
-#    fault band, `xfault_step_m[1]`), relative to the far field of the event profiles ([20]: pixels
-#    1.5 to 2 km from the trace, `event_far_m` to `cross_m`, on both sides, here within the same
-#    +/- the radius along strike of the lake centre; the area stops short of that far field). Median minus
-#    median, bootstrap standard error over the pixels (own generator, `block_seed`). The lake itself is open
-#    water (no data): the area's pixels are its shores. The same difference against each side's far field
-#    alone and against the box median is also printed, to show the dependence on the reference.
-#    **Upper quartile**: the 75th percentile of the area minus the far-field median, with its bootstrap
-#    standard error, printed beside the same statistic of the far field itself (its 75th percentile minus its
-#    median), i.e. the value of this statistic for noise alone.
-#    The bootstrap treats the pixels as independent; they are correlated over ~1 km, so both errors are lower bounds.
+# 1. **Near-fault deflection of each block** on the fault-parallel profiles X-X'
+#    and Y-Y': the block amplitudes $B_W$ and $B_E$ of section 10 (the same
+#    definition as the LOS blocks of Fig 2), with their bootstrap standard
+#    errors.
+# 2. **Decay distance** of the mean event on each side of X-X', the distance
+#    from the trace beyond which the fault-parallel event profile $e(p)$
+#    (zeroed on its far field, section 10) stays within the scatter of the far
+#    field. With $r = \pm p$ the distance outward from the trace on the west
+#    ($-$) or east ($+$) side (m), the far-field level and scatter of that side
+#    are
+#
+#    $$L = \operatorname{median}_{f_1 \le r < f_2} e, \qquad \sigma_f = 1.4826\, \operatorname{median}_{f_1 \le r < f_2} \lvert e - L \rvert,$$
+#
+#    where $L$ is the far-field level (mm), $\sigma_f$ the robust standard
+#    deviation from the median absolute deviation (mm) [citation needed], and
+#    $f_1$, $f_2$ = 1500 and 2000 m (`far_m`). The profile is binned outward,
+#    $r_b < r \le r_b + \delta$, with $\delta$ = `decay_bin_m` = 150 m and
+#    $r_b = 0, \delta, \dots$ up to $f_1$, and $m_b$ is the median of $e$ in
+#    each bin with at least 3 pixels (the running median Fig 2 draws). A bin is
+#    within the far field if $\lvert m_b - L \rvert \le \sigma_f$. The decay
+#    distance $D$ (m) is the inner edge $r_b$ of the first bin of the run of bins
+#    that are all within the far field out to $f_1$; the outermost bin must be
+#    within (asserted). The resolution is one bin, 150 m.
+# 3. **The Lake Elizabeth vertical**, from the mean-event vertical map $u_z$
+#    (section 9). The area $\mathcal{A}$ is every valid pixel within $R$ =
+#    `lake_elizabeth_radius_m` (1 km) of the lake centre (`lake_elizabeth_lonlat`)
+#    that lies east of the trace beyond the near-fault band and short of the far
+#    field, $d_2 \le d < p_f$ (150 to 1500 m, $d$ from section 3). The lake is open
+#    water with no data, so the area's pixels are its shores. The reference
+#    $\mathcal{F}$ is the far field of the event profiles, every valid pixel with
+#    $p_f \le \lvert d \rvert <$ `cross_m` (1500 to 2000 m) on both sides and
+#    within $\pm R$ along strike of the lake centre. Then
+#
+#    $$U = \operatorname{median}_{\mathcal{A}} u_z - \operatorname{median}_{\mathcal{F}} u_z, \qquad U_{75} = P_{75,\mathcal{A}}(u_z) - \operatorname{median}_{\mathcal{F}} u_z, \qquad F_{75} = P_{75,\mathcal{F}}(u_z) - \operatorname{median}_{\mathcal{F}} u_z,$$
+#
+#    where $U$ is the vertical displacement of the area relative to the far
+#    field (mm), $P_{75}$ the 75th percentile, $U_{75}$ the upper quartile of the
+#    area relative to the far field (mm) and $F_{75}$ the same statistic of the
+#    far field itself, the value for noise alone (mm). The standard errors of
+#    $U$ and $U_{75}$ are the standard deviations over `n_boot_blocks` bootstrap
+#    resamples of the pixels of $\mathcal{A}$ and $\mathcal{F}$ (own generator,
+#    `block_seed`) [citation needed]. The difference against each side's far
+#    field alone and against the box median is also printed, to show the
+#    dependence on the reference.
+#
+# The bootstraps treat the pixels as independent. The pixels are correlated over
+# about 1 km, so the standard errors are lower bounds.
 
 # %%
-# [24]
 def decay_distance(distance, values, side):
-    """The decay distance (m) of a zeroed event profile on one side (side -1 west, +1 east): the inner edge of the
-    first decay_bin_m bin from which every bin with >= 3 pixels, out to far_m[0], has a median within the far-field
-    level +/- its robust scatter (far_m pixels of that side). Returns (distance, far level, far scatter, bin inner
-    edges, bin medians)."""
+    """Decay distance of a zeroed event profile on one side of the trace.
+
+    Parameters
+    ----------
+    distance : ndarray
+        Cross-fault distance (m, positive east).
+    values : ndarray
+        Event profile, zeroed on its far field (mm).
+    side : int
+        -1 for the west side, +1 for the east side.
+
+    Returns
+    -------
+    distance : float
+        Inner edge of the first decay_bin_m bin from which every bin with >= 3 pixels, out to far_m[0], has a
+        median within the far-field level +/- its robust scatter (m).
+    far_level, far_scatter : float
+        Median and 1.4826 x MAD of the far_m pixels of that side (mm).
+    bin_inner, bin_median : ndarray
+        Inner edges (m) and medians (mm) of the bins with >= 3 pixels.
+    """
     outward = side * distance
     far_values = values[(outward >= far_m[0]) & (outward < far_m[1])]
     assert far_values.size >= 50, f"only {far_values.size} far-field pixels on side {side:+d}"
@@ -961,7 +1258,7 @@ def decay_distance(distance, values, side):
     return float(bin_inner[first_inside]), far_level, far_scatter, bin_inner, bin_median
 
 
-# 1) and 2): the fault-parallel profiles' block deflections ([22]) and the decay distance at X-X'
+# 1 and 2: the block deflections of the fault-parallel profiles (section 11) and the decay distance at X-X'
 mean_event_lines = ["mean event, fault-parallel near-fault deflection per block (near "
                     f"{xfault_step_m[0]:.0f}-{xfault_step_m[1]:.0f} m minus the same block's far field {far_m[0]:.0f}-{far_m[1]:.0f} m):"]
 for name in profile_names:
@@ -978,7 +1275,7 @@ for side_name, side in (("W", -1), ("E", 1)):
     mean_event_lines.append(f"   X-X' decay distance {side_name}: {distance_m:.0f} m (far field {far_level:+.2f} +/- {far_scatter:.2f} mm; "
                             f"bin medians, inner edge m: mm, {' '.join(bin_text)})")
 
-# 3) the Lake Elizabeth vertical
+# 3: the Lake Elizabeth vertical
 lake_x, lake_y = (float(value) for value in to_utm.transform(*lake_elizabeth_lonlat))
 lake_distance = np.hypot(Xg - lake_x, Yg - lake_y)
 along_unit = np.array([np.sin(np.deg2rad(strike)), np.cos(np.deg2rad(strike))])      # along strike (east, north)
@@ -991,7 +1288,7 @@ lake_area = (lake_distance <= lake_elizabeth_radius_m) & (d_signed >= xfault_ste
 lake_far = (np.abs(d_signed) >= event_far_m) & (np.abs(d_signed) < cross_m) & (np.abs(lake_along) <= lake_elizabeth_radius_m) & valid_up
 assert lake_area.sum() >= 20 and lake_far.sum() >= 100, f"Lake Elizabeth: {lake_area.sum()} area pixels, {lake_far.sum()} far-field pixels"
 assert not (lake_area & lake_far).any(), "the Lake Elizabeth area overlaps the far field it is measured against"
-lake_rng = np.random.default_rng(block_seed)                        # its own generator, as block_amplitudes
+lake_rng = np.random.default_rng(block_seed)                        # its own generator, as in block_amplitudes
 area_values = up_evt[lake_area]
 far_values = up_evt[lake_far]
 lake_boot = np.empty(n_boot_blocks)
@@ -1021,27 +1318,21 @@ mean_event_lines.append(f"Lake Elizabeth upper quartile (upper quartile of the a
 print("\n".join(mean_event_lines))
 
 # %% [markdown]
-# ## [25] Supplement: the step maps, every event and track
+# ## 13. Supplementary figure: the step maps of every event on both tracks
 #
-# Three rows: ascending after removal of its burst offset (the data the slip
-# model inverts; no uncorrected ascending row is drawn); descending as
-# observed, before the burst offset is removed; and descending after its
-# removal (the data the slip model inverts). Each track's burst seam (cell [4])
-# is drawn dashed on its rows to mark where the correction was made. Columns:
-# the five events (titled by 04's onset_lo as a date), the mean of the
-# events, and the per-pixel scatter across them, computed the same way for
-# every row (asserted against the mean event of cell [16] for the rows it
-# covers). LOS in mm, positive toward the satellite, so ascending and
-# descending have opposite colours across the fault. Drawn with pygmt, north
-# up in lon/lat.
-# 18.3 cm wide: seven maps with small gaps, lon annotated on the bottom row and
-# lat on the left column only, the row label left of each row; two colour bars
-# of the same height and font under the bottom row (step bar under the event +
-# mean columns, scatter bar under the scatter column). Diverging red-blue for
-# the steps, magma for the scatter (no blue/green).
+# Three rows: ascending after the burst-seam correction (no uncorrected
+# ascending row is drawn); descending before the correction; and descending
+# after it. The corrected rows are the data the slip model inverts. Each
+# track's shifted seam (section 6) is drawn dashed on its rows. Columns: the
+# five events, each titled by its step epoch (`onset_lo` of notebook 04) as a
+# date, the mean of the events, and the per-pixel scatter across them,
+# computed as in section 8 for every row (asserted equal to the mean event of
+# section 8 for the corrected rows). LOS in mm, positive toward the
+# satellite, so ascending and descending have opposite colours across the
+# fault. Drawn with pygmt, north up in lon/lat, at the 18.3 cm page width, with
+# a diverging red-blue scale for the steps and magma for the scatter.
 
 # %%
-# [26]
 clim = 4.0                 # step colour range +/- this (mm)
 scatter_lim = 2.0          # scatter colour range 0 to this (mm)
 map_w_cm = 2.3             # each map's width
@@ -1053,8 +1344,18 @@ n_col = n_events_fig + 2
 
 
 def mean_and_scatter(step_stack):
-    """Mean and 1-sd scatter of the step maps per pixel, only where all of them are valid
-    (as the mean event of cell [16])."""
+    """Mean and 1-sd scatter of a stack of step maps, as the mean event of section 8.
+
+    Parameters
+    ----------
+    step_stack : ndarray
+        (n_events, n_rows, n_cols) step maps (mm).
+
+    Returns
+    -------
+    mean, scatter : ndarray
+        (n_rows, n_cols) per-pixel mean and sample standard deviation (mm), NaN where any map is missing.
+    """
     kept_maps = step_stack
     n_valid = np.isfinite(kept_maps).sum(0)
     mean = np.where(n_valid == len(kept_maps), np.nanmean(kept_maps, 0), np.nan)
@@ -1062,20 +1363,20 @@ def mean_and_scatter(step_stack):
     return mean, scatter
 
 
-# the rows: (label, track, step-map stack); mean and scatter per row computed the same way
-grid_rows = [("Ascending", "ascending", event_maps["ascending"]["ev"]),            # burst-fixed, as the bottom row
+# the rows: (label, track, step-map stack)
+grid_rows = [("Ascending", "ascending", event_maps["ascending"]["ev"]),            # corrected, as the bottom row
              ("Descending", "descending", event_maps["descending"]["ev_raw"]),
              ("Des, Corrected", "descending", event_maps["descending"]["ev"])]
 grid_stats = []
 for row_label, orbit, step_stack in grid_rows:
     row_mean, row_scatter = mean_and_scatter(step_stack)
     assert len(step_stack) == mean_event[orbit]["n"]
-    if step_stack is event_maps[orbit]["ev"]:                   # burst-fixed rows: must be the mean event the slip model reads
+    if step_stack is event_maps[orbit]["ev"]:                   # corrected rows: must equal the mean event of section 8
         assert np.allclose(row_mean, mean_event[orbit]["mean"], rtol=0, atol=1e-5, equal_nan=True), f"{row_label}: grid mean is not the mean event"
         assert np.allclose(row_scatter, mean_event[orbit]["scatter"], rtol=0, atol=1e-5, equal_nan=True), f"{row_label}: grid scatter differs"
     grid_stats.append((row_mean, row_scatter, len(step_stack)))
 
-# each event's title: 04's onset_lo (its step epoch) as a calendar date
+# each event's title: its step epoch (onset_lo of notebook 04) as a calendar date
 onset_dates = []
 for i, step_epoch in enumerate(step_epochs):
     for orbit in fits:
@@ -1090,7 +1391,7 @@ proj_box = f"M{map_w_cm}c"
 cpt_dir = os.path.join(out_dir, "cpt")
 os.makedirs(cpt_dir, exist_ok=True)
 cpt_step = utils.write_cpt(os.path.join(cpt_dir, "step_maps.cpt"), "RdBu_r", -clim, clim)
-cpt_scatter = utils.write_cpt(os.path.join(cpt_dir, "step_scatter.cpt"), "magma", 0, scatter_lim)   # magma, not viridis: no blue/green
+cpt_scatter = utils.write_cpt(os.path.join(cpt_dir, "step_scatter.cpt"), "magma", 0, scatter_lim)   # no blue against green
 pygmt.config(FONT="7p,Helvetica", FONT_ANNOT_PRIMARY="6p,Helvetica", FONT_LABEL="6p,Helvetica", MAP_FRAME_TYPE="plain",
              MAP_FRAME_PEN="0.5p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_ANNOT_OFFSET="2p", MAP_LABEL_OFFSET="2p", FORMAT_GEO_MAP="D")
 fig = pygmt.Figure()
@@ -1102,7 +1403,7 @@ for row_number, (row_label, orbit, step_stack) in enumerate(grid_rows):
     row_mean, row_scatter, n_row_mean = grid_stats[row_number]
     panels = []                                                 # (map, title, colour table) for each column
     for i in range(len(fits[orbit]["steps"])):
-        panel_title = onset_dates[i]                            # each event titled by its onset date (04's onset_lo)
+        panel_title = onset_dates[i]
         panels.append((step_stack[i], panel_title, cpt_step))
     panels.append((row_mean, f"Mean of {n_row_mean}", cpt_step))
     panels.append((row_scatter, "Scatter", cpt_scatter))
@@ -1148,20 +1449,20 @@ with pygmt.config(FONT_ANNOT_PRIMARY=f"{cb_pt:.1f}p,Helvetica", FONT_LABEL=f"{cb
 with pygmt.config(FONT_ANNOT_PRIMARY="12p,Helvetica", FONT_LABEL="12p,Helvetica"):    # GMT halves the fonts of a bar this short: 12p prints as ~6p
     fig.colorbar(cmap=cpt_scatter, position=f"x{(n_col - 1) * (map_w_cm + gap_x_cm)}c/-0.75c+w{map_w_cm}c/0.22c+h+jTL+ef",
                  frame=["xa1f0.5+lScatter, 1 sd (mm)"])
-# no figure title; the caption states: per-pixel steps, box median removed, burst offsets removed in the top (ascending) and bottom rows, coherence coh_maps
+# no figure title; the caption gives the per-pixel steps, box median removed, burst offsets removed in the top
+# (ascending) and bottom rows, coherence coh_maps
 f_grid = os.path.join(fig_dir, f"figS_event_step_maps_coh{coh_maps}")
 fig.savefig(f_grid + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)
 fig.savefig(f_grid + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("Saved figure to:", f_grid + ".png")
 
 # %% [markdown]
-# ## [27] Register
+# ## 14. Register
 #
 # The stats file `06_event_field_stats.txt` (every value above, with its
 # definition) and the registry rows `06_*` quoted in the paper.
 
 # %%
-# [28]
 stats_lines = [f"06 EVENT FIELD GEOMETRY  (coherence {coh_timeseries}, box {box_lonlat}, {nr} x {nc} px)",
                f"local strike {strike:.2f} deg; LOS.strike asc {los_dot_strike_asc:+.3f} desc {los_dot_strike_desc:+.3f}, "
                f"geometric asc/desc ratio {geom_ratio:+.2f}",
@@ -1232,7 +1533,7 @@ for orbit in tracks:
             REG.register(f"06_{name}{name}_event_{block_name}_{orbit[:3]}_se_mm", los_profile["blocks"][block_name]["se"], "mm", 2,
                          where="Fig2", cell="los-profiles", sidecar=sidecar)
 REG.register("06_XX_event_ratio_asc_desc", xx_ratio, "", 2, where="S2", cell="los-profiles", sidecar=sidecar)
-# [24]: the fault-parallel block deflections, the decay distance at X-X' and the Lake Elizabeth vertical
+# section 12: the fault-parallel block deflections, the decay distance at X-X' and the Lake Elizabeth vertical
 for name in profile_names:
     for block_name in ("W", "E"):
         REG.register(f"06_{name}{name}_fp_event_{block_name}_mm", profiles[name]["blocks"][block_name]["amp"], "mm", 2,

@@ -18,44 +18,51 @@
 # Environment: environment.yml. Runs after 06, 07 and 08. Seconds.
 # ```
 #
-# **What this notebook does.** Draws Fig 2 from the maps and profiles of notebook 06 (`fig2_inputs.npz`) and the model
-# row of the preferred slip model (08 `selected_model.npz`: the PyLith run `model_config.gf_run`, 3D SFSVM elastic
-# structure, fault dipping 70 deg W, settings of `model_config.py`), with the homogeneous model of 07
-# (`homogeneous_model.npz`: the same fault with analytic half-space Green's functions) as the comparison on G. No number
-# is registered here: every number on the figure is registered by the notebook that computes it. The computations here
-# are for display only (the per-side running medians on the profiles, the colour limits, the slip grid of panel L).
+# **What this notebook does**
+#
+# 1. Reads the products of notebooks 06, 07 and 08, and therefore runs after notebook 08: the maps and profiles of
+#    notebook 06 (`fig2_inputs.npz`), the preferred slip model of notebook 08 (`selected_model.npz`: the PyLith run
+#    `model_config.gf_run`, 3D SFSVM elastic structure, fault dipping 70° to the west), and the homogeneous model and
+#    the samples of notebook 07 (`homogeneous_model.npz`, `model_data.npz`: the same fault with analytic half-space
+#    Green's functions).
+# 2. Draws Fig 2: the inter-event rate and the mean event as fault-parallel and vertical maps and profiles, and a model
+#    row from the preferred slip model, with the homogeneous model as the comparison on panel G.
+# 3. Draws the same figure with the ascending and descending LOS fields, a supplementary figure.
+#
+# No number is registered here; each number on the figure is registered by the notebook that computes it. The
+# computations here are for display only: the per-side running medians on the profiles, the colour limits and the slip
+# grid of panel L.
 #
 # The model row and lines:
-# - G (fault-parallel profiles): each model evaluated at the quadtree samples within 300 m of each profile line (G x slip
-#   plus the fitted plane; no PyLith forward run), drawn as lines through the samples sorted by distance and broken at
-#   the trace: 3D (vermillion) and homogeneous (blue). The vertical column (H) carries no model, because the inversion
-#   uses the fault-parallel field only.
-# - I: the slip model plus its fitted plane (1, x, y), so that J = E - I at every sample (asserted); blocks inside the
+# - G (fault-parallel profiles): each model evaluated at the quadtree samples within 300 m of each profile line
+#   ($G\mathbf{s}$ plus the fitted plane, with no PyLith forward run), drawn as lines through the samples sorted by
+#   distance and broken at the trace: 3D (vermillion) and homogeneous (blue). The vertical column (H) has no model,
+#   because the inversion uses the fault-parallel field only.
+# - I: the slip model plus its fitted plane $(1, x, y)$, so that J = E - I at every sample (asserted). Blocks inside the
 #   60 m near-trace cut are left blank.
-# - K: the cross-fault step 60-150 m from the trace at every crossing of 04, for the data (black) and the preferred
-#   model (vermillion), measured the same way on the samples; Mw at 30 GPa and at the harmonic SFSVM rigidity.
-# - L: the slip on the fault, top 1 km (tents: slip at the vertices, linear between them).
-#
-# Fig 2 shows the fault-parallel and vertical fields; the per-track LOS version is a supplementary figure.
+# - K: the cross-fault step 60 to 150 m from the trace at each crossing of notebook 04, for the data (black) and the
+#   preferred model (vermillion), measured in the same way on the samples; Mw at 30 GPa and at the harmonic-mean SFSVM
+#   rigidity.
+# - L: the slip on the fault in the top 1 km (tents: slip at the vertices, linear between them).
 #
 # **Inputs**: `06_event_field_geometry/fig2_inputs.npz`; `08_3d_model/selected_model.npz`;
 # `07_model_data/homogeneous_model.npz` and `model_data.npz`; `04_event_detection/event_fraction_by_crossing.csv`;
 # `hayward_fault_profiles.csv`; the alignment-array summary; the GHCN file of the Fremont rain gauge; the GNSS station
-# list of the descending frame (`GPS/11115_StaList.txt`, the reference station ZOA1); the CFW1 position.
+# list of the descending frame (`GPS/11115_StaList.txt`, with the reference station ZOA1); the CFW1 position.
 #
 # **Figures**: `fig2_fault_parallel_vertical_coh<c>_<n>ev_selected3d` (Fig 2) and `figS_los_maps_profiles_coh<c>_<n>ev`
 # (the LOS version, supplement). Small GMT helper files go to `outputs/09_fig2/cpt/`.
 #
 # **What to check**
-# - [8] Check: both model products are on the samples of 07; I = model + plane and J = E - I (asserted).
-# - [9] K: the number of crossings drawn (where both sides have samples 60-150 m from the trace).
-# - [13] The per-block amplitudes printed for Fig 2 equal the registry rows `06_XX_*`, `06_YY_*` of notebook 06.
+# - Section 8: both model products are on the samples of notebook 07, and I = model + plane and J = E - I (asserted).
+# - Section 9: the printed number of crossings drawn on K (where both sides have samples 60 to 150 m from the trace).
+# - Section 13: the per-block amplitudes printed for Fig 2 equal the registry rows `06_XX_*` and `06_YY_*` of
+#   notebook 06.
 
 # %% [markdown]
-# ## [1] Imports
+# ## 1. Imports
 
 # %%
-## [1]
 import os
 
 import insar_utils as utils
@@ -72,13 +79,12 @@ from scipy.spatial import cKDTree
 import pygmt
 
 # %% [markdown]
-# ## [2] Constants
+# ## 2. Constants
 #
-# Colours (Okabe-Ito), fonts, the running-median bin of the profiles, the map window, the
-# named alignment arrays and the input files.
+# Colours (Okabe-Ito), fonts, the running-median bin of the profiles, the map window, the named alignment arrays and the
+# input files.
 
 # %%
-## [2]
 notebook = "09_fig2"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
@@ -100,7 +106,7 @@ ylabel_font = "9p,Helvetica"                # the y-axis labels of the profile a
 annot_font = "7p,Helvetica"                 # tick annotations, x-axis labels, map labels, the Mw text
 legend_font = "6p,Helvetica"                # the line legends (G and K)
 profile_label_font = "7p,Helvetica-Bold"    # X, X', Y, Y' on every map and profile panel (one size throughout)
-map_bar_font_pt = 13.0                      # the map colour bars ask GMT for 13 pt (GMT shrinks it on the page, see [6])
+map_bar_font_pt = 13.0                      # the map colour bars ask GMT for 13 pt (GMT shrinks it on the page, see section 6)
 
 # Fig 2 map window (unrotated, north up): centred on the trace at fig2_map_centre_km from Point Pinole,
 # +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km) north-south (10.4 x 12 km).
@@ -111,21 +117,20 @@ aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"),     # HGIL left of its symbol
 
 f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz")
 aa_file = common_paths["aa_summary"]
-selected_file = os.path.join(paths_out["08_3d_model"], "selected_model.npz")          # the preferred model (08 [12])
+selected_file = os.path.join(paths_out["08_3d_model"], "selected_model.npz")          # the preferred model (notebook 08, section 13)
 homogeneous_file = os.path.join(paths_out["07_model_data"], "homogeneous_model.npz")  # the homogeneous model of 07
 model_data_file = os.path.join(paths_out["07_model_data"], "model_data.npz")         # 07's samples
 model_tag = "_selected3d"                                                                 # in the Fig 2 file name
 profile_half_width_m = 300.0    # G: model samples within this distance of each profile line (06's pixels: +/- 150 m)
 
 # %% [markdown]
-# ## [3] Load: the maps and profiles from notebook 06, the trace
+# ## 3. Load the maps and profiles of notebook 06 and the trace
 #
-# The per-track maps and profiles are computed in 06; here they are unpacked into dictionaries by field
-# (fault-parallel, vertical, ascending, descending) and line (X, Y). The pixel centres of the grid lie on a regular UTM
-# lattice (asserted), so a pixel is found by its index.
+# The maps and profiles are computed in notebook 06. Here they are unpacked into dictionaries by field (fault-parallel,
+# vertical, ascending, descending) and by line (X, Y). The pixel centres lie on a regular UTM grid (asserted), so a
+# pixel is found by its index.
 
 # %%
-## [3]
 fig2_in = np.load(f_fig2_in)
 print(str(fig2_in["provenance"]))
 grid_x = fig2_in["X"]
@@ -145,9 +150,19 @@ for track in tracks:
 
 
 def unpack(field):
-    """The profiles of one field (fp, up, ascending, descending) as 06 held them: for each
-    line, the pixel distances and values of the rate ("d", "v") and of the event ("de", "ve"),
-    the line ends, and each block's near-fault amplitude and its error."""
+    """Unpack the profiles of one field from notebook 06.
+
+    Parameters
+    ----------
+    field : str
+        "fp", "up", "ascending" or "descending".
+
+    Returns
+    -------
+    dict
+        For each line: the pixel distances and values of the rate ("d", "v") and of the event ("de", "ve"), the line
+        ends ("ends"), and the near-fault amplitude and its standard error of each block ("blocks", "W" and "E").
+    """
     out = {}
     for line in line_names:
         profile = {}
@@ -184,10 +199,25 @@ east_normal = np.array([np.sin(np.deg2rad(strike - 90)), np.cos(np.deg2rad(strik
 
 
 def running_median(dist, values, bin_m=median_bin_m):
-    """Binned median on each side of the fault separately: the bin edges start at
-    the trace and run outward, so no bin (and no drawn segment) straddles the
-    fault. Bins with fewer than 3 pixels are skipped. Returns a list of
-    (bin centres, medians) arrays, one per side (west, east)."""
+    """Binned median on each side of the fault.
+
+    The bin edges start at the trace and run outward, so no bin or drawn segment crosses the fault. Bins with fewer
+    than 3 pixels are skipped.
+
+    Parameters
+    ----------
+    dist : numpy.ndarray
+        Cross-fault distance of each pixel (m, east positive).
+    values : numpy.ndarray
+        Pixel values.
+    bin_m : float
+        Bin width (m).
+
+    Returns
+    -------
+    list of tuple
+        (bin centres, medians) for the west side, then the east side.
+    """
     out = []
     for side_sign in (-1, 1):
         edges = np.sort(side_sign * np.arange(0.0, cross_m + bin_m, bin_m))
@@ -204,14 +234,13 @@ def running_median(dist, values, bin_m=median_bin_m):
 
 
 # %% [markdown]
-# ## [4] The map window and the regular lon/lat grid
+# ## 4. The map window and the regular lon/lat grid
 #
-# A lon/lat box about the trace point fig2_map_centre_km from Point Pinole; the 06 maps are resampled to a regular
-# lon/lat grid (nearest 30 m pixel). `to_grid` optionally balances a map so that the fault is at zero (the mid-point of
-# the two block medians).
+# The map window is a lon/lat box about the trace point `fig2_map_centre_km` from Point Pinole. The maps of notebook 06
+# are resampled to a regular lon/lat grid (nearest 30 m pixel). `to_grid` can balance a map so that the fault is at
+# zero, by subtracting the mid-point of the medians of the two sides.
 
 # %%
-## [4]
 km_of = utils.lat_to_km_map(common_paths["fault_profiles"])
 centre_index = int(np.argmin(np.abs(km_of(prof.ft_lat.values) - fig2_map_centre_km)))
 centre_x, centre_y = to_utm.transform(prof.ft_lon[centre_index], prof.ft_lat[centre_index])
@@ -238,8 +267,21 @@ side_q = np.dot(offset_from_trace, east_normal).reshape(east_q.shape)    # + eas
 
 
 def to_grid(field_map, balance):
-    """One 06 map on the regular lon/lat grid (xarray), balanced (fault at zero: the
-    mid-point of the two block medians in the window) when `balance`."""
+    """Resample one map of notebook 06 to the regular lon/lat grid.
+
+    Parameters
+    ----------
+    field_map : numpy.ndarray
+        Map on the grid of notebook 06.
+    balance : bool
+        If True, subtract the mid-point of the medians west and east of the trace in the window, so the fault is at
+        zero.
+
+    Returns
+    -------
+    xarray.DataArray
+        The map on (lat, lon).
+    """
     values = np.full(lon_grid.shape, np.nan)
     values[on_06_grid] = field_map[row_q[on_06_grid], col_q[on_06_grid]]
     if balance:
@@ -248,7 +290,20 @@ def to_grid(field_map, balance):
 
 
 def gmt_map_size(region, projection):
-    """Width and height (cm) GMT gives a region/projection pair (mapproject -W)."""
+    """Map size that GMT gives a region and projection (`mapproject -W`).
+
+    Parameters
+    ----------
+    region : list of float
+        [west, east, south, north] (deg).
+    projection : str
+        GMT projection, e.g. "M4c".
+
+    Returns
+    -------
+    tuple of float
+        Width and height (cm).
+    """
     size_file = os.path.join(cpt_dir, "dims.txt")
     with pygmt.clib.Session() as lib:
         lib.call_module("mapproject", f"-R{'/'.join(str(r) for r in region)} -J{projection} -W ->{size_file}")
@@ -272,16 +327,15 @@ aa = aa[(aa.long_deg > lon_w) & (aa.long_deg < lon_e) & (aa.lat_deg > lat_s) & (
 print("alignment arrays in the window:", ", ".join(aa.site_code))
 
 # %% [markdown]
-# ## [5] The sites on the maps: rain gauge, GNSS reference station, named places
+# ## 5. The sites on the maps: rain gauge, GNSS reference station, named places
 #
-# On panel B: the Fremont rain gauge, the gauge used for the rainfall statistics over the InSAR period (position from
-# its GHCN file), and the GNSS station ZOA1, the reference of every InSAR and GNSS product
-# (`common_paths['ref_station']`; position from the GNSS station list, asserted inside the map). ZOA1 and the gauge are
-# about 0.1 km apart, less than one symbol width on the map, so ZOA1 (a black star) is drawn on the white diamond of the
-# gauge, with ZOA1 labelled above and Fremont to the right. On panel F: the named places of the vertical event map.
+# Panel B shows the Fremont rain gauge, used for the rainfall statistics over the InSAR period (position from its GHCN
+# file), and the GNSS station ZOA1, the reference of the InSAR and GNSS products (`common_paths['ref_station']`; position
+# from the GNSS station list, asserted inside the map). ZOA1 and the gauge are about 0.1 km apart, less than one symbol
+# width on the map, so ZOA1 (a black star) is drawn on the white diamond of the gauge, with ZOA1 labelled above and
+# Fremont to the right. Panel F shows the named places of the vertical event map.
 
 # %%
-## [5]
 rain_gauges = {}
 for station_id, name in (("USC00043244", "Fremont"),):            # the gauge of the InSAR-period rainfall statistics
     head = pd.read_csv(os.path.join(common_paths["ghcn_dir"], f"{station_id}.csv"), nrows=1)
@@ -312,17 +366,22 @@ map_places = [(("Alameda", "Creek"), -121.980765, 37.572280, 0.3, 0.45),
               (("Tule", "Pond"), -121.975545, 37.558686, -0.35, -0.45)]
 
 # %% [markdown]
-# ## [6] Panel sizes and GMT settings
+# ## 6. Panel sizes and GMT settings
 #
-# A double-column Science figure (<= 18.3 cm). Each map is as tall as a stacked pair of profile panels. GMT 6.6 scales
-# colour-bar text with the square root of the bar length, so `colour_bar_font_pt` requests a larger size on a shorter
-# bar and every colour bar shows its text at the size of the map colour bars.
+# The figure is a double-column Science figure (at most 18.3 cm wide). Each map is as tall as a stacked pair of profile
+# panels. GMT 6.6 scales colour-bar text with the square root of the bar length, so `colour_bar_font_pt` asks for a
+# larger size on a shorter bar,
+#
+# $$f = f_{map}\sqrt{\frac{\ell_{map}}{\ell}} ,$$
+#
+# where $f$ is the font size to ask for (pt), $f_{map} = 13$ pt the size asked on the map colour bars, $\ell_{map}$ the
+# length of the map colour bars (cm) and $\ell$ the length of the bar being drawn (cm). Every colour bar then shows its
+# text at the size of the map colour bars.
 
 # %%
-## [6]
 Wp, Hp = 3.4, 1.85                                  # one profile panel, width and height (cm)
 gap_pair, gap_col, gap_row = 0.25, 0.65, 1.25       # within a stacked pair; between the two profile columns (room for the +/-2000 labels); between rows
-Hpair = 2 * Hp + gap_pair                           # a stacked pair; the maps are made exactly this tall
+Hpair = 2 * Hp + gap_pair                           # a stacked pair; the maps are made this tall
 map_w_4cm, map_h_4cm = gmt_map_size(region_map, "M4c")
 Wm = 4.0 * Hpair / map_h_4cm                        # one map, width and height (cm)
 Hm = Hpair
@@ -339,31 +398,61 @@ pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY=annot_font, FONT_LABEL=anno
 
 
 def colour_bar_font_pt(bar_length_cm):
-    """The font size (pt) to ask GMT for on a colour bar of this length so its text shows at
-    the size of the map colour bars (map_bar_font_pt asked on bars of map_bar_length cm).
-    GMT shrinks colour-bar text by the square root of the bar length, so the asked size
-    grows by sqrt(map_bar_length / bar_length_cm)."""
+    """Font size to ask GMT for on a colour bar so its text shows at the size of the map colour bars.
+
+    GMT shrinks colour-bar text by the square root of the bar length, so the size asked on the map bars
+    (`map_bar_font_pt`, bars of `map_bar_length` cm) is scaled by sqrt(map_bar_length / bar_length_cm).
+
+    Parameters
+    ----------
+    bar_length_cm : float
+        Length of the colour bar (cm).
+
+    Returns
+    -------
+    float
+        Font size (pt).
+    """
     return map_bar_font_pt * np.sqrt(map_bar_length / bar_length_cm)
 
 # %% [markdown]
-# ## [7] The drawing helpers: maps, colour bars, profile pairs
+# ## 7. The drawing helpers: maps, colour bars, profile pairs
 #
 # Each helper draws into the figure `fig` it is given, from the current origin, and its docstring states where it
 # leaves the origin.
 
 # %%
-## [7]
 def profile_line_labels(fig):
-    """X-X' and Y-Y' labels at the ends of the profile lines."""
+    """Write the X-X' and Y-Y' labels at the ends of the profile lines.
+
+    Parameters
+    ----------
+    fig : pygmt.Figure
+        The figure, with a map frame active.
+    """
     for line, (line_lon, line_lat) in lines_ll.items():
         fig.text(x=line_lon[0], y=line_lat[0], text=line, justify="RM", offset="-0.08c/0c", font=profile_label_font)
         fig.text(x=line_lon[1], y=line_lat[1], text=line + "'", justify="LM", offset="0.08c/0c", font=profile_label_font)
 
 
 def map_base(fig, grid, cpt, label, stations=True, places=False):
-    """One map, north up, in lon/lat: the field, the trace, the profile lines, and
-    (stations) CFW1, the named alignment arrays, the rain gauges and GNSS ZOA1; (places)
-    the named places with leader lines. No colour bar."""
+    """Draw one map, north up, in lon/lat, without a colour bar.
+
+    Parameters
+    ----------
+    fig : pygmt.Figure
+        The figure.
+    grid : xarray.DataArray
+        The field on the regular lon/lat grid.
+    cpt : str
+        Path of the colour table.
+    label : str
+        Panel letter.
+    stations : bool
+        Draw CFW1, the named alignment arrays, the rain gauge and the GNSS station ZOA1.
+    places : bool
+        Draw the named places with leader lines.
+    """
     fig.basemap(region=region_map, projection=proj_map, frame=["lrtb"])
     fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True)
     fig.plot(x=prof.ft_lon.values, y=prof.ft_lat.values, pen="0.7p,black")
@@ -412,7 +501,23 @@ def map_base(fig, grid, cpt, label, stations=True, places=False):
 
 
 def colour_bar(fig, cpt, lim, cb_label, x_cm, y_cm, length_cm):
-    """A vertical colour bar from (x_cm, y_cm), its text at the size of the map colour bars."""
+    """Draw a vertical colour bar with its text at the size of the map colour bars.
+
+    Parameters
+    ----------
+    fig : pygmt.Figure
+        The figure.
+    cpt : str
+        Path of the colour table.
+    lim : float
+        Half-range of the colour scale (sets the annotation interval).
+    cb_label : str
+        Label of the bar.
+    x_cm, y_cm : float
+        Bottom-left corner of the bar from the current origin (cm).
+    length_cm : float
+        Length of the bar (cm).
+    """
     font_pt = colour_bar_font_pt(length_cm)
     with pygmt.config(FONT_ANNOT_PRIMARY=f"{font_pt:.3g}p", FONT_LABEL=f"{font_pt:.3g}p"):
         fig.colorbar(cmap=cpt, position=f"x{x_cm}c/{y_cm}c+w{length_cm}c/{cb_w}c+jBL",
@@ -420,10 +525,39 @@ def colour_bar(fig, cpt, lim, cb_label, x_cm, y_cm, length_cm):
 
 
 def los_maps(fig, field, balance, tag, labels, cb_label, row_label, cols, headings=False, stations_on=(), places_on=()):
-    """The two maps of one row (cols: the two fields) from the current origin
-    (bottom-left of the first map), one shared colour bar right of the second map,
-    the row label left of the first map. Leaves the origin where it started.
-    Returns the colour limit."""
+    """Draw the two maps of one row, a shared colour bar and the row label.
+
+    Drawn from the current origin (bottom-left of the first map); the colour bar is right of the second map and the
+    row label left of the first. Leaves the origin where it started.
+
+    Parameters
+    ----------
+    fig : pygmt.Figure
+        The figure.
+    field : dict
+        Maps by column name.
+    balance : bool
+        Balance each map so the fault is at zero (`to_grid`).
+    tag : str
+        Name of the colour-table file.
+    labels : list of str
+        Panel letters of the two maps.
+    cb_label : str
+        Label of the colour bar.
+    row_label : str
+        Label of the row.
+    cols : list of str
+        The two columns (keys of `field`).
+    headings : bool
+        Write the column names above the maps.
+    stations_on, places_on : tuple of str
+        Panel letters that show the stations and the named places.
+
+    Returns
+    -------
+    float
+        Half-range of the colour scale.
+    """
     grids = {}
     lim = 0.3
     for col in cols:
@@ -446,7 +580,15 @@ def los_maps(fig, field, balance, tag, labels, cb_label, row_label, cols, headin
 
 
 def write_line_legend(path, entries):
-    """A GMT legend spec: one short line symbol and its label per (pen, label) entry."""
+    """Write a GMT legend file with one short line symbol and its label per entry.
+
+    Parameters
+    ----------
+    path : str
+        Output file.
+    entries : list of tuple
+        (pen, label) pairs.
+    """
     with open(path, "w") as handle:
         for pen, label in entries:
             handle.write(f"S 0.15c - 0.3c - {pen} 0.35c {label}\n")
@@ -454,11 +596,35 @@ def write_line_legend(path, entries):
 
 def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, cols, headings=False, xlabel=False,
                       model_lines=None):
-    """For each field in cols a stacked pair (X above Y) of profiles from prof_set, drawn
-    from the current origin (bottom-left of the first column's top panel): pixels in grey,
-    the model lines (model_lines: a list of (lines by (col, line), colour, label)), the
-    per-side running median on top. The first column carries the y annotation, the
-    column pair the y label. Leaves the origin at the first column's lower panel."""
+    """Draw a stacked pair of profiles (X above Y) for each column.
+
+    Drawn from the current origin (bottom-left of the top panel of the first column): pixels in grey, the model lines,
+    and the per-side running median on top. The first column carries the y annotation, the pair of columns the y
+    label. Leaves the origin at the lower panel of the first column.
+
+    Parameters
+    ----------
+    fig : pygmt.Figure
+        The figure.
+    value_key, dist_key : str
+        Keys of the values and distances in each profile ("v", "d" for the rate; "ve", "de" for the event).
+    lim : float
+        Half-range of the y axis.
+    labels : list of str
+        Panel letters of the two columns.
+    ylab : str
+        y-axis label.
+    prof_set : dict
+        Profiles by column and line (`unpack`).
+    cols : list of str
+        The two columns.
+    headings : bool
+        Write the column names above the top panels.
+    xlabel : bool
+        Label the x axis of the lower panels.
+    model_lines : list of tuple, optional
+        (lines by (column, line), colour, label) for each model.
+    """
     cross_km = cross_m / 1e3                                                 # distances are stored in m; drawn in km
     for k, col in enumerate(cols):
         if k:
@@ -513,15 +679,17 @@ def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, col
 
 
 # %% [markdown]
-# ## [8] The model products of 08 and 07
+# ## 8. The model products of notebooks 08 and 07
 #
-# The preferred 3D model (08) provides panels I-L and the vermillion line on G; the homogeneous model of 07 (same fault,
-# samples, weighting, plane, prior and corner rule; analytic Green's functions on the same tents) provides the blue line
-# on G. Check: both are on the samples of 07 (asserted). I = the slip model + its fitted plane, so J = E - I at every
-# sample (asserted; CSI removes the fitted plane from the data, so 08 stores the plane separately).
+# The preferred 3D model (notebook 08) gives panels I to L and the vermillion line on G. The homogeneous model of
+# notebook 07 (the same fault, samples, weighting, plane, prior and corner rule, with analytic Green's functions on the
+# same tents) gives the blue line on G. Panel I is the slip model plus its fitted plane,
+# $G\mathbf{s} + B\mathbf{a}$, so that J = E - I at every sample. CSI removes the fitted plane from the data, so
+# notebook 08 stores the plane separately.
+#
+# Check: both models are on the samples of notebook 07, and J = E - I (both asserted).
 
 # %%
-## [8]
 for path in (selected_file, homogeneous_file, model_data_file):
     assert os.path.exists(path), f"missing {path}: run 07_model_data and 08_3d_model first"
 model = np.load(selected_file)
@@ -534,15 +702,26 @@ assert np.array_equal(model["keep"], compare["keep"]), "the two models have diff
 model_with_plane_mm = model["model_mm"] + model["plane_mm"]
 assert np.allclose(model_data["data_mm"] - model_with_plane_mm, model["residual_mm"], atol=1e-6), "E - I != J at the samples"
 print(f"panel I: slip model + fitted plane ({float(model['plane_offset_mm']):+.2f} mm, {float(model['plane_dx_mm_per_km']):+.3f} mm/km x, "
-      f"{float(model['plane_dy_mm_per_km']):+.3f} mm/km y); J = E - I at every sample (PASS)")
+      f"{float(model['plane_dy_mm_per_km']):+.3f} mm/km y); check passed: J = E - I at every sample")
 print(f"panel K: Mw {float(model['Mw_30gpa']):.2f} (30 GPa), {float(model['Mw_sfcvm']):.2f} (harmonic SFSVM, "
       f"{float(model['mu_effective_gpa']):.1f} GPa effective)")
 
 
 def profile_dots(product):
-    """A model's prediction of the raw data (G x slip + its plane) at the samples within profile_half_width_m of each
-    profile line, keyed by (field, line): (cross-fault distance m as 06's profiles: from the line's centre on the trace,
-    east +; mm). Fault-parallel only."""
+    """A model's prediction of the data at the samples near each profile line (fault-parallel only).
+
+    Parameters
+    ----------
+    product : numpy.lib.npyio.NpzFile
+        A model product of notebook 07 or 08 (`model_mm`, `plane_mm`).
+
+    Returns
+    -------
+    dict
+        Keyed by ("fault-parallel", line): (cross-fault distance in m, measured as in the profiles of notebook 06 from
+        the centre of the line on the trace with east positive; the prediction G x slip + plane in mm) of the fitted
+        samples within `profile_half_width_m` of the line.
+    """
     dots = {}
     prediction = product["model_mm"] + product["plane_mm"]
     for line in line_names:
@@ -560,14 +739,19 @@ model_lines = [(profile_dots(compare), homog_col, "Homogeneous"),     # no comma
                (profile_dots(model), hetero_col, "3D (SFSVM)")]
 
 # %% [markdown]
-# ## [9] Panel K: the 60-150 m steps of the data and the model
+# ## 9. Panel K: the 60 to 150 m steps of the data and the model
 #
-# The data step and the model step are both measured 60-150 m from the trace (outside the 60 m near-trace cut, i.e. on
-# the samples the model fits), at each crossing of 04, +/- 200 m along strike, on the samples (08 [6],
-# `model_utils.crossing_steps_like`). Drawn unsmoothed; a crossing is drawn only where both sides have samples.
+# The steps are computed in notebook 08, section 6 (`model_utils.crossing_steps_like`). At each crossing $c$ of
+# notebook 04, for the data and for the model,
+#
+# $$\Delta u_c = \operatorname{median}_{i \in E_c} u_i - \operatorname{median}_{i \in W_c} u_i ,$$
+#
+# where $u_i$ is the plane-removed data or the model at sample $i$ (mm), and $E_c$ and $W_c$ are the samples 60 to
+# 150 m east and west of the trace within 200 m along strike of the crossing. These are samples outside the 60 m
+# near-trace cut, so the model fits them. The steps are drawn without smoothing, and a crossing is drawn only where
+# both sides have at least 3 samples.
 
 # %%
-## [9]
 crossings04 = pd.read_csv(os.path.join(paths_out["04_event_detection"], "event_fraction_by_crossing.csv"))
 assert np.array_equal(np.asarray(model["crossing_km"], float), crossings04.km.values.astype(float)), "08's crossings are not 04's"
 assert float(model["step_inner_km"]) == 0.06 and float(model["step_outer_km"]) == 0.15, "panel K steps must be 60-150 m"
@@ -579,19 +763,35 @@ print(f"K: {finite_k.sum()} of {k_line_km.size} crossings have a 60-150 m step o
       f"{float(model['band_step_mean_mm']):+.2f} mm (mean), {float(model['band_step_rms_mm']):.2f} mm (RMS)")
 
 # %% [markdown]
-# ## [10] The model row (I-L)
+# ## 10. The model row (I to L)
 #
-# I the fault-parallel model (slip model + the fitted plane, so J = E - I) and J the residual, each quadtree sample filled
-# over its own block (shared colour bar right of J, on the colour scale of the event row); K the 60-150 m cross-fault
-# step along strike, data and model; L slip with depth on the unrolled fault, top 1 km (PyLith tents: slip at the
-# vertices, linear between them). Panel letters, I/J titles, axis labels, tick labels, the K legend, the Mw text and the
-# colour bar of L use the font sizes of the map and profile panels.
+# - I: the fault-parallel model (the slip model plus the fitted plane, so J = E - I).
+# - J: the residual.
+# - K: the 60 to 150 m cross-fault step along strike, data and model.
+# - L: the slip with depth on the unrolled fault, top 1 km (PyLith tents: slip at the vertices, linear between them),
+#   sampled on a regular grid by linear interpolation on the Delaunay triangulation of the impulse vertices.
+#
+# On I and J each quadtree sample fills its own block, with a shared colour bar right of J on the colour scale of the
+# event row. Panel letters, I and J titles, axis labels, tick labels, the K legend, the Mw text and the colour bar of L
+# use the font sizes of the map and profile panels.
 
 # %%
-## [10]
 def model_row(fig, product, lim, model_mm):
-    """Row 3 of the figure from the current origin (bottom-left of I). model_mm: panel I's values (the slip model plus
-    the fitted plane, [8]). Leaves the origin where it started."""
+    """Draw row 3 of the figure (panels I to L).
+
+    Drawn from the current origin (bottom-left of I). Leaves the origin where it started.
+
+    Parameters
+    ----------
+    fig : pygmt.Figure
+        The figure.
+    product : numpy.lib.npyio.NpzFile
+        The preferred model of notebook 08 (`selected_model.npz`).
+    lim : float
+        Half-range of the colour scale of I and J (the scale of the event row).
+    model_mm : numpy.ndarray
+        Values of panel I at the samples: the slip model plus the fitted plane (mm, section 8).
+    """
     cpt = utils.write_cpt(os.path.join(cpt_dir, "model_fp.cpt"), "RdBu_r", -lim, lim)
     # the block area on the page is the area each sample averages (equal dots over-weight
     # the many small blocks at the trace); largest first so the small near-fault blocks are on top
@@ -623,7 +823,7 @@ def model_row(fig, product, lim, model_mm):
              font=heading_font, no_clip=True)
 
     # K: the cross-fault step 60-150 m from the trace at the crossings of 04, data and preferred model measured the same
-    # way on the samples ([9]); unsmoothed
+    # way on the samples (section 9); unsmoothed
     k_indent = 0.7                                       # room for the I/J bar label and the depth label
     Wk = W_model - k_indent
     Hk = 0.38 * Hm
@@ -698,16 +898,26 @@ def model_row(fig, product, lim, model_mm):
 
 
 # %% [markdown]
-# ## [11] The whole figure
+# ## 11. The whole figure
 #
-# Row 1 the inter-event rate (A, B maps; C, D profiles), row 2 the mean event (E, F maps; G, H profiles), row 3 the
-# model (I-L). The four maps of rows 1 and 2 show the same pixels (a common mask); I and J share the colour scale of E
-# and F.
+# Row 1 is the inter-event rate (maps A and B, profiles C and D), row 2 the mean event (maps E and F, profiles G and H),
+# and row 3 the model (I to L). The four maps of rows 1 and 2 show the same pixels (a common mask), and I and J share
+# the colour scale of E and F.
 
 # %%
-## [11]
 def common_mask(fields):
-    """True where every map of every given field (dicts of maps by column) is finite."""
+    """Mask of the pixels that are finite in every map.
+
+    Parameters
+    ----------
+    fields : list of dict
+        Fields, each a dict of maps by column.
+
+    Returns
+    -------
+    numpy.ndarray of bool
+        True where every map of every field is finite.
+    """
     mask = None
     for field in fields:
         for field_map in field.values():
@@ -719,7 +929,20 @@ def common_mask(fields):
 
 
 def masked(field, mask):
-    """The maps of one field with NaN outside the mask."""
+    """Set the maps of one field to NaN outside a mask.
+
+    Parameters
+    ----------
+    field : dict
+        Maps by column.
+    mask : numpy.ndarray of bool
+        Pixels to keep.
+
+    Returns
+    -------
+    dict
+        The masked maps by column.
+    """
     out = {}
     for col, field_map in field.items():
         out[col] = np.where(mask, field_map, np.nan)
@@ -727,8 +950,25 @@ def masked(field, mask):
 
 
 def draw_fig2(rate_maps, event_maps, profile_set, event_label, stem, cols, ylabs, lims):
-    """The whole figure for the two columns `cols` (fields of the map and profile
-    dictionaries). Saved as <stem>.png/.pdf."""
+    """Draw the whole figure for two columns and save it as <stem>.png and <stem>.pdf.
+
+    Parameters
+    ----------
+    rate_maps, event_maps : dict
+        Maps of the inter-event rate and of the mean event, by column.
+    profile_set : dict
+        Profiles by column and line (`unpack`).
+    event_label : str
+        Label of the event row.
+    stem : str
+        Output path without extension.
+    cols : list of str
+        The two columns.
+    ylabs : tuple of str
+        y-axis labels of the rate and event profiles.
+    lims : dict
+        Half-ranges of the profile axes ("rate", "event").
+    """
     fig = pygmt.Figure()
     # row 1: the inter-event rate. A, B the maps; C, D the profiles (arrays, CFW1, the gauge and ZOA1 on B)
     los_maps(fig, rate_maps, True, "rate", ["A", "B"], "mm/yr", "Inter-event rate", cols, headings=True, stations_on=("B",))
@@ -757,31 +997,29 @@ mask_los = common_mask([rate_los, event_los])           # A, B, E, F show the sa
 print(f"common pixel mask for the four LOS maps: {mask_los.sum()} pixels ({mask_los.mean():.0%} of the box)")
 
 # %% [markdown]
-# ## [12] Fig S: the LOS observations on each track, and the model row
+# ## 12. Fig S: the LOS observations on each track, and the model row
 #
-# Row 1, the inter-event rate: the ascending and descending LOS maps with one shared colour bar, then the X-X' and Y-Y'
-# profiles of each track (pixels in grey, a per-side running median in black). Row 2, the mean event (the mean of the
-# events, the field inverted in 07 and 08), drawn the same way. Row 3, the model row of the 3D model (08), as in
+# Row 1 is the inter-event rate: the ascending and descending LOS maps with one shared colour bar, then the X-X' and
+# Y-Y' profiles of each track (pixels in grey, a per-side running median in black). Row 2 is the mean event, the field
+# inverted in notebooks 07 and 08, drawn in the same way. Row 3 is the model row of the 3D model (notebook 08), as in
 # Fig 2. The maps are LOS, positive toward the satellite, so a right-lateral step has opposite colours on the ascending
-# and descending tracks. This LOS version is a supplementary figure; Fig 2 (next section) is the fault-parallel and
+# and descending tracks. This LOS version is a supplementary figure; Fig 2 (section 13) is the fault-parallel and
 # vertical version.
 
 # %%
-## [12]
 f_fig2_los = os.path.join(fig_dir, f"figS_los_maps_profiles_coh{coh_maps:g}_{n_mean}ev")
 draw_fig2(masked(rate_los, mask_los), masked(event_los, mask_los), los_profiles, f"Mean event ({n_mean} events)",
           f_fig2_los, tracks, ("LOS rate (mm/yr)", "LOS (mm)"), lim_prof_los)
 
 # %% [markdown]
-# ## [13] Fig 2: the fault-parallel and vertical fields, and the model row
+# ## 13. Fig 2: the fault-parallel and vertical fields, and the model row
 #
-# The layout of the LOS figure above, with the two columns the decomposed fault-parallel (positive right-lateral: the
-# east block moving south-east) and vertical (positive up) fields of notebook 06 in place of the two tracks. The
-# profiles and block amplitudes are those of 06, as in its registry (`06_XX_*`, `06_YY_*`). G carries the two model
-# lines of [8].
+# Fig 2 has the layout of the LOS figure of section 12, with the two tracks replaced by the fault-parallel field
+# (positive right-lateral, the east block moving south-east) and the vertical field (positive up) of notebook 06. The
+# profiles and block amplitudes are those of notebook 06, as in its registry (`06_XX_*`, `06_YY_*`). Panel G has the two
+# model lines of section 8.
 
 # %%
-## [13]
 fpup_rate = {"fault-parallel": fig2_in["fp_rate"], "vertical": fig2_in["up_rate"]}
 fpup_event = {"fault-parallel": fig2_in["fp_event"], "vertical": fig2_in["up_event"]}
 fpup_profiles = {"fault-parallel": fp_profiles, "vertical": up_profiles}
