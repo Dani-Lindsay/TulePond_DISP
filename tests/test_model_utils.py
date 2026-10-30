@@ -194,6 +194,14 @@ def test_materna_stress_drop():
         sc.materna_stress_drop_pa(30e9, 0.0, 175.0)
 
 
+def test_strike_slip_stress_drop():
+    # (2 / pi) mu d / w: pi times smaller than mu d / (w / 2)
+    assert np.isclose(sc.strike_slip_stress_drop_pa(30e9, 0.0128, 350.0), 2 / np.pi * 30e9 * 0.0128 / 350.0)
+    assert np.isclose(sc.materna_stress_drop_pa(30e9, 0.0128, 175.0) / sc.strike_slip_stress_drop_pa(30e9, 0.0128, 350.0), np.pi)
+    with pytest.raises(AssertionError):
+        sc.strike_slip_stress_drop_pa(30e9, 0.0128, 0.0)
+
+
 def test_crossing_steps_like_measures_a_step():
     d = np.r_[np.linspace(-0.2, -0.01, 20), np.linspace(0.01, 0.2, 20)]
     values = np.where(d > 0, 2.0, -1.0)

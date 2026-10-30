@@ -18,25 +18,23 @@
 # # 08a The preferred slip model: 3D elastic structure (SFSVM), PyLith Green's functions
 #
 # ```
-# Rewritten from scratch on Fri Oct 30 2026 (the rewire, code_audit_2026-10-28/REWIRE_BRIEF.md); the earlier 08a is in
-# drafts/retired_2026-10-28/.
-# @author: daniellelindsay
-# Run in opera_disp_feb13, after 07a. About 45 min (30 solves for the L-curve, 100 for the Monte Carlo). No PyLith run:
-# the Green's functions are read from the archived G matrix of the selected run.
+# Author: Danielle Lindsay
+# Environment: environment.yml. Runs after 07a. About 45 min (30 solves for the L-curve, 100 for the Monte Carlo).
+# PyLith is not run here: the Green's functions are read from the stored G matrix of the PyLith run.
 # ```
 #
-# **What this notebook does.** The paper's slip model, by the locked method (`model_config.py`; register rows in
-# brackets): the archived PyLith Green's functions of `gf_shallow_dip70w_sfcvm_order2` (fault dipping 70 W, Dani 2026-10-30;
-# the vertical model of the same mesh is a sensitivity row) [8-12], 07a's samples and noise model
-# [1-5], equal weights [6], a plane solved jointly [7], slip >= 0 [14], the CSI exponential prior [15] at the model's own
-# L-curve corner [16], no surface constraint [17]. Then: its fit (maps and profiles from G x slip at the samples), its
-# size (potency, Mw at 30 GPa and at the slip-weighted harmonic SFSVM rigidity [18]), the depths above which 50 % / 90 %
-# of the potency lie [22], the comparison with 07a's homogeneous model [13], the Monte Carlo of correlated noise [20],
-# and the stress drop from the fixed-depth scan [19].
+# **What this notebook does.** The paper's slip model, with the settings of `model_config.py`: the PyLith Green's
+# functions of `model_config.gf_run` (3D SFSVM elastic structure, fault dipping 70 deg W; the vertical fault on the
+# same mesh is a sensitivity test), the samples and noise model of 07a, equal weights, a plane solved jointly,
+# slip >= 0 and the CSI exponential prior at the L-curve corner, no surface constraint. Then the fit (maps and profiles
+# of G x slip at the samples), the size (potency, Mw at 30 GPa and at the slip-weighted harmonic SFSVM rigidity), the
+# depths above which 50 % / 90 % of the potency lie, the comparison with the homogeneous model of 07a, a Monte Carlo of
+# correlated noise, and the stress drop from the fixed-depth scan.
 #
 # **Inputs**: 07a `model_data.npz`, `homogeneous_model.npz`, `homogeneous_lcurve.csv`; the PyLith products listed in [2];
-# 06 `fig2_inputs.npz` (profile lines); 04 `section_lengths.csv`, `event_fraction_by_crossing.csv`; the archived
-# sweep csvs of `model_config.archived` (checks only: the 2026-10-30 '70 W' fine-mesh dip row and the fixed-depth scan).
+# 06 `fig2_inputs.npz` (profile lines); 04 `section_lengths.csv`, `event_fraction_by_crossing.csv`; the stored outputs
+# of `scripts/sensitivity/` listed in `model_config.archived` (the '70 W' fine-mesh dip row, for a check, and the
+# fixed-depth scan).
 #
 # **Outputs** (`outputs/08a_3d_model/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane,
 # residual, crossings steps: Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
@@ -45,14 +43,14 @@
 # `figS_model_profiles`, `figS_model_montecarlo`. **Registry keys** `08a_*`.
 #
 # **What to check**
-# - [2] every PyLith file exists and the run's done marker is there.
-# - [5] CHECK: the corners and every number equal the 2026-10-30 sweep's '70 W' fine-mesh dip row.
-# - [6] Mw at 30 GPa vs the harmonic SFSVM rigidity; depth50 / depth90.
-# - [10] the Monte Carlo spread (and its mean against the model: re-inverted noisy synthetics can come back low).
-# - [11] CHECK: the best row of the fixed-depth scan is re-solved here and equals the archived scan.
+# - [2] Every PyLith file exists, including the run's completion marker.
+# - [5] Check: the corners and every number equal the '70 W' fine-mesh dip row of `scripts/sensitivity/sensitivity_rows.py`.
+# - [6] Mw at 30 GPa and at the harmonic SFSVM rigidity; depth50 / depth90.
+# - [10] The Monte Carlo spread, and its mean against the model.
+# - [11] Check: the best row of the fixed-depth scan is re-solved here and equals the stored scan.
 
 # %% [markdown]
-# ## [1] Imports, the locked settings, the registry
+# ## [1] Imports, settings and the number registry
 
 # %%
 ## [1]
@@ -72,8 +70,8 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)   # library noise
 warnings.filterwarnings("ignore", category=FutureWarning)
 from TulePond_filepaths import common_paths, repo_dir, paths_out, model_crs
 import insar_utils as utils
-import model_config as cfg                          # THE parameter block of the slip models
-import model_utils                                  # every modelling function, once (with its source)
+import model_config as cfg                          # the settings of the slip models
+import model_utils                                  # the modelling functions
 
 notebook = "08a_3d_model"
 out_dir = paths_out[notebook]
@@ -100,14 +98,13 @@ cm = 1 / 2.54
 print("\n".join(cfg.summary()))
 
 # %% [markdown]
-# ## [2] The PyLith files of the selected Green's functions
+# ## [2] The PyLith files of the Green's functions
 #
-# Everything that made `gf_shallow_sfcvm_order2` (PyLith 5.0.2, Charles Williams' order-2 set-up), with paths, so it can
-# be found and checked: the mesh and its report, the cfg stack (repo `pylith/cfg/`), the SFSVM material database and the
-# grid it was written from, the impulse database, the output points (07a's samples), the command, the run log and
-# done marker, the raw outputs, and the G matrix assembled from them (`model_utils.build_G`: impulse -> vertex, output
-# point -> sample, projection on the fault-parallel look vector, right-lateral sign derived). See `pylith/README.md`.
-# Nothing is run here.
+# The inputs and outputs of the PyLith 5.0.2 run `model_config.gf_run` (basis order 2), with paths: the mesh and its
+# report, the cfg files (`pylith/cfg/`), the SFSVM material database and the grid it was written from, the impulse
+# database, the output points (the samples of 07a), the command, the run log and completion marker, the raw outputs, and
+# the G matrix assembled from them (`model_utils.build_G`: impulse -> vertex, output point -> sample, projection on the
+# fault-parallel look vector, right-lateral sign). See `pylith/README.md`. Nothing is run here.
 
 # %%
 ## [2]
@@ -129,11 +126,11 @@ with open(cfg.gf_files["mesh_report"]) as report:
 # %% [markdown]
 # ## [3] The data and the inversion set-up
 #
-# 07a's samples (`model_data.npz`, rebuilt as a `csi.insar` set by `model_utils.samples_from_arrays`) and its 5 km
-# noise model. `model_utils.tent_model_setup` reads the archived G (`load_G`; built from the PyLith output by
-# `build_G`, asserted to be on these samples and at this strike), the tent fault and its CSI template, `keep` (60 m cut,
-# #2), the near-field masks (within 500 m west / east, in the SSE section). Data covariance: every fitted sample the
-# nugget variance (#6).
+# The samples of 07a (`model_data.npz`, rebuilt as a `csi.insar` set by `model_utils.samples_from_arrays`) and its noise
+# model. `model_utils.tent_model_setup` reads the stored G (`load_G`; built from the PyLith output by `build_G`,
+# asserted to be on these samples and at this strike), the tent fault and its CSI template, `keep` (samples 60 m or
+# more from the trace) and the near-field masks (within 500 m west / east, in the SSE section). Data covariance: the
+# nugget variance for every fitted sample (equal weights).
 
 # %%
 ## [3]
@@ -167,17 +164,17 @@ print(f"G {G.shape} (samples x tents), max |G| {np.abs(G).max():.3f} m/m; {keep.
 
 
 def solve_3d(sigma, vel=None):
-    """The selected model at one sigma (the locked inversion, model_utils.invert_tents); vel replaces the data."""
+    """The 3D model at one sigma (model_utils.invert_tents); vel replaces the data."""
     return model_utils.invert_tents(setup["template"], samples, G, Cd, None, None, sigma, cfg.lam_xz_km, frame_lonlat,
                                     use_surface=cfg.use_surface, vel_insar=vel, name=f"3D sigma {sigma:.3f}", ramp_spec=cfg.ramp_spec)
 
 # %% [markdown]
-# ## [4] The rigidity beside the fault (register #18)
+# ## [4] The rigidity beside the fault
 #
-# The shear modulus PyLith actually used (`-elastic_info.h5`; materials basis order 1: the cell mean of its vertex
-# values) is compared with the SFSVM grid it was read from (median difference < 5 % asserted), and the cell next to
-# each fault triangle on each side is taken (`model_utils.mu_beside_fault`). A fault between two materials has the
-# harmonic-mean rigidity 2 mu_W mu_E / (mu_W + mu_E) (`model_utils.harmonic_mean_rigidity`); Mw with it uses each
+# The shear modulus used by PyLith (`-elastic_info.h5`; materials basis order 1: the cell mean of its vertex values) is
+# compared with the SFSVM grid it was read from (median difference < 5 % asserted), and the cell next to each fault
+# triangle on each side is taken (`model_utils.mu_beside_fault`). The rigidity of a fault between two materials is the
+# harmonic mean 2 mu_W mu_E / (mu_W + mu_E) (Vavrycuk 2013; `model_utils.harmonic_mean_rigidity`); Mw with it uses each
 # triangle's own value (the slip-weighted harmonic SFSVM rigidity).
 
 # %%
@@ -194,14 +191,14 @@ print(f"SSE section, top 100 m: median mu west {np.median(mu_west[top_section]) 
       f"{np.median(mu_east[top_section]) / 1e9:.3f}, harmonic {np.median(mu_harmonic[top_section]) / 1e9:.3f} GPa")
 
 # %% [markdown]
-# ## [5] The L-curve, the model's own corner, and CHECK against the 2026-10-30 sweep
+# ## [5] L-curve, corner, and an independent check
 #
-# `model_utils.own_corner` (register #16): the L-curve on the base grid and its corner, then nine sigmas around it and
-# the corner of the union = the model's sigma (unsnapped).
+# `model_utils.own_corner`: the L-curve on the base sigma grid and its corner (maximum curvature, Hansen 1992), then nine
+# sigmas around it; the corner of the combined set is the model's sigma.
 #
-# CHECK (two routes to the same numbers): `scripts/sensitivity/sensitivity_rows.py` solved the 70 W run by the same rule on
-# 2026-10-30 (row "Fault dip, fine mesh" / "70 W", frozen in `sensitivity_rows_before_70w_2026-10-30.csv`), so both corners
-# and the model must reproduce that row: sigma, Mw, RMS (all, 500 m west / east), peak slip and depth, depth50 / depth90.
+# Check: `scripts/sensitivity/sensitivity_rows.py` solves the same run by the same rule independently (row "Fault dip,
+# fine mesh" / "70 W", stored in `model_config.archived`); the corners and the model must reproduce that row (sigma, Mw,
+# RMS of all samples and 500 m west / east, peak slip and depth, depth50 / depth90).
 
 # %%
 ## [5]
@@ -225,19 +222,19 @@ comparison = pd.DataFrame([("sigma, base grid", sigma_base, sweep_row.sigma_base
                            ("peak slip (mm)", check["peak_slip_mm"], sweep_row.peak_slip_mm),
                            ("peak depth (m)", check["peak_depth_m"], sweep_row.peak_depth_m),
                            ("depth50 (m)", check["depth50_m"], sweep_row.depth50_m), ("depth90 (m)", check["depth90_m"], sweep_row.depth90_m)],
-                          columns=["quantity", "this notebook", "sweep 2026-10-30"])
+                          columns=["quantity", "this notebook", "sensitivity_rows.py"])
 print(comparison.to_string(index=False))
-assert np.allclose(comparison["this notebook"], comparison["sweep 2026-10-30"], rtol=1e-3), "the model does not reproduce the sweep row"
-print(f"PASS: the corners and the model reproduce the 2026-10-30 sweep row 'Fault dip, fine mesh, {cfg.selected_dip_label}'")
+assert np.allclose(comparison["this notebook"], comparison["sensitivity_rows.py"], rtol=1e-3), "the model does not reproduce the sensitivity row"
+print(f"PASS: the corners and the model reproduce the sensitivity row 'Fault dip, fine mesh, {cfg.selected_dip_label}'")
 
 # %% [markdown]
-# ## [6] The selected model and its numbers
+# ## [6] The preferred model and its numbers
 #
-# Solved at its corner. `model_utils.tent_numbers` (metric policy 2026-10-28): RMS of the plane-removed data minus the
-# model over the fitted samples and within 500 m west / east in the SSE section; potency; Mw at 30 GPa and with the
-# harmonic SFSVM rigidity of every triangle (#18); peak slip and depth; depth50 / depth90 of the potency (#22).
-# Then the fitted plane (CSI removes it from the data) and Fig 2K's like-for-like step (#21): at each of 04's crossings,
-# the median of the samples 60-150 m east minus west, for the data and for the model (`model_utils.crossing_steps_like`).
+# Solved at the corner sigma. `model_utils.tent_numbers`: RMS of the plane-removed data minus the model over the fitted
+# samples and within 500 m west / east in the SSE section; potency; Mw at 30 GPa and with the harmonic SFSVM rigidity of
+# every triangle; peak slip and depth; depth50 / depth90 of the potency. Then the fitted plane (CSI removes it from the
+# data) and the step of Fig 2K: at each crossing of 04, the median of the samples 60-150 m east minus west, for the data
+# and for the model (`model_utils.crossing_steps_like`).
 
 # %%
 ## [6]
@@ -266,11 +263,10 @@ for key, value in numbers.items():
     print(f"  {key:22s} {value:.5g}")
 
 # %% [markdown]
-# ## [7] 07a's homogeneous model and 06's profile lines
+# ## [7] The homogeneous model of 07a and the profile lines of 06
 #
-# The homogeneous model must be on the same samples with the same cut (asserted). (The X-X' near/far deflections of the
-# retired 08a are not recomputed: on the quadtree samples the far band 1.5-2 km holds a single sample within 300 m of
-# X-X'; the paper's X-X' numbers are 06's, from the pixels.)
+# The homogeneous model must be on the same samples with the same near-trace cut (asserted). The X-X' profile numbers
+# of the paper come from the pixels in 06.
 
 # %%
 ## [7]
@@ -281,9 +277,9 @@ assert np.array_equal(homogeneous["sample_lon"], model_data["sample_lon"]) and n
 print(f"07a homogeneous model: sigma {float(homogeneous['sigma']):.2f}, Mw {float(homogeneous['Mw_30gpa']):.3f}, n_sub {int(homogeneous['n_sub'])}")
 
 # %% [markdown]
-# ## [8] The 3D model against the homogeneous model (07a)
+# ## [8] The 3D model and the homogeneous model (07a)
 #
-# The same samples, weighting, plane, prior, cut and corner rule; only the Green's functions differ (register #13).
+# The same fault, samples, weighting, plane, prior, near-trace cut and corner rule; only the Green's functions differ.
 
 # %%
 ## [8]
@@ -295,13 +291,12 @@ model_comparison.to_csv(os.path.join(out_dir, "model_comparison.csv"), index=Fal
 print(model_comparison.to_string(index=False))
 
 # %% [markdown]
-# ## [8b] Near-fault deflection, west and east (Methods M7)
+# ## [8b] Near-fault deflection, west and east
 #
 # In the SSE section: the mean over the fitted samples 60-250 m from the trace minus the mean over the samples 1.5-3 km
-# away, each side separately (`model_utils.side_deflection_mm`; distances in `model_config`), for the data (each model's
-# own plane removed), the 3D model and the homogeneous model, with the sample counts. The far band holds only 11-14
-# samples per side, so the same is reported with the far band at 1-3 km as a check. The point (Methods M7): the
-# homogeneous model cannot reproduce the west/east asymmetry of the data.
+# away, on each side (`model_utils.side_deflection_mm`; distances in `model_config`), for the data (each model's own
+# plane removed), the 3D model and the homogeneous model, with the sample counts. The far band holds 11-14 samples per
+# side, so the deflection is also reported with a far band of 1-3 km.
 
 # %%
 ## [8b]
@@ -324,8 +319,8 @@ print(deflection.round(2).to_string(index=False))
 # %% [markdown]
 # ## [9] Figures of the model: L-curves, slip, fit maps, profiles
 #
-# Science style (`insar_utils.mpl_paper_style(base=7)`, bold panel letters, 300 dpi, png + pdf), Okabe-Ito colours.
-# Everything drawn is a product of this notebook or 07a (no forward runs): the profiles are G x slip at the samples.
+# Journal style (`insar_utils.mpl_paper_style(base=7)`, 300 dpi, png + pdf), Okabe-Ito colours. Everything drawn is a
+# product of this notebook or 07a: the profiles are G x slip at the samples.
 
 # %%
 ## [9]
@@ -357,8 +352,7 @@ save(fig, "figS_model_lcurve")
 triangulation = mtri.Triangulation(tents.imp_km, tents.imp_depth_km, tents.sub_faces)
 fig, axes = plt.subplots(2, 1, figsize=(18.3 * cm, 9.0 * cm), sharex=True, constrained_layout=True)
 vmax = float(max(slip.max(), homogeneous["slip_mm"].max()))
-# Dani 2026-10-30: the SSE-section bar covered the top ~45 m (the slip peak); the section ends are now thin dashed lines
-# (caption), and each label carries the structure, the dip and the key numbers
+# the SSE section ends are thin dashed lines; each label gives the elastic structure, the dip and the key numbers
 for ax, letter, values, title in ((axes[0], "A", slip,
                                    f"3D SFSVM, fault dipping {cfg.selected_dip_label}, Mw {numbers['Mw_30gpa']:.2f} (30 GPa) and {numbers['Mw_sfcvm']:.2f} "
                                    f"(SFSVM rigidity), RMS {numbers['rms_mm']:.2f} mm, depth extent {numbers['depth90_m'] / 1e3:.2f} km"),
@@ -417,13 +411,13 @@ axes[0].legend(loc="upper left")
 save(fig, "figS_model_profiles")
 
 # %% [markdown]
-# ## [10] Monte Carlo of correlated noise (register #20)
+# ## [10] Monte Carlo of correlated noise
 #
-# 100 realisations (seed fixed) of noise drawn from the FULL covariance of the 5 km noise model (nugget / N^0.5 on the
-# diagonal plus the exponential, `model_utils.covariance_matrix`, unscaled; `model_utils.correlated_noise`), each added
-# to the model's prediction of the data (slip model + fitted plane) and inverted again with the locked method at the
-# FIXED corner sigma. The spread of each number is its uncertainty from data noise (Wright 2003; Sudhaus & Jonsson
-# 2009, s4.4). The mean is printed against the model: re-inverted noisy synthetics can come back biased.
+# 100 realisations (fixed seed) of noise drawn from the full covariance of the noise model (nugget / N^0.5 on the
+# diagonal plus the exponential term, `model_utils.covariance_matrix`; `model_utils.correlated_noise`), each added to the
+# model prediction (slip model plus fitted plane) and inverted with the same settings at the fixed corner sigma. The
+# spread of each number is its uncertainty from data noise (Wright 2003; Sudhaus & Jonsson 2009). The Monte Carlo mean
+# is printed next to the model value.
 
 # %%
 ## [10]
@@ -460,15 +454,17 @@ axes[0].legend(loc="upper left")
 save(fig, "figS_model_montecarlo")
 
 # %% [markdown]
-# ## [11] Stress drop (register #19; Materna et al. 2024, SI Eq. 2)
+# ## [11] Stress drop
 #
-# delta-tau = mu d / x, with d the slip and x half the depth extent of the best uniform-slip model of the fixed-depth
-# scan (`scripts/sensitivity/depth_scan.py`, archived `depth_scan.csv`: uniform slip from the surface to D over the SSE
-# section, one amplitude + plane, equal weights, no smoothing; best D = the smallest RMS of the fitted samples).
-# CHECK: the best row is re-solved here (`model_utils.uniform_slip_shape`, `uniform_slip_fit`) and must equal the csv.
+# For a long strike-slip fault that reaches the free surface, delta-sigma = (2 / pi) mu d / w (Knopoff 1958; Kanamori &
+# Anderson 1975, Eq. 1; `model_utils.strike_slip_stress_drop_pa`), with d the slip and w the down-dip width of the best
+# uniform-slip model of the fixed-depth scan (`scripts/sensitivity/depth_scan.py`, stored `depth_scan.csv`: uniform slip
+# from the surface to depth D over the SSE section, one amplitude plus a plane, equal weights, no smoothing; best D =
+# smallest RMS of the fitted samples; w = D / sin(dip)).
+# Check: the best row is re-solved here (`model_utils.uniform_slip_shape`, `uniform_slip_fit`) and must equal the csv.
 # mu at 30 GPa and at the harmonic mean of the SFSVM rigidity west and east of the fault (the area-weighted mean of
-# PyLith's cells beside the fault triangles of the SSE section from 0 to D, each side, then
-# `harmonic_mean_rigidity`), as Materna et al. (2024) used a model rigidity.
+# the PyLith cells beside the fault triangles of the SSE section from 0 to D on each side, then
+# `harmonic_mean_rigidity`).
 
 # %%
 ## [11]
@@ -486,10 +482,10 @@ upper = (tents.tri_depth_m <= best_depth_km * 1e3) & (tents.tri_km >= creep_lo_k
 mu_west_upper = float(np.average(mu_west[upper], weights=tents.tri_area[upper]))
 mu_east_upper = float(np.average(mu_east[upper], weights=tents.tri_area[upper]))
 mu_harmonic_upper = float(model_utils.harmonic_mean_rigidity(mu_west_upper, mu_east_upper))
-half_width_m = best_depth_km * 1e3 / 2
+width_m = best_depth_km * 1e3 / np.sin(np.radians(cfg.selected_dip_deg))      # down-dip width of the slipping part
 stress_drop = pd.DataFrame([dict(rigidity=label, mu_gpa=mu / 1e9, slip_mm=best_slip_mm, depth_m=best_depth_km * 1e3,
-                                 half_width_m=half_width_m,
-                                 stress_drop_kpa=model_utils.materna_stress_drop_pa(mu, best_slip_mm * 1e-3, half_width_m) / 1e3)
+                                 dip_deg=cfg.selected_dip_deg, width_m=width_m,
+                                 stress_drop_kpa=model_utils.strike_slip_stress_drop_pa(mu, best_slip_mm * 1e-3, width_m) / 1e3)
                             for label, mu in (("30 GPa", cfg.mu_ref_pa), ("harmonic SFSVM west/east, 0 to D", mu_harmonic_upper))])
 stress_drop.to_csv(os.path.join(out_dir, "stress_drop.csv"), index=False)
 print(f"SFSVM beside the fault, SSE section, 0-{best_depth_km * 1e3:.0f} m ({upper.sum()} triangles): west {mu_west_upper / 1e9:.3f}, "
@@ -497,7 +493,7 @@ print(f"SFSVM beside the fault, SSE section, 0-{best_depth_km * 1e3:.0f} m ({upp
 print(stress_drop.round(3).to_string(index=False))
 
 # %% [markdown]
-# ## [12] Products and registry
+# ## [12] Products and the number registry
 #
 # `selected_model.npz` holds what Fig 2 (07c) draws: the samples and their blocks, the raw data, plane, model, residual,
 # `keep`, the signed distance and along-strike km, the crossings steps of panel K, the slip on the tents, Mw.
@@ -512,7 +508,7 @@ np.savez(selected_file, sample_lon=model_data["sample_lon"], sample_lat=model_da
          step_inner_km=cfg.fig2k_inner_km, step_outer_km=cfg.fig2k_outer_km, slip_mm=slip, imp_km=tents.imp_km,
          imp_depth_km=tents.imp_depth_km, sub_faces=tents.sub_faces, imp_xyz=tents.imp_xyz, mu_harmonic_pa=mu_harmonic,
          **{k: v for k, v in numbers.items()}, run=cfg.gf_run, field_fingerprint=field_fingerprint,
-         provenance=f"{notebook} {made}: {cfg.gf_run}, locked method (model_config), sigma {sigma:.3f}")
+         provenance=f"{notebook} {made}: {cfg.gf_run}, settings of model_config, sigma {sigma:.3f}")
 mc = mc_summary.set_index("quantity")
 stats = REG.sidecar("08a_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
                                                       mc_summary.to_string(index=False), deflection.to_string(index=False),
@@ -549,7 +545,8 @@ for _, row in deflection[deflection.far_band == "selected"].iterrows():
 REG.register("08a_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
 REG.register("08a_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
 REG.register("08a_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)
+REG.register("08a_stress_drop_width_m", width_m, "m", 0, where, "[11]", stats)
 REG.register("08a_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "[11]", stats)
-REG.register("08a_stress_drop_harmonic_mpa", stress_drop.stress_drop_kpa.iloc[1] / 1e3, "MPa", 2, where, "[11]", stats)
+REG.register("08a_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "[11]", stats)
 REG.render()
 print(f"wrote {selected_file}")

@@ -29,7 +29,7 @@ Contents, in the order the notebooks use them:
                                                        analytic_tent_G_cached,
                                                        tent_model_setup, tent_numbers, tent_lcurve, own_corner,
                                                        uniform_slip_shape, uniform_slip_fit, profile_samples, side_deflection_mm,
-                                                       correlated_noise, materna_stress_drop_pa
+                                                       correlated_noise, materna_stress_drop_pa, strike_slip_stress_drop_pa
   9. PyLith forward runs, materials, stress            read_forward_points, read_forward_slip, superposition_check,
                                                        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
                                                        screw_dislocation_mm, median_edge_length_m, vertex_areas_m2,
@@ -1466,6 +1466,14 @@ def materna_stress_drop_pa(mu_pa, slip_m, half_width_m):
     fixed-depth scan). Written for this project; the formula as the register states it."""
     assert mu_pa > 0 and slip_m > 0 and half_width_m > 0
     return float(mu_pa * slip_m / half_width_m)
+
+
+def strike_slip_stress_drop_pa(mu_pa, slip_m, width_m):
+    """Stress drop (Pa) of a long strike-slip fault that reaches the free surface: delta_sigma = (2 / pi) mu d / w, d the
+    (uniform) slip, w the down-dip width of the slipping part (Knopoff 1958, doi 10.1111/j.1365-246X.1958.tb00033.x;
+    Kanamori & Anderson 1975, BSSA 65, Eq. 1 with C = 2 / pi)."""
+    assert mu_pa > 0 and slip_m > 0 and width_m > 0
+    return float(2.0 / np.pi * mu_pa * slip_m / width_m)
 
 
 # =====================================================================================================================
