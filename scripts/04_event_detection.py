@@ -76,7 +76,7 @@ import warnings
 import insar_utils as utils
 from TulePond_filepaths import (common_paths, segments, creepmeters, params, coh_timeseries, insar_dic_list,
                                 max_interp_gap_days, profile_smooth_km, creepmeter_glitches, paper_band_frac,
-                                coz1_large_events_yr, coz1_large_tol_days, az_smooth_n,
+                                coz1_large_events_yr, coz1_large_tol_days, rate_smooth_km,
                                 paths_out, repo_dir)   # profile_smooth_km: Fig 1C and 1D, one Gaussian (0.2 km); creepmeter_glitches: the listed glitch days
 
 import numpy as np                               # Matrix calculations
@@ -1322,13 +1322,13 @@ fig.show()
 # %% [markdown]
 # ## [31] Figure: the creep rate along the whole fault (supplement)
 #
-# Three panels on one along-fault axis. (A) The cross-fault azimuth of the mapped trace at every 100 m crossing and
-# its rolling median over `az_smooth_n` crossings (the local strike used by 03). (B) The fault-parallel creep rate of
-# every crossing (03 `creep_rate_fp.csv`), the crossings flagged by the along-fault rate test of 03, the profile
-# smoothed with a 0.5 km Gaussian, and the creepmeter rates over the InSAR window. (C) The slip budget: the same three
-# rates as Fig 1D along the whole fault, with every alignment array (whole record in grey, refit over the InSAR window
-# in black) and the creepmeters; the Tule Pond length and the Oakland control band shaded. The event-driven rate
-# counts the five Tule Pond events only.
+# Three panels on one along-fault axis, every profile smoothed with the same 0.5 km Gaussian (`rate_smooth_km`, as the
+# rate profile of 03) and the Tule Pond section shaded. (A) The cross-fault azimuth of the mapped trace at every 100 m
+# crossing. (B) The fault-parallel creep rate of every crossing (03 `creep_rate_fp.csv`), the crossings flagged by the
+# along-fault rate test of 03, the creepmeter and alignment-array rates over the InSAR window and over the whole array
+# record, and the interseismic Hayward Fault rates of the Johnson et al. (2022) compilation (alignment arrays, InSAR
+# and cultural offsets, 1 sigma). (C) The slip budget: the inter-event, event-driven (five Tule Pond events) and total
+# rates, with the same arrays and creepmeters; the Oakland control band also shaded.
 
 # %%
 # [32]
@@ -1337,52 +1337,69 @@ creep_rate_fp["km"] = to_km(creep_rate_fp["lat"].values)
 flagged = creep_rate_fp["landslide_flag"].values.astype(bool)
 trace_az = pd.read_csv(common_paths["fault_profiles"])
 trace_az["km"] = to_km(trace_az["ft_lat"].values)
-trace_az["az_smooth"] = trace_az["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()   # as 03 [6]
+trace_az["az_smooth"] = gaussian_smooth_km(trace_az["profile_az"].values, trace_az["km"].values, rate_smooth_km)
+budget_smooth = {name: gaussian_smooth_km(slip_budget[name].values, slip_budget["km"].values, rate_smooth_km)
+                 for name in ("secular", "event_rate", "total")}
+johnson = pd.read_csv(common_paths["creep_rates_Johnson22"])
+johnson = johnson[johnson["Fault"].str.contains("Hayward") & (johnson["Type"] == "Int")].copy()
+johnson["km"] = to_km(johnson["Latitude"].values)
+johnson["sig"] = pd.to_numeric(johnson["sig (mm/yr)"], errors="coerce")
+johnson = johnson[(johnson.km >= km_lim[0]) & (johnson.km <= km_lim[1])]
 vermillion = "#D55E00"                           # Okabe-Ito vermillion: flagged crossings
+purple = "#CC79A7"                               # Okabe-Ito reddish purple: Johnson et al. (2022)
+line_width = 1.5
+cm_km = [v[0] for v in cm_rates.values()]
+cm_rate = [v[1] for v in cm_rates.values()]
 
-fig, axes = plt.subplots(3, 1, figsize=(7.2, 7.4), sharex=True, height_ratios=[1, 1.2, 1.6], constrained_layout=True)
+fig, axes = plt.subplots(3, 1, figsize=(7.2, 8.4), sharex=True, height_ratios=[1, 1.5, 1.5], constrained_layout=True)
 for ax in axes:
-    for code, (km_cm, rate_cm) in cm_rates.items():
+    ax.axvspan(len_lo, len_hi, color="0.9", zorder=0)
+    for km_cm in cm_km:
         ax.axvline(km_cm, color="0.75", lw=0.6, ls=":", zorder=0)
 
 # A) trace azimuth
 ax = axes[0]
 ax.plot(trace_az.km, trace_az.profile_az, ".", color="0.6", ms=2.5, label="Azimuth at each 100 m crossing")
-ax.plot(trace_az.km, trace_az.az_smooth, "-", color="k", lw=1.2, label=f"Rolling median over {az_smooth_n} crossings")
+ax.plot(trace_az.km, trace_az.az_smooth, "-", color="k", lw=line_width, label=f"Smoothed ({rate_smooth_km:g} km Gaussian)")
 ax.set_ylabel("Cross-fault\nazimuth (deg)")
 ax.legend(fontsize=6, loc="lower left", ncol=2)
 utils.panel_title(ax, "A")
 
-# B) creep rate per crossing
+# B) creep rate per crossing, with the independent rates
 ax = axes[1]
-ax.plot(creep_rate_fp.km[~flagged], creep_rate_fp.fp_creep_rate_raw[~flagged], ".", color="0.6", ms=2.5, label="Rate at each crossing")
+ax.plot(creep_rate_fp.km[~flagged], creep_rate_fp.fp_creep_rate_raw[~flagged], ".", color="0.6", ms=2.5, label="InSAR rate at each crossing")
 ax.plot(creep_rate_fp.km[flagged], creep_rate_fp.fp_creep_rate_raw[flagged], "x", color=vermillion, ms=3.5, mew=0.8,
         label="Flagged crossings (removed)")
-ax.plot(creep_rate_fp.km, creep_rate_fp.fp_creep_rate_smooth, "-", color="k", lw=1.2, label="Smoothed (0.5 km Gaussian)")
-ax.scatter([v[0] for v in cm_rates.values()], [v[1] for v in cm_rates.values()], marker="v", s=34, facecolor=gold,
-           edgecolor="k", zorder=6, label=f"Creepmeters, {t0:.1f} to {t1:.1f}")
+ax.plot(creep_rate_fp.km, creep_rate_fp.fp_creep_rate_smooth, "-", color="k", lw=line_width, label=f"Smoothed ({rate_smooth_km:g} km Gaussian)")
+for inst, marker, label in (("AA", "D", "alignment arrays"), ("SAR", "o", "InSAR"), ("Cult", "P", "cultural offsets")):
+    rows = johnson[johnson["Inst"] == inst]
+    if len(rows):
+        ax.errorbar(rows.km, rows["Creep rate (mm/yr)"], yerr=rows.sig, fmt=marker, ms=3.5, mfc="white", mec=purple,
+                    ecolor=purple, elinewidth=0.6, capsize=0, zorder=4, label=f"Johnson et al. (2022), {label}")
+ax.scatter(aa_rates.km, aa_rates.rate_longterm, marker="s", s=14, color="0.6", zorder=5, label="Alignment arrays, whole record")
+ax.scatter(aa_rates.km, aa_rates.rate_window, marker="s", s=14, color="k", zorder=5, label=f"Alignment arrays, {t0:.1f} to {t1:.1f}")
+ax.scatter(cm_km, cm_rate, marker="v", s=34, facecolor=gold, edgecolor="k", zorder=6, label=f"Creepmeters, {t0:.1f} to {t1:.1f}")
 for code, (km_cm, rate_cm) in cm_rates.items():
     ax.annotate(code, (km_cm, rate_cm), xytext=(0, -11), textcoords="offset points", ha="center", va="top", fontsize=6)
-ax.set_ylim(0, 12)
+ax.set_ylim(-1, 12)
 ax.set_ylabel("Fault-parallel creep\nrate (mm/yr)")
-ax.legend(fontsize=6, loc="upper right", ncol=2)
+ax.legend(fontsize=6, loc="upper left", ncol=3)
 utils.panel_title(ax, "B")
 
 # C) slip budget
 ax = axes[2]
+ax.axvspan(coz1_lo, coz1_hi, color="0.9", zorder=0)
 for name, (span_lo, span_hi) in (("Tule Pond", (len_lo, len_hi)), ("Oakland", (coz1_lo, coz1_hi))):
-    ax.axvspan(span_lo, span_hi, color="0.9", zorder=0)
     ax.text(0.5 * (span_lo + span_hi), -0.75, name, ha="center", fontsize=7, color="0.35")
 ax.scatter(slip_budget.km, slip_budget.secular, s=3, color=green, alpha=0.25, lw=0)
 ax.scatter(slip_budget.km, slip_budget.event_rate, s=3, color=orange, alpha=0.25, lw=0)
 ax.scatter(slip_budget.km, slip_budget.total, s=3, color="k", alpha=0.2, lw=0)
-ax.plot(slip_budget.km, slip_budget.secular_smooth, color=green, lw=1.4, label="Inter-event rate")
-ax.plot(slip_budget.km, slip_budget.event_rate_smooth, color=orange, lw=1.4, label=f"Event-driven rate (Tule Pond steps / {span:.1f} yr)")
-ax.plot(slip_budget.km, slip_budget.total_smooth, color="k", lw=2.0, label="Inter-event + event-driven")
+ax.plot(slip_budget.km, budget_smooth["secular"], color=green, lw=line_width, label="Inter-event rate")
+ax.plot(slip_budget.km, budget_smooth["event_rate"], color=orange, lw=line_width, label=f"Event-driven rate (Tule Pond steps / {span:.1f} yr)")
+ax.plot(slip_budget.km, budget_smooth["total"], color="k", lw=line_width, label="Inter-event + event-driven")
 ax.scatter(aa_rates.km, aa_rates.rate_longterm, marker="s", s=14, color="0.6", zorder=4, label="Alignment arrays, whole record")
 ax.scatter(aa_rates.km, aa_rates.rate_window, marker="s", s=14, color="k", zorder=5, label=f"Alignment arrays, {t0:.1f} to {t1:.1f}")
-ax.scatter([v[0] for v in cm_rates.values()], [v[1] for v in cm_rates.values()], marker="v", s=34, facecolor=gold,
-           edgecolor="k", zorder=6, label=f"Creepmeters, {t0:.1f} to {t1:.1f}")
+ax.scatter(cm_km, cm_rate, marker="v", s=34, facecolor=gold, edgecolor="k", zorder=6, label=f"Creepmeters, {t0:.1f} to {t1:.1f}")
 ax.set_ylim(-1, 12)
 ax.axhline(0, color="0.6", lw=0.5)
 ax.set_ylabel("Fault-parallel creep\nrate (mm/yr)")
