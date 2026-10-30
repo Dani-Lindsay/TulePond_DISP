@@ -157,8 +157,11 @@ for family, colour, marker, label in (("3D N^0", OKABE["vermillion"], "o", "3D S
     series = dips[dips.family == family].copy()
     series["x"] = series.dip_from_vertical_deg
     dip_series.append((label, colour, marker, series.sort_values("x")))
-fine_dips = pd.DataFrame([pick("Fault dip, fine mesh", "70 W"), baseline, pick("Fault dip, fine mesh", "70 E")])
-fine_dips["x"] = [-20, 0, 20]
+fine_west = [(variant, x) for variant, x in (("50 W", -40), ("60 W", -30))     # weekend runs of 2026-10-31 (Dani)
+             if ((rows.row == "Fault dip, fine mesh") & (rows.variant == variant)).any()]
+fine_dips = pd.DataFrame([pick("Fault dip, fine mesh", v) for v, _ in fine_west]
+                         + [pick("Fault dip, fine mesh", "70 W"), baseline, pick("Fault dip, fine mesh", "70 E")])
+fine_dips["x"] = [x for _, x in fine_west] + [-20, 0, 20]
 dip_series.append(("3D SFSVM, 60 m surface cells (selected)", OKABE["blue"], "s", fine_dips))
 sigma_labels = ["x0.25", "x0.5", "Corner", "x2", "x4"]
 sigma_frame = pd.DataFrame([baseline if lab == "Corner" else pick("Regularization sigma", lab) for lab in sigma_labels])

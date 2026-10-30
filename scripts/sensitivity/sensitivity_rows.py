@@ -42,6 +42,9 @@ CASES = [
     dict(row="Data weighting", variant="Full Cd", base=SH, run=SH, weighting="full", power=0.5),
     dict(row="Fault dip, fine mesh", variant="70 E", base=SH, run="gf_shallow_dip70e_sfcvm_order2"),
     dict(row="Fault dip, fine mesh", variant="70 W", base=SH, run="gf_shallow_dip70w_sfcvm_order2"),
+    # Dani 2026-10-30: does the 3D fit plateau toward shallower west dips, as the homogeneous one does? (weekend runs)
+    dict(row="Fault dip, fine mesh", variant="60 W", base=SH, run="gf_shallow_dip60w_sfcvm_order2"),
+    dict(row="Fault dip, fine mesh", variant="50 W", base=SH, run="gf_shallow_dip50w_sfcvm_order2"),
     dict(row="Baseline (default mesh)", variant="Selected", base=DF, run=DF),
     dict(row="Elastic structure", variant="SFSVM as is", base=DF, run="gf_default_sfcvmasis_order2"),
     dict(row="SFSVM alignment", variant="+50 m (e50)", base=DF, run="gf_default_sfcvm_e50_order2"),
