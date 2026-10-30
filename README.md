@@ -104,7 +104,12 @@ The PyLith runs are not part of `run_all.sh`; 08 and `scripts/sensitivity/` read
 
 Software: MintPy (OPERA fork, commit 054c6010; version 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.
 
-## Authorship
+## Authorship and use of AI tools
 
-Code by Danielle Lindsay, developed with the assistance of Claude (Anthropic), as declared in the paper's Methods and
-Acknowledgements.
+Code by Danielle Lindsay. The code was written with the assistance of Claude (Anthropic; Claude Opus 5, Claude Opus 5.5,
+Claude Fable 5 and Claude Fable 5.1), used through Claude Code in 2026. Under the author's direction, Claude wrote and
+revised code for the data preparation, the creep time series, the event detection, the slip-model inversions, the
+sensitivity tests, the statistics and the forecast, and the figures. The authors designed the analysis, chose the
+methods and parameters, reviewed the code, checked its outputs (including the tests in `tests/`), and take
+responsibility for the results. Claude also suggested wording edits to the manuscript; the authors wrote and verified
+all text. This use is declared in the Methods and Acknowledgements of the paper.
