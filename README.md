@@ -16,9 +16,9 @@ before it, never their code, and writes its own products, figures and a stats fi
 - **Validation** against the USGS creepmeters (05)
 - **The mean event field** in fault-parallel and vertical components (06)
 - **Slip models**: homogeneous half-space and 3D elastic structure (USGS SFSVM v26.0) with PyLith 5.0.2 Green's
-  functions, the fault dipping 70 deg west (07, 08, 10, 09; `pylith/`)
-- **Event history** from the alignment arrays (09), **rainfall** (10) and the **forecast** (11)
-- **Paper figures** collected under their manuscript names (12)
+  functions, the fault dipping 70 deg west (07-10; `pylith/`)
+- **Event history** from the alignment arrays (11), **rainfall** (12) and the **forecast** (13)
+- **Paper figures** collected under their manuscript names (14)
 
 ## Repository layout
 
@@ -39,8 +39,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 
 ## Notebooks
 
-`run_all.sh` runs them in name order, except that `01_prep_figures` runs right after `01_prep_inputs` and `09_fig2`
-right after `08_3d_model`.
+`run_all.sh` runs them in name order, except that `01_prep_figures` runs right after `01_prep_inputs`.
 
 | Notebook | Does | Paper figures |
 |---|---|---|
@@ -82,7 +81,7 @@ The results directory (`data_dir`) holds only what the notebooks read, in the la
 | `modeling_inputs/` | PyLith meshes, the PyLith output points written by 07, impulse databases |
 | `modeling_uniform/` | Homogeneous-medium Green's functions (analytic, cached by 07) |
 | `modeling_SFCVM/` | SFSVM material grids and databases, PyLith runs, G matrices and run logs |
-| `sensitivity_2026-10-30/` | The outputs of `scripts/sensitivity/` |
+| `sensitivity/` | The outputs of `scripts/sensitivity/` |
 | `outputs/`, `Figures_<date>/`, `executed/` | Notebook products, figures, and an HTML copy of every executed notebook |
 
 Data sources: OPERA DISP-S1 v1.0 frames 09156 and 09157 (ascending, merged) and 11115 (descending); USGS creepmeters
@@ -103,4 +102,9 @@ python -m pytest -q                          # conventions, paths, functions, re
 The PyLith runs are not part of `run_all.sh`; 08 and `scripts/sensitivity/` read their stored products
 (`pylith/README.md` gives the command of every run). Every number in the paper comes from a `run_all.sh` execution.
 
-Software: MintPy (OPERA fork, commit 054c6010; version 1.6.2), CSI (commit 1277bb4), okada4py 1.0.1, PyLith 5.0.2.
+Software: MintPy (OPERA fork, commit 054c6010; version 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.
+
+## Authorship
+
+Code by Danielle Lindsay, developed with the assistance of Claude (Anthropic), as declared in the paper's Methods and
+Acknowledgements.
