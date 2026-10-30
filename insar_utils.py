@@ -602,7 +602,7 @@ def gaussian_smooth_km(x, km_of_x, sigma_km):
     sigma_km (km) is a true along-trace width. Weights are renormalised over
     the finite neighbours; NaN where less than 15 % of the kernel weight is
     data, and NaN wherever the input is NaN. Used by notebooks 03, 04 (Fig 1C)
-    and 07c (Fig 2K). Source: written for this project (scipy gaussian_filter1d)."""
+    and 09 (Fig 2K). Source: written for this project (scipy gaussian_filter1d)."""
     x = np.asarray(x, float)
     km_of_x = np.asarray(km_of_x, float)
     assert km_of_x.shape == x.shape, f"km_of_x {km_of_x.shape} does not match x {x.shape}"

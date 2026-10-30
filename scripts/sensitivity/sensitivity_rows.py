@@ -35,7 +35,7 @@ LOCKED = dict(points="default", cut=cfg.near_trace_cut_km, ramp=cfg.ramp_spec, l
 # geometries on the same mesh; the forward-model rows use the vertical fault on the default (250 m) mesh and are compared
 # with their own baseline.
 CASES = [
-    dict(row="Baseline (fine mesh, 70 W)", variant="Selected", base=SH, run=SH),
+    dict(row=f"Baseline (fine mesh, {cfg.selected_dip_label})", variant="Selected", base=SH, run=SH),
     dict(row="Near-trace exclusion", variant="30 m", base=SH, run=SH, cut=0.03),
     dict(row="Reference frame", variant="Constant", base=SH, run=SH, ramp="1"),
     dict(row="Prior lengths", variant="x0.5", base=SH, run=SH, lam=0.5),

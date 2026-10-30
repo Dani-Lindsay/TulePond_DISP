@@ -2,12 +2,12 @@
 
 Author: Danielle Lindsay
 
-The settings come from model_config.py, the data from the products of notebook 07a, the modelling functions from
+The settings come from model_config.py, the data from the products of notebook 07, the modelling functions from
 model_utils.py. One set-up (`make_setup`), one solve (`solve`), one corner finder (`own_corner`, the rule of
 model_config) and one scoring (`score`: RMS of the fitted samples, near-field RMS, Mw, peak slip, depth50 / depth90)
 are shared by all scripts.
 
-The outputs of every script go to model_config.sensitivity_dir (archived on Zenodo); notebook 08b_sensitivity draws them.
+The outputs of every script go to model_config.sensitivity_dir (archived on Zenodo); notebook 10_model_sensitivity draws them.
 Run a script from the repository root in the environment of the notebooks, at low priority:
     PYTHONPATH=. nice -n 15 python scripts/sensitivity/<script>.py
 """
@@ -27,7 +27,7 @@ import model_config as cfg                                                      
 import model_utils                                                                            # noqa: E402
 
 OUT = cfg.sensitivity_dir
-MARK = os.path.join(os.path.dirname(paths_sfcvm["root"]), "runs_done_2026-10-25")   # done markers of the PyLith runs
+MARK = os.path.join(os.path.dirname(paths_sfcvm["root"]), "pylith_runs_done")   # done markers of the PyLith runs
 
 
 def stamp(script):
@@ -36,11 +36,11 @@ def stamp(script):
 
 
 def load_inputs():
-    """The data products of 07a and everything the set-ups need."""
-    model_data_file = os.path.join(paths_out["07a_uniform_model"], "model_data.npz")
+    """The data products of 07 and everything the set-ups need."""
+    model_data_file = os.path.join(paths_out["07_model_data"], "model_data.npz")
     model_data = np.load(model_data_file)
     assert str(model_data["field_fingerprint"]) == model_utils.field_fingerprint(
-        os.path.join(paths_out["06_event_field_geometry"], "fp_maps.npz")), "07a's model data are from another 06 field"
+        os.path.join(paths_out["06_event_field_geometry"], "fp_maps.npz")), "07's model data are from another 06 field"
     frame_lonlat = tuple(model_data["frame_lonlat"])
     profile_lats = pd.read_csv(common_paths["fault_profiles"]).ft_lat.values
     trace = model_utils.model_trace(model_data["trace_lonlat"], -90.0, 90.0, frame_lonlat, profile_lats,
@@ -54,7 +54,7 @@ def load_inputs():
 
 
 def samples_for(inputs, points_set):
-    """A point set (npz of 07a) as a csi.insar data set (positions, data, block pixel counts)."""
+    """A point set (npz of 07) as a csi.insar data set (positions, data, block pixel counts)."""
     p = np.load(inputs["points"][points_set])
     return model_utils.samples_from_arrays(f"fault-parallel {points_set}", p["lon"], p["lat"], p["x_km"], p["y_km"], p["vel_mm"],
                                            p["wgt"], inputs["look"], inputs["frame_lonlat"], inputs["cov_p"], cfg.nugget_power)

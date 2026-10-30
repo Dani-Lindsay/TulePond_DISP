@@ -16,7 +16,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 - **Validation** against the USGS creepmeters (05)
 - **The mean event field** in fault-parallel and vertical components (06)
 - **Slip models**: homogeneous half-space and 3D elastic structure (USGS SFSVM v26.0) with PyLith 5.0.2 Green's
-  functions, the fault dipping 70 deg west (07a, 08a, 08b, 07c; `pylith/`)
+  functions, the fault dipping 70 deg west (07, 08, 10, 09; `pylith/`)
 - **Event history** from the alignment arrays (09), **rainfall** (10) and the **forecast** (11)
 - **Paper figures** collected under their manuscript names (12)
 
@@ -29,8 +29,8 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `model_config.py` | The settings of the slip models, each with its unit and source. |
 | `model_utils.py` | The slip-model functions: data sets and quadtree samples, noise model, CSI inversions on the PyLith fault, Green's functions from the PyLith output, L-curve, rigidity, moment and stress drop. |
 | `NN_*.ipynb`, `scripts/NN_*.py` | The notebooks, paired with jupytext (`jupytext.toml`): the `.py` in `scripts/` is the readable source, the `.ipynb` holds the executed outputs. |
-| `scripts/sensitivity/` | The sensitivity tests of the slip model (inversion choices, fault dip, elastic structure, depth scan), run by hand; 08b draws their results. |
-| `scripts/model_plots/` | The SFSVM materials figure (called by 08a). |
+| `scripts/sensitivity/` | The sensitivity tests of the slip model (inversion choices, fault dip, elastic structure, depth scan), run by hand; 10 draws their results. |
+| `scripts/model_plots/` | The SFSVM materials figure (called by 08). |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |
 | `data_prep/` | The download and preparation chain from the public archives; `data_prep/README.md`. |
 | `tests/` | pytest: projection conventions, paths, the slip-model functions, the registry, and `test_anchors.py`, which pins the numbers quoted in the paper. |
@@ -39,8 +39,8 @@ before it, never their code, and writes its own products, figures and a stats fi
 
 ## Notebooks
 
-`run_all.sh` runs them in name order, except that `01_prep_figures` runs right after `01_prep_inputs` and `07c_fig2`
-right after `08a_3d_model`.
+`run_all.sh` runs them in name order, except that `01_prep_figures` runs right after `01_prep_inputs` and `09_fig2`
+right after `08_3d_model`.
 
 | Notebook | Does | Paper figures |
 |---|---|---|
@@ -51,14 +51,14 @@ right after `08a_3d_model`.
 | `04_event_detection` | Event detector on the Tule Pond stack (COZ1 as control), joint model of each crossing, per-crossing event slip, section extent and 90 % band, slip budget, seismicity near the section. | Fig 1, event detection, creep rate along the fault |
 | `05_validation` | Comparison with the five USGS creepmeters; the aperture ladder. | Validation, aperture ladder |
 | `06_event_field_geometry` | Per-pixel step maps of each event on both tracks, burst-seam correction, mean event, fault-parallel and vertical maps, cross-fault profiles X-X' and Y-Y'. | Fig 2 (data rows), step maps |
-| `07a_uniform_model` | The data of the slip models (quadtree samples, noise model) and the homogeneous slip model on the same fault. | |
-| `08a_3d_model` | The preferred slip model (3D SFSVM, PyLith Green's functions, fault dipping 70 deg west): fit, moment, depth extent, Monte Carlo of correlated noise, stress drop. | Model figures, SFSVM materials |
-| `07c_fig2` | Draws Fig 2 from 06, 07a and 08a. | Fig 2, LOS maps and profiles |
-| `08b_sensitivity` | Draws the sensitivity tests of `scripts/sensitivity/`: sweeps, depth scan, semivariogram. | Sensitivity figures |
-| `09_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |
-| `10_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
-| `11_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast. | Fig 3, renewal fits |
-| `12_paper_figures` | Copies the current paper figures to `Figures_<date>/paper/` under their manuscript names. | |
+| `07_model_data` | The data of the slip models (quadtree samples, noise model) and the homogeneous slip model on the same fault. | |
+| `08_3d_model` | The preferred slip model (3D SFSVM, PyLith Green's functions, fault dipping 70 deg west): fit, moment, depth extent, Monte Carlo of correlated noise, stress drop. | Model figures, SFSVM materials |
+| `09_fig2` | Draws Fig 2 from 06, 07 and 08. | Fig 2, LOS maps and profiles |
+| `10_model_sensitivity` | Draws the sensitivity tests of `scripts/sensitivity/`: sweeps, depth scan, semivariogram. | Sensitivity figures |
+| `11_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |
+| `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
+| `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast. | Fig 3, renewal fits |
+| `14_paper_figures` | Copies the current paper figures to `Figures_<date>/paper/` under their manuscript names. | |
 
 ## The number registry
 
@@ -79,8 +79,8 @@ The results directory (`data_dir`) holds only what the notebooks read, in the la
 | `GPS/` | The screened UNR GNSS series and the tie table |
 | `prep_validation/` | The GNSS-tie record and the rain tables of the preparation chain |
 | `aperture_sweep/` | The precomputed aperture sweep read by 05 |
-| `modeling_inputs/` | PyLith meshes, the PyLith output points written by 07a, impulse databases |
-| `modeling_uniform/` | Homogeneous-medium Green's functions (analytic, cached by 07a) |
+| `modeling_inputs/` | PyLith meshes, the PyLith output points written by 07, impulse databases |
+| `modeling_uniform/` | Homogeneous-medium Green's functions (analytic, cached by 07) |
 | `modeling_SFCVM/` | SFSVM material grids and databases, PyLith runs, G matrices and run logs |
 | `sensitivity_2026-10-30/` | The outputs of `scripts/sensitivity/` |
 | `outputs/`, `Figures_<date>/`, `executed/` | Notebook products, figures, and an HTML copy of every executed notebook |
@@ -97,10 +97,10 @@ ASF and are not redistributed.
 conda env create -f environment.yml          # once
 python -m pytest -q                          # conventions, paths, functions, registry and the quoted numbers
 ./run_all.sh                                 # every notebook, in order
-./run_all.sh 07a 08a 07c 08b                 # a subset (each reads only its upstream products)
+./run_all.sh 07 08 09 10                 # a subset (each reads only its upstream products)
 ```
 
-The PyLith runs are not part of `run_all.sh`; 08a and `scripts/sensitivity/` read their stored products
+The PyLith runs are not part of `run_all.sh`; 08 and `scripts/sensitivity/` read their stored products
 (`pylith/README.md` gives the command of every run). Every number in the paper comes from a `run_all.sh` execution.
 
 Software: MintPy (OPERA fork, commit 054c6010; version 1.6.2), CSI (commit 1277bb4), okada4py 1.0.1, PyLith 5.0.2.

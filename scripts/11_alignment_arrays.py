@@ -35,7 +35,7 @@
 # fault-parallel field and the SSE extent), the archive summary and the
 # array files of HAPP, HGIL, HRKT, HHAN, HUNI, HPIN, HCAM and HPMD, the mapped trace.
 #
-# **Outputs** (`outputs/09_alignment_arrays/`): `hrkt_aa_events.csv` (the survey window
+# **Outputs** (`outputs/11_alignment_arrays/`): `hrkt_aa_events.csv` (the survey window
 # `onset_lo` to `onset_hi` of each array event, its step, and `onset_mid`, the window midpoint, for
 # labels, plot positions and sort keys only) and `aa_insar_stacks.csv` (read by 10 and 11), `aa_insar_steps.csv`,
 # `aa_alongstrike_neighbours.csv`, `hrkt_threshold_sweep.csv`, the map panel
@@ -45,7 +45,7 @@
 # **Figures**: the six-array supplement figure (`figS_tulepond_arrays_insar_*`),
 # the threshold sweep (`figS_hrkt_threshold_sweep_3sig-6mm-5mm`, supplement), and
 # QC figures of the HRKT and HAPP records (`qc09_aa_history_*`; not the paper's
-# Fig 3, which 11_forecast draws).
+# Fig 3, which 13_forecast draws).
 #
 # **What to check.** Every array within 150 m of the trace (asserted); the end
 # of HRKT's bimonthly era (`09_hrkt_dense_era_end_yr`, printed); the longest
@@ -75,7 +75,7 @@ import matplotlib.pyplot as plt
 
 # %%
 # [4]
-notebook = "09_alignment_arrays"
+notebook = "13_alignment_arrays"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -210,7 +210,7 @@ stacks = {}                                       # code -> (dates, slip_mm, n_c
 for code, array in arrays.items():
     stacks[code] = insar_stack(code, array)
 
-# saved for notebooks 10 and 11; 11_forecast draws the paper's Fig 3 (HRKT record, onsets over the rain, intervals, forecast)
+# saved for notebooks 10 and 11; 13_forecast draws the paper's Fig 3 (HRKT record, onsets over the rain, intervals, forecast)
 stack_rows = []
 for code, (insar_dates, insar_slip, n_crossings) in stacks.items():
     for date, slip in zip(insar_dates, insar_slip):
@@ -713,38 +713,38 @@ stats_lines += [f"quiet interval {quiet_start:.2f}-{quiet_end:.2f} ({quiet_end -
                 f"range {hrkt_insar_steps.min():.1f}-{hrkt_insar_steps.max():.1f} mm (per event: {', '.join(f'{v:.1f}' for v in hrkt_insar_steps)})",
                 "", "along strike (neighbour excess inside HRKT windows):", neighbours.round(2).to_string(index=False),
                 "", "threshold sweep:", sweep.round(2).to_string(index=False)]
-sidecar = REG.sidecar("09_aa", stats_lines)
+sidecar = REG.sidecar("11_aa", stats_lines)
 
-REG.register("09_hrkt_n_surveys", len(survey_yr), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_first_yr", survey_yr.min(), "decyear", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_dense_era_end_yr", dense_era_end, "decyear", 2, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_median_spacing_d", np.median(np.diff(survey_yr)) * 365.25, "d", 0, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_sigma_mm", excess_sigma, "mm", 2, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_threshold_sigma", thr_mm / excess_sigma, "1", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_rate_mm_yr", inter_event_rate, "mm/yr", 2, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_annual_mm", annual_mm, "mm", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_n_events", len(hrkt_events), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_n_dropped_2sigma", n_dropped, "count", 0, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_amp_min_mm", hrkt_events.amplitude_mm.min(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_amp_max_mm", hrkt_events.amplitude_mm.max(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_amp_median_mm", hrkt_events.amplitude_mm.median(), "mm", 1, where="P9", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_amp_mean_mm", hrkt_events.amplitude_mm.mean(), "mm", 1, where="P9 event size", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_window_min_d", hrkt_events.window_days.min(), "d", 0, where="Fig3 caption", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_window_max_d", hrkt_events.window_days.max(), "d", 0, where="Fig3 caption", cell="detector", sidecar=sidecar)
-REG.register("09_hrkt_insar_step_mean_mm", hrkt_insar_steps.mean(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
-REG.register("09_hrkt_insar_step_median_mm", np.median(hrkt_insar_steps), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
-REG.register("09_hrkt_insar_step_min_mm", hrkt_insar_steps.min(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)   # the range beside the mean
-REG.register("09_hrkt_insar_step_max_mm", hrkt_insar_steps.max(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
-REG.register("09_quiet_start_yr", quiet_start, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
-REG.register("09_quiet_end_yr", quiet_end, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
-REG.register("09_quiet_max_step_mm", max_step_quiet, "mm", 1, where="P9", cell="detector", sidecar=sidecar)
-REG.register("09_neighbour_max_excess_sigma", neighbours.excess_sigma.max(), "sigma", 1, where="P9 along strike", cell="along strike", sidecar=sidecar)
-REG.register("09_neighbour_n_windows", len(neighbours), "count", 0, where="P9 along strike", cell="along strike", sidecar=sidecar)
+REG.register("11_hrkt_n_surveys", len(survey_yr), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_first_yr", survey_yr.min(), "decyear", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_dense_era_end_yr", dense_era_end, "decyear", 2, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_median_spacing_d", np.median(np.diff(survey_yr)) * 365.25, "d", 0, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_sigma_mm", excess_sigma, "mm", 2, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_threshold_sigma", thr_mm / excess_sigma, "1", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_rate_mm_yr", inter_event_rate, "mm/yr", 2, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_annual_mm", annual_mm, "mm", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_n_events", len(hrkt_events), "count", 0, where="P9, M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_n_dropped_2sigma", n_dropped, "count", 0, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_amp_min_mm", hrkt_events.amplitude_mm.min(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_amp_max_mm", hrkt_events.amplitude_mm.max(), "mm", 1, where="M8", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_amp_median_mm", hrkt_events.amplitude_mm.median(), "mm", 1, where="P9", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_amp_mean_mm", hrkt_events.amplitude_mm.mean(), "mm", 1, where="P9 event size", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_window_min_d", hrkt_events.window_days.min(), "d", 0, where="Fig3 caption", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_window_max_d", hrkt_events.window_days.max(), "d", 0, where="Fig3 caption", cell="detector", sidecar=sidecar)
+REG.register("11_hrkt_insar_step_mean_mm", hrkt_insar_steps.mean(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
+REG.register("11_hrkt_insar_step_median_mm", np.median(hrkt_insar_steps), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
+REG.register("11_hrkt_insar_step_min_mm", hrkt_insar_steps.min(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)   # the range beside the mean
+REG.register("11_hrkt_insar_step_max_mm", hrkt_insar_steps.max(), "mm", 1, where="P9 event size", cell="insar stack", sidecar=sidecar)
+REG.register("11_quiet_start_yr", quiet_start, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
+REG.register("11_quiet_end_yr", quiet_end, "decyear", 2, where="P9", cell="detector", sidecar=sidecar)
+REG.register("11_quiet_max_step_mm", max_step_quiet, "mm", 1, where="P9", cell="detector", sidecar=sidecar)
+REG.register("11_neighbour_max_excess_sigma", neighbours.excess_sigma.max(), "sigma", 1, where="P9 along strike", cell="along strike", sidecar=sidecar)
+REG.register("11_neighbour_n_windows", len(neighbours), "count", 0, where="P9 along strike", cell="along strike", sidecar=sidecar)
 for code in ("HGIL", "HRKT"):
     for kind in ("event_median", "quiet_median"):
         rows = aa_steps[(aa_steps.code == code) & (aa_steps.kind == kind)]
         assert len(rows) == 1, f"{code}: no {kind} step since {zoom_t0:.0f}"
         REG.register(f"09_{code.lower()}_{kind}_mm", float(rows.step_mm.iloc[0]), "mm", 1, where="P9, Fig3", cell="arrays-insar", sidecar=sidecar)
 for case in sweep.itertuples():
-    REG.register(f"09_sweep_{case.thr_mm:.1f}mm_n_events", case.n_events, "count", 0, where="S threshold sweep", cell="sweep", sidecar=sidecar)
+    REG.register(f"11_sweep_{case.thr_mm:.1f}mm_n_events", case.n_events, "count", 0, where="S threshold sweep", cell="sweep", sidecar=sidecar)
 REG.render()

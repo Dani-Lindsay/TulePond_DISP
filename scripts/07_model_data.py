@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 07a The data of the slip models, and the homogeneous slip model
+# # 07 The data of the slip models, and the homogeneous slip model
 #
 # ```
 # Author: Danielle Lindsay
@@ -27,11 +27,11 @@
 #
 # 1. **The data of every slip model** (cells [2]-[6]): the five-event mean fault-parallel field of notebook 06, its
 #    quadtree samples (the PyLith output points), the far-field noise model (semivariogram beyond 5 km of the trace), and
-#    the sample set of the coherence-0.7 sensitivity test. These are written once as products read by 08a, 08b and
+#    the sample set of the coherence-0.7 sensitivity test. These are written once as products read by 08, 10 and
 #    `scripts/sensitivity/`.
-# 2. **The homogeneous slip model** (cells [7]-[11]): the inversion of 08a on the same fault (the fault of the PyLith
+# 2. **The homogeneous slip model** (cells [7]-[11]): the inversion of 08 on the same fault (the fault of the PyLith
 #    run `model_config.gf_run`, dipping 70 deg W), with Green's functions of a homogeneous elastic half-space (CSI
-#    triangular dislocations, Meade 2007). It is the homogeneous comparison model of 08a and Fig 2.
+#    triangular dislocations, Meade 2007). It is the homogeneous comparison model of 08 and Fig 2.
 #
 # Every setting comes from `model_config.py`; every modelling function is in `model_utils.py`.
 #
@@ -39,7 +39,7 @@
 # 04 `section_lengths.csv`; the trace KML and `hayward_fault_profiles.csv`; the temporal-coherence 0.9 masks; the
 # archived G of the selected PyLith run (its fault vertices).
 #
-# **Outputs** (`outputs/07a_uniform_model/`): `model_data.npz` (the samples, the noise model, the trace),
+# **Outputs** (`outputs/07_model_data/`): `model_data.npz` (the samples, the noise model, the trace),
 # `noise_model_5km.csv` and `semivariogram_bins_5km.csv` (the noise model as a product), `homogeneous_lcurve.csv`,
 # `homogeneous_model.npz` (slip, prediction, plane at the samples), `07a_homogeneous_stats.txt`; the point lists
 # `modeling_inputs/points/insar_points{,_coh07}.{txt,npz}` (positions asserted unchanged); the analytic Green's
@@ -78,7 +78,7 @@ from insar_utils import load_trace
 import model_config as cfg                          # the settings of the slip models
 import model_utils                                  # the modelling functions
 
-notebook = "07a_uniform_model"
+notebook = "07_model_data"
 out_dir = paths_out[notebook]
 field_dir = paths_out["06_event_field_geometry"]
 points_dir = paths_inputs["points"]
@@ -151,9 +151,9 @@ print(f"PASS: the samples are the PyLith output points (positions, data and bloc
 # Nugget plus exponential semivariogram (`model_utils.semivariogram_model`: a nugget and two exponential terms) fitted to
 # the pixels more than 5 km from the trace after removing a plane (`model_utils.covariance`; Sudhaus & Jonsson 2009,
 # Vavra & Fialko 2026). The 4 km model swath holds no such pixels, so the field is rebuilt on a 15 km swath for this fit
-# (`model_config.noise_swath_km`). The fitted parameters and the binned semivariogram are saved (08b plots them).
+# (`model_config.noise_swath_km`). The fitted parameters and the binned semivariogram are saved (10 plots them).
 # The inversion weights every sample equally (variance nugget^2); the full covariance is used for the Monte Carlo
-# noise realisations of 08a and for the full-covariance sensitivity test.
+# noise realisations of 08 and for the full-covariance sensitivity test.
 
 # %%
 ## [4]
@@ -219,7 +219,7 @@ sample_sets = {"": (quadtree, block_lon, block_lat, "06 fp_maps.npz (coherence 0
 for tag, (ds, b_lon, b_lat, field) in sample_sets.items():
     model_utils.write_points_list(
         os.path.join(points_dir, "insar_points" + tag), ds.lon, ds.lat, model_crs,
-        header=f"quadtree samples of 07a_uniform_model{tag} ({ds.vel.size} points, swath {cfg.swath_km:g} km, {field}), written {made}",
+        header=f"quadtree samples of 07_model_data{tag} ({ds.vel.size} points, swath {cfg.swath_km:g} km, {field}), written {made}",
         extra=dict(x_km=np.asarray(ds.x, float), y_km=np.asarray(ds.y, float), vel_mm=np.asarray(ds.vel, float),
                    wgt=np.asarray(ds.wgt, float), block_lon=b_lon, block_lat=b_lat, cov_p=cov_p, nug_power=cfg.nugget_power,
                    swath_km=cfg.swath_km, strike_deg=strike_deg, field=field, field_fingerprint=field_fingerprint,
@@ -290,12 +290,12 @@ for label, G_check in (("analytic", G_homogeneous), ("PyLith 3D", gf_npz["G_rl_m
 print(f"G homogeneous {G_homogeneous.shape} from {analytic_cache}")
 
 # %% [markdown]
-# ## [8] Inversion set-up (as in 08a)
+# ## [8] Inversion set-up (as in 08)
 #
 # `model_utils.tent_model_setup` gives the tent fault, the CSI template (`TriangularTents` on the impulse vertices),
 # each sample's signed distance and along-strike distance, `keep` (the fitted samples, 60 m or more from the trace) and
 # the near-field masks (fitted samples within 500 m west / east in the SSE section). The samples are read from
-# `model_data.npz` (`model_utils.samples_from_arrays`) as in 08a. Data covariance: diagonal, nugget^2 for every sample
+# `model_data.npz` (`model_utils.samples_from_arrays`) as in 08. Data covariance: diagonal, nugget^2 for every sample
 # (equal weights; `model_utils.data_cd`). A plane (1, x, y) is solved jointly with the slip; slip >= 0; CSI exponential
 # prior with correlation lengths (0.1, 0.05) km; no surface constraint (`model_utils.invert_tents`).
 
@@ -364,7 +364,7 @@ print(f"  fitted plane: {plane_coef[0]:+.3f} mm {plane_coef[1]:+.3f} mm/km (x) {
 # ## [11] Products and registry
 #
 # `homogeneous_model.npz`: the slip on the tents, the model (G x slip) at every sample, the fitted plane, the
-# plane-removed data, `keep` and sigma (read by 08a and by 07c for Fig 2).
+# plane-removed data, `keep` and sigma (read by 08 and by 09 for Fig 2).
 
 # %%
 ## [11]
@@ -374,26 +374,26 @@ np.savez(model_file, slip_mm=slip_hom, imp_xyz=tents.imp_xyz, model_mm=data_hom.
          sample_lon=model_data["sample_lon"], sample_lat=model_data["sample_lat"], positions_fingerprint=positions_key,
          analytic_G=analytic_cache, **{k: v for k, v in numbers_hom.items()},
          provenance=f"{notebook} {made}: analytic (CSI Meade, n_sub {n_sub}) tents of {cfg.gf_run}; settings of model_config")
-stats = REG.sidecar("07a_homogeneous", cfg.summary() + [f"noise model: {noise_model.iloc[0].drop('provenance').to_dict()}",
+stats = REG.sidecar("07_homogeneous", cfg.summary() + [f"noise model: {noise_model.iloc[0].drop('provenance').to_dict()}",
                                                          f"n_sub check: {nsub_table.to_dict('list')}",
                                                          f"sigma corner {sigma_hom:.3f} (base grid {sigma_hom_base:.3f})"]
                     + [f"{k} = {v}" for k, v in numbers_hom.items()])
 where = "M8"
-REG.register("07a_n_samples", int(samples.vel.size), "count", 0, where, "[3]", stats)
-REG.register("07a_n_samples_fitted", int(keep.sum()), "count", 0, where, "[8]", stats)
-REG.register("07a_noise_nugget_mm", float(np.sqrt(cov_p[0])), "mm", 2, where, "[4]", stats)
-REG.register("07a_noise_sill_mm", float(np.sqrt(cov_p[1])), "mm", 2, where, "[4]", stats)
-REG.register("07a_noise_range_km", float(cov_p[2]), "km", 1, where, "[4]", stats)
-REG.register("07a_analytic_nsub", n_sub, "count", 0, where, "[7]", stats)
-REG.register("07a_hom_sigma", sigma_hom, "mm", 1, where, "[9]", stats)
-REG.register("07a_hom_mw_30gpa", numbers_hom["Mw_30gpa"], "Mw", 2, where, "[10]", stats)
-REG.register("07a_hom_potency_m3", numbers_hom["potency_m3"], "m3", 0, where, "[10]", stats)
-REG.register("07a_hom_peak_slip_mm", numbers_hom["peak_slip_mm"], "mm", 1, where, "[10]", stats)
-REG.register("07a_hom_peak_depth_m", numbers_hom["peak_depth_m"], "m", 0, where, "[10]", stats)
-REG.register("07a_hom_depth50_m", numbers_hom["depth50_m"], "m", 0, where, "[10]", stats)
-REG.register("07a_hom_depth90_m", numbers_hom["depth90_m"], "m", 0, where, "[10]", stats)
-REG.register("07a_hom_rms_mm", numbers_hom["rms_mm"], "mm", 2, where, "[10]", stats)
-REG.register("07a_hom_rms_west500_mm", numbers_hom["rms_west_mm"], "mm", 2, where, "[10]", stats)
-REG.register("07a_hom_rms_east500_mm", numbers_hom["rms_east_mm"], "mm", 2, where, "[10]", stats)
+REG.register("07_n_samples", int(samples.vel.size), "count", 0, where, "[3]", stats)
+REG.register("07_n_samples_fitted", int(keep.sum()), "count", 0, where, "[8]", stats)
+REG.register("07_noise_nugget_mm", float(np.sqrt(cov_p[0])), "mm", 2, where, "[4]", stats)
+REG.register("07_noise_sill_mm", float(np.sqrt(cov_p[1])), "mm", 2, where, "[4]", stats)
+REG.register("07_noise_range_km", float(cov_p[2]), "km", 1, where, "[4]", stats)
+REG.register("07_analytic_nsub", n_sub, "count", 0, where, "[7]", stats)
+REG.register("07_hom_sigma", sigma_hom, "mm", 1, where, "[9]", stats)
+REG.register("07_hom_mw_30gpa", numbers_hom["Mw_30gpa"], "Mw", 2, where, "[10]", stats)
+REG.register("07_hom_potency_m3", numbers_hom["potency_m3"], "m3", 0, where, "[10]", stats)
+REG.register("07_hom_peak_slip_mm", numbers_hom["peak_slip_mm"], "mm", 1, where, "[10]", stats)
+REG.register("07_hom_peak_depth_m", numbers_hom["peak_depth_m"], "m", 0, where, "[10]", stats)
+REG.register("07_hom_depth50_m", numbers_hom["depth50_m"], "m", 0, where, "[10]", stats)
+REG.register("07_hom_depth90_m", numbers_hom["depth90_m"], "m", 0, where, "[10]", stats)
+REG.register("07_hom_rms_mm", numbers_hom["rms_mm"], "mm", 2, where, "[10]", stats)
+REG.register("07_hom_rms_west500_mm", numbers_hom["rms_west_mm"], "mm", 2, where, "[10]", stats)
+REG.register("07_hom_rms_east500_mm", numbers_hom["rms_east_mm"], "mm", 2, where, "[10]", stats)
 REG.render()
 print(f"wrote {model_file}")

@@ -11,16 +11,16 @@
 # ---
 
 # %% [markdown]
-# # 07c Fig 2: the event field and the 3D slip model
+# # 09 Fig 2: the event field and the 3D slip model
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: environment.yml. Runs after 06, 07a and 08a. Seconds.
+# Environment: environment.yml. Runs after 06, 07 and 08. Seconds.
 # ```
 #
 # **What this notebook does.** Draws Fig 2 from the maps and profiles of notebook 06 (`fig2_inputs.npz`) and the model
-# row of the preferred slip model (08a `selected_model.npz`: the PyLith run `model_config.gf_run`, 3D SFSVM elastic
-# structure, fault dipping 70 deg W, settings of `model_config.py`), with the homogeneous model of 07a
+# row of the preferred slip model (08 `selected_model.npz`: the PyLith run `model_config.gf_run`, 3D SFSVM elastic
+# structure, fault dipping 70 deg W, settings of `model_config.py`), with the homogeneous model of 07
 # (`homogeneous_model.npz`: the same fault with analytic half-space Green's functions) as the comparison on G. No number
 # is registered here: every number on the figure is registered by the notebook that computes it. The computations here
 # are for display only (the per-side running medians on the profiles, the colour limits, the slip grid of panel L).
@@ -38,16 +38,16 @@
 #
 # Fig 2 shows the fault-parallel and vertical fields; the per-track LOS version is a supplementary figure.
 #
-# **Inputs**: `06_event_field_geometry/fig2_inputs.npz`; `08a_3d_model/selected_model.npz`;
-# `07a_uniform_model/homogeneous_model.npz` and `model_data.npz`; `04_event_detection/event_fraction_by_crossing.csv`;
+# **Inputs**: `06_event_field_geometry/fig2_inputs.npz`; `08_3d_model/selected_model.npz`;
+# `07_model_data/homogeneous_model.npz` and `model_data.npz`; `04_event_detection/event_fraction_by_crossing.csv`;
 # `hayward_fault_profiles.csv`; the alignment-array summary; the GHCN file of the Fremont rain gauge; the GNSS station
 # list of the descending frame (`GPS/11115_StaList.txt`, the reference station ZOA1); the CFW1 position.
 #
 # **Figures**: `fig2_fault_parallel_vertical_coh<c>_<n>ev_selected3d` (Fig 2) and `figS_los_maps_profiles_coh<c>_<n>ev`
-# (the LOS version, supplement). Small GMT helper files go to `outputs/07c_fig2/cpt/`.
+# (the LOS version, supplement). Small GMT helper files go to `outputs/09_fig2/cpt/`.
 #
 # **What to check**
-# - [8] Check: both model products are on the samples of 07a; I = model + plane and J = E - I (asserted).
+# - [8] Check: both model products are on the samples of 07; I = model + plane and J = E - I (asserted).
 # - [9] K: the number of crossings drawn (where both sides have samples 60-150 m from the trace).
 # - [13] The per-block amplitudes printed for Fig 2 equal the registry rows `06_XX_*`, `06_YY_*` of notebook 06.
 
@@ -79,7 +79,7 @@ import pygmt
 
 # %%
 ## [2]
-notebook = "07c_fig2"
+notebook = "09_fig2"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 cpt_dir = os.path.join(out_dir, "cpt")                 # GMT helper files: CPTs, legend specs, block polygons
@@ -89,7 +89,7 @@ os.makedirs(cpt_dir, exist_ok=True)
 median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
 median_col = "black"            # per-side running median
 grey = "gray55"                 # pixels
-homog_col = "#0072B2"           # 07a's homogeneous model (Okabe-Ito blue)
+homog_col = "#0072B2"           # 07's homogeneous model (Okabe-Ito blue)
 hetero_col = "#D55E00"          # the 3D (SFSVM) model, the preferred model (Okabe-Ito vermillion)
 model_col = hetero_col
 
@@ -105,15 +105,15 @@ map_bar_font_pt = 13.0                      # the map colour bars ask GMT for 13
 # Fig 2 map window (unrotated, north up): centred on the trace at fig2_map_centre_km from Point Pinole,
 # +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km) north-south (10.4 x 12 km).
 # The values live in TulePond_filepaths so Fig 1 (notebook 04) draws the same box.
-aa_labelled = ["HGIL", "HRKT"]  # the arrays used in the paper (notebook 09_alignment_arrays); the other arrays of the section are not drawn
+aa_labelled = ["HGIL", "HRKT"]  # the arrays used in the paper (notebook 11_alignment_arrays); the other arrays of the section are not drawn
 aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"),     # HGIL left of its symbol
                 "HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of each label about its symbol
 
 f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz")
 aa_file = common_paths["aa_summary"]
-selected_file = os.path.join(paths_out["08a_3d_model"], "selected_model.npz")          # the preferred model (08a [12])
-homogeneous_file = os.path.join(paths_out["07a_uniform_model"], "homogeneous_model.npz")  # the homogeneous model of 07a
-model_data_file = os.path.join(paths_out["07a_uniform_model"], "model_data.npz")         # 07a's samples
+selected_file = os.path.join(paths_out["08_3d_model"], "selected_model.npz")          # the preferred model (08 [12])
+homogeneous_file = os.path.join(paths_out["07_model_data"], "homogeneous_model.npz")  # the homogeneous model of 07
+model_data_file = os.path.join(paths_out["07_model_data"], "model_data.npz")         # 07's samples
 model_tag = "_selected3d"                                                                 # in the Fig 2 file name
 profile_half_width_m = 300.0    # G: model samples within this distance of each profile line (06's pixels: +/- 150 m)
 
@@ -513,23 +513,23 @@ def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, col
 
 
 # %% [markdown]
-# ## [8] The model products of 08a and 07a
+# ## [8] The model products of 08 and 07
 #
-# The preferred 3D model (08a) provides panels I-L and the vermillion line on G; the homogeneous model of 07a (same fault,
+# The preferred 3D model (08) provides panels I-L and the vermillion line on G; the homogeneous model of 07 (same fault,
 # samples, weighting, plane, prior and corner rule; analytic Green's functions on the same tents) provides the blue line
-# on G. Check: both are on the samples of 07a (asserted). I = the slip model + its fitted plane, so J = E - I at every
-# sample (asserted; CSI removes the fitted plane from the data, so 08a stores the plane separately).
+# on G. Check: both are on the samples of 07 (asserted). I = the slip model + its fitted plane, so J = E - I at every
+# sample (asserted; CSI removes the fitted plane from the data, so 08 stores the plane separately).
 
 # %%
 ## [8]
 for path in (selected_file, homogeneous_file, model_data_file):
-    assert os.path.exists(path), f"missing {path}: run 07a_uniform_model and 08a_3d_model first"
+    assert os.path.exists(path), f"missing {path}: run 07_model_data and 08_3d_model first"
 model = np.load(selected_file)
 compare = np.load(homogeneous_file)
 model_data = np.load(model_data_file)
 for product, product_file in ((model, selected_file), (compare, homogeneous_file)):
     assert np.array_equal(product["sample_lon"], model_data["sample_lon"]) and np.array_equal(product["sample_lat"], model_data["sample_lat"]), \
-        f"{product_file} is not on the current samples of 07a: re-run 07a and 08a"
+        f"{product_file} is not on the current samples of 07: re-run 07 and 08"
 assert np.array_equal(model["keep"], compare["keep"]), "the two models have different fitted samples"
 model_with_plane_mm = model["model_mm"] + model["plane_mm"]
 assert np.allclose(model_data["data_mm"] - model_with_plane_mm, model["residual_mm"], atol=1e-6), "E - I != J at the samples"
@@ -563,13 +563,13 @@ model_lines = [(profile_dots(compare), homog_col, "Homogeneous"),     # no comma
 # ## [9] Panel K: the 60-150 m steps of the data and the model
 #
 # The data step and the model step are both measured 60-150 m from the trace (outside the 60 m near-trace cut, i.e. on
-# the samples the model fits), at each crossing of 04, +/- 200 m along strike, on the samples (08a [6],
+# the samples the model fits), at each crossing of 04, +/- 200 m along strike, on the samples (08 [6],
 # `model_utils.crossing_steps_like`). Drawn unsmoothed; a crossing is drawn only where both sides have samples.
 
 # %%
 ## [9]
 crossings04 = pd.read_csv(os.path.join(paths_out["04_event_detection"], "event_fraction_by_crossing.csv"))
-assert np.array_equal(np.asarray(model["crossing_km"], float), crossings04.km.values.astype(float)), "08a's crossings are not 04's"
+assert np.array_equal(np.asarray(model["crossing_km"], float), crossings04.km.values.astype(float)), "08's crossings are not 04's"
 assert float(model["step_inner_km"]) == 0.06 and float(model["step_outer_km"]) == 0.15, "panel K steps must be 60-150 m"
 k_line_km = np.asarray(model["crossing_km"], float)
 k_data_mm = np.asarray(model["data_step_mm"], float)
@@ -664,7 +664,7 @@ def model_row(fig, product, lim, model_mm):
                  no_clip=True)                               # a rectangle symbol: GMT clips lines outside the frame, not symbols
         fig.text(x=float(np.mean(ends_km)), y=slip_bottom - 0.22 * mm_per_cm, text=name, font=annot_font, justify="CT", no_clip=True)
     print("K landmarks (km from Point Pinole): " + "; ".join(f"{n} {k[0]:.1f}-{k[1]:.1f}" for n, k in landmark_km.items()))
-    # the uncertainty (Monte Carlo, sensitivity range) is given in the caption (08a / 08b registry), not on the panel
+    # the uncertainty (Monte Carlo, sensitivity range) is given in the caption (08 / 10 registry), not on the panel
     fig.text(position="TR", text=f"M@-w@- {float(product['Mw_30gpa']):.2f} (30 GPa), {float(product['Mw_sfcvm']):.2f} "
                                  f"({float(product['mu_effective_gpa']):.1f} GPa, USGS SFSVM)",
              justify="BR", offset="0c/0.12c", font=annot_font, no_clip=True)
@@ -744,7 +744,7 @@ def draw_fig2(rate_maps, event_maps, profile_set, event_label, stem, cols, ylabs
         lines_here = model_lines
     los_profile_pairs(fig, "ve", "de", lims["event"], ["G", "H"], ylabs[1], profile_set, cols, xlabel=True,
                       model_lines=lines_here)
-    # row 3: the model of notebook 08a, I and J on the same colour scale as E and F
+    # row 3: the model of notebook 08, I and J on the same colour scale as E and F
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
     model_row(fig, model, lim_event, model_with_plane_mm)
     fig.savefig(stem + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
@@ -761,7 +761,7 @@ print(f"common pixel mask for the four LOS maps: {mask_los.sum()} pixels ({mask_
 #
 # Row 1, the inter-event rate: the ascending and descending LOS maps with one shared colour bar, then the X-X' and Y-Y'
 # profiles of each track (pixels in grey, a per-side running median in black). Row 2, the mean event (the mean of the
-# events, the field inverted in 07a and 08a), drawn the same way. Row 3, the model row of the 3D model (08a), as in
+# events, the field inverted in 07 and 08), drawn the same way. Row 3, the model row of the 3D model (08), as in
 # Fig 2. The maps are LOS, positive toward the satellite, so a right-lateral step has opposite colours on the ascending
 # and descending tracks. This LOS version is a supplementary figure; Fig 2 (next section) is the fault-parallel and
 # vertical version.

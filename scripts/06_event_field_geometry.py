@@ -22,8 +22,8 @@
 # differences (east minus west medians). This notebook maps them: every pixel in
 # a box around Tule Pond is fitted with its own time function, which gives the
 # cross-fault shape of each event as well as its size. Notebooks
-# `07a_uniform_model` and `08a_3d_model` invert the mean event for slip at depth;
-# `07c_fig2` draws Fig 2 from this notebook's maps and profiles and the slip
+# `07_model_data` and `08_3d_model` invert the mean event for slip at depth;
+# `09_fig2` draws Fig 2 from this notebook's maps and profiles and the slip
 # model. Each event's step is placed at 04's step epoch, the start of its onset
 # window (`onset_lo`).
 #
@@ -36,7 +36,7 @@
 #    from the OPERA CSLC static bounding polygons (cell [4]); both tracks are
 #    corrected the same way.
 # 3. **Mean event**: the mean of the five step maps per track, written in the
-#    layout `07a_uniform_model` (CSI) reads.
+#    layout `07_model_data` (CSI) reads.
 # 4. **Decomposition** of the inter-event rate and the mean event into
 #    fault-parallel and vertical components with MintPy's `asc_desc2horz_vert`,
 #    as in notebook 02 for the whole fault, here with the mean local strike of the
@@ -46,9 +46,9 @@
 #    LOS maps: the pixels, the model-free near-fault step (east band minus
 #    west band, the aperture of notebook 04) and the near-fault amplitude of
 #    each block against its own far field. No model is fitted here; the slip
-#    models are in `07a_uniform_model` and `08a_3d_model`.
+#    models are in `07_model_data` and `08_3d_model`.
 # 6. **Inputs for Fig 2**: the maps and profiles, written to one file, drawn by
-#    `07c_fig2` after the slip model.
+#    `09_fig2` after the slip model.
 # 7. **Mean-event statistics**: the fault-parallel near-fault deflection of each
 #    block at X-X' and Y-Y', the distance from the trace beyond which the X-X' event profile stays
 #    within the far-field scatter (each side), and the vertical displacement around Lake Elizabeth east of
@@ -63,10 +63,10 @@
 #
 # **Outputs** (`outputs/06_event_field_geometry/`): `tulepond_steps_<track>.h5`
 # (every per-event LOS step map, raw and burst-fixed, each tagged with its track
-# `step_date` and 04's `step_epoch`; mean, scatter, rate, geometry), `csi_mean_event_<track>.npz` (07a's input), `fp_maps.npz`
-# (fault-parallel and vertical rate and mean event; read by 07a, 07b, 08a),
+# `step_date` and 04's `step_epoch`; mean, scatter, rate, geometry), `csi_mean_event_<track>.npz` (07's input), `fp_maps.npz`
+# (fault-parallel and vertical rate and mean event; read by 07, 07b, 08),
 # `profile_<XX|YY>_<field>[_<track>].csv`,
-# `fig2_inputs.npz` (for `07c_fig2`, also read by 07a and 08a),
+# `fig2_inputs.npz` (for `09_fig2`, also read by 07 and 08),
 # `timefunc_fit_<track>.npz` (the cached per-pixel fit), `06_event_field_stats.txt`,
 # registry rows `06_*`.
 #
@@ -235,7 +235,7 @@ rate_zero_m = 1000.0            # the rate profile is zeroed on the mid-point of
 min_far_pixels = 20             # the event profile needs this many far-field pixels to be zeroed
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault step band, the aperture of notebook 04 (m)
 decay_bin_m = 150.0             # [24] the decay distance: the binned median of the event profile, 150 m bins outward from the
-                                # trace on each side (07c_fig2's running median, median_bin_m, the black line of Fig 2)
+                                # trace on each side (09_fig2's running median, median_bin_m, the black line of Fig 2)
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
@@ -626,7 +626,7 @@ print("PASS: the mean event steps negative on ascending and positive on descendi
 # Mean of the events per pixel (only where all of them are valid), the
 # per-pixel scatter across events, and the formal error of the mean. Written
 # to `tulepond_steps_<track>.h5` (everything) and `csi_mean_event_<track>.npz`
-# (the flat table `07a_uniform_model` reads: lon, lat, LOS mm, error, incidence, azimuth).
+# (the flat table `07_model_data` reads: lon, lat, LOS mm, error, incidence, azimuth).
 
 # %%
 # [16]
@@ -862,7 +862,7 @@ assert los_profiles["ascending"]["X"]["event_step"] < 0 < los_profiles["descendi
 # %% [markdown]
 # ## [21] Run: write the maps and profiles for Fig 2
 #
-# Fig 2 is drawn in its own notebook (`07c_fig2`) after the slip model,
+# Fig 2 is drawn in its own notebook (`09_fig2`) after the slip model,
 # so that it can include the model row. It needs the per-track LOS maps (masked
 # at `coh_maps`), the fault-parallel maps and the profiles; they go into one
 # file. The fault-parallel and vertical profiles get their block amplitudes

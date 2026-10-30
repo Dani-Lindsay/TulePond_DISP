@@ -4,7 +4,7 @@
 @author: Danielle Lindsay
 
 model_config.py: the settings of the Tule Pond slip models. Every modelling constant is declared here once, with its
-unit, its value and its source. Imported by 07a_uniform_model, 08a_3d_model, 08b_sensitivity and
+unit, its value and its source. Imported by 07_model_data, 08_3d_model, 10_model_sensitivity and
 scripts/sensitivity/*.py; no notebook re-types these numbers.
 
 Paths are in TulePond_filepaths.py; the modelling functions are in model_utils.py. The section limits (the SSE section
@@ -27,7 +27,7 @@ km_window = (52.0, 67.0)      # km from Point Pinole: the along-strike data wind
 start_block_km = 2.0          # km: first quadtree block (Wei 2009, Vavra & Fialko 2026)
 min_block_km = 0.03           # km: smallest quadtree block = one 30 m DISP-S1 pixel at the trace
 near_trace_cut_km = 0.06      # km: samples closer to the trace are not fitted (the DISP-S1 phase-linking half-window)
-decomposition_window_px = 20  # px: MintPy asc_desc2horz_vert window of 06 (07a rebuilds the coherence-0.7 field with it)
+decomposition_window_px = 20  # px: MintPy asc_desc2horz_vert window of 06 (07 rebuilds the coherence-0.7 field with it)
 
 # Noise model: nugget plus exponential semivariogram of the pixels beyond noise_mask_km of the trace, plane removed.
 # The fit needs pixels beyond 5 km, so it is made on the whole 06 map (a 15 km swath), not on the 4 km model swath.
@@ -71,7 +71,7 @@ gf_run_vertical = "gf_shallow_sfcvm_order2"  # the vertical fault on the same fi
 gf_pylith_output_dir = paths_sfcvm["pylith_output"]
 gf_gf_dir = paths_sfcvm["gf"]
 sfcvm_grid_npz = os.path.join(paths_sfcvm["spatialdb"], "sfcvm_v26-0_aligned_nocap_grid.npz")   # the grid PyLith read
-gf_files = dict(                                     # every PyLith file of the selected run (08a's "PyLith files" cell)
+gf_files = dict(                                     # every PyLith file of the selected run (08's "PyLith files" cell)
     mesh=os.path.join(paths_inputs["mesh"], "mesh_dip70w_tet_shallow.msh"),
     mesh_report=os.path.join(paths_inputs["mesh"], "mesh_dip70w_tet_shallow_report.txt"),
     mesh_log=os.path.join(paths_inputs["mesh"], "gen_dip70w_shallow_2026-10-26.log"),
@@ -84,13 +84,13 @@ gf_files = dict(                                     # every PyLith file of the 
              "modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb 5 modeling_inputs/points/insar_points.txt order2.cfg"),   # run from the data root
     queue_script="run_shallow_dips_2026-10-26.sh",   # the queue script that ran it (data root)
     log=os.path.join(paths_sfcvm["runs"], f"{gf_run}.log"),
-    done_marker=os.path.join(os.path.dirname(paths_sfcvm["root"]), "runs_done_2026-10-25", gf_run),
+    done_marker=os.path.join(os.path.dirname(paths_sfcvm["root"]), "pylith_runs_done", gf_run),
     outputs=[os.path.join(paths_sfcvm["pylith_output"], f"{gf_run}-{part}") for part in
              ("points.h5", "fault.h5", "elastic_info.h5", "parameters.json", "progress.txt")],
     G=os.path.join(paths_sfcvm["gf"], f"G_{gf_run}.npz"),
 )
 # Homogeneous comparison: CSI triangular dislocations (Meade 2007) on the same tents (model_utils.analytic_tent_G),
-# each fault triangle split into n_sub^2 constant-slip sub-triangles. n_sub is chosen in 07a: 8 if n_sub 4 and 8 differ
+# each fault triangle split into n_sub^2 constant-slip sub-triangles. n_sub is chosen in 07: 8 if n_sub 4 and 8 differ
 # by more than analytic_nsub_tolerance on analytic_nsub_check_tents tents, else 4.
 analytic_nsub_options = (4, 8)
 analytic_nsub_check_tents = 20
@@ -106,7 +106,7 @@ near_field_km = 0.5           # km: RMS within 500 m west / east of the trace, i
 depth_fractions = (0.5, 0.9)  # the depths above which 50 % and 90 % of the potency lie
 fig2k_inner_km = 0.06         # km: Fig 2K step, data and model, 60-150 m from the trace
 fig2k_outer_km = 0.15
-profile_far_m = 1500.0        # m: start of the far band of the across-fault deflections (08a profiles)
+profile_far_m = 1500.0        # m: start of the far band of the across-fault deflections (08 profiles)
 # Near-fault deflection (Methods): in the SSE section, the mean over fitted samples near_deflection_km from the trace minus
 # the mean over samples far_deflection_km away, on each side.
 near_deflection_km = (0.06, 0.25)     # km: from the 60 m cut to 250 m
@@ -116,7 +116,7 @@ far_deflection_check_km = (1.0, 3.0)  # km: a wider far band, as a check
 # Monte Carlo uncertainty: correlated noise drawn from the full covariance of the noise model (nugget / N^0.5), added to
 # the model prediction and re-inverted at the fixed corner sigma with equal weights.
 mc_n_realisations = 100
-mc_seed = 11                  # the seed of the Monte Carlo noise draws (08a, scripts/sensitivity/depth_scan.py)
+mc_seed = 11                  # the seed of the Monte Carlo noise draws (08, scripts/sensitivity/depth_scan.py)
 mc_noise_nugget_power = 0.5   # the noise draw's covariance: model_utils.covariance_matrix(..., nug_power 0.5)
 
 # Fixed-depth scan (stress drop, depth extent): uniform slip from the surface to D over the SSE section, tapered at each end.
@@ -126,13 +126,12 @@ depth_scan_depths_km = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0
 
 
 # =====================================================================================================================
-# Archived sweep results (made by scripts/sensitivity/*.py; read, never re-made, by 08a's checks and 08b's figures)
+# Archived sweep results (made by scripts/sensitivity/*.py; read, never re-made, by 08's checks and 10's figures)
 # =====================================================================================================================
-sensitivity_dir = os.path.join(data_dir, "sensitivity_2026-10-30")   # where scripts/sensitivity/*.py write
+sensitivity_dir = os.path.join(data_dir, "sensitivity")   # where scripts/sensitivity/*.py write
 archived = dict(
-    # a frozen copy of an earlier run of scripts/sensitivity/sensitivity_rows.py: its "Fault dip, fine mesh" / "70 W" row
-    # is 08a's independent reproduction check of the 70 W model
-    sensitivity_rows_20261030=os.path.join(data_dir, "sensitivity_2026-10-30", "sensitivity_rows_before_70w_2026-10-30.csv"),
+    # scripts/sensitivity/sensitivity_rows.py: its baseline row is 08's independent reproduction check of the model
+    sensitivity_rows=os.path.join(sensitivity_dir, "sensitivity_rows.csv"),
     depth_scan=os.path.join(sensitivity_dir, "depth_scan.csv"),          # scripts/sensitivity/depth_scan.py on gf_run
 )
 

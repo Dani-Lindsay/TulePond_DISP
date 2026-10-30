@@ -15,28 +15,28 @@
 # ---
 
 # %% [markdown]
-# # 08a The preferred slip model: 3D elastic structure (SFSVM), PyLith Green's functions
+# # 08 The preferred slip model: 3D elastic structure (SFSVM), PyLith Green's functions
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: environment.yml. Runs after 07a. About 45 min (30 solves for the L-curve, 100 for the Monte Carlo).
+# Environment: environment.yml. Runs after 07. About 45 min (30 solves for the L-curve, 100 for the Monte Carlo).
 # PyLith is not run here: the Green's functions are read from the stored G matrix of the PyLith run.
 # ```
 #
 # **What this notebook does.** The paper's slip model, with the settings of `model_config.py`: the PyLith Green's
 # functions of `model_config.gf_run` (3D SFSVM elastic structure, fault dipping 70 deg W; the vertical fault on the
-# same mesh is a sensitivity test), the samples and noise model of 07a, equal weights, a plane solved jointly,
+# same mesh is a sensitivity test), the samples and noise model of 07, equal weights, a plane solved jointly,
 # slip >= 0 and the CSI exponential prior at the L-curve corner, no surface constraint. Then the fit (maps and profiles
 # of G x slip at the samples), the size (potency, Mw at 30 GPa and at the slip-weighted harmonic SFSVM rigidity), the
-# depths above which 50 % / 90 % of the potency lie, the comparison with the homogeneous model of 07a, a Monte Carlo of
+# depths above which 50 % / 90 % of the potency lie, the comparison with the homogeneous model of 07, a Monte Carlo of
 # correlated noise, and the stress drop from the fixed-depth scan.
 #
-# **Inputs**: 07a `model_data.npz`, `homogeneous_model.npz`, `homogeneous_lcurve.csv`; the PyLith products listed in [2];
+# **Inputs**: 07 `model_data.npz`, `homogeneous_model.npz`, `homogeneous_lcurve.csv`; the PyLith products listed in [2];
 # 06 `fig2_inputs.npz` (profile lines); 04 `section_lengths.csv`, `event_fraction_by_crossing.csv`; the stored outputs
 # of `scripts/sensitivity/` listed in `model_config.archived` (the '70 W' fine-mesh dip row, for a check, and the
 # fixed-depth scan).
 #
-# **Outputs** (`outputs/08a_3d_model/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane,
+# **Outputs** (`outputs/08_3d_model/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane,
 # residual, crossings steps: Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
 # `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `near_fault_deflection.csv`, `08a_selected_stats.txt`.
 # **Figures** (`Figures_<fig_date>/`): `figS_model_lcurve`, `figS_model_slip`, `figS_model_fit_maps`,
@@ -75,9 +75,9 @@ import insar_utils as utils
 import model_config as cfg                          # the settings of the slip models
 import model_utils                                  # the modelling functions
 
-notebook = "08a_3d_model"
+notebook = "08_3d_model"
 out_dir = paths_out[notebook]
-dir_07a = paths_out["07a_uniform_model"]
+dir_07a = paths_out["07_model_data"]
 field_dir = paths_out["06_event_field_geometry"]
 events_dir = paths_out["04_event_detection"]
 fig_dir = common_paths["fig_dir"]
@@ -93,7 +93,7 @@ crossings_file = os.path.join(events_dir, "event_fraction_by_crossing.csv")
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(model_data_file, homogeneous_file, os.path.join(dir_07a, "homogeneous_lcurve.csv"), fig2_inputs_file, crossings_file,
            os.path.join(events_dir, "section_lengths.csv"), os.path.join(events_dir, "creep_events.csv"), cfg.gf_files["G"],
-           cfg.archived["sensitivity_rows_20261030"], cfg.archived["depth_scan"])
+           cfg.archived["sensitivity_rows"], cfg.archived["depth_scan"])
 OKABE = dict(blue="#0072B2", orange="#E69F00", vermillion="#D55E00", purple="#CC79A7", black="#000000", grey="#999999")
 utils.mpl_paper_style(base=7)
 cm = 1 / 2.54
@@ -104,7 +104,7 @@ print("\n".join(cfg.summary()))
 #
 # The inputs and outputs of the PyLith 5.0.2 run `model_config.gf_run` (basis order 2), with paths: the mesh and its
 # report, the cfg files (`pylith/cfg/`), the SFSVM material database and the grid it was written from, the impulse
-# database, the output points (the samples of 07a), the command, the run log and completion marker, the raw outputs, and
+# database, the output points (the samples of 07), the command, the run log and completion marker, the raw outputs, and
 # the G matrix assembled from them (`model_utils.build_G`: impulse -> vertex, output point -> sample, projection on the
 # fault-parallel look vector, right-lateral sign). See `pylith/README.md`. Nothing is run here.
 
@@ -128,7 +128,7 @@ with open(cfg.gf_files["mesh_report"]) as report:
 # %% [markdown]
 # ## [3] The data and the inversion set-up
 #
-# The samples of 07a (`model_data.npz`, rebuilt as a `csi.insar` set by `model_utils.samples_from_arrays`) and its noise
+# The samples of 07 (`model_data.npz`, rebuilt as a `csi.insar` set by `model_utils.samples_from_arrays`) and its noise
 # model. `model_utils.tent_model_setup` reads the stored G (`load_G`; built from the PyLith output by `build_G`,
 # asserted to be on these samples and at this strike), the tent fault and its CSI template, `keep` (samples 60 m or
 # more from the trace) and the near-field masks (within 500 m west / east, in the SSE section). Data covariance: the
@@ -138,7 +138,7 @@ with open(cfg.gf_files["mesh_report"]) as report:
 ## [3]
 model_data = np.load(model_data_file)
 field_fingerprint = model_utils.field_fingerprint(os.path.join(field_dir, "fp_maps.npz"))
-assert str(model_data["field_fingerprint"]) == field_fingerprint, "07a's model data were made from another 06 field: re-run 07a"
+assert str(model_data["field_fingerprint"]) == field_fingerprint, "07's model data were made from another 06 field: re-run 07"
 frame_lonlat = tuple(model_data["frame_lonlat"])
 strike_deg = float(model_data["strike_deg"])
 look = model_data["look"]
@@ -159,7 +159,7 @@ G = setup["G"]["sfcvm"]
 tents = setup["tents"]
 keep, west_near, east_near = setup["keep"], setup["west_near"], setup["east_near"]
 signed_d_km, sample_km_pp = setup["signed_d_km"], setup["sample_km_pp"]
-assert np.array_equal(setup["points"]["lon"], model_data["sample_lon"]), "G is not on 07a's samples"
+assert np.array_equal(setup["points"]["lon"], model_data["sample_lon"]), "G is not on 07's samples"
 Cd = model_utils.data_cd(cfg.weighting, samples, cov_p, cfg.nugget_power, keep=keep)
 print(f"G {G.shape} (samples x tents), max |G| {np.abs(G).max():.3f} m/m; {keep.sum()} fitted samples of {keep.size}; "
       f"near field {west_near.sum()} west / {east_near.sum()} east; sample sd {np.sqrt(cov_p[0]):.3f} mm (nugget)")
@@ -210,9 +210,9 @@ sigma, sigma_base, lcurve = model_utils.own_corner(solve_3d, cfg.sigma_grid_base
 lcurve.assign(corner=sigma, base_corner=sigma_base).to_csv(os.path.join(out_dir, "selected_lcurve.csv"), index=False)
 print(f"corner {sigma:.3f} (base grid {sigma_base:.3f}); {len(lcurve)} solves in {(time.time() - t0) / 60:.1f} min")
 
-sweep = pd.read_csv(cfg.archived["sensitivity_rows_20261030"])
-sweep_row = sweep[(sweep.row == "Fault dip, fine mesh") & (sweep.variant == cfg.selected_dip_label)]
-assert len(sweep_row) == 1, f"no single '{cfg.selected_dip_label}' fine-mesh dip row in {cfg.archived['sensitivity_rows_20261030']}"
+sweep = pd.read_csv(cfg.archived["sensitivity_rows"])
+sweep_row = sweep[(sweep.row == f"Baseline (fine mesh, {cfg.selected_dip_label})") & (sweep.variant == "Selected")]
+assert len(sweep_row) == 1, f"no single baseline row in {cfg.archived['sensitivity_rows']}"
 sweep_row = sweep_row.iloc[0]
 assert sweep_row.run == cfg.gf_run and sweep_row.cut_m == cfg.near_trace_cut_km * 1e3 and sweep_row.ramp == cfg.ramp_spec
 fault_check, data_check, _ = solve_3d(sigma)
@@ -265,7 +265,7 @@ for key, value in numbers.items():
     print(f"  {key:22s} {value:.5g}")
 
 # %% [markdown]
-# ## [7] The homogeneous model of 07a and the profile lines of 06
+# ## [7] The homogeneous model of 07 and the profile lines of 06
 #
 # The homogeneous model must be on the same samples with the same near-trace cut (asserted). The X-X' profile numbers
 # of the paper come from the pixels in 06.
@@ -275,11 +275,11 @@ for key, value in numbers.items():
 fig2_inputs = np.load(fig2_inputs_file)
 homogeneous = np.load(homogeneous_file)
 assert np.array_equal(homogeneous["sample_lon"], model_data["sample_lon"]) and np.array_equal(homogeneous["keep"], keep), \
-    "07a's homogeneous model is not on these samples / this cut"
-print(f"07a homogeneous model: sigma {float(homogeneous['sigma']):.2f}, Mw {float(homogeneous['Mw_30gpa']):.3f}, n_sub {int(homogeneous['n_sub'])}")
+    "07's homogeneous model is not on these samples / this cut"
+print(f"07 homogeneous model: sigma {float(homogeneous['sigma']):.2f}, Mw {float(homogeneous['Mw_30gpa']):.3f}, n_sub {int(homogeneous['n_sub'])}")
 
 # %% [markdown]
-# ## [8] The 3D model and the homogeneous model (07a)
+# ## [8] The 3D model and the homogeneous model (07)
 #
 # The same fault, samples, weighting, plane, prior, near-trace cut and corner rule; only the Green's functions differ.
 
@@ -322,7 +322,7 @@ print(deflection.round(2).to_string(index=False))
 # ## [9] Figures of the model: L-curves, slip, fit maps, profiles
 #
 # Journal style (`insar_utils.mpl_paper_style(base=7)`, 300 dpi, png + pdf), Okabe-Ito colours. Everything drawn is a
-# product of this notebook or 07a: the profiles are G x slip at the samples.
+# product of this notebook or 07: the profiles are G x slip at the samples.
 
 # %%
 ## [9]
@@ -502,7 +502,7 @@ print(stress_drop.round(3).to_string(index=False))
 # %% [markdown]
 # ## [12] Products and the number registry
 #
-# `selected_model.npz` holds what Fig 2 (07c) draws: the samples and their blocks, the raw data, plane, model, residual,
+# `selected_model.npz` holds what Fig 2 (09) draws: the samples and their blocks, the raw data, plane, model, residual,
 # `keep`, the signed distance and along-strike km, the crossings steps of panel K, the slip on the tents, Mw.
 
 # %%
@@ -517,43 +517,43 @@ np.savez(selected_file, sample_lon=model_data["sample_lon"], sample_lat=model_da
          **{k: v for k, v in numbers.items()}, run=cfg.gf_run, field_fingerprint=field_fingerprint,
          provenance=f"{notebook} {made}: {cfg.gf_run}, settings of model_config, sigma {sigma:.3f}")
 mc = mc_summary.set_index("quantity")
-stats = REG.sidecar("08a_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
+stats = REG.sidecar("08_selected", cfg.summary() + [comparison.to_string(index=False), model_comparison.to_string(index=False),
                                                       mc_summary.to_string(index=False), deflection.to_string(index=False),
                                                       stress_drop.to_string(index=False)]
                     + [f"{k} = {v}" for k, v in numbers.items()])
 where = "M8"
-REG.register("08a_n_samples_fitted", numbers["n_fitted"], "count", 0, where, "[3]", stats)
-REG.register("08a_sigma", sigma, "mm", 1, where, "[5]", stats)
-REG.register("08a_sigma_base_corner", sigma_base, "mm", 1, where, "[5]", stats)
-REG.register("08a_mw_30gpa", numbers["Mw_30gpa"], "Mw", 2, where, "[6]", stats)
-REG.register("08a_mw_harmonic", numbers["Mw_sfcvm"], "Mw", 2, where, "[6]", stats)
-REG.register("08a_mu_effective_harmonic_gpa", numbers["mu_effective_gpa"], "GPa", 1, where, "[6]", stats)
-REG.register("08a_potency_m3", numbers["potency_m3"], "m3", 0, where, "[6]", stats)
-REG.register("08a_peak_slip_mm", numbers["peak_slip_mm"], "mm", 1, where, "[6]", stats)
-REG.register("08a_peak_depth_m", numbers["peak_depth_m"], "m", 0, where, "[6]", stats)
-REG.register("08a_depth50_m", numbers["depth50_m"], "m", 0, where, "[6]", stats)
-REG.register("08a_depth90_m", numbers["depth90_m"], "m", 0, where, "[6]", stats)
-REG.register("08a_rms_mm", numbers["rms_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08a_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08a_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08a_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "[6]", stats)
-REG.register("08a_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "[6]", stats)
+REG.register("08_n_samples_fitted", numbers["n_fitted"], "count", 0, where, "[3]", stats)
+REG.register("08_sigma", sigma, "mm", 1, where, "[5]", stats)
+REG.register("08_sigma_base_corner", sigma_base, "mm", 1, where, "[5]", stats)
+REG.register("08_mw_30gpa", numbers["Mw_30gpa"], "Mw", 2, where, "[6]", stats)
+REG.register("08_mw_harmonic", numbers["Mw_sfcvm"], "Mw", 2, where, "[6]", stats)
+REG.register("08_mu_effective_harmonic_gpa", numbers["mu_effective_gpa"], "GPa", 1, where, "[6]", stats)
+REG.register("08_potency_m3", numbers["potency_m3"], "m3", 0, where, "[6]", stats)
+REG.register("08_peak_slip_mm", numbers["peak_slip_mm"], "mm", 1, where, "[6]", stats)
+REG.register("08_peak_depth_m", numbers["peak_depth_m"], "m", 0, where, "[6]", stats)
+REG.register("08_depth50_m", numbers["depth50_m"], "m", 0, where, "[6]", stats)
+REG.register("08_depth90_m", numbers["depth90_m"], "m", 0, where, "[6]", stats)
+REG.register("08_rms_mm", numbers["rms_mm"], "mm", 2, where, "[6]", stats)
+REG.register("08_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "[6]", stats)
+REG.register("08_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "[6]", stats)
+REG.register("08_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "[6]", stats)
+REG.register("08_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "[6]", stats)
 for key, tag, units, precision in (("Mw_30gpa", "mw_30gpa", "Mw", 3), ("Mw_sfcvm", "mw_harmonic", "Mw", 3),
                                    ("potency_m3", "potency_m3", "m3", 0), ("peak_slip_mm", "peak_slip_mm", "mm", 2),
                                    ("depth50_m", "depth50_m", "m", 0), ("depth90_m", "depth90_m", "m", 0)):
-    REG.register(f"08a_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "[10]", stats)
-    REG.register(f"08a_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "[10]", stats)
-    REG.register(f"08a_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "[10]", stats)
+    REG.register(f"08_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "[10]", stats)
+    REG.register(f"08_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "[10]", stats)
+    REG.register(f"08_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "[10]", stats)
 for _, row in deflection[deflection.far_band == "selected"].iterrows():
     tag = {"Data (3D model's plane removed)": "data", "3D model": "model", "Data (homogeneous model's plane removed)": "data_homplane",
            "Homogeneous model": "hom"}[row.field]
-    REG.register(f"08a_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "[8b]", stats)
-    REG.register(f"08a_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "[8b]", stats)
-REG.register("08a_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
-REG.register("08a_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
-REG.register("08a_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)
-REG.register("08a_stress_drop_width_m", width_m, "m", 0, where, "[11]", stats)
-REG.register("08a_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "[11]", stats)
-REG.register("08a_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "[11]", stats)
+    REG.register(f"08_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "[8b]", stats)
+    REG.register(f"08_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "[8b]", stats)
+REG.register("08_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
+REG.register("08_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
+REG.register("08_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)
+REG.register("08_stress_drop_width_m", width_m, "m", 0, where, "[11]", stats)
+REG.register("08_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "[11]", stats)
+REG.register("08_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "[11]", stats)
 REG.render()
 print(f"wrote {selected_file}")

@@ -11,10 +11,8 @@ gigabytes and run MintPy over ~360 acquisitions per frame, so they are run once
 per data refresh, by hand, in the order below. `run_all.sh` re-runs only the
 notebooks, which read the products these scripts write.
 
-The `runNN` names belong to the data-preparation chain and are unrelated to the
-`NN_name` numbers of the analysis notebooks; the gap after `run05` (the
-rain-gauge download is `run20`) follows the numbering of the original
-processing chain.
+The `runNN` names belong to the data-preparation chain and are unrelated to the `NN_name` numbers of the analysis
+notebooks.
 
 ## Run order
 
@@ -26,7 +24,7 @@ processing chain.
 | `run03_tropo.py` (+ `tropo_to_mintpy.py`) | OPERA L4 TROPO zenith-delay granules bracketing each acquisition (found via CMR), cropped to the AOI and projected into line of sight | `<frame>/tropo/cropped/`, `<frame>/tropo/corrections/`, `<frame>/mintpy/TROPO.h5` |
 | `run04_velocity.py` | MintPy conversion, common reference pixel at GNSS ZOA1, record and coherence masks, troposphere correction, velocity fit, and the same-orbit mosaics (step 6) | `<frame>/mintpy/timeseries*.h5`, `velocity*.h5`, `mask*.h5`, `mosaic/<orbit>_*.h5` |
 | `run05_GPS_InSAR_validation.py` | Plate-frame tie of each velocity field to the screened GNSS, and the tied mosaics that notebook 02 decomposes (step 5) | `<frame>/mintpy/velocity_NA.h5`, `mosaic/<orbit>_velocity_NA.h5`, `gps_insar_validation.csv` |
-| `run20_precip_ghcn.py` | NOAA GHCN-daily records for the gauges nearest Tule Pond, with the COOP observation-time shift documented | `external_inputs/GHCN_daily/*.csv` |
+| `run06_precip_ghcn.py` | NOAA GHCN-daily records for the gauges nearest Tule Pond, with the COOP observation-time shift documented | `external_inputs/GHCN_daily/*.csv` |
 
 `run05` imports `frame_grid` and `merge_orbit` from `run04`, so those two stay
 together. `run00` is independent of `run01`-`run04` and only has to precede
@@ -56,13 +54,13 @@ Prepared products go under `data_dir`, beside the frames they belong to, never
 into the repository; the notebooks' `outputs/` and `Figures_<date>/` folders are
 written only by the notebooks. The prep chain's own QC output is under
 `data_dir/prep_validation/` (`validation/` for run05's tie statistics,
-`precip/` for run20's prep-side rain tables); run05's per-station residuals are
+`precip/` for run06's prep-side rain tables); run05's per-station residuals are
 written beside the GNSS series, `GPS/gps_insar_validation.csv`.
 `run00` writes its GNSS station plots under `GPS/Figures/`, sorted into
 `Uncorrected/`, `Corrected/`, `Noisy/` and `Manual_Exclude/` for the visual
 review that sets the manual exclusion list. The notebooks do not read these QC
 products; notebook 10 builds its own rain composite from
-`external_inputs/GHCN_daily`, which is what `run20` downloads.
+`external_inputs/GHCN_daily`, which is what `run06` downloads.
 
 ## Inputs that are not produced here
 

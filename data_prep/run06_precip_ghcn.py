@@ -3,9 +3,8 @@
 """
 @author: Danielle Lindsay
 
-Daily precipitation at the Tule Pond section from NOAA GHCN-daily rain gauges
-(the variable and file names use the section's earlier name, Parkmont), for the
-comparison of creep-event timing with rainfall.
+Daily precipitation at the Tule Pond section from NOAA GHCN-daily rain gauges, for the comparison of creep-event
+timing with rainfall.
 
 No single gauge covers the whole 1979-2026 event record next to the section
 (37.56 N, -121.97 E):
@@ -48,8 +47,8 @@ into common_paths['ghcn_dir']; re-run with --refresh to update to the present.
 GHCN PRCP is stored in tenths of a millimetre; converted to mm here.
 
 Output (common_paths['precip_dir']):
-         parkmont_daily_precip.csv   (date, decyear, wy, dowy, prcp_mm, src, per-station mm)
-         parkmont_wateryear_totals.csv
+         tulepond_daily_precip.csv   (date, decyear, wy, dowy, prcp_mm, src, per-station mm)
+         tulepond_wateryear_totals.csv
          precip_station_stats.txt
 Source: NOAA NCEI GHCN-daily (Menne et al. 2012); written for this project.
 """
@@ -78,7 +77,7 @@ STATIONS = {                       # id: (short name, role, day shift)
     "USC00046336": ("OAKLAND_MUS", "alt", -1),     # COOP
 }
 COMPOSITE = ["FREMONT", "NEWARK", "HAYWARD_AT"]    # priority order
-PARKMONT = (37.557, -121.970)       # Tule Pond section centre (lat, lon)
+TULE_POND = (37.557, -121.970)       # Tule Pond section centre (lat, lon)
 T0 = "1978-10-01"                    # start of WY1979: first HRKT survey 1979.7
 
 
@@ -115,8 +114,8 @@ def dowy(dates):
 
 
 def km(lat, lon):
-    return np.hypot((lat - PARKMONT[0]) * 111.19,
-                    (lon - PARKMONT[1]) * 111.19 * np.cos(np.radians(PARKMONT[0])))
+    return np.hypot((lat - TULE_POND[0]) * 111.19,
+                    (lon - TULE_POND[1]) * 111.19 * np.cos(np.radians(TULE_POND[0])))
 
 
 def fetch(sid, refresh=False):
@@ -193,18 +192,18 @@ def main(refresh=False):
 
     os.makedirs(common_paths["precip_dir"], exist_ok=True)
     tab.to_csv(os.path.join(common_paths["precip_dir"],
-                            "parkmont_daily_precip.csv"),
+                            "tulepond_daily_precip.csv"),
                float_format="%.4f")
     wy.to_csv(os.path.join(common_paths["precip_dir"],
-                           "parkmont_wateryear_totals.csv"),
+                           "tulepond_wateryear_totals.csv"),
               float_format="%.1f")
 
-    lines = ["=" * 78, "PARKMONT DAILY PRECIPITATION, NOAA GHCN-daily  (run20)",
+    lines = ["=" * 78, "TULE POND DAILY PRECIPITATION, NOAA GHCN-daily  (run06)",
              "=" * 78,
-             f"segment centre {PARKMONT[0]:.3f} N {PARKMONT[1]:.3f} E; series "
+             f"segment centre {TULE_POND[0]:.3f} N {TULE_POND[1]:.3f} E; series "
              f"{grid[0].date()} to {grid[-1].date()}; water year Oct 1-Sep 30, "
              "named by the year it ends", "",
-             "stations (distance from Parkmont, record used, valid days):"]
+             "stations (distance from the section centre, record used, valid days):"]
     for nm, m in metas.items():
         lines.append(f"  {nm:<12} {m['sid']}  {m['name']:<38} "
                      f"{m['dist_km']:5.1f} km  {m['first']}..{m['last']}  "

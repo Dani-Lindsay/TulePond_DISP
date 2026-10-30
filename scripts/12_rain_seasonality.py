@@ -23,19 +23,19 @@
 #    the rainfall around the window (`event_table.csv`).
 # 3. **Onset seasonality**: every season-resolved onset (the InSAR windows and the bimonthly-era
 #    array windows, all `aa_dense_window_days` (130 d) or less) on the water year over the rainfall.
-#    The paper's Fig 3B is drawn by 11_forecast from the panel products saved here. The wet season
+#    The paper's Fig 3B is drawn by 13_forecast from the panel products saved here. The wet season
 #    is October to April (`TulePond_filepaths.wet_season_months`),
-#    the same months as the "WY2027 wet season" of 11_forecast.
+#    the same months as the "WY2027 wet season" of 13_forecast.
 # 4. **Rainfall conditioning of the onsets**: for each onset window, the water-year rainfall
 #    accumulated by then, the lag after fixed cumulative thresholds (rule A) and the lag after the
 #    first storm of the water year (rule B). Then a test of a 3-day rainfall total before the onset:
 #    whether an InSAR onset falls within X days after a 3-day total of at least Z mm more often than
 #    a random day of the same season in the same water year. The test uses only the five InSAR
 #    onsets and only the Fremont gauge; Z and X are swept (16 settings) and the p value is corrected
-#    for the search over settings. The quantities quoted in the prediction statement of 11_forecast
+#    for the search over settings. The quantities quoted in the prediction statement of 13_forecast
 #    are written to `rain_conditioning_summary.csv`.
 #
-# **Day convention (defined here; 11_forecast reads the days this notebook writes).** InSAR
+# **Day convention (defined here; 13_forecast reads the days this notebook writes).** InSAR
 # acquisitions are timed in UTC: the ascending pass (09157) is at about 02:08Z, the evening of the
 # previous local day (18:08 PST); the descending pass (11115) is at about 14:08Z, the morning of the
 # same local day (06:08 PST). The times are read from the OPERA granule names. Rainfall is booked by
@@ -47,10 +47,10 @@
 # the columns of the per-track series of 03). The window includes both days. The local day is
 # computed in `rain_day_timezone` and must equal the standard-time (UTC-8) day (asserted: no
 # acquisition is near local midnight, so daylight saving cannot change it). Array windows are survey
-# days, already local. The renewal forecast of 11_forecast works in continuous decimal years and is
+# days, already local. The renewal forecast of 13_forecast works in continuous decimal years and is
 # not affected (the offsets are hours).
 #
-# The forecast of the next event is computed in 11_forecast, which reads the Fig 3 panel products of
+# The forecast of the next event is computed in 13_forecast, which reads the Fig 3 panel products of
 # this notebook and `rain_conditioning_summary.csv` (part (3) of its prediction statement).
 #
 # **Inputs**: the three GHCN-daily gauge files (two in the composite, Hayward as the check gauge),
@@ -61,16 +61,16 @@
 # each track) and the OPERA granule names of each frame (`TulePond_filepaths.frames[<frame>]["data_dir"]`;
 # names only: the UTC time of each acquisition).
 #
-# **Outputs** (`outputs/10_rain_seasonality/`): `tulepond_daily_precip.csv`,
+# **Outputs** (`outputs/12_rain_seasonality/`): `tulepond_daily_precip.csv`,
 # `wateryear_totals.csv`, `event_table.csv` (window ends as local days, `window_day_basis`),
 # the Fig 3 panel products `fig3_rain_panel.npz` (with the wet-season months) and
 # `fig3_onset_windows.csv` (one row per onset window of both catalogues: `onset_lo`, `onset_hi`,
 # `onset_mid` for the plot position, the window as local calendar days `day_lo`, `day_hi`, the UTC
 # acquisitions that bound an InSAR window `utc_lo`, `utc_hi`, and the day of water year of each
-# end; read by 11_forecast), the rainfall conditioning `precip_conditioning_{events,thresholds}.csv`,
+# end; read by 13_forecast), the rainfall conditioning `precip_conditioning_{events,thresholds}.csv`,
 # `rain_total_sweep.csv` (the 16 settings of the 3-day rainfall-total test: hits, null expectation, p)
 # and `rain_conditioning_summary.csv` (one row per quantity quoted in the prediction statement of
-# 11_forecast: name, value, unit), the stats sidecar `10_rain_stats.txt`, and registry rows `10_*`.
+# 13_forecast: name, value, unit), the stats sidecar `10_rain_stats.txt`, and registry rows `10_*`.
 #
 # **Figures**: the rainfall conditioning with the p of every setting of the rainfall-total test
 # (`figS_precip_conditioning_bestY<Y>mm_rain3d_sweep16_nnull<n>`), supplement.
@@ -112,7 +112,7 @@ from matplotlib.lines import Line2D
 
 # %%
 # [4]
-notebook = "10_rain_seasonality"
+notebook = "12_rain_seasonality"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -144,8 +144,8 @@ rain_day_standard_offset_h = -8             # local standard time (PST); the loc
 # the seasonality
 resolvable_days = aa_dense_window_days   # array windows longer than this do not constrain the season (TulePond_filepaths: the bimonthly era of 09)
 # the wet season, (first month, last month), October to April: a single definition for this onset count and the
-# forecast window of 11_forecast, TulePond_filepaths.wet_season_months (imported above: a missing value stops the
-# import; 11_forecast checks it against the months saved here)
+# forecast window of 13_forecast, TulePond_filepaths.wet_season_months (imported above: a missing value stops the
+# import; 13_forecast checks it against the months saved here)
 wet_season_source = "TulePond_filepaths.wet_season_months"
 assert len(wet_season_first_last) == 2 and all(int(m) == m and 1 <= m <= 12 for m in wet_season_first_last), \
     f"wet_season_months must be (first month, last month), got {wet_season_first_last}"
@@ -173,10 +173,10 @@ n_null = 20000               # rainfall-total test: null realisations (each even
 rain_test_seed = 7           # seed of the random-number generator of the rainfall-total test
 
 # the InSAR stacks at the six arrays (09); only the first HRKT date is used here (the start of the InSAR record for Fig 3A)
-stacks_file = os.path.join(paths_out["09_alignment_arrays"], "aa_insar_stacks.csv")
+stacks_file = os.path.join(paths_out["13_alignment_arrays"], "aa_insar_stacks.csv")
 hrkt_file = os.path.join(common_paths["aa_dir"], "HRKT.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
-aa_events_file = os.path.join(paths_out["09_alignment_arrays"], "hrkt_aa_events.csv")
+aa_events_file = os.path.join(paths_out["13_alignment_arrays"], "hrkt_aa_events.csv")
 # the acquisition dates of each track (per-track series of 03, header only) and the frame whose granule names give their UTC times
 track_files = {}
 granule_dirs = {}
@@ -454,7 +454,7 @@ stats_lines.append(f"Check, Newark shift: vs Hayward on storm days r {r_as_publi
 #
 # The windows in local days (the day convention, header): `onset_days`, one row per window of both
 # catalogues, is the only place where a window is converted to calendar days; every rainfall quantity below
-# and 11_forecast read these days. The acquisition dates of each track are the per-track columns of 03, and
+# and 13_forecast read these days. The acquisition dates of each track are the per-track columns of 03, and
 # each must have a granule (asserted), so that each InSAR window end has a UTC time.
 #
 # Check, single gauge for the InSAR analysis: every InSAR onset window and the `insar_rain_check_days`
@@ -1006,10 +1006,10 @@ plt.show()
 
 
 # %% [markdown]
-# ## [21] The summary read by 11_forecast: `rain_conditioning_summary.csv`
+# ## [21] The summary read by 13_forecast: `rain_conditioning_summary.csv`
 #
-# Part (3) of the prediction statement of 11_forecast and its data line quote the rainfall conditioning.
-# The quantities are written here, one row per scalar (name, value, unit, description), and 11_forecast
+# Part (3) of the prediction statement of 13_forecast and its data line quote the rainfall conditioning.
+# The quantities are written here, one row per scalar (name, value, unit, description), and 13_forecast
 # reads them (and records the file fingerprint) without recomputing them: the onset days on the water
 # year, the rainfall accumulated at the onsets, the WY-total percentiles, the rainfall-total test (best
 # setting, its p and the search-corrected p), the lag spreads of the tightest rules and the calendar
@@ -1049,12 +1049,12 @@ rain_summary = pd.DataFrame(summary_rows, columns=["name", "value", "unit", "des
 assert rain_summary.name.is_unique
 rain_summary.to_csv(os.path.join(out_dir, "rain_conditioning_summary.csv"), index=False)
 print(rain_summary.to_string(index=False))
-print("saved rain_conditioning_summary.csv for 11_forecast")
+print("saved rain_conditioning_summary.csv for 13_forecast")
 
 # %% [markdown]
 # ## [23] The Fig 3 panels: the HRKT history and the onsets on the water year
 #
-# Fig 3 is drawn by 11_forecast, which also computes the repeat intervals and the forecast. This cell saves
+# Fig 3 is drawn by 13_forecast, which also computes the repeat intervals and the forecast. This cell saves
 # the inputs of its left column: the rainfall grid on the water year (one column per water year, filled with the
 # running `density_days`-day rainfall total on the day of the water year), the onset windows of both catalogues
 # (day of water year of each window end), and the end of the bimonthly HRKT surveys.
@@ -1090,8 +1090,8 @@ assert len(windows) == len(aa_dense) + len(insar_events) and windows[["dowy_lo",
 windows.to_csv(os.path.join(out_dir, "fig3_onset_windows.csv"), index=False)
 np.savez(os.path.join(out_dir, "fig3_rain_panel.npz"), rain_grid=rain_grid, x_edges=np.asarray(x_edges), density_days=density_days,
          density_max=density_max, x0=x0, x1=x1, loma_prieta=loma_prieta, dense_era_end=dense_era_end, insar_start=insar_start,
-         rain_colours=np.array(rain_colours), wet_season_months=np.array(wet_season_months))     # 11_forecast checks that it uses the same season
-print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 11_forecast")
+         rain_colours=np.array(rain_colours), wet_season_months=np.array(wet_season_months))     # 13_forecast checks that it uses the same season
+print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 13_forecast")
 
 # %% [markdown]
 # ## [25] Registry: the stats sidecar `10_rain_stats.txt` and the `10_*` numbers
@@ -1102,48 +1102,48 @@ stats_lines += ["", f"onset windows against the wet season ({wet_season_text}, m
                 f"{100 * wet_share.median():.0f} % of the year's rain): "
                 f"{n_wet_inside} of {len(event_table)} wholly inside, {n_wet_partly} partly, {n_wet_outside} wholly outside; "
                 f"InSAR {n_insar_wet_inside} of {is_insar.sum()} wholly inside"]
-sidecar = REG.sidecar("10_rain", stats_lines)
-REG.register("10_rain_series_start", str(days[0].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("10_rain_series_end", str(days[-1].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("10_wy_median_mm", complete_years.total_mm.median(), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("10_wy_p10_mm", complete_years.total_mm.quantile(.1), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("10_wy_p90_mm", complete_years.total_mm.quantile(.9), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
-REG.register("10_n_aa_season_resolved", len(aa_dense), "count", 0, where="Fig3 caption", cell="catalogues", sidecar=sidecar)
-REG.register("10_n_events", len(event_table), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+sidecar = REG.sidecar("12_rain", stats_lines)
+REG.register("12_rain_series_start", str(days[0].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("12_rain_series_end", str(days[-1].date()), "date", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("12_wy_median_mm", complete_years.total_mm.median(), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("12_wy_p10_mm", complete_years.total_mm.quantile(.1), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("12_wy_p90_mm", complete_years.total_mm.quantile(.9), "mm", 0, where="M9", cell="rain", sidecar=sidecar)
+REG.register("12_n_aa_season_resolved", len(aa_dense), "count", 0, where="Fig3 caption", cell="catalogues", sidecar=sidecar)
+REG.register("12_n_events", len(event_table), "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
 # the season is part of the key (e.g. 10_n_wet_oct_apr_inside), so a different season gives different keys
-REG.register(f"10_n_wet_{wet_season_tag}_inside", n_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register(f"10_n_wet_{wet_season_tag}_partly", n_wet_partly, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register(f"10_n_wet_{wet_season_tag}_outside", n_wet_outside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register(f"10_n_insar_wet_{wet_season_tag}_inside", n_insar_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
-REG.register(f"10_wet_{wet_season_tag}_rain_pct", 100 * wet_share.median(), "%", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"12_n_wet_{wet_season_tag}_inside", n_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"12_n_wet_{wet_season_tag}_partly", n_wet_partly, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"12_n_wet_{wet_season_tag}_outside", n_wet_outside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"12_n_insar_wet_{wet_season_tag}_inside", n_insar_wet_inside, "count", 0, where="P10", cell="seasonality", sidecar=sidecar)
+REG.register(f"12_wet_{wet_season_tag}_rain_pct", 100 * wet_share.median(), "%", 0, where="P10", cell="seasonality", sidecar=sidecar)
 # the rainfall conditioning ([16], [18])
-REG.register("10_insar_onset_dowy_min", int(insar_rain.dowy_lo.min()), "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_onset_dowy_max", int(insar_rain.dowy_hi.max()), "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_onset_earliest", dowy_label(insar_rain.dowy_lo.min()), "date", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_onset_latest", dowy_label(insar_rain.dowy_hi.max()), "date", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_onset_calendar_spread_d", calendar_spread, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_wy_total_min_mm", insar_rain.wy_total_mm.min(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_wy_total_max_mm", insar_rain.wy_total_mm.max(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_wy_percentile_min", (wy_total_series < insar_rain.wy_total_mm.min()).mean() * 100, "pct", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_wy_percentile_max", (wy_total_series < insar_rain.wy_total_mm.max()).mean() * 100, "pct", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_cum_at_onset_min_mm", insar_rain.cum_at_lo.min(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_cum_at_onset_max_mm", insar_rain.cum_at_hi.max(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_insar_frac_at_onset_min", insar_rain.frac_at_lo.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)   # at the window start
-REG.register("10_insar_frac_at_onset_max", insar_rain.frac_at_hi.max(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_onset_dowy_min", int(insar_rain.dowy_lo.min()), "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_onset_dowy_max", int(insar_rain.dowy_hi.max()), "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_onset_earliest", dowy_label(insar_rain.dowy_lo.min()), "date", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_onset_latest", dowy_label(insar_rain.dowy_hi.max()), "date", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_onset_calendar_spread_d", calendar_spread, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_wy_total_min_mm", insar_rain.wy_total_mm.min(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_wy_total_max_mm", insar_rain.wy_total_mm.max(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_wy_percentile_min", (wy_total_series < insar_rain.wy_total_mm.min()).mean() * 100, "pct", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_wy_percentile_max", (wy_total_series < insar_rain.wy_total_mm.max()).mean() * 100, "pct", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_cum_at_onset_min_mm", insar_rain.cum_at_lo.min(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_cum_at_onset_max_mm", insar_rain.cum_at_hi.max(), "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_insar_frac_at_onset_min", insar_rain.frac_at_lo.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)   # at the window start
+REG.register("12_insar_frac_at_onset_max", insar_rain.frac_at_hi.max(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
 # the array onsets bound the fraction from both sides: the earliest array window end and the latest array window start
-REG.register("10_aa_frac_at_onset_end_min", aa_rain.frac_at_hi.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_aa_frac_at_onset_start_max", aa_rain.frac_at_lo.max(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_ruleA_best_Y_mm", best_rule_a.thr, "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_ruleA_lag_min_d", best_rule_a.insar_lag_min, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_ruleA_lag_max_d", best_rule_a.insar_lag_max, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_ruleB_best_Z_mm", best_rule_b.thr, "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_ruleB_lag_min_d", best_rule_b.insar_lag_min, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_ruleB_lag_max_d", best_rule_b.insar_lag_max, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
-REG.register("10_rain_sweep_best_Z_mm", int(best_sweep.Z_mm), "mm", 0, where="P10", cell="rain sweep", sidecar=sidecar)
-REG.register("10_rain_sweep_best_X_d", int(best_sweep.X_d), "d", 0, where="P10", cell="rain sweep", sidecar=sidecar)
-REG.register("10_rain_sweep_best_hits", best_sweep.hits, "count", 2, where="P10", cell="rain sweep", sidecar=sidecar)
-REG.register("10_rain_sweep_best_null_hits", best_sweep.null_mean, "count", 2, where="P10", cell="rain sweep", sidecar=sidecar)
-REG.register("10_rain_sweep_best_p", best_sweep.p, "1", 3, where="P10", cell="rain sweep", sidecar=sidecar)
-REG.register("10_rain_sweep_p_search_paid", p_search_paid, "1", 3, where="P10", cell="rain sweep", sidecar=sidecar)
-REG.register("10_rain_sweep_n_settings", n_settings, "count", 0, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_aa_frac_at_onset_end_min", aa_rain.frac_at_hi.min(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_aa_frac_at_onset_start_max", aa_rain.frac_at_lo.max(), "1", 2, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_ruleA_best_Y_mm", best_rule_a.thr, "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_ruleA_lag_min_d", best_rule_a.insar_lag_min, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_ruleA_lag_max_d", best_rule_a.insar_lag_max, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_ruleB_best_Z_mm", best_rule_b.thr, "mm", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_ruleB_lag_min_d", best_rule_b.insar_lag_min, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_ruleB_lag_max_d", best_rule_b.insar_lag_max, "d", 0, where="P10", cell="conditioning", sidecar=sidecar)
+REG.register("12_rain_sweep_best_Z_mm", int(best_sweep.Z_mm), "mm", 0, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_rain_sweep_best_X_d", int(best_sweep.X_d), "d", 0, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_rain_sweep_best_hits", best_sweep.hits, "count", 2, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_rain_sweep_best_null_hits", best_sweep.null_mean, "count", 2, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_rain_sweep_best_p", best_sweep.p, "1", 3, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_rain_sweep_p_search_paid", p_search_paid, "1", 3, where="P10", cell="rain sweep", sidecar=sidecar)
+REG.register("12_rain_sweep_n_settings", n_settings, "count", 0, where="P10", cell="rain sweep", sidecar=sidecar)
 REG.render()

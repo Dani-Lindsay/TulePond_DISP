@@ -32,9 +32,9 @@ repo_dir = os.path.dirname(os.path.abspath(__file__))
 #   mosaic_velfield/       the tied same-orbit velocity + geometry mosaics (run04 step 6, run05)
 #   external_inputs/       fault trace, arrays, creepmeters, GHCN, catalogues, qfaults, USGS SFCVM v26
 #   GPS/                   the screened UNR series and the run05 tie table
-#   prep_validation/       run05's GNSS-tie record and run20's rain tables
+#   prep_validation/       run05's GNSS-tie record and run06's rain tables
 #   aperture_sweep/        the archived aperture sweep that notebook 04 reads
-#   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07a), impulse and test-slip dbs
+#   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07), impulse and test-slip dbs
 #   modeling_uniform/      the homogeneous (30 GPa) PyLith runs and the analytic (CSI) Green's functions: G matrices, run
 #                          outputs, slip dbs, the CSI validation products
 #   modeling_SFCVM/        the USGS SFCVM PyLith runs: material grids and dbs (aligned, +/- 50 m, as is, no Poisson cap),
@@ -58,10 +58,10 @@ executed_dir = os.path.join(data_dir, "executed")   # run_all.sh: the HTML copy 
 inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
 # ------------------------
-# The slip models (notebooks 07a, 08a, 08b and scripts/sensitivity/) and their PyLith runs (pylith/, README there).
+# The slip models (notebooks 07, 08, 10 and scripts/sensitivity/) and their PyLith runs (pylith/, README there).
 # Three folders:
 #   modeling_inputs/   shared by both media: the gmsh meshes and fault geometry, the quadtree sample sets written by
-#                      07a (the PyLith output points), the impulse and test-slip spatial databases
+#                      07 (the PyLith output points), the impulse and test-slip spatial databases
 #   modeling_uniform/  the homogeneous medium (mu 30 GPa, nu 0.25): its PyLith runs, G matrices (including the analytic
 #                      CSI Green's functions of the homogeneous comparison model), slip databases of its forward runs,
 #                      and the CSI-vs-PyLith validation products
@@ -83,7 +83,7 @@ paths_pylith = {
 paths_inputs = {
     "root":      model_inputs_dir,
     "mesh":      os.path.join(model_inputs_dir, "mesh"),       # gmsh meshes (.msh, *_fault.npz, *_report.txt), trace_tmerc.txt
-    "points":    os.path.join(model_inputs_dir, "points"),     # the sample sets (07a): insar_points[_swath7|_coh07].{txt,npz}; fig2_points_<label>.txt
+    "points":    os.path.join(model_inputs_dir, "points"),     # the sample sets (07): insar_points[_swath7|_coh07].{txt,npz}; fig2_points_<label>.txt
     "spatialdb": os.path.join(model_inputs_dir, "spatialdb"),  # impulse region and validation-slip databases (medium independent)
 }
 
@@ -100,7 +100,7 @@ def _medium_paths(root):
 
 
 paths_uniform = _medium_paths(model_uniform_dir)
-paths_uniform["validation"] = os.path.join(model_uniform_dir, "validation")   # 08a: PyLith homogeneous vs CSI Meade, 2D screw
+paths_uniform["validation"] = os.path.join(model_uniform_dir, "validation")   # 08: PyLith homogeneous vs CSI Meade, 2D screw
 paths_sfcvm = _medium_paths(model_sfcvm_dir)
 
 
@@ -113,7 +113,7 @@ def medium_paths(medium):
     return paths_sfcvm
 
 
-# Constants of the slip models shared by 07a, 08a, 08b and scripts/sensitivity/ (one definition each).
+# Constants of the slip models shared by 07, 08, 10 and scripts/sensitivity/ (one definition each).
 model_crs = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +type=crs"   # PyLith mesh CRS (m)
 model_frame_lonlat = (-121.968, 37.557)   # CSI local frame centre (lon0, lat0) = the mesh CRS origin (the creep-section centre)
 # QC products of the data_prep chain (station residuals, the prep-side rain
@@ -223,7 +223,7 @@ common_paths = {
     "sweep_dir": os.path.join(data_dir, "aperture_sweep"),
 
     # Written by the data_prep chain and not read by the notebooks: run05's
-    # per-station GNSS/InSAR residuals, and run20's prep-side rain tables
+    # per-station GNSS/InSAR residuals, and run06's prep-side rain tables
     # (notebook 10 builds its own composite from `ghcn_dir`).
     "validation_dir": os.path.join(prep_dir, "validation"),
     "precip_dir":     os.path.join(prep_dir, "precip"),
@@ -267,7 +267,7 @@ segments = {
 coz1_large_events_yr = (2019.02, 2022.13)
 coz1_large_tol_days = 12.0     # one long (12 d) acquisition interval
 
-# Box for the per-pixel event maps (notebook 06) and the slip models (07a, 08a):
+# Box for the per-pixel event maps (notebook 06) and the slip models (07, 08):
 # W, S, E, N in degrees, around the Tule Pond section.
 box_lonlat = (-122.10, 37.46, -121.84, 37.65)
 
@@ -446,9 +446,8 @@ paths_gps = {
 paths_out = {nb: os.path.join(out_dir, nb) for nb in (
     "01_prep_inputs", "01_prep_figures", "02_velocity_decomposition", "03_creep_timeseries",
     "04_event_detection", "05_validation", "06_event_field_geometry",
-    "07a_uniform_model", "07c_fig2", "08a_3d_model", "08b_sensitivity",
-    "09_alignment_arrays",
-    "10_rain_seasonality", "11_forecast", "12_paper_figures")}
+    "07_model_data", "08_3d_model", "09_fig2", "10_model_sensitivity",
+    "11_alignment_arrays", "12_rain_seasonality", "13_forecast", "14_paper_figures")}
 
 
 # ------------------------

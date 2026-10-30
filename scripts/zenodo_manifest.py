@@ -21,18 +21,18 @@ from TulePond_filepaths import data_dir          # noqa: E402
 import model_config as cfg                       # noqa: E402
 
 # the folders and root files of the deposit (slip models); everything else of the data root is outside this manifest
-FOLDERS = ["modeling_inputs", "modeling_SFCVM", "modeling_uniform", "runs_done_2026-10-25", "outputs/07a_uniform_model",
-           "outputs/08a_3d_model", "outputs/08b_sensitivity", "outputs/07c_fig2", os.path.basename(cfg.sensitivity_dir),
-           "sensitivity_2026-10-27", "dip_checks_2026-10-26", "depth_scan_2026-10-28", "order2_surface_tent_check_2026-10-25",
+FOLDERS = ["modeling_inputs", "modeling_SFCVM", "modeling_uniform", "pylith_runs_done", "outputs/07_model_data",
+           "outputs/08_3d_model", "outputs/10_model_sensitivity", "outputs/09_fig2", os.path.basename(cfg.sensitivity_dir),
+           "sensitivity_2026-10-27", "depth_scan_2026-10-28", "order2_surface_tent_check_2026-10-25",
            "basement_depth_2026-10-28", "semivariogram_2026-10-28", "Figures_2026-10-28", "external_inputs/USGS_SFCVM_v26-0"]
 ROOT_FILES = ["run_production_2026-10-25.sh", "run_production_2026-10-25.jobs", "run_production_2026-10-25.log",
               "run_rerun_2026-10-25.sh", "run_rerun_2026-10-25.jobs", "run_rerun_2026-10-25.log",
               "run_shallow_dips_2026-10-26.sh", "run_shallow_dips_2026-10-26.jobs", "run_shallow_dips_2026-10-26.log",
               "CHOICES_REGISTER_2026-10-25.md"]
 REPO_FOLDERS = ["pylith", "scripts/sensitivity"]
-REPO_FILES = ["model_config.py", "model_utils.py", "TulePond_filepaths.py", "insar_utils.py", "scripts/07a_uniform_model.py",
-              "scripts/08a_3d_model.py", "scripts/08b_sensitivity.py", "scripts/07c_fig2.py", "scripts/zenodo_manifest.py",
-              "07a_uniform_model.ipynb", "08a_3d_model.ipynb", "08b_sensitivity.ipynb", "07c_fig2.ipynb", "tests/test_model_utils.py"]
+REPO_FILES = ["model_config.py", "model_utils.py", "TulePond_filepaths.py", "insar_utils.py", "scripts/07_model_data.py",
+              "scripts/08_3d_model.py", "scripts/10_model_sensitivity.py", "scripts/09_fig2.py", "scripts/zenodo_manifest.py",
+              "07_model_data.ipynb", "08_3d_model.ipynb", "10_model_sensitivity.ipynb", "09_fig2.ipynb", "tests/test_model_utils.py"]
 SKIP = ["*/__pycache__/*", "*/_to_delete_*", "*/.DS_Store", "*.pyc", "*/retired_2026-10-28/*"]
 SELECTED_RUNS = {cfg.gf_run}
 SENSITIVITY_RUNS = {"gf_shallow_dip70e_sfcvm_order2", "gf_shallow_dip70w_sfcvm_order2", "gf_default_sfcvm_order2",
@@ -78,7 +78,7 @@ def describe(path):
     if parts[0] in ("modeling_SFCVM", "modeling_uniform") and parts[1] == "gf":
         if name.startswith("G_analytic"):
             return ("analytic homogeneous Green's functions on the PyLith tents (CSI Meade 2007, n_sub in the name)",
-                    "model_utils.analytic_tent_G_cached (07a [7])", "paper")
+                    "model_utils.analytic_tent_G_cached (07 [7])", "paper")
         run = name[2:].replace(".npz", "")
         return (f"fault-parallel G matrix of run {run} (samples x impulses, m/m, right-lateral +)", "model_utils.build_G / load_G", run_role(run))
     if parts[0] in ("modeling_SFCVM", "modeling_uniform") and parts[1] == "runs":
@@ -108,25 +108,25 @@ def describe(path):
         return ("mesh-generation log or helper", "pylith/build/", "record")
     if parts[0] == "modeling_inputs" and parts[1] == "points":
         if name.startswith("insar_points"):
-            return ("PyLith output points = 07a's quadtree samples (txt: name x y z, m; npz: data, block sizes, noise model)",
-                    "07a_uniform_model [6]", "paper" if name.startswith("insar_points.") else "sensitivity")
-        return ("sample-set auxiliary file (coherence-0.7 field, old Fig-2 profile points)", "07a / old 08a", "superseded")
+            return ("PyLith output points = 07's quadtree samples (txt: name x y z, m; npz: data, block sizes, noise model)",
+                    "07_model_data [6]", "paper" if name.startswith("insar_points.") else "sensitivity")
+        return ("sample-set auxiliary file (coherence-0.7 field, old Fig-2 profile points)", "07 / old 08", "superseded")
     if parts[0] == "modeling_inputs":
         return ("pre-2026-10-06 sample-set drafts", "drafts", "superseded")
     if parts[0] in ("modeling_SFCVM", "modeling_uniform"):
-        return ("medium folder auxiliary file (validation products of the order-1 08a)", "old 08a", "superseded")
-    if parts[0] == "runs_done_2026-10-25":
+        return ("medium folder auxiliary file (validation products of the order-1 08)", "old 08", "superseded")
+    if parts[0] == "pylith_runs_done":
         return (f"done marker of PyLith run {name}", "run_production_2026-10-25.sh / run_shallow_dips_2026-10-26.sh", "record")
     if parts[0] == "outputs":
         nb = parts[1]
         return (f"product of notebook {nb} ({name})", nb, "paper")
     if parts[0] == os.path.basename(cfg.sensitivity_dir):
-        return (f"sensitivity result ({name}), the csvs 08b_sensitivity draws", "scripts/sensitivity/ (provenance column of each csv)", "sensitivity")
+        return (f"sensitivity result ({name}), the csvs 10_model_sensitivity draws", "scripts/sensitivity/ (provenance column of each csv)", "sensitivity")
     if parts[0] == "Figures_2026-10-28":
-        return (f"figure ({name})", "07c / 08a / 08b (fig_date 2026-10-28)", "paper")
+        return (f"figure ({name})", "09 / 08 / 10 (fig_date 2026-10-28)", "paper")
     if parts[0] == "external_inputs":
         return ("USGS SFCVM v26.0 (Hirakawa & Aagaard 2026), third-party input: check the licence before redistributing", "USGS", "input")
-    if parts[0] in ("sensitivity_2026-10-27", "dip_checks_2026-10-26", "depth_scan_2026-10-28", "order2_surface_tent_check_2026-10-25",
+    if parts[0] in ("sensitivity_2026-10-27", "depth_scan_2026-10-28", "order2_surface_tent_check_2026-10-25",
                     "basement_depth_2026-10-28", "semivariogram_2026-10-28"):
         return (f"archived sweep of {parts[0][-10:]} ({name}); superseded by the re-run in {os.path.basename(cfg.sensitivity_dir)} "
                 "except the n_sub 4 analytic G caches it holds", f"the script in {parts[0]}/", "superseded"

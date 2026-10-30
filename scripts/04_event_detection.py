@@ -26,7 +26,7 @@
 #    rate and the event-driven fraction of slip.
 # 4. **Section lengths**: (a) the length of fault hosting the events, where the
 #    cumulative event slip exceeds a threshold set from the flank scatter;
-#    (b) the width of the peak slip zone at 75% and 90% of the peak fraction.
+#    (b) the width of the peak slip zone at 90% of the peak fraction.
 # 5. **Band stack**: the joint model fitted to the mean of the peak-zone
 #    crossings, giving the amplitudes quoted for the five events.
 # 6. **Slip budget**: inter-event + event-driven rate (the five Tule Pond events
@@ -110,9 +110,8 @@ seed = 0                # bootstrap random seed
 min_epoch_frac = 0.5    # a crossing needs >50% finite epochs to be fitted
 smooth_km = 0.4         # along-fault smoothing of the profiles (gap-preserving; sigma in km along the trace)
 total_floor_mm = 1.0    # |total slip| below this: fraction undefined
-band_fracs = (0.75, 0.90)   # the peak slip zone: fraction >= this x its local peak
-band_main = paper_band_frac  # the band the figures draw and the paper quotes (TulePond_filepaths, also read by 11)
-assert band_main in band_fracs, f"the paper's band {band_main} is not one of the bands computed {band_fracs}"
+band_main = paper_band_frac  # the peak slip zone: fraction >= this x its local peak (TulePond_filepaths, also read by 13)
+band_fracs = (band_main,)
 flank_km = ((52.0, 56.0), (64.0, 68.0))   # flanks used for the creep-length threshold (Tule Pond)
 seis_max_dist_km = 2.0  # seismicity and repeaters within this of the trace
 neg_floor_frac = 0.2    # hovmoller colour scale starts at -this x vmax so early-epoch noise is not clipped to white
@@ -127,7 +126,9 @@ rate_band_min_n = 5      # ... drawn as shading only where at least this many cr
 strike_map = 144.0      # page rotation of the map panel (mean strike, notebook 02)
 ref_patch_km = 5.0      # map display reference: CTM1-COZ1 patch, +/- this across the fault
 
-# the two sections: (title, segment key, fraction column, seed centre km, half-span km, creepmeter)
+# The two sections analysed: (title, segment key, fraction column, search centre km, search half-width km, creepmeter).
+# The search window only bounds where the along-fault peak of event slip is looked for; the section extent and the
+# 90 % band are then measured from the data within it.
 SEGS = [("Tule Pond", "TULEPOND", "tulepond", 58.0, 10.0, ""),
         ("Oakland (control)", "COZ1", "coz1", 32.0, 15.0, "COZ1")]
 
@@ -719,8 +720,7 @@ print(f"window re-centred on the cumulative-slip peak at {peak_km:.1f} km: {w_lo
 #    same profile falls from 90 % to 10 % of its peak, walking out from the peak
 #    north and south (linear between crossings).
 # 2. **Width of the peak slip zone**: the contiguous run where the smoothed
-#    event-driven fraction is at least 75% (and, alternatively, 90%) of its
-#    peak. The 90% band is the one drawn in the figures and quoted in the paper.
+#    event-driven fraction is at least 90% of its peak.
 
 # %%
 # [20]
@@ -796,7 +796,6 @@ coz1_lo, coz1_hi, coz1_n = contiguous_span(km_sorted, fraction_coz1_window, coz1
 band_lo, band_hi, band_n = bands[band_main]
 section_lengths = pd.DataFrame([
     dict(name="tulepond_creep_length", km_lo=len_lo, km_hi=len_hi, lat_lo=lat_of_km(len_hi), lat_hi=lat_of_km(len_lo), n=len_n),
-    dict(name="tulepond_band75", km_lo=bands[0.75][0], km_hi=bands[0.75][1], lat_lo=lat_of_km(bands[0.75][1]), lat_hi=lat_of_km(bands[0.75][0]), n=bands[0.75][2]),
     dict(name="tulepond_band90", km_lo=bands[0.90][0], km_hi=bands[0.90][1], lat_lo=lat_of_km(bands[0.90][1]), lat_hi=lat_of_km(bands[0.90][0]), n=bands[0.90][2]),
     dict(name="oakland_band75", km_lo=coz1_lo, km_hi=coz1_hi, lat_lo=lat_of_km(coz1_hi), lat_hi=lat_of_km(coz1_lo), n=coz1_n)])
 section_lengths.to_csv(os.path.join(out_dir, "section_lengths.csv"), index=False)

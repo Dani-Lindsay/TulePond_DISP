@@ -1,5 +1,5 @@
 """basement_depth.py: the SFSVM sediment / basement contact beside the Tule Pond section (the grey band of the depth-scan
-figure of notebook 08b).
+figure of notebook 10).
 
 Author: Danielle Lindsay
 

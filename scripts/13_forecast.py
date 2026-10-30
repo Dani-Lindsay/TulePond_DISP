@@ -8,7 +8,7 @@
 # ```
 #
 # **Contents.** The repeat intervals, the renewal forecasts and the prediction statement, computed from the event
-# catalogues (04, 09) and the rainfall products of 10_rain_seasonality:
+# catalogues (04, 09) and the rainfall products of 12_rain_seasonality:
 #
 # 1. **The repeat intervals** (computed only in this notebook): for each of `n_timing` draws of the onsets,
 #    uniform within their windows (no midpoints), the sample mean and sample SD (ddof = 1) of the record's
@@ -36,7 +36,7 @@
 # 4. **The InSAR clock** in closed form (mean interval, t-based prediction interval), on the same
 #    onset draws as 1.
 # 5. **Fig 3** and **the prediction statement**, combining the recurrence windows with the calendar
-#    window of the onsets (from `rain_conditioning_summary.csv` of 10_rain_seasonality, where the
+#    window of the onsets (from `rain_conditioning_summary.csv` of 12_rain_seasonality, where the
 #    rainfall-conditioning tests are computed).
 #
 # Loma Prieta: the array forecast is given both without and with the interval spanning the 1989
@@ -45,8 +45,8 @@
 # southern Hayward fault was suppressed after Loma Prieta; Lienkaemper et al. 1997).
 #
 # Wet season: October to April, `TulePond_filepaths.wet_season_months` = (first month, last month), shared
-# with the onset-season count of 10_rain_seasonality (this notebook checks it against the months saved by
-# 10_rain_seasonality). `forecast_wet_season` is that season in the first water year whose season ends after
+# with the onset-season count of 12_rain_seasonality (this notebook checks it against the months saved by
+# 12_rain_seasonality). `forecast_wet_season` is that season in the first water year whose season ends after
 # the last observation (WY2027: every "P(WY2027 wet season)").
 #
 # **Quantiles beyond the forecast grid.** The forecast curves are evaluated on a daily grid (`grid`, derived
@@ -64,10 +64,10 @@
 # `aa_insar_stacks.csv`, 10 `fig3_rain_panel.npz` (with the wet-season months of 10), `fig3_onset_windows.csv`
 # and `rain_conditioning_summary.csv`, and the HRKT array file.
 #
-# **Outputs** (`outputs/11_forecast/`): `recurrence_forecast_models.csv` (every record x model: interval
+# **Outputs** (`outputs/13_forecast/`): `recurrence_forecast_models.csv` (every record x model: interval
 # statistics, quantiles, P(wet season)), `recurrence_intervals.csv` (the interval statistics of 1., per record),
 # `recurrence_forecast_wg99.csv` (every record x aperiodicity branch, the mixtures and the InSAR alpha-pivot
-# forecast), `prediction_statement.txt`, the stats sidecar `11_forecast_stats.txt`, and registry rows `11_*`.
+# forecast), `prediction_statement.txt`, the stats sidecar `13_forecast_stats.txt`, and registry rows `11_*`.
 #
 # **Figures**: the paper's Fig 3 (`fig3_history_forecast_ntiming400_nboot5_issue<date>`: A HRKT history, B
 # onsets over the rainfall, C repeat intervals, D the forecast); the five renewal models
@@ -110,7 +110,7 @@ from matplotlib.ticker import MultipleLocator
 
 # %%
 # [4]
-notebook = "11_forecast"
+notebook = "13_forecast"
 out_dir = os.path.join(common_paths["out_dir"], notebook)
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -154,7 +154,7 @@ assert abs(sum(wg99_alpha_weights) - 1) < 1e-12 and all(abs(sum(w) - 1) < 1e-12 
 falsification_levels = (0.05, 0.01)
 
 # the wet season, (first month, last month), October to April: the same definition as the onset count of
-# 10_rain_seasonality, TulePond_filepaths.wet_season_months (imported above: a missing value stops the import).
+# 12_rain_seasonality, TulePond_filepaths.wet_season_months (imported above: a missing value stops the import).
 # forecast_wet_season (its dates in the coming water year) is set once the last observation is read, cell [8].
 wet_season_source = "TulePond_filepaths.wet_season_months"
 assert len(wet_season_first_last) == 2 and all(int(m) == m and 1 <= m <= 12 for m in wet_season_first_last), \
@@ -172,11 +172,11 @@ magnitude_band = f"band{magnitude_band_pct}"      # its name in 04 (section_leng
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 section_lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
-aa_events_file = os.path.join(paths_out["09_alignment_arrays"], "hrkt_aa_events.csv")
-aa_stacks_file = os.path.join(paths_out["09_alignment_arrays"], "aa_insar_stacks.csv")
-rain_panel_file = os.path.join(paths_out["10_rain_seasonality"], "fig3_rain_panel.npz")
-windows_file = os.path.join(paths_out["10_rain_seasonality"], "fig3_onset_windows.csv")
-rain_summary_file = os.path.join(paths_out["10_rain_seasonality"], "rain_conditioning_summary.csv")
+aa_events_file = os.path.join(paths_out["13_alignment_arrays"], "hrkt_aa_events.csv")
+aa_stacks_file = os.path.join(paths_out["13_alignment_arrays"], "aa_insar_stacks.csv")
+rain_panel_file = os.path.join(paths_out["12_rain_seasonality"], "fig3_rain_panel.npz")
+windows_file = os.path.join(paths_out["12_rain_seasonality"], "fig3_onset_windows.csv")
+rain_summary_file = os.path.join(paths_out["12_rain_seasonality"], "rain_conditioning_summary.csv")
 hrkt_file = os.path.join(common_paths["aa_dir"], "HRKT.csv")
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
@@ -233,7 +233,7 @@ def wet_season_of(wy):
 # asserted) and ends on the 1 January after the last observation plus `grid_span_means` times the
 # longest mean interval of the four catalogues (point onsets: window midpoints).
 #
-# `rain_conditioning_summary.csv` of 10_rain_seasonality gives part (3) of the prediction statement and the
+# `rain_conditioning_summary.csv` of 12_rain_seasonality gives part (3) of the prediction statement and the
 # last Fremont day of its data line (read, not recomputed here).
 
 # %%
@@ -281,10 +281,10 @@ forecast_wet_season = wet_season_of(forecast_wy)
 wet_label = f"WY{forecast_wy} wet season"            # every "P(WY<N> wet season)" and the registry keys _p_wet_wy<N>
 # the same season in 10 and 11: the months in which 10 counted the onsets must be these
 with np.load(rain_panel_file) as rain_panel_saved:
-    assert "wet_season_months" in rain_panel_saved.files, f"{rain_panel_file} has no wet_season_months: rerun 10_rain_seasonality"
+    assert "wet_season_months" in rain_panel_saved.files, f"{rain_panel_file} has no wet_season_months: rerun 12_rain_seasonality"
     rain_panel_months = [int(m) for m in rain_panel_saved["wet_season_months"]]
 assert rain_panel_months == wet_season_months, \
-    f"10_rain_seasonality counted the onsets in months {rain_panel_months}, this notebook uses {wet_season_months}: rerun 10"
+    f"12_rain_seasonality counted the onsets in months {rain_panel_months}, this notebook uses {wet_season_months}: rerun 10"
 print(f"{wet_label}: {forecast_wet_season[0]} to {forecast_wet_season[1]} ({wet_months_text}, {wet_season_source}; same months as 10)")
 
 # the forecast grid, daily: from the first 1 January after the last InSAR onset window to grid_span_means of the longest
@@ -313,7 +313,7 @@ rain_summary_needed = ["n_insar_onsets", "onset_dowy_min", "onset_dowy_max", "on
                        "rain_sweep_best_hits", "rain_sweep_best_null_hits", "rain_sweep_best_p", "rain_sweep_p_search_paid",
                        "rain_sweep_n_settings", "ruleA_best_spread_d", "ruleB_best_spread_d", "fremont_last_valid_day"]
 missing_summary = sorted(set(rain_summary_needed) - set(rain_summary.index))
-assert not missing_summary, f"{rain_summary_file} lacks {missing_summary}: rerun 10_rain_seasonality"
+assert not missing_summary, f"{rain_summary_file} lacks {missing_summary}: rerun 12_rain_seasonality"
 
 
 def rain_value(name):
@@ -961,7 +961,7 @@ print("\n".join(clock_lines))
 #
 # Left column on one time axis: A) the HRKT record with the bimonthly-era detections shaded, the
 # annual-survey years greyed, the InSAR stack tied to it and the InSAR onsets dashed, HRKT since 2015
-# as an inset; B) the onset windows on the water year over the 7-day rainfall (from 10_rain_seasonality).
+# as an inset; B) the onset windows on the water year over the 7-day rainfall (from 12_rain_seasonality).
 # Right column: C) the repeat intervals of the three catalogues quoted in the text (the array and combined
 # records leave out the interval spanning Loma Prieta): each interval as a bar over its possible range
 # (window to window), with the mean and SD of the record marked and written, as defined in [26]
@@ -1161,7 +1161,7 @@ plt.show()
 #
 # Built from the numbers above in a fixed template, so that the statement is generated, not typed. Part (3)
 # of the time window (the calendar window of the onsets) and the last day of the Fremont gauge come from
-# 10_rain_seasonality (`rain_conditioning_summary.csv`). The location comes from `section_lengths.csv` of 04:
+# 12_rain_seasonality (`rain_conditioning_summary.csv`). The location comes from `section_lengths.csv` of 04:
 # the fault length hosting the events (`tulepond_creep_length`) and the peak slip zone (`tulepond_band90`).
 # The magnitude is the step sizes of the paper, the 90 % band stack of 04 (`04_band90_step_<yr>_mm` with their
 # 95 % CIs), read back from the registry rows of the latest run of 04; that run must be newer than
@@ -1228,14 +1228,14 @@ def wg99_text(cat_name):
 
 
 # the lag spreads of the tightest rules A and B (10) beside the calendar spread of the onsets, printed side by side
-rules_text = (f"      tightest rainfall rules (10_rain_seasonality): lag spread A {rain_value('ruleA_best_spread_d'):.0f} d, "
+rules_text = (f"      tightest rainfall rules (12_rain_seasonality): lag spread A {rain_value('ruleA_best_spread_d'):.0f} d, "
               f"B {rain_value('ruleB_best_spread_d'):.0f} d, against the calendar spread of the onsets {rain_value('calendar_spread_d'):.0f} d")
 statement_lines = [
-    "TULE POND CREEP-EVENT PREDICTION STATEMENT (generated by notebook 11_forecast)",
+    "TULE POND CREEP-EVENT PREDICTION STATEMENT (generated by notebook 13_forecast)",
     f"first written {forecast_issue_date}; conditioned on no event through the last observation, {last_obs} "
     f"(descending CSLC + Dolphin extension of the InSAR record); "
     f"data: OPERA DISP-S1 to {data_end} (the end of the paper's InSAR record), HRKT array events to {aa_dense.onset_hi.max():.2f} (bimonthly surveys to {dense_era_end:.2f}), "
-    f"Fremont GHCN gauge to {rain_summary.loc['fremont_last_valid_day', 'value']} (10_rain_seasonality)",
+    f"Fremont GHCN gauge to {rain_summary.loc['fremont_last_valid_day', 'value']} (12_rain_seasonality)",
     f"the renewal-model windows below run from the last observation; nothing is claimed for the months after {last_obs}", "",
     f"LOCATION  Hayward fault, Tule Pond section: the events slip {creep_length.km_lo:.1f}-{creep_length.km_hi:.1f} km from Point Pinole "
     f"({creep_length.km_hi - creep_length.km_lo:.1f} km of fault, {creep_length.lat_lo:.3f}-{creep_length.lat_hi:.3f} N); peak slip zone "
@@ -1275,7 +1275,7 @@ statement_lines = [
     f"({rain_summary.loc['onset_earliest', 'value']}-{rain_summary.loc['onset_latest', 'value']}), after {rain_value('cum_at_onset_min_mm'):.0f}-"
     f"{rain_value('cum_at_onset_max_mm'):.0f} mm of WY rain ({rain_value('frac_at_onset_min'):.0%}-{rain_value('frac_at_onset_max'):.0%} of the WY total), "
     f"in years spanning P{rain_value('wy_percentile_min'):.0f}-P{rain_value('wy_percentile_max'):.0f} of the "
-    f"{int(rain_value('wy_first'))}-{int(rain_value('wy_last'))} WY-total distribution (10_rain_seasonality)",
+    f"{int(rain_value('wy_first'))}-{int(rain_value('wy_last'))} WY-total distribution (12_rain_seasonality)",
     f"      a {int(rain_value('rain_total_days'))}-day rain total of at least Z mm within X days before the onset (Fremont gauge, the "
     f"{int(rain_value('n_insar_onsets'))} InSAR onsets, {int(rain_value('rain_sweep_n_settings'))} settings of Z and X): the best, "
     f"{rain_value('rain_sweep_best_Z_mm'):.0f} mm within {rain_value('rain_sweep_best_X_d'):.0f} d, gives {rain_value('rain_sweep_best_hits'):.2f} of "
@@ -1288,7 +1288,7 @@ with open(os.path.join(out_dir, "prediction_statement.txt"), "w") as fh:
 print("\n".join(statement_lines))
 
 # %% [markdown]
-# ## [35] Registry: the stats sidecar `11_forecast_stats.txt` (with the prediction statement) and the `11_*` numbers
+# ## [35] Registry: the stats sidecar `13_forecast_stats.txt` (with the prediction statement) and the `11_*` numbers
 #
 # Per record `<rec>` (`insar`, `aa_dense_nolp`, `aa_dense_withlp`, `merged`): the interval statistics of [26]
 # (`_interval_mean_yr`, `_interval_sd_yr`, `_interval_cov`, `_n_intervals`, `_n_events`); per model the
@@ -1300,10 +1300,10 @@ print("\n".join(statement_lines))
 
 # %%
 # [36]
-sidecar = REG.sidecar("11_forecast", stats_lines + ["", *statement_lines])
-REG.register("11_issue_date", forecast_issue_date, "date", 0, where="P10, M9", cell="constants", sidecar=sidecar)
-REG.register("11_data_end", data_end, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
-REG.register("11_last_obs_date", last_obs, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
+sidecar = REG.sidecar("13_forecast", stats_lines + ["", *statement_lines])
+REG.register("13_issue_date", forecast_issue_date, "date", 0, where="P10, M9", cell="constants", sidecar=sidecar)
+REG.register("13_data_end", data_end, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
+REG.register("13_last_obs_date", last_obs, "date", 0, where="P10, M9", cell="load", sidecar=sidecar)
 # the interval statistics ([26]), every record
 for cat_name, key in record_keys.items():
     record = interval_stats[cat_name]
@@ -1317,15 +1317,15 @@ insar_years = []
 for onset_lo in insar_events.onset_lo:
     insar_years.append(f"{int(onset_lo)}")
 for k, value in enumerate(interval_stats["A_insar"]["per_interval_mean"]):
-    REG.register(f"11_insar_interval_{insar_years[k]}_{insar_years[k + 1]}_yr", value, "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("11_insar_interval_sd_d", interval_sd_yr * 365.25, "d", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("11_insar_interval_sd_ci_lo_d", sd_ci_days[0], "d", 0, where="M9", cell="clock", sidecar=sidecar)
-REG.register("11_insar_interval_sd_ci_hi_d", sd_ci_days[1], "d", 0, where="M9", cell="clock", sidecar=sidecar)
-REG.register("11_next_clock_date", ymd(next_onset_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
-REG.register("11_next_1sd_lo", ymd(next_onset_yr - interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("11_next_1sd_hi", ymd(next_onset_yr + interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("11_pi95_lo", ymd(next_onset_yr - half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
-REG.register("11_pi95_hi", ymd(next_onset_yr + half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
+    REG.register(f"13_insar_interval_{insar_years[k]}_{insar_years[k + 1]}_yr", value, "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
+REG.register("13_insar_interval_sd_d", interval_sd_yr * 365.25, "d", 0, where="P10", cell="clock", sidecar=sidecar)
+REG.register("13_insar_interval_sd_ci_lo_d", sd_ci_days[0], "d", 0, where="M9", cell="clock", sidecar=sidecar)
+REG.register("13_insar_interval_sd_ci_hi_d", sd_ci_days[1], "d", 0, where="M9", cell="clock", sidecar=sidecar)
+REG.register("13_next_clock_date", ymd(next_onset_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
+REG.register("13_next_1sd_lo", ymd(next_onset_yr - interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
+REG.register("13_next_1sd_hi", ymd(next_onset_yr + interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
+REG.register("13_pi95_lo", ymd(next_onset_yr - half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
+REG.register("13_pi95_hi", ymd(next_onset_yr + half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
 # the renewal forecasts (fitted parameters) and the BPT aperiodicity
 for cat_name, key in record_keys.items():
     issue = forecasts[forecasts.catalog == cat_name].set_index("model")
@@ -1350,15 +1350,15 @@ for cat_name, key in record_keys.items():
         REG.register(f"11_{key}_bpt_{branch_tag}_p_wet_wy{forecast_wy}", prob_between(wg99_curves[(cat_name, alpha)], *forecast_wet_season),
                      "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
 # the fitted alpha of the InSAR record: its CI, the forecast with alpha drawn from it, the falsification dates
-REG.register("11_insar_bpt_alpha_ci95_lo", insar_alpha_ci95[0], "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("11_insar_bpt_alpha_ci95_hi", insar_alpha_ci95[1], "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("11_insar_bpt_alpha_pivot_median", float(np.median(pivot_alphas)), "1", 3, where="M9", cell="wg99", sidecar=sidecar)
-REG.register("11_insar_bpt_alpha_pivot_p95", float(np.percentile(pivot_alphas, 95)), "1", 3, where="M9", cell="wg99", sidecar=sidecar)
-REG.register("11_insar_bpt_alpha_pivot_q05", insar_pivot_row.q05, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("11_insar_bpt_alpha_pivot_q50", insar_pivot_row.q50, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("11_insar_bpt_alpha_pivot_q95", insar_pivot_row.q95, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register(f"11_insar_bpt_alpha_pivot_p_wet_wy{forecast_wy}", insar_pivot_row.p_wet_season, "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_ci95_lo", insar_alpha_ci95[0], "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_ci95_hi", insar_alpha_ci95[1], "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_pivot_median", float(np.median(pivot_alphas)), "1", 3, where="M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_pivot_p95", float(np.percentile(pivot_alphas, 95)), "1", 3, where="M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_pivot_q05", insar_pivot_row.q05, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_pivot_q50", insar_pivot_row.q50, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
+REG.register("13_insar_bpt_alpha_pivot_q95", insar_pivot_row.q95, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
+REG.register(f"13_insar_bpt_alpha_pivot_p_wet_wy{forecast_wy}", insar_pivot_row.p_wet_season, "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
 for level in falsification_levels:
     level_tag = f"s{int(round(100 * level)):02d}"                         # 0.05 -> s05, 0.01 -> s01
-    REG.register(f"11_insar_bpt_falsify_{level_tag}_date", falsification_dates[level], "date", 0, where="P10", cell="wg99", sidecar=sidecar)
+    REG.register(f"13_insar_bpt_falsify_{level_tag}_date", falsification_dates[level], "date", 0, where="P10", cell="wg99", sidecar=sidecar)
 REG.render()

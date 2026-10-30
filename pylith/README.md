@@ -1,8 +1,8 @@
 # pylith/: the PyLith side of the 3D slip model
 
 This folder holds everything needed to remake the PyLith 5.0.2 runs behind the slip models. No notebook runs PyLith:
-`07a_uniform_model`, `08a_3d_model` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
-built from the run products in the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit). 08a's
+`07_model_data`, `08_3d_model` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
+built from the run products in the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit). 08's
 "PyLith files" cell lists every file of the preferred run with its path. The preferred run and every setting of the model
 are declared in `model_config.py` (`gf_run`, `gf_files`).
 
@@ -59,12 +59,12 @@ with `PYLITH_WORKDIR`), and every path in the cfg files and on the command line 
 | Folder | Holds | Written by |
 |---|---|---|
 | `modeling_inputs/mesh/` | `mesh_vertical_tet_<preset>.msh`, `mesh_dip<d>_tet_<preset>.msh`, their `_fault.npz` and `_report.txt`; `trace_tmerc.txt` | `build/generate_gmsh_*.py` |
-| `modeling_inputs/points/` | the PyLith output points = the quadtree samples: `insar_points.txt` (the paper's sample set), `insar_points_coh07.txt` (coherence-0.7 sensitivity test), each with an `.npz` carrying the data and the noise model; `insar_points_swath7.txt` and `fig2_points_<label>.txt` (order-1 runs only) | notebook 07a |
+| `modeling_inputs/points/` | the PyLith output points = the quadtree samples: `insar_points.txt` (the paper's sample set), `insar_points_coh07.txt` (coherence-0.7 sensitivity test), each with an `.npz` carrying the data and the noise model; `insar_points_swath7.txt` and `fig2_points_<label>.txt` (order-1 runs only) | notebook 07 |
 | `modeling_inputs/spatialdb/` | `impulses_km54-65_z3000.spatialdb`, `impulses_test_km58.8-59.3_z1100.spatialdb` (strip runs), `kin_slip_km57-61_z1000.spatialdb` | `build/make_impulse_db.py`, `build/make_kin_slip_db.py` |
 | `modeling_uniform/pylith_output/` | every run in the homogeneous medium (`<run>-points.h5`, `-fault.h5`, `-elastic_info.h5`, `-parameters.json`, boundary outputs) | `run_gf.sh`, `run_fwd.sh` with `mat_homog.cfg` |
 | `modeling_uniform/gf/` | `G_<run>.npz` of the homogeneous runs; `G_analytic_<run>_nsub<n>.npz`, the analytic Green's functions of the homogeneous comparison model | `model_utils.build_G`, `model_utils.analytic_tent_G_cached` |
 | `modeling_uniform/spatialdb/` | slip databases of the homogeneous forward runs (`fig2_slip_<label>.spatialdb` + `.npz`) | `build/make_vertex_slip_db.py` |
-| `modeling_uniform/validation/` | PyLith vs CSI and the 2D screw dislocation (`csi_vs_pylith_homog.npz`) | notebook 08a |
+| `modeling_uniform/validation/` | PyLith vs CSI and the 2D screw dislocation (`csi_vs_pylith_homog.npz`) | notebook 08 |
 | `modeling_SFCVM/spatialdb/` | the SFCVM grids `sfcvm_v26-0_<tag>_grid.npz` and databases `mat_sfcvm_v26-0_<tag>.spatialdb`; the SFCVM forward runs' slip databases | `build/sfcvm_grid.py`, `build/write_sfcvm_griddb.py`, `build/make_vertex_slip_db.py` |
 | `modeling_SFCVM/pylith_output/`, `gf/` | every run in an SFCVM medium and its G matrix | `run_gf.sh`, `run_fwd.sh` with `mat_sfcvm*.cfg`; `model_utils.build_G` |
 | `<medium>/runs/` | the PyLith log of each run and `run_gf.log` (start / done times) | the wrappers |
@@ -106,7 +106,7 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 
 | Run | Material cfg | Mesh | Points | Role | Time |
 |---|---|---|---|---|---|
-| `gf_shallow_dip70w_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | **Preferred model** (07a, 08a; baseline of the inversion-choice sensitivity tests; depth scan) | 35 h |
+| `gf_shallow_dip70w_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | **Preferred model** (07, 08; baseline of the inversion-choice sensitivity tests; depth scan) | 35 h |
 | `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh | 17 h |
 | `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh | 32 h |
 | `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh | see `runs/run_gf.log` |
@@ -119,7 +119,7 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 | `gf_shallow_homog_order2_strip` / `gf_fine_homog_order2_strip` | `mat_homog.cfg` | `mesh_vertical_tet_shallow.msh` / `_fine.msh` | `insar_points.txt` | Green's-function check B (mesh refinement); impulses only in the strip `impulses_test_km58.8-59.3_z1100.spatialdb` | 42 / 46 min |
 
 The homogeneous comparison model is not a PyLith run: it uses the analytic half-space solution of CSI (triangular
-dislocations, Meade 2007) on the tents of the preferred run (`model_utils.analytic_tent_G`, 07a; cache
+dislocations, Meade 2007) on the tents of the preferred run (`model_utils.analytic_tent_G`, 07; cache
 `modeling_uniform/gf/G_analytic_<gf_run>_nsub<n>.npz`).
 
 The order-1 SFCVM runs made with a 150 m/s Vs floor are archived in `backup_vsfloor150_2026-10-25/` in the results
@@ -150,7 +150,7 @@ medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G) in its `gf/`.
 | `gf_default_homog_coh07` / `gf_default_sfcvm_coh07` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | | none | 32 / 33 min |
 | `gf_default_sfcvmasis` | `mat_sfcvm_asis.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none | 33 min |
 
-The sample positions of every point set are asserted unchanged each time 07a rewrites them
+The sample positions of every point set are asserted unchanged each time 07 rewrites them
 (`model_utils.write_points_list`): a set whose positions change requires its GreensFns runs to be remade.
 
 ## The forward runs (FaultCohesiveKin; order 1, not used by the paper)
@@ -177,7 +177,7 @@ Each forward run takes about 2 minutes. The slip database of a forward run of an
 | `modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | `python3 $REPO/pylith/build/write_sfcvm_griddb.py modeling_SFCVM/spatialdb/sfcvm_v26-0_<tag>_grid.npz modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | PyLith |
 | `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | `python3 $REPO/pylith/build/make_impulse_db.py -4713 4380 3000 modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | PyLith |
 | `modeling_inputs/spatialdb/kin_slip_km57-61_z1000.spatialdb` | `python3 $REPO/pylith/build/make_kin_slip_db.py -1479 1943 1000 0.01 modeling_inputs/spatialdb/kin_slip_km57-61_z1000.spatialdb` | PyLith |
-| `modeling_inputs/points/insar_points*.txt` | notebook `07a_uniform_model` | opera_disp_feb13 |
+| `modeling_inputs/points/insar_points*.txt` | notebook `07_model_data` | opera_disp_feb13 |
 
 (PyLith-environment commands run through `bash $REPO/pylith/pylith_env.sh $DATA <command>`.)
 
@@ -185,7 +185,7 @@ Each forward run takes about 2 minutes. The slip database of a forward run of an
 
 `model_utils.build_G` reads a GreensFns run (`-fault.h5`: the fault vertices and the unit impulse on each;
 `-points.h5`: the displacement at the output points), matches each impulse to its fault vertex and each output point
-to its sample, projects the 3D displacement on the fault-parallel look vector of 07a (the strike of the 06 field) and
+to its sample, projects the 3D displacement on the fault-parallel look vector of 07 (the strike of the 06 field) and
 derives the sign of right-lateral slip; `model_utils.load_G` rebuilds a cached `G_<run>.npz` whose strike differs
 from the current field's. The inversion (`model_utils.invert_tents`) uses CSI on the order-1 tents of the impulse
 vertices. This follows the reading pattern of `examples/subduction-3d/invert_slip.py` in the PyLith source tree.

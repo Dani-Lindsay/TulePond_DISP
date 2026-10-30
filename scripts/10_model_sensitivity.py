@@ -15,31 +15,31 @@
 # ---
 
 # %% [markdown]
-# # 08b Sensitivity of the slip model: the supplementary figures and table
+# # 10 Sensitivity of the slip model: the supplementary figures and table
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: environment.yml. Runs after 07a, 08a and the scripts in scripts/sensitivity/. Seconds: no inversion is
+# Environment: environment.yml. Runs after 07, 08 and the scripts in scripts/sensitivity/. Seconds: no inversion is
 # run here.
 # ```
 #
 # **What this notebook does.** Draws the stored results of the sensitivity scripts (`scripts/sensitivity/*.py`; their csv
-# files are archived on Zenodo) and of 07a / 08a: the sensitivity table, the sweeps figure (dip, sigma, lambda), the
+# files are archived on Zenodo) and of 07 / 08: the sensitivity table, the sweeps figure (dip, sigma, lambda), the
 # fixed-depth scan with its noise test, the buried-top test and the SFSVM basement depth, the error of the PyLith Green's
 # functions against the analytic solution, and the semivariogram of the noise model. Each csv records the script that
 # wrote it ([2]).
 #
 # **Inputs** (`model_config.sensitivity_dir`): `sensitivity_rows.csv`, `dip_rows.csv`, `depth_scan.csv`,
-# `depth_scan_noise.csv`, `depth_scan_buried_top.csv`, `basement_depth.csv`, `gf_check.csv`; 07a `noise_model_5km.csv`,
-# `semivariogram_bins_5km.csv`; 08a `selected_model.npz`.
+# `depth_scan_noise.csv`, `depth_scan_buried_top.csv`, `basement_depth.csv`, `gf_check.csv`; 07 `noise_model_5km.csv`,
+# `semivariogram_bins_5km.csv`; 08 `selected_model.npz`.
 #
-# **Outputs** (`outputs/08b_sensitivity/`): `sensitivity_table.csv`, `08b_sensitivity_stats.txt`. **Figures**:
+# **Outputs** (`outputs/10_model_sensitivity/`): `sensitivity_table.csv`, `10_model_sensitivity_stats.txt`. **Figures**:
 # `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` (Science style, png + pdf).
 # **Registry keys** `08b_*`.
 #
 # **What to check**
 # - [2] The provenance of each csv names its script and a clean git hash.
-# - [3] Check: the baseline row equals the preferred model of 08a (same method, computed independently).
+# - [3] Check: the baseline row equals the preferred model of 08 (same method, computed independently).
 
 # %% [markdown]
 # ## [1] Imports, inputs, style
@@ -58,7 +58,7 @@ import insar_utils as utils
 import model_config as cfg
 import model_utils
 
-notebook = "08b_sensitivity"
+notebook = "12_model_sensitivity"
 out_dir = paths_out[notebook]
 fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
@@ -66,9 +66,9 @@ os.makedirs(fig_dir, exist_ok=True)
 sens = cfg.sensitivity_dir
 csv_files = {name: os.path.join(sens, name) for name in ("sensitivity_rows.csv", "dip_rows.csv", "depth_scan.csv", "depth_scan_noise.csv",
                                                           "depth_scan_buried_top.csv", "basement_depth.csv", "gf_check.csv")}
-noise_file = os.path.join(paths_out["07a_uniform_model"], "noise_model_5km.csv")
-bins_file = os.path.join(paths_out["07a_uniform_model"], "semivariogram_bins_5km.csv")
-selected_file = os.path.join(paths_out["08a_3d_model"], "selected_model.npz")
+noise_file = os.path.join(paths_out["07_model_data"], "noise_model_5km.csv")
+bins_file = os.path.join(paths_out["07_model_data"], "semivariogram_bins_5km.csv")
+selected_file = os.path.join(paths_out["08_3d_model"], "selected_model.npz")
 REG = utils.Registry(notebook, common_paths, repo_dir)
 REG.inputs(*csv_files.values(), noise_file, bins_file, selected_file)
 tables = {name: pd.read_csv(path) for name, path in csv_files.items()}
@@ -107,7 +107,7 @@ for name, table in tables.items():
 # row; the forward-model choices (SFSVM as delivered, SFSVM alignment, data coherence) are varied on the vertical fault
 # on the default (250 m) mesh and compared with the default-mesh vertical baseline.
 # Check: the baseline row (`model_config.gf_run` with the settings of `model_config.py`) equals the preferred model of
-# 08a.
+# 08.
 
 # %%
 ## [3]
@@ -120,8 +120,8 @@ baseline = rows[is_baseline].iloc[0]
 for row_name in ("Regularization sigma", "Prior lengths", "Near-trace exclusion", "Reference frame", "Data weighting"):
     assert (rows[rows.row == row_name].run == cfg.gf_run).all(), f"the {row_name} rows are not around the selected run {cfg.gf_run}"
 for key in ("sigma", "Mw_30gpa", "Mw_sfcvm", "rms_mm", "rms_west_mm", "rms_east_mm", "peak_slip_mm", "depth50_m", "depth90_m"):
-    assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 08a {float(selected[key])}"
-print("PASS: the baseline row of sensitivity_rows.csv equals the preferred model of 08a")
+    assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 08 {float(selected[key])}"
+print("PASS: the baseline row of sensitivity_rows.csv equals the preferred model of 08")
 columns = dict(row="Choice", variant="Variant", sigma="Sigma", Mw_30gpa="Mw (30 GPa)", Mw_sfcvm="Mw (harmonic SFSVM)",
                rms_mm="RMS (mm)", rms_west_mm="RMS 500 m west (mm)", rms_east_mm="RMS 500 m east (mm)", peak_slip_mm="Peak slip (mm)",
                peak_depth_m="Peak depth (m)", depth50_m="Depth50 (m)", depth90_m="Depth90 (m)", band_step_mean_mm="Band step (mm)")
@@ -323,7 +323,7 @@ save(fig, "figS_gf_error_vs_depth")
 # %% [markdown]
 # ## [7] The noise model: semivariogram of the far field (Methods / SM)
 #
-# Products of 07a: the binned semivariogram of the pixels farther than 5 km from the trace (plane removed) and the fitted
+# Products of 07: the binned semivariogram of the pixels farther than 5 km from the trace (plane removed) and the fitted
 # model (`model_utils.semivariogram_model`).
 
 # %%
@@ -350,29 +350,29 @@ save(fig, "figS_semivariogram")
 # %% [markdown]
 # ## [8] Registry
 #
-# The numbers quoted in the supplementary material, with the stats sidecar `08b_sensitivity_stats.txt`.
+# The numbers quoted in the supplementary material, with the stats sidecar `10_model_sensitivity_stats.txt`.
 
 # %%
 ## [8]
-stats = REG.sidecar("08b_sensitivity", [f"{name}: {sorted(set(table.provenance))[0]}" for name, table in tables.items()]
+stats = REG.sidecar("12_model_sensitivity", [f"{name}: {sorted(set(table.provenance))[0]}" for name, table in tables.items()]
                     + [sensitivity_table.to_string(index=False), noise_test.to_string(index=False), buried_top.to_string(index=False),
                        gf_medians.to_string()])
 where = "SM"
-REG.register("08b_mw_range_lo", mw_range[0], "Mw", 2, where, "[3]", stats)
-REG.register("08b_mw_range_hi", mw_range[1], "Mw", 2, where, "[3]", stats)
-REG.register("08b_mw_sigma_sweep_lo", sigma_rows.Mw_30gpa.min(), "Mw", 2, where, "[3]", stats)
-REG.register("08b_mw_sigma_sweep_hi", sigma_rows.Mw_30gpa.max(), "Mw", 2, where, "[3]", stats)
-REG.register("08b_depth90_sigma_lo_m", min(sigma_rows.depth90_m.min(), baseline.depth90_m), "m", 0, where, "[3]", stats)
-REG.register("08b_depth90_sigma_hi_m", max(sigma_rows.depth90_m.max(), baseline.depth90_m), "m", 0, where, "[3]", stats)
-REG.register("08b_depth90_lambda_lo_m", rows[rows.row == "Prior lengths"].depth90_m.min(), "m", 0, where, "[3]", stats)
-REG.register("08b_depth90_lambda_hi_m", rows[rows.row == "Prior lengths"].depth90_m.max(), "m", 0, where, "[3]", stats)
-REG.register("08b_full_cd_mw_30gpa", pick("Data weighting", "Full Cd").Mw_30gpa, "Mw", 2, where, "[3]", stats)
-REG.register("08b_cut30_mw_30gpa", pick("Near-trace exclusion", "30 m").Mw_30gpa, "Mw", 2, where, "[3]", stats)
-REG.register("08b_depth_scan_best_d_m", 1e3 * best.D_km, "m", 0, where, "[5]", stats)
-REG.register("08b_depth_scan_best_slip_mm", best.slip_mm, "mm", 1, where, "[5]", stats)
+REG.register("10_mw_range_lo", mw_range[0], "Mw", 2, where, "[3]", stats)
+REG.register("10_mw_range_hi", mw_range[1], "Mw", 2, where, "[3]", stats)
+REG.register("10_mw_sigma_sweep_lo", sigma_rows.Mw_30gpa.min(), "Mw", 2, where, "[3]", stats)
+REG.register("10_mw_sigma_sweep_hi", sigma_rows.Mw_30gpa.max(), "Mw", 2, where, "[3]", stats)
+REG.register("10_depth90_sigma_lo_m", min(sigma_rows.depth90_m.min(), baseline.depth90_m), "m", 0, where, "[3]", stats)
+REG.register("10_depth90_sigma_hi_m", max(sigma_rows.depth90_m.max(), baseline.depth90_m), "m", 0, where, "[3]", stats)
+REG.register("10_depth90_lambda_lo_m", rows[rows.row == "Prior lengths"].depth90_m.min(), "m", 0, where, "[3]", stats)
+REG.register("10_depth90_lambda_hi_m", rows[rows.row == "Prior lengths"].depth90_m.max(), "m", 0, where, "[3]", stats)
+REG.register("10_full_cd_mw_30gpa", pick("Data weighting", "Full Cd").Mw_30gpa, "Mw", 2, where, "[3]", stats)
+REG.register("10_cut30_mw_30gpa", pick("Near-trace exclusion", "30 m").Mw_30gpa, "Mw", 2, where, "[3]", stats)
+REG.register("10_depth_scan_best_d_m", 1e3 * best.D_km, "m", 0, where, "[5]", stats)
+REG.register("10_depth_scan_best_slip_mm", best.slip_mm, "mm", 1, where, "[5]", stats)
 all_samples = noise_test[noise_test.metric == "All samples"].iloc[0]
-REG.register("08b_depth_scan_noise_p16_m", 1e3 * all_samples.noise_p16, "m", 0, where, "[5]", stats)
-REG.register("08b_depth_scan_noise_p84_m", 1e3 * all_samples.noise_p84, "m", 0, where, "[5]", stats)
-REG.register("08b_depth_scan_noise_p97_5_m", 1e3 * all_samples.noise_p97_5, "m", 0, where, "[5]", stats)
-REG.register("08b_basement_west_band_median_m", 1e3 * b_median, "m", 0, where, "[5]", stats)
+REG.register("10_depth_scan_noise_p16_m", 1e3 * all_samples.noise_p16, "m", 0, where, "[5]", stats)
+REG.register("10_depth_scan_noise_p84_m", 1e3 * all_samples.noise_p84, "m", 0, where, "[5]", stats)
+REG.register("10_depth_scan_noise_p97_5_m", 1e3 * all_samples.noise_p97_5, "m", 0, where, "[5]", stats)
+REG.register("10_basement_west_band_median_m", 1e3 * b_median, "m", 0, where, "[5]", stats)
 REG.render()

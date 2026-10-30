@@ -3,7 +3,7 @@
 """
 @author: Danielle Lindsay
 
-model_utils.py: the modelling functions of the Tule Pond slip models (notebooks 07a, 08a, 08b and
+model_utils.py: the modelling functions of the Tule Pond slip models (notebooks 07, 08, 10 and
 scripts/sensitivity/*.py). TulePond_filepaths.py holds the paths and shared constants, model_config.py the settings
 of the slip models, insar_utils.py the InSAR helpers, and the numbered notebooks the order of the analysis. Each
 function states what it does, its inputs and outputs with units, and its source ("written for this project" where
@@ -155,7 +155,7 @@ def fault_parallel_from_steps(steps_h5, strike_deg, window_px, mask_files=None):
     per-pixel mean of the kept events at the time-series coherence, with the incidence and azimuth of the box), optionally
     masked at another temporal coherence, and decomposed with decompose_fault_parallel (strike_deg in deg, window_px in
     pixels). Returns the fault-parallel map (mm) on 06's box grid.
-    With the coherence-0.9 masks the result equals 06's fp_maps.npz `fp_event` (asserted in 07a); without masks it is
+    With the coherence-0.9 masks the result equals 06's fp_maps.npz `fp_event` (asserted in 07); without masks it is
     the field at coherence 0.7, the mask of the time-series fit (the coherence-0.7 sensitivity sample set).
     Source: written for this project."""
     tracks = los_from_steps(steps_h5, mask_files)
@@ -339,7 +339,7 @@ def write_points_list(stem, lon, lat, crs, header, extra):
 
 
 def samples_from_arrays(name, lon, lat, x_km, y_km, vel_mm, wgt, look, frame_lonlat, cov_p, nug_power):
-    """A quadtree sample set rebuilt as a csi.insar data set from saved arrays (07a's model data product or a sample-set
+    """A quadtree sample set rebuilt as a csi.insar data set from saved arrays (07's model data product or a sample-set
     npz): positions in lon/lat and in CSI's local km frame (set exactly as saved, not recomputed), data (mm), block
     pixel counts, the fault-parallel look vector, and its full covariance (build_cd with cov_p and nug_power).
     Returns the csi.insar data set. Source: written for this project."""
@@ -490,7 +490,7 @@ def build_G(names, points_npz, strike_deg, pylith_output_dir, gf_dir):
     """Assemble the fault-parallel Green's-function matrix G (n_samples x n_impulses, m of fault-parallel displacement
     per m of right-lateral slip) from PyLith GreensFns runs (several = concatenated along the impulse axis) and write
     gf_dir/G_<names[0]>.npz. The strike is explicit: G is the 3D displacement projected on the horizontal unit vector
-    along strike_deg (deg; the fault-parallel look vector of 07a), so a G built at another strike must be rebuilt
+    along strike_deg (deg; the fault-parallel look vector of 07), so a G built at another strike must be rebuilt
     (load_G). points_npz: the sample set of write_points_list. Matching (each step asserted): impulse -> fault vertex
     (exactly one vertex with unit left-lateral slip); output point -> sample (nearest neighbour in the mesh CRS,
     < 1 mm); sign: the right-lateral sign relative to PyLith's left-lateral component is derived from the output
@@ -523,7 +523,7 @@ def build_G(names, points_npz, strike_deg, pylith_output_dir, gf_dir):
     G_ll = np.hstack(columns)                              # m of fault-parallel displacement per m of left-lateral slip
     vertex_index = np.concatenate(vertex_index)
     assert np.unique(vertex_index).size == vertex_index.size, "a fault vertex received two impulses"
-    # sign: right-lateral slip moves the east side along +look (the data convention of 07a)
+    # sign: right-lateral slip moves the east side along +look (the data convention of 07)
     # (a) uniform left-lateral slip over the whole impulse region (sum of all tents): east-minus-west step of the
     #     samples within 500 m of the trace along the region; (b) every surface-vertex impulse individually (a buried
     #     tent's fault-parallel field has lobes of both signs, so it is not used for this test)
