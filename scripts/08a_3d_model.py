@@ -412,10 +412,10 @@ axes[0].set_ylabel("Fault-parallel displacement (mm)")
 axes[0].legend(loc="upper left")
 save(fig, "figS_model_profiles")
 
-# the SFSVM shear modulus at 50 m depth and across X-X', as delivered and aligned, with the modelled fault
+# the SFSVM shear modulus at 50 m depth and across X-X', as delivered and aligned, with the published fault dips
 sys.path.insert(0, os.path.join(repo_dir, "scripts", "model_plots"))
 import plot_materials                                                   # noqa: E402
-plot_materials.main(paths_sfcvm["spatialdb"], fig_dir, (creep_lo_km, creep_hi_km), dip_deg=cfg.selected_dip_deg)
+plot_materials.main(paths_sfcvm["spatialdb"], fig_dir)
 
 # %% [markdown]
 # ## [10] Monte Carlo of correlated noise

@@ -4,13 +4,13 @@ Author: Danielle Lindsay
 
 Material figures for the SFSVM grids of the slip models (no Poisson cap; written by pylith/build/sfcvm_grid.py):
 (a) map of the shear modulus mu = rho vs^2 at 50 m depth, as delivered and aligned on the mapped trace; (b) cross-section
-of mu through the Tule Pond section at X-X' (lat 37.5612 N), as delivered and aligned, with the fault of the preferred
-model (dip_deg); (c) the boundary offset b(km) that the alignment removes.
+of mu through the Tule Pond section at X-X' (lat 37.5612 N), as delivered and aligned, with the two published fault
+dips of the section: 70.5 +/- 2 deg SW where the CFW1 creepmeter borehole crosses the fault at ~21 m depth (Bilham &
+Whitehead 1997) and ~70 deg E at 100-650 m depth on the Alameda Creek seismic line (Williams et al. 2005).
 Grid values are interpolated linearly (as PyLith's SimpleGridDB with query_type = linear).
 
-`main(spatialdb_dir, fig_dir, sse_km)` reads the two grids from spatialdb_dir (modeling_SFCVM/spatialdb,
-TulePond_filepaths.paths_sfcvm) and writes figS_pylith_materials_sfcvm_v26.png (journal size, 7 pt) and
-qc08a_materials_boundary_offset.png into fig_dir.
+`main(spatialdb_dir, fig_dir)` reads the two grids from spatialdb_dir (modeling_SFCVM/spatialdb,
+TulePond_filepaths.paths_sfcvm) and writes figS_pylith_materials_sfcvm_v26.png (journal size, 7 pt) into fig_dir.
 Run (repo root, environment.yml):  python scripts/model_plots/plot_materials.py
 """
 import os
@@ -29,13 +29,14 @@ from TulePond_filepaths import paths_sfcvm, common_paths   # noqa: E402
 from insar_utils import mpl_paper_style                     # noqa: E402
 
 lat_xx = 37.5612
-VERMILLION, BLUE, ORANGE = "#D55E00", "#0072B2", "#E69F00"   # Okabe-Ito
+# published dips of the Tule Pond section: (dip deg, -1 west / +1 east, top and bottom depth m drawn)
+PUBLISHED_DIPS = ((70.5, -1, 0.0, 1500.0),     # CFW1 borehole, ~21 m depth (Bilham & Whitehead 1997); drawn as the model fault
+                  (70.0, +1, 100.0, 650.0))    # Alameda Creek seismic line, 100-650 m depth (Williams et al. 2005)
+VERMILLION = "#D55E00"   # Okabe-Ito
 
 
-def main(spatialdb_dir, fig_dir, sse_km, dip_deg=90.0, name_materials="figS_pylith_materials_sfcvm_v26",
-         name_offset="qc08a_materials_boundary_offset"):
-    """sse_km = (km_lo, km_hi) of the SSE section (04 section_lengths.csv), drawn on the offset panel; dip_deg = dip of
-    the modelled fault (deg, dipping west), drawn on the cross-sections."""
+def main(spatialdb_dir, fig_dir, name_materials="figS_pylith_materials_sfcvm_v26"):
+    """Write the materials figure into fig_dir; return its path."""
     os.makedirs(fig_dir, exist_ok=True)
     grids = {tag: np.load(os.path.join(spatialdb_dir, f"sfcvm_v26-0_{tag}_nocap_grid.npz")) for tag in ("asis", "aligned")}
     g0 = grids["aligned"]
@@ -70,8 +71,11 @@ def main(spatialdb_dir, fig_dir, sse_km, dip_deg=90.0, name_materials="figS_pyli
         px, py = tx[i_xx] + O * normal[i_xx, 0], ty[i_xx] + O * normal[i_xx, 1]
         vals = interp[tag](np.c_[px.ravel(), py.ravel(), -D.ravel()]).reshape(O.shape)
         pc2 = ax.pcolormesh(offs, deps, vals.T, norm=norm, cmap="cividis", shading="auto")
-        ax.plot([0, -deps[-1] / np.tan(np.radians(dip_deg))], [0, deps[-1]], color=VERMILLION, lw=1.2,
-                label=f"Fault ({dip_deg:g}\N{DEGREE SIGN} W)" if dip_deg < 90 else "Fault (vertical)")
+        for (dip, sign, z_top, z_bottom), colour, style, label in zip(PUBLISHED_DIPS, (VERMILLION, "k"), ("-", "--"),
+                                                                    ("Bilham & Whitehead (1997), 70.5\N{DEGREE SIGN} SW",
+                                                                     "Williams et al. (2005), 70\N{DEGREE SIGN} E")):
+            run = sign / np.tan(np.radians(dip))                 # m east per m depth: west dip negative
+            ax.plot([z_top * run, z_bottom * run], [z_top, z_bottom], color=colour, ls=style, lw=1.2, label=label)
         ax.set_ylim(1500, 0); ax.set_xlabel("Distance from the trace, east positive (m)"); ax.set_ylabel("Depth (m)")
         ax.set_title(r"$\bf{" + letter + r"}$  " + f"X-X' (km {tkm[i_xx]:.1f}), {'as delivered' if tag == 'asis' else 'aligned on the trace'}", loc="left", fontsize=7)
         ax.legend(loc="lower left", fontsize=6)
@@ -80,26 +84,9 @@ def main(spatialdb_dir, fig_dir, sse_km, dip_deg=90.0, name_materials="figS_pyli
     fig.savefig(path_a, dpi=300)
     plt.close(fig)
 
-    plt.rcParams.update({"font.size": 12})
-    fig, ax = plt.subplots(figsize=(10, 4), constrained_layout=True)
-    ax.plot(tkm, g0["boundary_raw_m"], ".", color="0.5", label="SFSVM block boundary (22|23 vs 7), raw")
-    ax.plot(tkm, g0["boundary_smooth_m"], "-", color=BLUE, lw=2, label="5-point running median (shift applied)")
-    ax.axhline(0, color=VERMILLION, lw=1.5, label="mapped trace")
-    ax.axvspan(sse_km[0], sse_km[1], color=ORANGE, alpha=0.2, label="Tule Pond SSE section (04)")
-    ax.set_xlabel("km from Point Pinole"); ax.set_ylabel("Boundary east of trace (m)")
-    ax.legend(fontsize=10); ax.set_title("SFSVM v26 Hayward block boundary at the surface relative to the mapped trace", loc="left")
-    path_b = os.path.join(fig_dir, f"{name_offset}.png")
-    fig.savefig(path_b, dpi=300)
-    plt.close(fig)
-    print(f"wrote {path_a}, {path_b}")
-    return path_a, path_b
+    print(f"wrote {path_a}")
+    return path_a
 
 
 if __name__ == "__main__":
-    import pandas as pd
-    from TulePond_filepaths import paths_out
-    s = pd.read_csv(os.path.join(paths_out["04_event_detection"], "section_lengths.csv")).set_index("name")
-    import model_config
-    main(paths_sfcvm["spatialdb"], common_paths["fig_dir"],
-         (float(s.loc["tulepond_creep_length", "km_lo"]), float(s.loc["tulepond_creep_length", "km_hi"])),
-         dip_deg=model_config.selected_dip_deg)
+    main(paths_sfcvm["spatialdb"], common_paths["fig_dir"])
