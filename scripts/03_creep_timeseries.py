@@ -50,29 +50,27 @@
 # ```
 #
 # **Inputs**: per track `timeseries_tropo.h5`, `velocity_masked.h5`,
-# `geometryGeo.h5` and `maskTempCoh_07.h5`; `hayward_fault_profiles.csv`; the
-# USGS creepmeter records (creepmeter comparison only).
+# `geometryGeo.h5` and `maskTempCoh_07.h5`; `hayward_fault_profiles.csv`.
 #
 # **Outputs** (`outputs/03_creep_timeseries/`):
 # - per track: `creep_ts_LOS_<track>.csv` (latitude x decimal-year matrix, mm
 #   LOS), `creep_geom_<track>.csv` (mean incidence and azimuth of the pixels
 #   used at each crossing, for the decomposition), `creep_params_<track>.json`
 #   (the reuse key), `rate_deviation_<track>.csv`
-# - common grid: `asc_los_interp.csv`, `desc_los_interp.csv`, `fp_ts.csv`, `up_ts.csv`
-# - along-fault rates: `creep_rate_fp.csv`, `creep_rate_up.csv`; `decompose_params.json`
+# - common grid: `fp_ts.csv`
+# - along-fault rates: `creep_rate_fp.csv`
 # - `03_creep_stats.txt` and the registry rows `03_*`
 #
-# **Figures**: Fig. S3 `figS_ratemask_<params>_nsigma3` (the rate mask), Fig. S4
-# `figS_acquisitions_<params>_gap45d` (acquired versus interpolated epochs), and
-# the quality-control plots `qc03_profile_azimuth_smooth21` (trace azimuth) and
-# `qc03_creep_rate_profile_<params>` (along-fault creep rate).
+# **Figures**: Fig. S3 `figS_ratemask_<params>_nsigma3` (the rate mask) and
+# Fig. S4 `figS_acquisitions_<params>_gap45d` (acquired versus interpolated
+# epochs).
 #
 # **Checks.** The crossing at CFW1, recomputed step by step, must equal the
-# extracted series (asserted). The printed output and the sidecar list the
-# rate-mask standard deviation and rejected percentage per track, the number of
-# common dates and of dates acquired on both tracks, the number of
-# landslide-flagged crossings, the median FP creep rate, and the InSAR and
-# creepmeter rates at each creepmeter (printed, not asserted).
+# extracted series, and its FP rate must be finite (asserted). The printed
+# output and the sidecar list the rate-mask standard deviation and rejected
+# percentage per track, the number of common dates and of dates acquired on
+# both tracks, the number of landslide-flagged crossings and the median FP
+# creep rate.
 
 # %%
 # [2]
@@ -136,8 +134,7 @@ REG.inputs(*input_files)
 #
 # The raw azimuth includes the jitter of hand digitising at 100 m spacing. A
 # 21-crossing (2.1 km) rolling median removes the digitising kinks and retains
-# the bends of the trace; the same smoothing is used in notebook 02. The
-# figure shows the raw and smoothed azimuth along the fault.
+# the bends of the trace; the same smoothing is used in notebook 02.
 
 # %%
 # [6]
@@ -155,22 +152,6 @@ print(f"{len(x_fault)} crossings from {x_fault.ft_lat.min():.4f} N (south, {x_fa
 print(f"cross-fault azimuth: raw {x_fault.profile_az.min():.1f} to {x_fault.profile_az.max():.1f}, "
       f"smoothed {x_fault.az_smooth.min():.1f} to {x_fault.az_smooth.max():.1f} deg; "
       f"|raw - smoothed| > 10 deg at {(np.abs(x_fault.profile_az - x_fault.az_smooth) > 10).sum()} crossings")
-
-utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
-fig, ax = plt.subplots(figsize=(7.2, 2.2))
-ax.plot(x_fault.km, x_fault.profile_az, ".", color="0.6", ms=3, label="Local azimuth at each 100 m crossing")
-ax.plot(x_fault.km, x_fault.az_smooth, "-", color="k", lw=1.2, label=f"Rolling median over {az_smooth_n} crossings")
-for code, cm_lat, cm_lon, cm_name in creepmeters:
-    ax.axvline(km_of([cm_lat])[0], color="#0072B2", lw=0.8, ls=":")
-    ax.text(km_of([cm_lat])[0], ax.get_ylim()[1], code, ha="center", va="bottom", fontsize=6, color="#0072B2")
-ax.set_xlabel("Distance from Point Pinole (km)")
-ax.set_ylabel("Cross-fault azimuth (deg)")
-ax.legend(fontsize=7)
-fig.tight_layout()
-f_qc = os.path.join(fig_dir, f"qc03_profile_azimuth_smooth{az_smooth_n}.png")
-fig.savefig(f_qc, dpi=300)
-fig.savefig(f_qc.replace(".png", ".pdf"))
-plt.show()
 
 # %% [markdown]
 # ## [7] Functions
@@ -456,7 +437,6 @@ print(f"   {len(w_subset)} west px, {len(e_subset)} east px; after the rate mask
 print(f"   east median - west median, recomputed = {by_hand:.3f} mm;  in creep_ts_LOS_ascending.csv = {from_file:.3f} mm")
 assert abs(by_hand - from_file) < 1e-3, "the recomputed crossing differs from the extracted series"
 print("Check passed: the extraction loop reproduces the step-by-step computation")
-print(points.head())
 
 # %% [markdown]
 # ## [13] Figure S3: the rate mask
@@ -537,8 +517,7 @@ grid_start = max(asc_los.columns.min(), desc_los.columns.min())
 grid_end = min(asc_los.columns.max(), desc_los.columns.max())
 common_dates = np.array(sorted(set(asc_los.columns) | set(desc_los.columns)))
 common_dates = common_dates[(common_dates >= grid_start) & (common_dates <= grid_end)]
-lats_all = np.array(sorted(set(asc_los.index) & set(desc_los.index)))
-lats = lats_all
+lats = np.array(sorted(set(asc_los.index) & set(desc_los.index)))
 print(f"crossings on both tracks: {len(lats)}, {lats.min():.4f} to {lats.max():.4f} N")
 
 los_interp = {}
@@ -605,7 +584,6 @@ for i, lat in enumerate(lats):
     assert np.isclose(trace_lats[nearest], lat, rtol=0, atol=1e-9), f"crossing {lat} is not a trace point"
     strike[i] = x_fault["az_smooth"].values[nearest] + 90.0
 
-up_matrix = np.full((len(lats), len(common_dates)), np.nan)
 fp_matrix = np.full((len(lats), len(common_dates)), np.nan)
 for i, lat in enumerate(lats):
     d_asc = los_interp["asc"].values[i]
@@ -613,12 +591,10 @@ for i, lat in enumerate(lats):
     ok = np.isfinite(d_asc) & np.isfinite(d_desc)
     if ok.sum() == 0:
         continue
-    up_matrix[i, ok], fp_matrix[i, ok] = utils.decompose_asc_desc(
+    _, fp_matrix[i, ok] = utils.decompose_asc_desc(
         d_asc[ok], d_desc[ok], crossing_inc["asc"][i], crossing_azi["asc"][i],
         crossing_inc["desc"][i], crossing_azi["desc"][i], strike[i])
-up_ts = pd.DataFrame(up_matrix, index=lats, columns=common_dates)
 fp_ts = pd.DataFrame(fp_matrix, index=lats, columns=common_dates)
-up_ts.index.name = "lat"
 fp_ts.index.name = "lat"
 mid = len(lats) // 2
 print(f"decomposed {np.isfinite(fp_matrix).any(axis=1).sum()} crossings; G for the mid-fault crossing ({lats[mid]:.3f} N):")
@@ -657,104 +633,43 @@ trend_sigma = utils.robust_sigma(resid)
 landslide_flag = (np.abs(resid) > trend_nsigma * trend_sigma) & np.isfinite(fp_rate_raw)
 print(f"along-fault rejection: {landslide_flag.sum()}/{len(fp_rate_raw)} crossings dropped "
       f"({100 * landslide_flag.mean():.1f}%), residual sigma {trend_sigma:.2f} mm/yr")
-for ts in (los_interp["asc"], los_interp["desc"], up_ts, fp_ts):
-    ts.iloc[landslide_flag, :] = np.nan
+fp_ts.iloc[landslide_flag, :] = np.nan
 fp_rate = np.where(landslide_flag, np.nan, fp_rate_raw)
 crossing_km = km_of(lats)                                                       # along-trace km of each crossing
 fp_rate_smooth = utils.gaussian_smooth_km(fp_rate, crossing_km, rate_smooth_km)  # NaN-aware, gap-preserving, along-trace km
-up_rate = rate_per_crossing(up_ts)
-up_rate_smooth = utils.gaussian_smooth_km(up_rate, crossing_km, rate_smooth_km)
 
 valid = fp_rate[np.isfinite(fp_rate)]
 print(f"FP creep rate: {valid.size} valid crossings, median {np.median(valid):.2f} mm/yr, "
       f"5-95% {np.percentile(valid, 5):.2f} to {np.percentile(valid, 95):.2f}, min-max {valid.min():.2f} to {valid.max():.2f}")
-print(f"Up rate: median {np.nanmedian(up_rate):+.2f} mm/yr, 5-95% {np.nanpercentile(up_rate, 5):+.2f} to {np.nanpercentile(up_rate, 95):+.2f}")
 
 # %% [markdown]
 # ## [21] Save the common-grid products
 #
-# `asc_los_interp.csv`, `desc_los_interp.csv`, `fp_ts.csv`, `up_ts.csv` (lat x
-# decimal year, landslide-flagged crossings NaN), the rate profiles
-# `creep_rate_fp.csv` and `creep_rate_up.csv`, and `decompose_params.json`.
+# `fp_ts.csv` (lat x decimal year, landslide-flagged crossings NaN) and the
+# rate profile `creep_rate_fp.csv`.
 
 # %%
 # [22]
-los_interp["asc"].to_csv(os.path.join(out_dir, "asc_los_interp.csv"))
-los_interp["desc"].to_csv(os.path.join(out_dir, "desc_los_interp.csv"))
 fp_ts.to_csv(os.path.join(out_dir, "fp_ts.csv"))
-up_ts.to_csv(os.path.join(out_dir, "up_ts.csv"))
 creep_rate_fp = pd.DataFrame({"lat": lats, "fp_creep_rate_mm_yr": fp_rate, "fp_creep_rate_raw": fp_rate_raw,
                               "landslide_flag": landslide_flag.astype(int), "fp_creep_rate_smooth": fp_rate_smooth,
                               "strike_deg": strike})
 creep_rate_fp.to_csv(os.path.join(out_dir, "creep_rate_fp.csv"), index=False)
-pd.DataFrame({"lat": lats, "up_rate_mm_yr": up_rate, "up_rate_smooth": up_rate_smooth}
-             ).to_csv(os.path.join(out_dir, "creep_rate_up.csv"), index=False)
-decompose_params = dict(max_interp_gap_days=max_interp_gap_days, rate_smooth_km=rate_smooth_km,
-                        trend_window=trend_window, trend_nsigma=trend_nsigma, **params_now)
-with open(os.path.join(out_dir, "decompose_params.json"), "w") as fh:
-    json.dump(decompose_params, fh, indent=1)
-print("Saved fp_ts.csv, up_ts.csv, the interpolated LOS matrices and the rate profiles to:", out_dir)
+print("Saved fp_ts.csv and the rate profile to:", out_dir)
 
 # %% [markdown]
-# ## [23] Creep rate at the creepmeters
+# ## [23] Check: the FP rate at CFW1
 #
-# The FP rate of the crossing at the latitude of each creepmeter and the
-# creepmeter rate over the same time window are printed side by side (the full
-# comparison is in notebook 05). The two rates are computed independently;
-# nothing is fitted, scaled or offset between them (the InSAR is tied to GNSS
-# in the preparation chain, not to the creepmeters). No tolerance is asserted.
-# Check: the crossing at CFW1 has a finite FP rate.
+# The crossing at the latitude of CFW1 is compared with the creepmeter in
+# notebook 05. Check: it has a finite FP rate.
 
 # %%
 # [24]
-creepmeter_rate = {}
-for code, cm_lat, cm_lon, cm_name in creepmeters:
-    creepmeter_path = utils.creepmeter_file(common_paths["creepmeter_dir"], code)
-    REG.inputs(creepmeter_path)
-    creepmeter_record = utils.read_creepmeter_10min(creepmeter_path, date_start=grid_start, date_end=grid_end)
-    creepmeter_rate[code] = utils.linear_rate(creepmeter_record["decimal_year"].values, creepmeter_record["slip_mm"].values)[0]
-print("crossing FP rate at each creepmeter (mm/yr):")
-insar_rate_at = {}
-for code, cm_lat, cm_lon, cm_name in creepmeters:
-    j = int(np.argmin(np.abs(lats - cm_lat)))
-    insar_rate_at[code] = fp_rate[j]
-    print(f"  {code} ({cm_name}, {km_of([cm_lat])[0]:.1f} km): InSAR {fp_rate[j]:5.2f}   creepmeter {creepmeter_rate[code]:5.2f}")
-assert np.isfinite(insar_rate_at["CFW1"]), "the crossing at CFW1 has no FP rate (dropped or flagged)"
+j = int(np.argmin(np.abs(lats - cfw1_lat)))      # the crossing at CFW1's latitude
+assert np.isfinite(fp_rate[j]), "the crossing at CFW1 has no FP rate (dropped or flagged)"
 
 # %% [markdown]
-# ## [25] Quality-control figure: the along-fault creep-rate profile
-#
-# Per-crossing rates (grey), flagged crossings (vermillion), the smoothed
-# profile (black) and the creepmeter rates (blue). North (Point Pinole) is on
-# the left.
-
-# %%
-# [26]
-km = km_of(lats)
-fig, ax = plt.subplots(figsize=(7.2, 2.4))
-ax.plot(km, fp_rate_raw, ".", color="0.6", ms=3, label="per-crossing rate")
-ax.plot(km[landslide_flag], fp_rate_raw[landslide_flag], "x", color="#D55E00", ms=4, label="flagged (dropped)")
-ax.plot(km, fp_rate_smooth, "-", color="k", lw=1.2, label=f"{rate_smooth_km} km smooth")
-for k, (code, cm_lat, cm_lon, cm_name) in enumerate(creepmeters):
-    if k == 0:
-        label = "creepmeter"          # one legend entry for the five creepmeters
-    else:
-        label = None
-    ax.plot(km_of([cm_lat])[0], creepmeter_rate[code], "v", color="#0072B2", ms=6, label=label)
-    ax.text(km_of([cm_lat])[0], 11.5, code, ha="center", fontsize=6, color="#0072B2")
-ax.set_xlabel("Distance from Point Pinole (km)")
-ax.set_ylabel("Fault-parallel creep rate (mm/yr)")
-ax.set_ylim(0, 12)
-ax.grid(True, ls="--", alpha=0.4)
-ax.legend(fontsize=6, ncol=4)
-fig.tight_layout()
-f_qc = os.path.join(fig_dir, f"qc03_creep_rate_profile_{params}.png")
-fig.savefig(f_qc, dpi=300)
-fig.savefig(f_qc.replace(".png", ".pdf"))
-plt.show()
-
-# %% [markdown]
-# ## [27] Figure S4: acquired versus interpolated epochs
+# ## [25] Figure S4: acquired versus interpolated epochs
 #
 # For each epoch of the common grid, whether each track is acquired or
 # interpolated. The start of sustained 6-day sampling on each track and the
@@ -763,7 +678,7 @@ plt.show()
 # tracks) that fall before that window starts (registered).
 
 # %%
-# [28]
+# [26]
 def month_year(dec_year):
     """Decimal year -> 'Mon YYYY'."""
     return utils.decimal_year_to_date(dec_year).strftime("%b %Y")
@@ -833,12 +748,12 @@ print("Saved figure to:", figS4)
 plt.show()
 
 # %% [markdown]
-# ## [29] Register
+# ## [27] Register
 #
 # The sidecar `03_creep_stats.txt` and the registry rows `03_*`.
 
 # %%
-# [30]
+# [28]
 lines = ["03 CROSS-FAULT CREEP TIME SERIES",
          f"aperture {dist_min * 1000:.0f}-{dist_max * 1000:.0f} m, along-strike +/-{x_width * 1000:.0f} m, "
          f"min {min_points} px/side, coherence {coh_timeseries}", ""]

@@ -53,9 +53,8 @@
 #
 # **Figures** (in the dated figure folder, .png and .pdf):
 # `figS_validation_cohmap<coh>_<params>_profile1000m_stack5x200m` (the five
-# stations, supplement, 600 dpi), `figS_binning_ladder_coh0.9_mp5_stack4x0.4km`
-# (the aperture ladder, supplement) and `qc05_creepmeter_glitches.png` (QC:
-# the listed creepmeter glitch days).
+# stations, supplement, 600 dpi) and `figS_binning_ladder_coh0.9_mp5_stack4x0.4km`
+# (the aperture ladder, supplement).
 #
 # **What to check.** The per-station rates with their CIs ([8]) and the
 # ensemble agreement and noise floor (the detrended RMSE per station and its
@@ -63,14 +62,12 @@
 # ([12]); the catalogue match of each InSAR window ([14]); the COZ1 amplitude
 # recovery, per event and the mean over the two large events (January 2019 and
 # February 2022, the two largest creepmeter steps, asserted; [14c]). Only the
-# listed creepmeter glitch days are dropped (QC figure
-# `qc05_creepmeter_glitches`), and dropping them must leave the catalogued
-# creep steps unchanged (asserted, [14b]).
+# listed creepmeter glitch days are dropped, and dropping them must leave the
+# catalogued creep steps unchanged (asserted, [14b]).
 
 # %%
 # [2]
 import os
-import textwrap
 import warnings
 
 import insar_utils as utils
@@ -113,7 +110,6 @@ seed = 0
 # the creepmeter glitch days (an explicit list, no automatic filter) and the widening of the Tule Pond windows for the
 # CFW1 catalogue table are shared parameters in TulePond_filepaths: creepmeter_glitches, gittins_window_pad_days
 step_check_mm = 0.1   # dropping the glitch days must leave every catalogued creep step on the daily record within this (asserted)
-qc_half_days = 15     # QC figure: days shown either side of each glitch
 
 # the InSAR stack at a creepmeter. fp_ts is indexed by latitude; these half-widths are km along the trace
 # (utils.lat_to_km_map of each row against the creepmeter's km)
@@ -231,8 +227,8 @@ REG.inputs(fp_ts_file, xf_file, map_file, lengths_file, events_file, event_steps
 # The creepmeter records are daily means over the InSAR window with the
 # listed glitch days dropped (`utils.daily_creepmeter` with
 # `creepmeter_glitches` of TulePond_filepaths: instrument, first and last day,
-# reason; identified by inspection, no automatic filter). The days dropped are
-# drawn in [6b]. The InSAR "stack" at a creepmeter is the mean of the nearest
+# reason; identified by inspection, no automatic filter). The InSAR "stack" at
+# a creepmeter is the mean of the nearest
 # usable `fp_ts` rows within 0.2 km along the trace (`utils.lat_to_km_map`), up
 # to 5 rows, matching the 400 m transect swath. Where fewer than 2 rows are
 # usable it widens to 1 km; the printout says which station did. Each
@@ -316,75 +312,6 @@ for code, lat, lon, name in creepmeters:
           f"InSAR stack of {n_rows} rows{widened_note}")
 
 # %% [markdown]
-# ## [6b] QC: the listed creepmeter glitch days, and two InSAR dips
-#
-# One panel per listed glitch (`creepmeter_glitches`): the daily means as read
-# (vermillion; the dropped day marked) against the record kept (blue),
-# `qc_half_days` either side. The last two panels show two single-epoch dips in
-# the InSAR station stacks (CTM1 around 2025.3, CHP1 in October 2021): the
-# station stack (grey, shifted onto the creepmeter for display) against the
-# creepmeter record kept (blue), where no creepmeter day is dropped. Output:
-# QC figure `qc05_creepmeter_glitches.png` (not in the paper).
-
-# %%
-# [6b]
-utils.mpl_paper_style(base=8)
-qc_insar_dips = [("CTM1", "2025-04-01"), ("CHP1", "2021-10-25")]   # the InSAR epochs of the two dips
-qc_insar_half_days = 60                                          # days shown either side of an InSAR dip
-glitches_in_window = []
-for glitch_code, glitch_first, glitch_last, reason in creepmeter_glitches:
-    glitch_mid = utils.date_to_decimal_year(pd.Timestamp(glitch_first).to_pydatetime())
-    if t0 <= glitch_mid <= t1:
-        glitches_in_window.append((glitch_code, glitch_first, glitch_last, reason))
-n_panels = len(glitches_in_window) + len(qc_insar_dips)
-fig, axes = plt.subplots(int(np.ceil(n_panels / 2)), 2, figsize=(7.2, 2.4 * np.ceil(n_panels / 2)), squeeze=False)
-axes = axes.ravel()
-for panel, (glitch_code, glitch_first, glitch_last, reason) in enumerate(glitches_in_window):
-    ax = axes[panel]
-    as_read = utils.read_creepmeter_10min(utils.creepmeter_file(common_paths["creepmeter_dir"], glitch_code), date_start=t0, date_end=t1)
-    kept_dates, kept_slip = cm_data[glitch_code]
-    offset = float(as_read.slip_mm.values[np.searchsorted(as_read.decimal_year.values, kept_dates[0])]) - kept_slip[0]   # both zeroed alike
-    first_yr = utils.date_to_decimal_year(pd.Timestamp(glitch_first).to_pydatetime())
-    last_yr = utils.date_to_decimal_year((pd.Timestamp(glitch_last) + pd.Timedelta(days=1)).to_pydatetime())
-    shown = (as_read.decimal_year >= first_yr - qc_half_days / 365.25) & (as_read.decimal_year <= last_yr + qc_half_days / 365.25)
-    dropped = shown & (as_read.decimal_year >= first_yr) & (as_read.decimal_year < last_yr)
-    assert dropped.any(), f"{glitch_code} {glitch_first}: the glitch day is not in the record"
-    kept_shown = (kept_dates >= first_yr - qc_half_days / 365.25) & (kept_dates <= last_yr + qc_half_days / 365.25)
-    ax.plot(as_read.decimal_year[shown], as_read.slip_mm[shown] - offset, "o-", ms=2.5, lw=0.8, color="#D55E00", label="daily means as read")
-    ax.plot(kept_dates[kept_shown], kept_slip[kept_shown], "o-", ms=2.0, lw=1.0, color="#0072B2", label="kept")
-    ax.plot(as_read.decimal_year[dropped], as_read.slip_mm[dropped] - offset, "x", ms=8, mew=1.5, color="#D55E00", label="dropped")
-    glitch_span = glitch_first if glitch_last == glitch_first else f"{glitch_first} to {glitch_last}"
-    ax.set_title(f"{glitch_code} {glitch_span}: listed glitch\n" + textwrap.fill(reason, 70), loc="left", fontsize=7)
-    ax.set_ylabel("Creep (mm)")
-    ax.legend(fontsize=6, loc="center right")
-for panel, (dip_code, dip_day) in enumerate(qc_insar_dips, start=len(glitches_in_window)):
-    ax = axes[panel]
-    dip_yr = utils.date_to_decimal_year(pd.Timestamp(dip_day).to_pydatetime())
-    cm_dates, cm_slip = cm_data[dip_code]
-    stack_dates, stack_mean, _, _, _ = insar_stacks[dip_code]
-    near_cm = np.abs(cm_dates - dip_yr) <= qc_insar_half_days / 365.25
-    near_insar = (np.abs(stack_dates - dip_yr) <= qc_insar_half_days / 365.25) & np.isfinite(stack_mean)
-    assert np.any(np.abs(stack_dates[near_insar] - dip_yr) < 0.5 / 365.25), f"{dip_code}: no InSAR epoch on {dip_day}"
-    insar_shift = np.median(np.interp(stack_dates[near_insar], cm_dates, cm_slip) - stack_mean[near_insar])   # display alignment only
-    ax.plot(stack_dates[near_insar], stack_mean[near_insar] + insar_shift, "o-", ms=2.5, lw=0.8, color="0.5", label="InSAR stack (shifted)")
-    ax.plot(cm_dates[near_cm], cm_slip[near_cm], "-", lw=1.2, color="#0072B2", label="creepmeter, kept (no day dropped)")
-    ax.axvline(dip_yr, color="0.3", lw=0.6, ls=":")
-    ax.set_title(f"{dip_code} {dip_day}: not in the glitch list\none InSAR epoch of the station stack", loc="left", fontsize=7)
-    ax.set_ylabel("Creep (mm)")
-    ax.legend(fontsize=6, loc="upper left")
-for ax in axes[n_panels:]:
-    ax.set_visible(False)
-for ax in axes[:n_panels]:
-    ax.set_xlabel("Year")
-    ax.ticklabel_format(axis="x", useOffset=False)
-    ax.xaxis.set_major_locator(plt.MaxNLocator(4))
-fig.tight_layout()
-fig_qc = os.path.join(fig_dir, "qc05_creepmeter_glitches.png")
-fig.savefig(fig_qc, dpi=300)
-print("Saved figure to:", fig_qc)
-plt.show()
-
-# %% [markdown]
 # ## [7] Rates with bootstrap confidence intervals
 #
 # Per station: the creepmeter rate, the crossing rate and the velocity-field
@@ -460,14 +387,6 @@ def block_bootstrap_step(dist_m, velocity):
     return step_best, np.percentile(draws, 2.5), np.percentile(draws, 97.5)
 
 
-def effective_sample_size(values):
-    """Effective sample size under lag-1 autocorrelation r1: n (1 - r1) / (1 + r1). Returns (n_eff, r1)."""
-    values = values[np.isfinite(values)]
-    anomaly = values - values.mean()
-    r1 = float(anomaly[1:] @ anomaly[:-1] / (anomaly @ anomaly))
-    return len(values) * (1 - r1) / (1 + r1), r1
-
-
 def ci95_to_sigma(ci_lo, ci_hi):
     """1-sigma from a 95% interval, assuming it is Gaussian: (hi - lo) / (2 x 1.96)."""
     return (ci_hi - ci_lo) / 3.92
@@ -511,7 +430,6 @@ for code, lat, lon, name in creepmeters:
     insar_detrended = utils.detrend(insar_dates, insar_slip)
     cm_detrended = utils.detrend(insar_dates, cm_on_insar_dates)
     both_finite = np.isfinite(insar_detrended) & np.isfinite(cm_detrended)
-    n_effective, lag1_r = effective_sample_size(insar_detrended[both_finite])
     det_r = float(np.corrcoef(insar_detrended[both_finite], cm_detrended[both_finite])[0, 1])
     det_rmse = float(np.sqrt(np.mean((insar_detrended[both_finite] - cm_detrended[both_finite]) ** 2)))
     rows.append(dict(code=code, name=name, nstack=n_rows, nepoch=int(finite.sum()),
@@ -520,9 +438,9 @@ for code, lat, lon, name in creepmeters:
                      d_cross=cr_rate - cm_rate, d_step=st_rate - cm_rate, distributed=st_rate - cr_rate,
                      sig_cross=np.hypot(ci95_to_sigma(cr_lo, cr_hi), ci95_to_sigma(cm_lo, cm_hi)),
                      sig_step=np.hypot(ci95_to_sigma(st_lo, st_hi), ci95_to_sigma(cm_lo, cm_hi)),
-                     cum_rmse=np.sqrt(np.mean(misfit ** 2)), cum_mad=1.4826 * np.median(np.abs(misfit - np.median(misfit))),
+                     cum_rmse=np.sqrt(np.mean(misfit ** 2)),
                      det_std_ins=np.nanstd(insar_detrended), det_std_cm=np.nanstd(cm_detrended),
-                     det_rmse=det_rmse, det_r=det_r, det_r1=lag1_r, det_neff=n_effective))
+                     det_rmse=det_rmse, det_r=det_r))
     print(f"  {code}: creepmeter {cm_rate:5.2f} [{cm_lo:.2f}, {cm_hi:.2f}]  crossing {cr_rate:5.2f} [{cr_lo:.2f}, {cr_hi:.2f}]  "
           f"step {st_rate:5.2f} [{st_lo:.2f}, {st_hi:.2f}]  det r {det_r:.2f}  det RMSE {det_rmse:.2f} mm")
 stations = pd.DataFrame(rows).set_index("code")
@@ -532,8 +450,8 @@ stations.to_csv(os.path.join(out_dir, "station_agreement.csv"))
 # ## [9] Ensemble agreement and the noise floor
 #
 # Agreement is reported three ways: rate residual statistics (bias, RMS,
-# reduced chi-square against the combined CI), the same excluding COZ1, and
-# the detrended RMSE. Two noise-floor definitions are printed side by side;
+# maximum absolute difference), the same excluding COZ1, and the detrended
+# RMSE. Two noise-floor definitions are printed side by side;
 # the mean detrended RMSE over the five stations is registered as the noise
 # floor (`05_noise_floor_det_rmse_mm`).
 
@@ -541,17 +459,11 @@ stations.to_csv(os.path.join(out_dir, "station_agreement.csv"))
 # [10]
 def agreement(table, key):
     """Agreement of one InSAR measure with the creepmeters over the stations in `table`, from the differences
-    delta = InSAR - creepmeter (column d_<key>) and their combined 1-sigma (column sig_<key>):
-    bias = mean(delta); RMS = sqrt(mean(delta^2)); weighted RMS with weights 1/sigma^2;
-    reduced chi-square = mean((delta / sigma)^2); Bland-Altman limits = bias +/- 1.96 x sd(delta)."""
+    delta = InSAR - creepmeter (column d_<key>): bias = mean(delta); RMS = sqrt(mean(delta^2));
+    maximum |delta|."""
     delta = table[f"d_{key}"].values
-    sigma = table[f"sig_{key}"].values
-    weight = 1.0 / sigma ** 2
     bias = np.mean(delta)
-    spread = np.std(delta, ddof=1)
-    return dict(bias=bias, median_bias=np.median(delta), wrms=np.sqrt(np.sum(weight * delta ** 2) / np.sum(weight)),
-                rms=np.sqrt(np.mean(delta ** 2)), chi2v=np.mean((delta / sigma) ** 2),
-                ba_lo=bias - 1.96 * spread, ba_hi=bias + 1.96 * spread, maxabs=np.max(np.abs(delta)))
+    return dict(bias=bias, rms=np.sqrt(np.mean(delta ** 2)), maxabs=np.max(np.abs(delta)))
 
 
 agreement_stats = {"cross": agreement(stations, "cross"), "step": agreement(stations, "step"),
@@ -576,17 +488,15 @@ stats_lines += ["", "DIFFERENCES vs CREEPMETER (mm/yr)", f"{'code':5} {'crossing
 for code, station in stations.iterrows():
     stats_lines.append(f"{code:5} {station.d_cross:12.2f} {station.d_step:10.2f} {station.distributed:14.2f}")
 stats_lines += ["", "TIME-SERIES AGREEMENT (creepmeter aligned to the InSAR epochs)",
-                f"{'code':5} {'cum RMSE':>9} {'det.std ins/cm':>16} {'det.r':>7} {'det RMSE':>9} {'N_eff':>7} {'N_ep':>5}"]
+                f"{'code':5} {'cum RMSE':>9} {'det.std ins/cm':>16} {'det.r':>7} {'det RMSE':>9} {'N_ep':>5}"]
 for code, station in stations.iterrows():
     stats_lines.append(f"{code:5} {station.cum_rmse:9.2f} {station.det_std_ins:7.2f}/{station.det_std_cm:<7.2f} {station.det_r:7.2f} "
-                       f"{station.det_rmse:9.2f} {station.det_neff:7.0f} {station.nepoch:5d}")
+                       f"{station.det_rmse:9.2f} {station.nepoch:5d}")
 stats_lines += ["", "ENSEMBLE AGREEMENT"]
 for key, label in (("cross", "crossing vs creepmeter, all 5"), ("cross_excl_coz1", "crossing vs creepmeter, excl COZ1"),
                    ("step", "velocity step vs creepmeter, all 5")):
     stats = agreement_stats[key]
-    stats_lines.append(f"{label}: bias {stats['bias']:+.2f} (median {stats['median_bias']:+.2f}), RMS {stats['rms']:.2f}, "
-                       f"weighted RMS {stats['wrms']:.2f}, max |diff| {stats['maxabs']:.2f} mm/yr, reduced chi2 {stats['chi2v']:.2f}, "
-                       f"Bland-Altman [{stats['ba_lo']:+.2f}, {stats['ba_hi']:+.2f}]")
+    stats_lines.append(f"{label}: bias {stats['bias']:+.2f}, RMS {stats['rms']:.2f}, max |diff| {stats['maxabs']:.2f} mm/yr")
 stats_lines += ["", "NOISE FLOOR",
                 f"median detrended InSAR std at steady stations (creepmeter transient < 1 mm): {floor_steady_std:.2f} mm",
                 f"mean detrended RMSE, InSAR minus creepmeter, all 5: {floor_rmse:.2f} mm "
