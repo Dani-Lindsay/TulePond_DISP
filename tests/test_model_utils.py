@@ -223,3 +223,35 @@ def test_side_deflection_near_minus_far_per_side():
     ok = np.ones(d.size, bool)
     assert sc.side_deflection_mm(values, d, ok, ok, -1, (0.06, 0.25), (1.5, 3.0)) == (-4.0, 6, 6)
     assert sc.side_deflection_mm(values, d, ok, ok, 1, (0.06, 0.25), (1.5, 3.0)) == (2.0, 6, 6)
+
+
+# 2026-10-30: the LOS test (los_inversion_2026-10-30): several data sets in one CSI solve, LOS Green's functions
+def _real_setup():
+    data = os.path.expanduser("~/work/proj_TulePond_DISP")
+    run = "gf_default_sfcvm_order2"
+    if not os.path.exists(os.path.join(data, "modeling_SFCVM", "gf", f"G_{run}.npz")) or \
+            not os.path.exists(os.path.join(data, "outputs", "07a_uniform_model", "model_data.npz")):
+        pytest.skip("real products not available")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "sensitivity"))
+    import common
+    inputs = common.load_inputs()
+    return common, inputs, common.make_setup(inputs, run), common.samples_for(inputs, "default")
+
+
+def test_invert_tents_multi_with_one_dataset_equals_invert_tents():
+    common, inputs, setup, samples = _real_setup()
+    G = setup["G"]["m"]
+    Cd = sc.data_cd("nugget", samples, inputs["cov_p"], 0.0, keep=setup["keep"])
+    one, data_one, _ = sc.invert_tents(setup["template"], samples, G, Cd, None, None, 27.0, (0.1, 0.05), inputs["frame_lonlat"])
+    multi, datas = sc.invert_tents_multi(setup["template"], [(samples, G, Cd)], 27.0, (0.1, 0.05), inputs["frame_lonlat"])
+    assert np.allclose(one.slip[:, 0], multi.slip[:, 0], atol=1e-6)
+    assert np.allclose(data_one.vel, datas[0].vel, atol=1e-6) and np.allclose(data_one.synth, datas[0].synth, atol=1e-6)
+
+
+def test_build_G_los_reproduces_the_fault_parallel_G():
+    import model_config as cfg
+    common, inputs, setup, samples = _real_setup()
+    gnpz = setup["gnpz"]["m"]
+    look = np.tile(np.asarray(gnpz["look"], float), (samples.vel.size, 1))
+    G_los, G_fp = sc.build_G_los(gnpz, inputs["points"]["default"], look, cfg.gf_pylith_output_dir)
+    assert np.allclose(G_fp, gnpz["G_rl_m_per_m"], atol=1e-12) and np.allclose(G_los, G_fp, atol=1e-12)

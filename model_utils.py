@@ -235,21 +235,18 @@ def decompose_fault_parallel(los_asc, los_desc, inc_both, azi_both, strike_deg, 
     return fault_parallel.astype(float), up.astype(float)
 
 
-def fault_parallel_from_steps(steps_h5, strike_deg, window_px, mask_files=None):
-    """The fault-parallel mean event recomputed from notebook 06's saved per-track products
-    (`tulepond_steps_<track>.h5`: the per-pixel mean of the kept events at the time-series coherence, with the
-    incidence and azimuth of the box), optionally masked at another temporal coherence (mask_files: track -> MintPy
-    maskTempCoh file, cut to the box from the X_FIRST / Y_FIRST attributes, as 06 [20] does). steps_h5: track ->
-    path, keys 'ascending' and 'descending'. Returns the fault-parallel map (mm) on 06's box grid.
-    With the coherence-0.9 masks this must reproduce 06's fp_maps.npz `fp_event` exactly (07a asserts it); without
-    masks it is the field at coherence 0.7, the fit mask (the coherence-0.7 sensitivity sample set).
-    Source: written for this project (2026-10-06), replacing drafts/retired_2026-10-06/pylith/coh07/make_fp_coh.py, which exec'd 06."""
-    means, incs, azis = {}, {}, {}
+def los_from_steps(steps_h5, mask_files=None):
+    """Notebook 06's per-track LOS mean event (mm; MintPy convention, positive toward the satellite), with the incidence
+    and azimuth angles (deg) of the box, from its saved `tulepond_steps_<track>.h5`, optionally masked at another temporal
+    coherence (mask_files: track -> MintPy maskTempCoh file, cut to the box from the X_FIRST / Y_FIRST attributes, as 06
+    [20] does). steps_h5: track -> path, keys 'ascending' and 'descending'. Returns track -> dict(mean, inc, azi) on 06's
+    box grid. Source: the reading part of fault_parallel_from_steps (written for this project, 2026-10-06 / 2026-10-30)."""
+    out = {}
     for track in ("ascending", "descending"):
         with h5py.File(steps_h5[track], "r") as h5:
             mean = h5["mean_event"][:].astype(float)
-            incs[track] = h5["incidenceAngle"][:]
-            azis[track] = h5["azimuthAngle"][:]
+            inc = h5["incidenceAngle"][:]
+            azi = h5["azimuthAngle"][:]
             box = dict(x_first=float(h5.attrs["X_FIRST"]), y_first=float(h5.attrs["Y_FIRST"]), nr=int(h5.attrs["LENGTH"]),
                        nc=int(h5.attrs["WIDTH"]), dx=float(h5.attrs["X_STEP"]), dy=float(h5.attrs["Y_STEP"]))
         if mask_files is not None:
@@ -259,10 +256,21 @@ def fault_parallel_from_steps(steps_h5, strike_deg, window_px, mask_files=None):
                 mask_name = [name for name in mask_h5.keys() if name != "date"][0]
                 mask = mask_h5[mask_name][row_start:row_start + box["nr"], col_start:col_start + box["nc"]].astype(bool)
             mean = np.where(mask, mean, np.nan)
-        means[track] = mean
-    inc_both = np.stack([incs["ascending"], incs["descending"]]).astype(np.float32)
-    azi_both = np.stack([azis["ascending"], azis["descending"]]).astype(np.float32)
-    fault_parallel, _ = decompose_fault_parallel(means["ascending"], means["descending"], inc_both, azi_both,
+        out[track] = dict(mean=mean, inc=inc, azi=azi)
+    return out
+
+
+def fault_parallel_from_steps(steps_h5, strike_deg, window_px, mask_files=None):
+    """The fault-parallel mean event recomputed from notebook 06's saved per-track products (los_from_steps: the
+    per-pixel mean of the kept events at the time-series coherence, with the incidence and azimuth of the box), optionally
+    masked at another temporal coherence. Returns the fault-parallel map (mm) on 06's box grid.
+    With the coherence-0.9 masks this must reproduce 06's fp_maps.npz `fp_event` exactly (07a asserts it); without
+    masks it is the field at coherence 0.7, the fit mask (the coherence-0.7 sensitivity sample set).
+    Source: written for this project (2026-10-06), replacing drafts/retired_2026-10-06/pylith/coh07/make_fp_coh.py, which exec'd 06."""
+    tracks = los_from_steps(steps_h5, mask_files)
+    inc_both = np.stack([tracks["ascending"]["inc"], tracks["descending"]["inc"]]).astype(np.float32)
+    azi_both = np.stack([tracks["ascending"]["azi"], tracks["descending"]["azi"]]).astype(np.float32)
+    fault_parallel, _ = decompose_fault_parallel(tracks["ascending"]["mean"], tracks["descending"]["mean"], inc_both, azi_both,
                                                  strike_deg, window_px)
     return fault_parallel
 
@@ -855,6 +863,33 @@ def load_G(name, points_npz, strike_deg, pylith_output_dir, gf_dir):
     return gnpz
 
 
+def build_G_los(gnpz, points_npz, los_enu, pylith_output_dir):
+    """The Green's functions of a PyLith GreensFns run projected on a LOS unit vector per sample (los_enu: (n_samples, 3),
+    east, north, up, ground to satellite), m of LOS displacement per m of right-lateral slip, in the impulse order and
+    with the right-lateral sign of the run's fault-parallel G product `gnpz` (build_G: vertex_index, sign_rl). The 3D
+    displacements are re-read from the run's points.h5 (read_gf_run) and matched to the samples as build_G does. The mesh
+    CRS (tmerc centred on the section) is taken as east / north / up. Returns (G_los, G_fault_parallel_check): the second
+    is the same displacements projected on gnpz's look vector, which must equal gnpz's G (the caller asserts it).
+    Source: build_G (PyLith examples/subduction-3d/invert_slip.py reading pattern); written for this project (2026-10-30)."""
+    name = str(gnpz["runs"][0])
+    fault_xyz, _, slip, point_xyz, disp = read_gf_run(pylith_output_dir, name)
+    assert np.array_equal(fault_xyz, gnpz["fault_xyz"]), f"{name}: the fault mesh differs from the G product"
+    ll = slip[:, :, 1]
+    k_vertex = np.argmax(np.abs(ll), axis=1)
+    assert np.array_equal(k_vertex, gnpz["vertex_index"]), f"{name}: impulse order differs from the G product"
+    peak_sign = np.sign(ll[np.arange(ll.shape[0]), k_vertex])
+    points = np.load(points_npz)
+    dist, order = cKDTree(point_xyz[:, :2]).query(np.c_[points["x"], points["y"]])
+    assert dist.max() < 1e-3 and np.unique(order).size == order.size, f"{name}: samples do not match the output points"
+    los_enu = np.asarray(los_enu, float)
+    assert los_enu.shape == (order.size, 3) and np.allclose(np.linalg.norm(los_enu, axis=1), 1.0, atol=1e-6), "LOS must be unit vectors"
+    disp_samples = disp[:, order, :]                                         # (impulses, samples, 3)
+    scale = float(gnpz["sign_rl"]) * peak_sign[None, :]
+    G_los = np.einsum("kpc,pc->pk", disp_samples, los_enu) * scale
+    G_fp = np.einsum("kpc,c->pk", disp_samples, np.asarray(gnpz["look"], float)) * scale
+    return G_los, G_fp
+
+
 # =====================================================================================================================
 # 8. The tent (vertex) parameterisation of the PyLith fault, and the inversion
 # =====================================================================================================================
@@ -1047,6 +1082,49 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
         surface.buildsynth([fault_model], direction="s")
     assert np.all(fault_model.slip[:, 0] >= -1e-9), "negative slip out of NNLS"
     return fault_model, insar_data, surface
+
+
+def invert_tents_multi(template, datasets, sigma, lam, frame_lonlat, ramp_spec="1,x,y", name="tents"):
+    """invert_tents for SEVERAL InSAR data sets in one CSI solve (e.g. the ascending and descending LOS samples):
+    datasets = list of (samples, G, Cd), each with its own Green's functions (m/m, right-lateral +), covariance (mm^2) and
+    its own reference-frame polynomial (ramp_spec, solved jointly); the same exponential prior buildCmXY(sigma, lam) and
+    NNLS (slip >= 0) as invert_tents. No surface data. Returns (fault, [data sets]), each data set with its synth and its
+    fitted frame removed from vel. With one data set it equals invert_tents (tests/test_model_utils.py).
+    Source: invert_tents (CSI multisourcesolve with several data sets, as the CSI tutorials do; written 2026-10-30)."""
+    fault_model = copy.deepcopy(template)
+    fault_model.name = name
+    solve_datas = []
+    for k, (samples, G, Cd) in enumerate(datasets):
+        data = copy.deepcopy(samples)
+        assert Cd.shape == (data.vel.size, data.vel.size) and G.shape[0] == data.vel.size
+        data.Cd = Cd.copy()
+        fault_model.setGFs(data, strikeslip=[np.asarray(G, float).copy()])
+        solve_datas.append(data)
+    assert len({d.name for d in solve_datas}) == len(solve_datas), "the data sets need distinct names"
+    trans = transform("ramps", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
+    trans.buildGFs(solve_datas, [str(ramp_spec)] * len(solve_datas), verbose=False)
+    fault_model.assembleGFs(solve_datas, slipdir="s", verbose=False)
+    fault_model.assembled(solve_datas, verbose=False)
+    fault_model.assembleCd(solve_datas, verbose=False)
+    trans.assembleGFs(solve_datas, verbose=False)
+    trans.assembled(solve_datas, verbose=False)
+    trans.assembleCd(solve_datas, verbose=False)
+    fault_model.buildCmXY(sigma, lam, verbose=False)
+    trans.buildCm(1e4, verbose=False)
+    solver = multisrc(f"{name} mean event", [fault_model, trans], verbose=False)
+    solver.assembleGFs()
+    solver.assembleCm()
+    mprior = np.zeros(solver.Np)
+    for i, param_type in enumerate(solver.paramTypes):
+        if param_type[0] == trans.name:
+            mprior[i] = -1e3
+    solver.ConstrainedLeastSquareSoln(method="nnls", mprior=mprior)
+    solver.distributem()
+    for data in solve_datas:
+        data.buildsynth([fault_model], direction="s")
+        data.removeTransformation(trans)
+    assert np.all(fault_model.slip[:, 0] >= -1e-9), "negative slip out of NNLS"
+    return fault_model, solve_datas
 
 
 def match_impulse_order(ref_fault_xyz, ref_vertex_index, fault_xyz, vertex_index, label="", tol_m=1e-3):
@@ -1278,17 +1356,29 @@ def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, keep):
     """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data, surface), the
     weighted misfit chi2 of the FITTED samples (`keep`; the L-curve's x axis), the prior-weighted roughness
     sqrt(m^T (Cm / sigma^2)^-1 m) (its y axis), the RMS of the fitted samples, peak slip, Mw at mu_ref and the solve
-    time (s). (Until 2026-10-30 the RMS included the samples of the near-trace cut.) Source: 08a [11] `lcurve`
+    time (s). Several data sets (solve returns a list, keep a list of masks, 2026-10-30): chi2 summed, RMS over all of
+    them. (Until 2026-10-30 the RMS included the samples of the near-trace cut.) Source: 08a [11] `lcurve`
     (Hansen 1992; written for this project)."""
-    keep = np.asarray(keep, bool)
+    if isinstance(keep, (list, tuple)):                       # one mask per data set (invert_tents_multi)
+        keep_list = [np.asarray(k, bool) for k in keep]
+    else:
+        keep_list = None
+        keep = np.asarray(keep, bool)
     rows = []
     for sigma in sigma_grid:
         t0 = time.time()
         fault_model, insar_data, _ = solve(sigma)
-        res = (insar_data.vel - insar_data.synth)[keep]
-        Cd_fit = insar_data.Cd[np.ix_(keep, keep)]
+        datas = insar_data if isinstance(insar_data, (list, tuple)) else [insar_data]     # several data sets: invert_tents_multi
+        keeps = keep_list if keep_list is not None else [keep]
+        assert len(keeps) == len(datas), "one keep mask per data set"
+        chi2, res_all = 0.0, []
+        for data, keep_k in zip(datas, keeps):
+            res_k = (data.vel - data.synth)[keep_k]
+            chi2 += float(np.dot(res_k, np.linalg.solve(data.Cd[np.ix_(keep_k, keep_k)], res_k)))
+            res_all.append(res_k)
+        res = np.concatenate(res_all)
         slip_vec = fault_model.slip[:, 0]
-        rows.append(dict(sigma=float(sigma), chi2_fitted=float(np.dot(res, np.linalg.solve(Cd_fit, res))),
+        rows.append(dict(sigma=float(sigma), chi2_fitted=chi2,
                          roughness=float(np.sqrt(np.dot(slip_vec, np.linalg.solve(fault_model.Cm / sigma ** 2, slip_vec)))),
                          rms_mm=float(np.sqrt(np.mean(res ** 2))), peak_slip_mm=float(slip_vec.max()),
                          Mw_30gpa=float(moment_magnitude(mu_ref * tents.potency_m3(slip_vec))), seconds=time.time() - t0))
