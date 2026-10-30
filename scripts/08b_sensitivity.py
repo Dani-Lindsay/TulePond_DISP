@@ -232,7 +232,7 @@ b_median, b_lo, b_hi = west_basement.median(), west_basement.min(), west_basemen
 best = scan.loc[scan.rms_all_mm.idxmin()]
 print(noise_test.round(2).to_string(index=False))
 print(buried_top.round(3).to_string(index=False))
-fig, axes = plt.subplots(1, 3, figsize=(15.0 * cm, 5.6 * cm), constrained_layout=True, sharex=True)
+fig, axes = plt.subplots(1, 3, figsize=(15.0 * cm, 4.2 * cm), constrained_layout=True, sharex=True)
 ax = axes[0]
 ax.plot(scan.D_km, scan.rms_W500_mm, "o-", color=OKABE["vermillion"], lw=lw, ms=ms, label="West")
 ax.plot(scan.D_km, scan.rms_E500_mm, "s--", color=OKABE["blue"], lw=lw, ms=ms, mfc="white", label="East")
