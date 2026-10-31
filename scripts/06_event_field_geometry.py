@@ -44,9 +44,9 @@
 #    fault-parallel, vertical and LOS maps: the pixels, the near-fault step (east
 #    band minus west band, the aperture of notebook 04) and the near-fault
 #    amplitude of each block against its own far field. No model is fitted to
-#    the profiles; the slip models are in notebooks 07 and 08.
+#    the profiles; the slip models are in notebooks 08 and 09.
 # 6. **Inputs for Fig 2**: the maps and profiles, written to one file that
-#    notebook 09 draws after the slip model.
+#    notebook 14 draws after the slip model.
 # 7. **Mean-event statistics**: the near-fault fault-parallel deflection of each
 #    block at X-X' and Y-Y', the decay distance of the X-X' event profile on
 #    each side of the trace, and the vertical displacement around Lake Elizabeth
@@ -68,8 +68,8 @@
 # notebook 04; the mean, scatter, rate and geometry; read by notebook 07),
 # `csi_mean_event_<track>.npz` (the mean event as a flat table of pixels),
 # `fp_maps.npz` (fault-parallel and vertical rate and mean event; read by
-# notebooks 07 and 08), `profile_<XX|YY>_<field>[_<track>].csv`,
-# `fig2_inputs.npz` (read by notebooks 08, 09 and 11),
+# notebooks 07 and 09), `profile_<XX|YY>_<field>[_<track>].csv`,
+# `fig2_inputs.npz` (read by notebooks 09, 11 and 14),
 # `timefunc_fit_<track>.npz` (the cached per-pixel fit),
 # `06_event_field_stats.txt`, registry rows `06_*`.
 #
@@ -263,7 +263,7 @@ rate_zero_m = 1000.0            # the rate profile is zeroed on the mid-point of
 min_far_pixels = 20             # the event profile needs this many far-field pixels to be zeroed
 xfault_step_m = (dist_min * 1e3, dist_max * 1e3)   # the near-fault band, the aperture of notebook 04 (m)
 decay_bin_m = 150.0             # bin width of the decay distance (section 12); the running median of Fig 2
-                                # (notebook 09, median_bin_m) uses the same bins
+                                # (notebook 14, median_bin_m) uses the same bins
 
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")
@@ -1121,7 +1121,7 @@ assert los_profiles["ascending"]["X"]["event_step"] < 0 < los_profiles["descendi
 # %% [markdown]
 # ## 11. The maps and profiles for Fig 2
 #
-# Fig 2 is drawn in notebook 09 after the slip model, so that it can include
+# Fig 2 is drawn in notebook 14 after the slip model, so that it can include
 # the model row. It needs the per-track LOS maps (masked at `coh_maps`), the
 # fault-parallel and vertical maps and the profiles, written to one file,
 # `fig2_inputs.npz`. The fault-parallel and vertical profiles get their block

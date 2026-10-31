@@ -1,9 +1,9 @@
 # pylith/: the PyLith side of the 3D slip model
 
 This folder holds everything needed to remake the PyLith 5.0.2 runs behind the slip models. No notebook runs PyLith:
-`07_model_data`, `09_model_3d` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
-built from the run products in the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit). 08's
-"PyLith files" cell lists every file of the preferred run with its path. The preferred run and every setting of the model
+`08_model_homogeneous`, `09_model_3d` and `scripts/sensitivity/*.py` read the archived G matrices (`<medium>/gf/G_<run>.npz`)
+built from the run products in the results directory (`TulePond_filepaths.data_dir`, the Zenodo deposit). Notebook 09,
+section 2, lists every file of the preferred run with its path. The preferred run and every setting of the model
 are declared in `model_config.py` (`gf_run`, `gf_files`).
 
 **The preferred model: `gf_shallow_dip70w_sfcvm_order2`** = `pylithapp.cfg` + `mat_sfcvm_nocap.cfg` + `gf.cfg` +
@@ -106,7 +106,7 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 
 | Run | Material cfg | Mesh | Points | Role | Time |
 |---|---|---|---|---|---|
-| `gf_shallow_dip70w_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | **Preferred model** (07, 08; baseline of the inversion-choice sensitivity tests; depth scan) | 35 h |
+| `gf_shallow_dip70w_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | **Preferred model** (08, 09; baseline of the inversion-choice sensitivity tests; depth scan) | 35 h |
 | `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh | 17 h |
 | `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh | 32 h |
 | `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh | see `runs/run_gf.log` |
@@ -119,7 +119,7 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 | `gf_shallow_homog_order2_strip` / `gf_fine_homog_order2_strip` | `mat_homog.cfg` | `mesh_vertical_tet_shallow.msh` / `_fine.msh` | `insar_points.txt` | Green's-function check B (mesh refinement); impulses only in the strip `impulses_test_km58.8-59.3_z1100.spatialdb` | 42 / 46 min |
 
 The homogeneous comparison model is not a PyLith run: it uses the analytic half-space solution of CSI (triangular
-dislocations, Meade 2007) on the tents of the preferred run (`model_utils.analytic_tent_G`, 07; cache
+dislocations, Meade 2007) on the tents of the preferred run (`model_utils.analytic_tent_G`, 08; cache
 `modeling_uniform/gf/G_analytic_<gf_run>_nsub<n>.npz`).
 
 The order-1 SFCVM runs made with a 150 m/s Vs floor are archived in `backup_vsfloor150_2026-10-25/` in the results

@@ -1,5 +1,5 @@
 """depth_scan.py: the fixed-depth scan of the preferred forward model (model_config.gf_run), used for the depth extent of
-slip and the stress drop (notebook 08 [11]). The depth-scan functions are model_utils.uniform_slip_shape and
+slip and the stress drop (notebook 09, section 12). The depth-scan functions are model_utils.uniform_slip_shape and
 model_utils.uniform_slip_fit.
 
 Author: Danielle Lindsay

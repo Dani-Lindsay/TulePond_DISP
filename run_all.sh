@@ -5,7 +5,7 @@
 #     ./run_all.sh            # all
 #     ./run_all.sh 03 05      # just those
 #     ./run_all.sh 01_prep_inputs 07 08   # a full name or a prefix, run in the order given
-#     ./run_all.sh 07 08 09 10         # the slip models, Fig 2 and the model sensitivity (given 04 and 06)
+#     ./run_all.sh 07 08 09 10         # the slip models and the model sensitivity (given 04 and 06)
 #
 # The sensitivity scripts (scripts/sensitivity/*.py, ~5 h) are not run here: 10_model_sensitivity draws their stored
 # outputs. Run them by hand when a model setting changes (scripts/sensitivity/common.py).

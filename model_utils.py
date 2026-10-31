@@ -3,7 +3,7 @@
 """
 @author: Danielle Lindsay
 
-model_utils.py: the modelling functions of the Tule Pond slip models (notebooks 07, 08, 10 and
+model_utils.py: the modelling functions of the Tule Pond slip models (notebooks 07 to 10, 14 and
 scripts/sensitivity/*.py). TulePond_filepaths.py holds the paths and shared constants, model_config.py the settings
 of the slip models, insar_utils.py the InSAR helpers, and the numbered notebooks the order of the analysis. Each
 function states what it does, its inputs and outputs with units, and its source ("written for this project" where

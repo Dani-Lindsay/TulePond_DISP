@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 08 Preferred slip model: 3D elastic structure (SFSVM) and PyLith Green's functions
+# # 09 Preferred slip model: 3D elastic structure (SFSVM) and PyLith Green's functions
 #
 # ```
 # Author: Danielle Lindsay
@@ -32,7 +32,7 @@
 # 2. Computes the size of the model: potency, Mw at 30 GPa and at the slip-weighted harmonic-mean SFSVM rigidity
 #    (Hanks & Kanamori 1979; Vavrycuk 2013), and depth50 and depth90, the depths above which 50 % and 90 % of the
 #    potency lie (section 6).
-# 3. Compares the model with the homogeneous model of notebook 07 and measures the near-fault deflection on each side
+# 3. Compares the model with the homogeneous model of notebook 08 and measures the near-fault deflection on each side
 #    (sections 7 to 9).
 # 4. Draws the supplementary figures of the model (section 10).
 # 5. Estimates the uncertainty from data noise with a Monte Carlo of correlated noise (section 11).
@@ -43,7 +43,7 @@
 # computed by `pylith/run_gf.sh`. Both are run by hand, as documented in `pylith/README.md`. This notebook reads the
 # stored G matrix of the run and lists its files (section 2).
 #
-# **Inputs**: notebook 07 `model_data.npz`, `homogeneous_model.npz`, `homogeneous_lcurve.csv`; the PyLith products listed
+# **Inputs**: notebook 07 `model_data.npz`; notebook 08 `homogeneous_model.npz`, `homogeneous_lcurve.csv`; the PyLith products listed
 # in section 2; notebook 06 `fig2_inputs.npz` (profile lines); notebook 04 `section_lengths.csv`,
 # `event_fraction_by_crossing.csv`, `creep_events.csv`; the stored outputs of `scripts/sensitivity/` listed in
 # `model_config.archived` (the fine-mesh baseline row of the sensitivity table, for a check, and the fixed-depth scan).
@@ -51,7 +51,7 @@
 # **Outputs** (`outputs/09_model_3d/`): `selected_lcurve.csv`, `selected_model.npz` (slip, prediction, plane, residual
 # and crossing steps; Fig 2 reads it), `rigidity_beside_fault.csv`, `model_comparison.csv`,
 # `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `near_fault_deflection.csv`,
-# `08_selected_stats.txt`. **Registry keys** `08_*`.
+# `09_selected_stats.txt`. **Registry keys** `09_*`.
 #
 # **Figures** (`Figures_<fig_date>/`): `figS_model_lcurve`, `figS_model_slip`, `figS_model_fit_maps`,
 # `figS_model_profiles`, `figS_model_montecarlo`, `figS_pylith_materials_sfcvm_v26` (`scripts/model_plots/plot_materials.py`).
@@ -153,7 +153,7 @@ with open(cfg.gf_files["mesh_report"]) as report:
 # (the samples 60 m or more from the trace) and the near-field masks (fitted samples within 500 m west or east of the
 # trace in the SSE section).
 #
-# The inversion (`model_utils.invert_tents`, CSI; Jolivet 2024) is that of notebook 07, section 8:
+# The inversion (`model_utils.invert_tents`, CSI; Jolivet 2024) is that of notebook 08, section 4:
 #
 # $$\min_{\mathbf{s} \ge 0,\ \mathbf{a}} \;
 #   (\mathbf{d} - G\mathbf{s} - B\mathbf{a})^{T} C_d^{-1} (\mathbf{d} - G\mathbf{s} - B\mathbf{a})
@@ -253,7 +253,7 @@ print(f"SSE section, top 100 m: median mu west {np.median(mu_west[top_section]) 
 # ## 5. L-curve, corner, and an independent check
 #
 # The regularisation strength is the corner of the model's own L-curve (`model_utils.own_corner`; Hansen 1992), found
-# as in notebook 07, section 9. For each $\sigma$ the L-curve takes the weighted misfit of the fitted samples and the
+# as in notebook 08, section 5. For each $\sigma$ the L-curve takes the weighted misfit of the fitted samples and the
 # prior-weighted roughness of the slip,
 #
 # $$\chi^2 = \mathbf{r}_K^{T} C_{d,K}^{-1} \mathbf{r}_K , \qquad
@@ -356,9 +356,9 @@ for key, value in numbers.items():
     print(f"  {key:22s} {value:.5g}")
 
 # %% [markdown]
-# ## 7. The homogeneous model of notebook 07 and the profile lines of notebook 06
+# ## 7. The homogeneous model of notebook 08 and the profile lines of notebook 06
 #
-# The homogeneous model of notebook 07 is read and asserted to be on the same samples with the same near-trace cut. The
+# The homogeneous model of notebook 08 is read and asserted to be on the same samples with the same near-trace cut. The
 # profile lines of notebook 06 are read for the profile figure (section 10). The X-X' profile numbers of the paper come
 # from the pixels in notebook 06, not from this notebook.
 
@@ -366,11 +366,11 @@ for key, value in numbers.items():
 fig2_inputs = np.load(fig2_inputs_file)
 homogeneous = np.load(homogeneous_file)
 assert np.array_equal(homogeneous["sample_lon"], model_data["sample_lon"]) and np.array_equal(homogeneous["keep"], keep), \
-    "07's homogeneous model is not on these samples / this cut"
-print(f"07 homogeneous model: sigma {float(homogeneous['sigma']):.2f}, Mw {float(homogeneous['Mw_30gpa']):.3f}, n_sub {int(homogeneous['n_sub'])}")
+    "08's homogeneous model is not on these samples / this cut"
+print(f"08 homogeneous model: sigma {float(homogeneous['sigma']):.2f}, Mw {float(homogeneous['Mw_30gpa']):.3f}, n_sub {int(homogeneous['n_sub'])}")
 
 # %% [markdown]
-# ## 8. The 3D model and the homogeneous model of notebook 07
+# ## 8. The 3D model and the homogeneous model of notebook 08
 #
 # The two models share the fault, the samples, the weighting, the plane, the prior, the near-trace cut and the corner
 # rule; only the Green's functions differ. Their numbers (section 6) are tabulated side by side.
@@ -417,7 +417,7 @@ print(deflection.round(2).to_string(index=False))
 # ## 10. Figures of the model: L-curves, slip, fit maps, profiles
 #
 # The figures use the journal style (`insar_utils.mpl_paper_style(base=7)`, 300 dpi, png and pdf) and Okabe-Ito colours.
-# Everything drawn is a product of this notebook or of notebook 07; the model profiles are $G\mathbf{s}$ at the samples.
+# Everything drawn is a product of this notebook or of notebooks 07 and 08; the model profiles are $G\mathbf{s}$ at the samples.
 # The last figure shows the SFSVM shear modulus at 50 m depth and across X-X' (`scripts/model_plots/plot_materials.py`).
 
 # %%
@@ -627,10 +627,10 @@ print(stress_drop.round(3).to_string(index=False))
 # %% [markdown]
 # ## 13. Products and the number registry
 #
-# `selected_model.npz` holds what Fig 2 (notebook 09) draws: the samples and their blocks, the data, the plane, the
+# `selected_model.npz` holds what Fig 2 (notebook 14) draws: the samples and their blocks, the data, the plane, the
 # model, the residual, `keep`, the signed distance from the trace and the position along strike, the crossing steps of
 # panel K, the slip on the tents, and Mw. The numbers of the paper are registered with the stats file
-# `08_selected_stats.txt`.
+# `09_selected_stats.txt`.
 
 # %%
 selected_file = os.path.join(out_dir, "selected_model.npz")
@@ -648,38 +648,38 @@ stats = REG.sidecar("09_selected", cfg.summary() + [comparison.to_string(index=F
                                                       stress_drop.to_string(index=False)]
                     + [f"{k} = {v}" for k, v in numbers.items()])
 where = "M8"
-REG.register("09_n_samples_fitted", numbers["n_fitted"], "count", 0, where, "[3]", stats)
-REG.register("09_sigma", sigma, "mm", 1, where, "[5]", stats)
-REG.register("09_sigma_base_corner", sigma_base, "mm", 1, where, "[5]", stats)
-REG.register("09_mw_30gpa", numbers["Mw_30gpa"], "Mw", 2, where, "[6]", stats)
-REG.register("09_mw_harmonic", numbers["Mw_sfcvm"], "Mw", 2, where, "[6]", stats)
-REG.register("09_mu_effective_harmonic_gpa", numbers["mu_effective_gpa"], "GPa", 1, where, "[6]", stats)
-REG.register("09_potency_m3", numbers["potency_m3"], "m3", 0, where, "[6]", stats)
-REG.register("09_peak_slip_mm", numbers["peak_slip_mm"], "mm", 1, where, "[6]", stats)
-REG.register("09_peak_depth_m", numbers["peak_depth_m"], "m", 0, where, "[6]", stats)
-REG.register("09_depth50_m", numbers["depth50_m"], "m", 0, where, "[6]", stats)
-REG.register("09_depth90_m", numbers["depth90_m"], "m", 0, where, "[6]", stats)
-REG.register("09_rms_mm", numbers["rms_mm"], "mm", 2, where, "[6]", stats)
-REG.register("09_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "[6]", stats)
-REG.register("09_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "[6]", stats)
-REG.register("09_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "[6]", stats)
-REG.register("09_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "[6]", stats)
+REG.register("09_n_samples_fitted", numbers["n_fitted"], "count", 0, where, "section 3", stats)
+REG.register("09_sigma", sigma, "mm", 1, where, "section 5", stats)
+REG.register("09_sigma_base_corner", sigma_base, "mm", 1, where, "section 5", stats)
+REG.register("09_mw_30gpa", numbers["Mw_30gpa"], "Mw", 2, where, "section 6", stats)
+REG.register("09_mw_harmonic", numbers["Mw_sfcvm"], "Mw", 2, where, "section 6", stats)
+REG.register("09_mu_effective_harmonic_gpa", numbers["mu_effective_gpa"], "GPa", 1, where, "section 6", stats)
+REG.register("09_potency_m3", numbers["potency_m3"], "m3", 0, where, "section 6", stats)
+REG.register("09_peak_slip_mm", numbers["peak_slip_mm"], "mm", 1, where, "section 6", stats)
+REG.register("09_peak_depth_m", numbers["peak_depth_m"], "m", 0, where, "section 6", stats)
+REG.register("09_depth50_m", numbers["depth50_m"], "m", 0, where, "section 6", stats)
+REG.register("09_depth90_m", numbers["depth90_m"], "m", 0, where, "section 6", stats)
+REG.register("09_rms_mm", numbers["rms_mm"], "mm", 2, where, "section 6", stats)
+REG.register("09_rms_west500_mm", numbers["rms_west_mm"], "mm", 2, where, "section 6", stats)
+REG.register("09_rms_east500_mm", numbers["rms_east_mm"], "mm", 2, where, "section 6", stats)
+REG.register("09_band_step_mean_mm", numbers["band_step_mean_mm"], "mm", 2, where, "section 6", stats)
+REG.register("09_band_step_rms_mm", numbers["band_step_rms_mm"], "mm", 2, where, "section 6", stats)
 for key, tag, units, precision in (("Mw_30gpa", "mw_30gpa", "Mw", 3), ("Mw_sfcvm", "mw_harmonic", "Mw", 3),
                                    ("potency_m3", "potency_m3", "m3", 0), ("peak_slip_mm", "peak_slip_mm", "mm", 2),
                                    ("depth50_m", "depth50_m", "m", 0), ("depth90_m", "depth90_m", "m", 0)):
-    REG.register(f"09_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "[10]", stats)
-    REG.register(f"09_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "[10]", stats)
-    REG.register(f"09_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "[10]", stats)
+    REG.register(f"09_mc_{tag}_sd", mc.loc[key, "mc_sd"], units, precision, where, "section 11", stats)
+    REG.register(f"09_mc_{tag}_p2_5", mc.loc[key, "mc_p2_5"], units, precision, where, "section 11", stats)
+    REG.register(f"09_mc_{tag}_p97_5", mc.loc[key, "mc_p97_5"], units, precision, where, "section 11", stats)
 for _, row in deflection[deflection.far_band == "selected"].iterrows():
     tag = {"Data (3D model's plane removed)": "data", "3D model": "model", "Data (homogeneous model's plane removed)": "data_homplane",
            "Homogeneous model": "hom"}[row.field]
-    REG.register(f"09_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "[8b]", stats)
-    REG.register(f"09_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "[8b]", stats)
-REG.register("09_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "[11]", stats)
-REG.register("09_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "[11]", stats)
-REG.register("09_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "[11]", stats)
-REG.register("09_stress_drop_width_m", width_m, "m", 0, where, "[11]", stats)
-REG.register("09_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "[11]", stats)
-REG.register("09_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "[11]", stats)
+    REG.register(f"09_deflection_{tag}_west_mm", row.west_mm, "mm", 2, "M7", "section 9", stats)
+    REG.register(f"09_deflection_{tag}_east_mm", row.east_mm, "mm", 2, "M7", "section 9", stats)
+REG.register("09_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "section 12", stats)
+REG.register("09_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "section 12", stats)
+REG.register("09_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "section 12", stats)
+REG.register("09_stress_drop_width_m", width_m, "m", 0, where, "section 12", stats)
+REG.register("09_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "section 12", stats)
+REG.register("09_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "section 12", stats)
 REG.render()
 print(f"wrote {selected_file}")

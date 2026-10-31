@@ -19,14 +19,14 @@
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: environment.yml. Runs after 07, 08 and the scripts in scripts/sensitivity/. Seconds; no inversion is run here.
+# Environment: environment.yml. Runs after 07, 09 and the scripts in scripts/sensitivity/. Seconds; no inversion is run here.
 # ```
 #
 # **What this notebook does**
 #
 # 1. Reads the stored results of the sensitivity scripts (`scripts/sensitivity/*.py`, whose csv files are archived on
-#    Zenodo) and of notebooks 07 and 08, and lists the script that wrote each csv (section 2).
-# 2. Writes the sensitivity table and checks its baseline row against the preferred model of notebook 08 (section 3).
+#    Zenodo) and of notebooks 07 and 09, and lists the script that wrote each csv (section 2).
+# 2. Writes the sensitivity table and checks its baseline row against the preferred model of notebook 09 (section 3).
 # 3. Draws the sweeps figure: fault dip, regularisation strength $\sigma$ and prior lengths $\lambda$ (section 4).
 # 4. Draws the fixed-depth scan, with its noise test, the buried-top test and the SFSVM basement depth (section 5).
 # 5. Draws the error of the PyLith Green's functions against the analytic solution (section 6).
@@ -34,7 +34,7 @@
 #
 # **Inputs** (`model_config.sensitivity_dir`): `sensitivity_rows.csv`, `dip_rows.csv`, `depth_scan.csv`,
 # `depth_scan_noise.csv`, `depth_scan_buried_top.csv`, `basement_depth.csv`, `gf_check.csv`; notebook 07
-# `noise_model_5km.csv`, `semivariogram_bins_5km.csv`; notebook 08 `selected_model.npz`.
+# `noise_model_5km.csv`, `semivariogram_bins_5km.csv`; notebook 09 `selected_model.npz`.
 #
 # **Outputs** (`outputs/10_model_sensitivity/`): `sensitivity_table.csv` and the stats file of the registry.
 # **Registry keys** `10_*`.
@@ -44,7 +44,7 @@
 #
 # **What to check**
 # - Section 2: the provenance of each csv names its script and a clean git hash.
-# - Section 3: the check that the baseline row equals the preferred model of notebook 08 (the same method, computed by a
+# - Section 3: the check that the baseline row equals the preferred model of notebook 09 (the same method, computed by a
 #   separate script) passes.
 
 # %% [markdown]
@@ -116,7 +116,7 @@ for name, table in tables.items():
 #
 # The table has one row per choice (`scripts/sensitivity/sensitivity_rows.py`). Each row is solved at its own L-curve
 # corner (Hansen 1992), except the rows of the $\sigma$ sweep, which use multiples of the baseline corner. All rows are
-# scored on the same fitted samples (60 m cut) with the numbers of notebook 08, section 6: the RMS of all fitted samples
+# scored on the same fitted samples (60 m cut) with the numbers of notebook 09, section 6: the RMS of all fitted samples
 # and within 500 m west and east of the trace, Mw at 30 GPa and at the harmonic-mean SFSVM rigidity
 # (Hanks & Kanamori 1979; Vavrycuk 2013), the peak slip and its depth, depth50 and depth90 of the potency, and the
 # Fig 2K band step.
@@ -128,7 +128,7 @@ for name, table in tables.items():
 # that mesh. The "Full Cd" row uses the full covariance of notebook 07, section 4, with the nugget exponent 0.5.
 #
 # Check: the baseline row (`model_config.gf_run` with the settings of `model_config.py`) equals the preferred model of
-# notebook 08.
+# notebook 09.
 
 # %%
 rows = tables["sensitivity_rows.csv"]
@@ -140,8 +140,8 @@ baseline = rows[is_baseline].iloc[0]
 for row_name in ("Regularization sigma", "Prior lengths", "Near-trace exclusion", "Reference frame", "Data weighting"):
     assert (rows[rows.row == row_name].run == cfg.gf_run).all(), f"the {row_name} rows are not around the selected run {cfg.gf_run}"
 for key in ("sigma", "Mw_30gpa", "Mw_sfcvm", "rms_mm", "rms_west_mm", "rms_east_mm", "peak_slip_mm", "depth50_m", "depth90_m"):
-    assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 08 {float(selected[key])}"
-print("Check passed: the baseline row of sensitivity_rows.csv equals the preferred model of 08")
+    assert np.isclose(baseline[key], float(selected[key]), rtol=1e-4), f"baseline row {key} {baseline[key]} vs 09 {float(selected[key])}"
+print("Check passed: the baseline row of sensitivity_rows.csv equals the preferred model of 09")
 columns = dict(row="Choice", variant="Variant", sigma="Sigma", Mw_30gpa="Mw (30 GPa)", Mw_sfcvm="Mw (harmonic SFSVM)",
                rms_mm="RMS (mm)", rms_west_mm="RMS 500 m west (mm)", rms_east_mm="RMS 500 m east (mm)", peak_slip_mm="Peak slip (mm)",
                peak_depth_m="Peak depth (m)", depth50_m="Depth50 (m)", depth90_m="Depth90 (m)", band_step_mean_mm="Band step (mm)")
@@ -273,7 +273,7 @@ save(fig, "figS_sweeps")
 # where $\mathbf{d}$ is the vector of fault-parallel samples (mm), $\bar{d}$ the uniform slip (mm), $G$ the Green's
 # functions of the preferred run (m/m), $\boldsymbol{\phi}_D$ the slip pattern (1 at the impulse vertices from the
 # surface to $D$ in the section, 0 elsewhere), $B$ the plane design matrix with rows $(1, x_i, y_i)$, and $\mathbf{a}$
-# the plane coefficients (notebook 08, section 12). The figure shows, against $D$, the RMS within 500 m west and east of
+# the plane coefficients (notebook 09, section 12). The figure shows, against $D$, the RMS within 500 m west and east of
 # the trace, the RMS of all fitted samples, and the best-fit slip with its Mw at 30 GPa,
 # $M_w = \frac{2}{3}\left(\log_{10} M_0 - 9.1\right)$ (Hanks & Kanamori 1979). The dotted lines are the preferred
 # distributed-slip model. The grey band is the base of the Cenozoic sediment west of the fault in the SFSVM, within
@@ -332,8 +332,8 @@ save(fig, "figS_depth_scan")
 # ## 6. The Green's functions against the analytic solution (SM)
 #
 # For each impulse $j$, the homogeneous PyLith Green's function is compared with the analytic solution for the same tent
-# (`scripts/sensitivity/gf_check.py`; CSI triangular dislocations, Meade 2007, with $n_{sub} = 8$ as in notebook 07,
-# section 7):
+# (`scripts/sensitivity/gf_check.py`; CSI triangular dislocations, Meade 2007, with $n_{sub} = 8$ as in notebook 08,
+# section 3):
 #
 # $$\epsilon_j = \frac{\lVert \mathbf{g}^{PyLith}_j - \mathbf{g}^{analytic}_j \rVert_2}{\lVert \mathbf{g}^{analytic}_j \rVert_2} ,$$
 #
@@ -418,21 +418,21 @@ stats = REG.sidecar("10_model_sensitivity", [f"{name}: {sorted(set(table.provena
                     + [sensitivity_table.to_string(index=False), noise_test.to_string(index=False), buried_top.to_string(index=False),
                        gf_medians.to_string()])
 where = "SM"
-REG.register("10_mw_range_lo", mw_range[0], "Mw", 2, where, "[3]", stats)
-REG.register("10_mw_range_hi", mw_range[1], "Mw", 2, where, "[3]", stats)
-REG.register("10_mw_sigma_sweep_lo", sigma_rows.Mw_30gpa.min(), "Mw", 2, where, "[3]", stats)
-REG.register("10_mw_sigma_sweep_hi", sigma_rows.Mw_30gpa.max(), "Mw", 2, where, "[3]", stats)
-REG.register("10_depth90_sigma_lo_m", min(sigma_rows.depth90_m.min(), baseline.depth90_m), "m", 0, where, "[3]", stats)
-REG.register("10_depth90_sigma_hi_m", max(sigma_rows.depth90_m.max(), baseline.depth90_m), "m", 0, where, "[3]", stats)
-REG.register("10_depth90_lambda_lo_m", rows[rows.row == "Prior lengths"].depth90_m.min(), "m", 0, where, "[3]", stats)
-REG.register("10_depth90_lambda_hi_m", rows[rows.row == "Prior lengths"].depth90_m.max(), "m", 0, where, "[3]", stats)
-REG.register("10_full_cd_mw_30gpa", pick("Data weighting", "Full Cd").Mw_30gpa, "Mw", 2, where, "[3]", stats)
-REG.register("10_cut30_mw_30gpa", pick("Near-trace exclusion", "30 m").Mw_30gpa, "Mw", 2, where, "[3]", stats)
-REG.register("10_depth_scan_best_d_m", 1e3 * best.D_km, "m", 0, where, "[5]", stats)
-REG.register("10_depth_scan_best_slip_mm", best.slip_mm, "mm", 1, where, "[5]", stats)
+REG.register("10_mw_range_lo", mw_range[0], "Mw", 2, where, "section 3", stats)
+REG.register("10_mw_range_hi", mw_range[1], "Mw", 2, where, "section 3", stats)
+REG.register("10_mw_sigma_sweep_lo", sigma_rows.Mw_30gpa.min(), "Mw", 2, where, "section 3", stats)
+REG.register("10_mw_sigma_sweep_hi", sigma_rows.Mw_30gpa.max(), "Mw", 2, where, "section 3", stats)
+REG.register("10_depth90_sigma_lo_m", min(sigma_rows.depth90_m.min(), baseline.depth90_m), "m", 0, where, "section 3", stats)
+REG.register("10_depth90_sigma_hi_m", max(sigma_rows.depth90_m.max(), baseline.depth90_m), "m", 0, where, "section 3", stats)
+REG.register("10_depth90_lambda_lo_m", rows[rows.row == "Prior lengths"].depth90_m.min(), "m", 0, where, "section 3", stats)
+REG.register("10_depth90_lambda_hi_m", rows[rows.row == "Prior lengths"].depth90_m.max(), "m", 0, where, "section 3", stats)
+REG.register("10_full_cd_mw_30gpa", pick("Data weighting", "Full Cd").Mw_30gpa, "Mw", 2, where, "section 3", stats)
+REG.register("10_cut30_mw_30gpa", pick("Near-trace exclusion", "30 m").Mw_30gpa, "Mw", 2, where, "section 3", stats)
+REG.register("10_depth_scan_best_d_m", 1e3 * best.D_km, "m", 0, where, "section 5", stats)
+REG.register("10_depth_scan_best_slip_mm", best.slip_mm, "mm", 1, where, "section 5", stats)
 all_samples = noise_test[noise_test.metric == "All samples"].iloc[0]
-REG.register("10_depth_scan_noise_p16_m", 1e3 * all_samples.noise_p16, "m", 0, where, "[5]", stats)
-REG.register("10_depth_scan_noise_p84_m", 1e3 * all_samples.noise_p84, "m", 0, where, "[5]", stats)
-REG.register("10_depth_scan_noise_p97_5_m", 1e3 * all_samples.noise_p97_5, "m", 0, where, "[5]", stats)
-REG.register("10_basement_west_band_median_m", 1e3 * b_median, "m", 0, where, "[5]", stats)
+REG.register("10_depth_scan_noise_p16_m", 1e3 * all_samples.noise_p16, "m", 0, where, "section 5", stats)
+REG.register("10_depth_scan_noise_p84_m", 1e3 * all_samples.noise_p84, "m", 0, where, "section 5", stats)
+REG.register("10_depth_scan_noise_p97_5_m", 1e3 * all_samples.noise_p97_5, "m", 0, where, "section 5", stats)
+REG.register("10_basement_west_band_median_m", 1e3 * b_median, "m", 0, where, "section 5", stats)
 REG.render()

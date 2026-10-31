@@ -34,14 +34,14 @@
 #
 # **Outputs** (`outputs/11_alignment_arrays/`): `hrkt_aa_events.csv` (for each array event the survey window
 # `onset_lo` to `onset_hi`, its step, and `onset_mid`, the window midpoint, used only for labels, plot positions and
-# sorting); `aa_insar_stacks.csv` (read by 12 and 13); `aa_insar_steps.csv`; `aa_alongstrike_neighbours.csv`;
+# sorting); `aa_insar_stacks.csv` (read by 12 and 14); `aa_insar_steps.csv`; `aa_alongstrike_neighbours.csv`;
 # `hrkt_threshold_sweep.csv`; the map panel `qc09_arrays_map_panel.png` and its colour table `event_RdBu_r.cpt`;
 # the stats sidecar `11_aa_stats.txt`; registry rows `11_*` (including `11_hgil_*` and `11_hrkt_*`, the step medians of
 # section 4).
 #
 # **Figures**: the six-array supplement figure (`figS_tulepond_arrays_insar_*`); the threshold sweep
 # (`figS_hrkt_threshold_sweep_3sig-6mm-5mm`, supplement); QC figures of the HRKT and HAPP records
-# (`qc09_aa_history_*`). The paper's Fig 3 is drawn by 13_forecast.
+# (`qc09_aa_history_*`). The paper's Fig 3 is drawn by 14_paper_figures.
 #
 # **What to check.** Every array lies within 150 m of the trace (asserted, section 2). The end of the HRKT bimonthly
 # era (`11_hrkt_dense_era_end_yr`) is printed in section 6. The longest quiet interval spans Loma Prieta (asserted,
@@ -261,7 +261,7 @@ stacks = {}                                       # code -> (dates, slip_mm, n_c
 for code, array in arrays.items():
     stacks[code] = insar_stack(code, array)
 
-# saved for notebooks 12 and 13; 13_forecast draws the paper's Fig 3
+# saved for notebooks 12 and 14; 14_paper_figures draws the paper's Fig 3
 stack_rows = []
 for code, (insar_dates, insar_slip, n_crossings) in stacks.items():
     for date, slip in zip(insar_dates, insar_slip):

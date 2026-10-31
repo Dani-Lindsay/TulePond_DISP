@@ -75,9 +75,9 @@
 #
 # **What to check.** The closed-form InSAR clock date (`13_next_clock_date`) and its 95 % prediction interval
 # (`13_pi95_lo`, `13_pi95_hi`). The clock is unconditional; the printout in section 8 lists any of its dates that fall
-# before the last observation, and these are not a forecast window. The InSAR BPT 5-95 % window (`11_insar_bpt_q05`,
-# `11_insar_bpt_q95`) against the coming wet season, with the fitted $\alpha$ and with the Working Group
-# aperiodicities (`11_insar_bpt_wg99_p_wet_wy<N>`), and the same for the array and merged records (sections 6 and 7).
+# before the last observation, and these are not a forecast window. The InSAR BPT 5-95 % window (`13_insar_bpt_q05`,
+# `13_insar_bpt_q95`) against the coming wet season, with the fitted $\alpha$ and with the Working Group
+# aperiodicities (`13_insar_bpt_wg99_p_wet_wy<N>`), and the same for the array and merged records (sections 6 and 7).
 # The range of the mixture's P(wet season) over the alternative weightings is printed in section 7. Every number is
 # registered in section 11.
 
@@ -1134,7 +1134,7 @@ print("\n".join(stats_lines))
 # $$t_\ell = \min\{t : 1 - \bar F_c(t) \le \ell\},$$
 #
 # the $1 - \ell$ quantile of the forecast. No event by $t_\ell$ rejects the model at $1 - \ell$ (95 % and 99 %). The 5 %
-# date is the 95 % quantile of the forecast, `11_insar_bpt_q95`.
+# date is the 95 % quantile of the forecast, `13_insar_bpt_q95`.
 
 # %%
 wg99_rows = []

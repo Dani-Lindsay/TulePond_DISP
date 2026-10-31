@@ -277,8 +277,8 @@ def lat_to_km_map(profiles_csv):
 
 
 def strike_frame(epsg, strike_deg, trace_lon, trace_lat):
-    """The straight strike frame of the rotated map panels (notebooks 04, 05
-    and 09): u along the strike from Point Pinole (km, positive toward the
+    """The straight strike frame of the rotated map panels (notebooks 04, 05,
+    11 and 14): u along the strike from Point Pinole (km, positive toward the
     strike bearing, i.e. south-east), v across the fault (km, positive to the
     north-east = the east side), both in the UTM zone `epsg`; strike_deg is a
     compass bearing (deg), trace_lon / trace_lat the trace vertices (deg).
@@ -322,7 +322,7 @@ def uv_to_lonlat(frame, u_km, v_km):
     return frame["from_utm"].transform(easting, northing)
 
 
-# The rotated fault maps (04 Fig 1A, the 05 and 09 supplementary figures) all show the same rectangle of the strike frame
+# The rotated fault maps (Fig 1A, the 05 and 11 supplementary figures) all show the same rectangle of the strike frame
 FAULT_MAP_U_KM = (-3.0, 70.0)     # along strike: from 3 km north of Point Pinole to just south of CFW1
 FAULT_MAP_HALF_KM = 10.9          # across the fault, each side (3.4 cm wide for 73 km tall at true scale)
 
@@ -380,7 +380,7 @@ def utm_grid_to_lonlat(values, x_first, x_step, y_first, y_step, to_utm, corners
 def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creepmeters, sse_u_km,
                     letter="A", title="Hayward Fault", colorbar_frame=None, extra_symbols=(), extra_labels=()):
     """Draw the rotated fault map of Fig 1A at the current origin of a pygmt figure. The same panel is used
-    by 04 (Fig 1A), 05 (the validation supplementary figure) and 09 (the alignment-array supplementary
+    by 14 (Fig 1A), 05 (the validation supplementary figure) and 11 (the alignment-array supplementary
     figure); only the field, its colours, the extra symbols and the panel letter differ.
 
     It draws, in this order: the field `grid` (an xarray lon/lat grid covering fault_map_corners) in
@@ -416,7 +416,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     fig.basemap(region=region, projection=projection, frame=["lrtb"])
     fig.grdimage(grid=grid, cmap=cpt, nan_transparent=True, interpolation="c")   # -nc: bicubic resampling to the page (display only)
     fig.plot(x=trace_lon, y=trace_lat, pen="0.6p,black")
-    for symbol in extra_symbols:                           # e.g. 09's alignment arrays, under the creepmeter labels
+    for symbol in extra_symbols:                           # e.g. 11's alignment arrays, under the creepmeter labels
         fig.plot(**symbol)
     for label in extra_labels:
         text_backed(fig, **label)
@@ -601,8 +601,8 @@ def gaussian_smooth_km(x, km_of_x, sigma_km):
     a missing crossing is a gap in the grid, not a closer neighbour, and
     sigma_km (km) is a true along-trace width. Weights are renormalised over
     the finite neighbours; NaN where less than 15 % of the kernel weight is
-    data, and NaN wherever the input is NaN. Used by notebooks 03, 04 (Fig 1C)
-    and 09 (Fig 2K). Source: written for this project (scipy gaussian_filter1d)."""
+    data, and NaN wherever the input is NaN. Used by notebooks 03 and 04
+    (Fig 1C). Source: written for this project (scipy gaussian_filter1d)."""
     x = np.asarray(x, float)
     km_of_x = np.asarray(km_of_x, float)
     assert km_of_x.shape == x.shape, f"km_of_x {km_of_x.shape} does not match x {x.shape}"

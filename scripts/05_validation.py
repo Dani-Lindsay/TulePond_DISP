@@ -144,7 +144,7 @@ legend_offset_cm = annot_offset_cm - legend_clearance_cm - legend_baseline_cm
 assert legend_offset_cm >= 0, f"the G-K legend box would hang below the panel frame ({legend_offset_cm:.2f} cm)"
 cm_blue = "#0072B2"        # Okabe-Ito blue: the creepmeters
 insar_grey = "gray55"      # the InSAR
-onset_orange = "#E69F00"   # Okabe-Ito orange, long-dashed 0.9 pt: the InSAR onsets, as the InSAR detection lines of Fig 3A (notebook 11)
+onset_orange = "#E69F00"   # Okabe-Ito orange, long-dashed 0.9 pt: the InSAR onsets, as the InSAR detection lines of Fig 3A (notebook 14)
 
 # The step across an event window (event_step, section 4), used by the creepmeter glitch check (section 8) and by
 # the aperture ladder, which scores how much of the COZ1 creepmeter's step each bin recovers (ladder panel D) across
@@ -734,7 +734,7 @@ print("\n".join(stats_lines))
 # February 2022 events (`coz1_large_events_yr`, each inside its onset window
 # +/- `coz1_large_tol_days`). The two large events give the mean amplitude
 # recovery (section 10) and the ladder's step score (section 13); the noise of
-# the CFW1 step (section 8) uses every COZ1 event.
+# the CFW1 step (section 9) uses every COZ1 event.
 
 # %%
 events_all = pd.read_csv(events_file)
@@ -923,8 +923,8 @@ stats_lines += [""] + gittins_lines                               # into the sta
 # %% [markdown]
 # ## 8. The CFW1 catalogue around the Tule Pond windows, its background rate, and the glitch check
 #
-# The catalogue is used for timing only (the transient amplitude is notebook
-# 04's, section 10) and is not drawn on Fig S validation; it is tabulated in the
+# The catalogue is used for timing only (the transient amplitude, section 10,
+# is notebook 04's) and is not drawn on Fig S validation; it is tabulated in the
 # text. The source of that table is `cfw1_gittins_near_windows.csv`. It holds
 # every CFW1 catalogue event, of any type, whose start-to-end span overlaps a
 # Tule Pond InSAR onset window widened by `gittins_window_pad_days` (7 d) on

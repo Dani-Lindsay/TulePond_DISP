@@ -59,7 +59,7 @@ written beside the GNSS series, `GPS/gps_insar_validation.csv`.
 `run00` writes its GNSS station plots under `GPS/Figures/`, sorted into
 `Uncorrected/`, `Corrected/`, `Noisy/` and `Manual_Exclude/` for the visual
 review that sets the manual exclusion list. The notebooks do not read these QC
-products; notebook 10 builds its own rain composite from
+products; notebook 12 builds its own rain composite from
 `external_inputs/GHCN_daily`, which is what `run06` downloads.
 
 ## Inputs that are not produced here

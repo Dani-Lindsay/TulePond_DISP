@@ -29,7 +29,7 @@
 # 2. **Noise model** (section 4). A semivariogram of the pixels more than 5 km from the trace.
 # 3. **Coherence-0.7 sample set** (section 5). The same field at temporal coherence 0.7, for the coherence sensitivity
 #    test.
-# 4. **Products** (section 6). The PyLith point lists and `model_data.npz`, read by notebooks 08, 09 and 10 and by the
+# 4. **Products** (section 6). The PyLith point lists and `model_data.npz`, read by notebooks 08, 09 and 14 and by the
 #    scripts in `scripts/sensitivity/`.
 #
 # The settings are in `model_config.py` and the modelling functions in `model_utils.py`.

@@ -58,7 +58,7 @@ executed_dir = os.path.join(data_dir, "executed")   # run_all.sh: the HTML copy 
 inputs_dir = os.path.join(data_dir, "external_inputs")
 gps_dir    = os.path.join(data_dir, "GPS")
 # ------------------------
-# The slip models (notebooks 07, 08, 10 and scripts/sensitivity/) and their PyLith runs (pylith/, README there).
+# The slip models (notebooks 07 to 10 and scripts/sensitivity/) and their PyLith runs (pylith/, README there).
 # Three folders:
 #   modeling_inputs/   shared by both media: the gmsh meshes and fault geometry, the quadtree sample sets written by
 #                      07 (the PyLith output points), the impulse and test-slip spatial databases
@@ -113,7 +113,7 @@ def medium_paths(medium):
     return paths_sfcvm
 
 
-# Constants of the slip models shared by 07, 08, 10 and scripts/sensitivity/ (one definition each).
+# Constants of the slip models shared by 07 to 09 and scripts/sensitivity/ (one definition each).
 model_crs = "+proj=tmerc +datum=WGS84 +lon_0=-121.968 +lat_0=37.557 +k=1 +units=m +type=crs"   # PyLith mesh CRS (m)
 model_frame_lonlat = (-121.968, 37.557)   # CSI local frame centre (lon0, lat0) = the mesh CRS origin (the creep-section centre)
 # QC products of the data_prep chain (station residuals, the prep-side rain
@@ -181,7 +181,7 @@ common_paths = {
         inputs_dir, "SRL-2022186_Supplement_FINAL_2023_CREEP_Dataset.csv"),
 
     # NOAA GHCN-daily rain gauges near Tule Pond (the csv files in ghcn_dir are
-    # the archived inputs of notebook 10).
+    # the archived inputs of notebooks 12 and 14).
     "ghcn_dir": os.path.join(inputs_dir, "GHCN_daily"),
     # the ACWD indicator wells (levels) and their positions (public registers; see the file header)
     "acwd_dir": os.path.join(inputs_dir, "ACWD_water_well_data"),
@@ -224,7 +224,7 @@ common_paths = {
 
     # Written by the data_prep chain and not read by the notebooks: run05's
     # per-station GNSS/InSAR residuals, and run06's prep-side rain tables
-    # (notebook 10 builds its own composite from `ghcn_dir`).
+    # (notebook 12 builds its own composite from `ghcn_dir`).
     "validation_dir": os.path.join(prep_dir, "validation"),
     "precip_dir":     os.path.join(prep_dir, "precip"),
 }
@@ -267,12 +267,11 @@ segments = {
 coz1_large_events_yr = (2019.02, 2022.13)
 coz1_large_tol_days = 12.0     # one long (12 d) acquisition interval
 
-# Box for the per-pixel event maps (notebook 06) and the slip models (07, 08):
+# Box for the per-pixel event maps (notebook 06) and the slip models (07 to 09):
 # W, S, E, N in degrees, around the Tule Pond section.
 box_lonlat = (-122.10, 37.46, -121.84, 37.65)
 
-# Fig 2 map window (notebook 06), also drawn as the "Tule Pond" outline on the Fig 1
-# map (notebook 04): centred on the trace at fig2_map_centre_km from Point Pinole,
+# Fig 2 map window (notebook 14, section 5): centred on the trace at fig2_map_centre_km from Point Pinole,
 # +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km)
 # north-south (10.4 x 12 km).
 fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km = 59.5, 5.2, 0.8
@@ -308,16 +307,16 @@ creepmeter_glitches = [
 gittins_window_pad_days = 7
 
 # Shared choices read by more than one notebook (one definition each).
-wet_season_months = (10, 4)    # (first month, last month) of the wet season (Oct-Apr), shared by 10 and 11
-paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 11)
+wet_season_months = (10, 4)    # (first month, last month) of the wet season (Oct-Apr), shared by 12 and 13
+paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 13)
 # The settings of the slip models (sigma rule, near-trace cut, surface constraint, weighting, ...) are in model_config.py.
-# The bimonthly era of the alignment arrays (09, 10, 11): a survey interval of at most this many days resolves the
-# season of an onset; 09 runs the HRKT detector only on such intervals, 10 and 11 assert that every array window is
+# The bimonthly era of the alignment arrays (11, 12, 13): a survey interval of at most this many days resolves the
+# season of an onset; 11 runs the HRKT detector only on such intervals, 12 and 13 assert that every array window is
 # this short.
 aa_dense_window_days = 130
 # The 1989 Loma Prieta earthquake, 17 Oct 1989 local time, as a decimal year to two places (day of year 290:
-# 1989 + 289/365 = 1989.79, the convention of insar_utils.date_to_decimal_year), for the interval that spans it (09 asserts that the longest quiet HRKT
-# interval spans it; 10 saves it for Fig 3A; 11 forms the array forecasts with and without that interval).
+# 1989 + 289/365 = 1989.79, the convention of insar_utils.date_to_decimal_year), for the interval that spans it (11 asserts that the longest quiet HRKT
+# interval spans it; 12 saves it for Fig 3A; 13 forms the array forecasts with and without that interval).
 loma_prieta_yr = 1989.79
 
 # Lake Elizabeth (Central Park, Fremont), east of the trace at the south end of the Tule Pond section: the area of
@@ -332,19 +331,19 @@ lake_elizabeth_radius_m = 1000.0   # m: radius of the area around the lake
 alameda_creek_trace_lonlat = ((-121.986, 37.5751), (-121.982, 37.5687))
 lake_elizabeth_trace_lonlat = ((-121.969, 37.5497), (-121.963, 37.5433))
 
-# Issue date of the forecast (notebook 11; notebook 10 ends its rain series on it). Fixed so that the forecast
+# Issue date of the forecast (notebook 13; notebook 12 ends its rain series on it). Fixed so that the forecast
 # numbers are reproducible.
 forecast_issue_date = "2026-08-25"
-# The last observation with no event, on which notebook 11 conditions the forecast: the last
+# The last observation with no event, on which notebook 13 conditions the forecast: the last
 # descending acquisition of the CSLC + Dolphin extension of the time series (ascending ends
-# 2026-09-12). The paper's InSAR record ends at notebook 11's data_end (the end of 03's fp_ts).
+# 2026-09-12). The paper's InSAR record ends at notebook 13's data_end (the end of 03's fp_ts).
 forecast_last_obs_date = "2026-09-24"
 
-# Running rain totals (notebook 10). 10 tests a grid of totals and lags before the InSAR onsets (Fremont gauge); its
+# Running rain totals (notebook 12). 12 tests a grid of totals and lags before the InSAR onsets (Fremont gauge); its
 # event table describes each window by the days since a 3-day total of at least rain_total_mm (a description only;
 # no test uses that single value).
 rain_total_days = 3        # length of the running rain total (days)
-rain_total_mm = 40.0       # 10's event-table description: days since a 3-day total of at least this (mm)
+rain_total_mm = 40.0       # 12's event-table description: days since a 3-day total of at least this (mm)
 
 # ------------------------
 # Per-track paths: one ascending frame (09157, track 35) and one descending

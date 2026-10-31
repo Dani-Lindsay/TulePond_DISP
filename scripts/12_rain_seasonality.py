@@ -22,7 +22,7 @@
 # 3. **Onset seasonality** (section 6). Every season-resolved onset (the InSAR windows and the bimonthly-era array
 #    windows, all `aa_dense_window_days` (130 d) or less) is counted against the wet season, October to April
 #    (`TulePond_filepaths.wet_season_months`, the same months as the wet season of the forecast in 13_forecast). The
-#    panel products of the paper's Fig 3A and 3B are saved for 13_forecast, which draws the figure (section 11).
+#    panel products of the paper's Fig 3A and 3B are saved for 14_paper_figures, which draws the figure (section 11).
 # 4. **Rainfall conditioning of the onsets** (sections 7 to 9). For each onset window: the water-year rainfall
 #    accumulated by then, the lag after fixed cumulative thresholds (rule A) and the lag after the first storm of the
 #    water year (rule B). Then a test of whether an InSAR onset falls within X days after a 3-day rainfall total of at
@@ -31,7 +31,7 @@
 #    search over the settings. The quantities quoted in the prediction statement of 13_forecast are written to
 #    `rain_conditioning_summary.csv` (section 10).
 #
-# **Day convention.** This notebook defines the rain day of each onset window, and 13_forecast reads the days it
+# **Day convention.** This notebook defines the rain day of each onset window, and 14_paper_figures reads the days it
 # writes. InSAR acquisitions are timed in UTC and the times are read from the OPERA granule names. The ascending pass
 # (frame 09157) is at about 02:08 UTC, the evening of the previous local day (18:08 PST). The descending pass (frame
 # 11115) is at about 14:08 UTC, the morning of the same local day (06:08 PST). Rainfall is booked by the local day:
@@ -54,7 +54,7 @@
 # **Outputs** (`outputs/12_rain_seasonality/`): `tulepond_daily_precip.csv`; `wateryear_totals.csv`;
 # `event_table.csv` (window ends as local days, with their basis in `window_day_basis`); the Fig 3 panel products
 # `fig3_rain_panel.npz` (with the wet-season months) and `fig3_onset_windows.csv` (one row per onset window of both
-# catalogues, read by 13_forecast, with `onset_lo`, `onset_hi`, `onset_mid` for the plot position, the window as local
+# catalogues, read by 14_paper_figures, with `onset_lo`, `onset_hi`, `onset_mid` for the plot position, the window as local
 # calendar days `day_lo` and `day_hi`, the UTC acquisitions `utc_lo` and `utc_hi` that bound an InSAR window, and the
 # day of water year of each end); the rainfall conditioning `precip_conditioning_{events,thresholds}.csv`;
 # `rain_total_sweep.csv` (the 16 settings of the 3-day rainfall-total test with hits, null expectation and p);
@@ -635,7 +635,7 @@ stats_lines.append(f"Check, Newark shift: vs Hayward on storm days r {r_as_publi
 #
 # The windows are converted to local days here (the day convention in the header). `onset_days`, with one row per
 # window of both catalogues, is the only place where a window is converted to calendar days, and every rainfall
-# quantity below and 13_forecast read these days. The acquisition dates of each track are the per-track columns of
+# quantity below and 14_paper_figures read these days. The acquisition dates of each track are the per-track columns of
 # 03, and each must have a granule (asserted), so that each end of an InSAR window has a UTC time.
 #
 # **Check, single gauge for the InSAR analysis.** Every InSAR onset window and the `insar_rain_check_days` (30) days
@@ -1385,8 +1385,8 @@ print("saved rain_conditioning_summary.csv for 13_forecast")
 # %% [markdown]
 # ## 11. The Fig 3 panels: the HRKT history and the onsets on the water year
 #
-# Fig 3 is drawn by 13_forecast, which also computes the repeat intervals and the forecast. This section saves the
-# inputs of its left column. The rainfall grid has one column per water year and one row per day of the water year,
+# Fig 3 is drawn by 14_paper_figures; its right column comes from 13_forecast, which computes the repeat intervals and
+# the forecast. This section saves the inputs of its left column. The rainfall grid has one column per water year and one row per day of the water year,
 # filled with the running 7-day total (`density_days`),
 #
 # $$G(D, N) = \sum_{j=0}^{6} P(d - j),$$
@@ -1415,7 +1415,7 @@ survey_gap_days = np.diff(hrkt.year.values) * 365.25
 dense_era_end = float(hrkt.year.values[np.max(np.where(survey_gap_days <= resolvable_days)[0]) + 1])
 insar_start = float(hrkt_stack.date.min())
 print(f"bimonthly surveys at HRKT end {dense_era_end:.2f}; annual surveys from then until the InSAR record starts {insar_start:.2f}")
-# the windows as local days (onset_days, the day convention); 13 reads day_lo and day_hi for every rain quantity
+# the windows as local days (onset_days, the day convention); 14 draws them on the water year (dowy_lo, dowy_hi)
 windows = onset_days[["src", "onset_lo", "onset_hi", "onset_mid", "day_lo", "day_hi", "utc_lo", "utc_hi", "window_day_basis"]].copy()
 windows["dowy_lo"] = np.asarray(dowy(windows.day_lo))
 windows["dowy_hi"] = np.asarray(dowy(windows.day_hi))
@@ -1426,7 +1426,7 @@ windows.to_csv(os.path.join(out_dir, "fig3_onset_windows.csv"), index=False)
 np.savez(os.path.join(out_dir, "fig3_rain_panel.npz"), rain_grid=rain_grid, x_edges=np.asarray(x_edges), density_days=density_days,
          density_max=density_max, x0=x0, x1=x1, loma_prieta=loma_prieta, dense_era_end=dense_era_end, insar_start=insar_start,
          rain_colours=np.array(rain_colours), wet_season_months=np.array(wet_season_months))     # 13_forecast checks that it uses the same season
-print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 13_forecast")
+print("saved fig3_onset_windows.csv and fig3_rain_panel.npz for 13_forecast and 14_paper_figures")
 
 # %% [markdown]
 # ## 12. Registry: the stats sidecar `12_rain_stats.txt` and the `12_*` numbers

@@ -30,7 +30,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `model_utils.py` | The slip-model functions: data sets and quadtree samples, noise model, CSI inversions on the PyLith fault, Green's functions from the PyLith output, L-curve, rigidity, moment and stress drop. |
 | `NN_*.ipynb`, `scripts/NN_*.py` | The notebooks, paired with jupytext (`jupytext.toml`): the `.py` in `scripts/` is the readable source, the `.ipynb` holds the executed outputs. |
 | `scripts/sensitivity/` | The sensitivity tests of the slip model (inversion choices, fault dip, elastic structure, depth scan), run by hand; 10 draws their results. |
-| `scripts/model_plots/` | The SFSVM materials figure (called by 08). |
+| `scripts/model_plots/` | The SFSVM materials figure (called by 09). |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |
 | `data_prep/` | The download and preparation chain from the public archives; `data_prep/README.md`. |
 | `tests/` | pytest: projection conventions, paths, the slip-model functions, the registry, and `test_anchors.py`, which pins the numbers quoted in the paper. |
@@ -79,7 +79,7 @@ The results directory (`data_dir`) holds only what the notebooks read, in the la
 | `prep_validation/` | The GNSS-tie record and the rain tables of the preparation chain |
 | `aperture_sweep/` | The precomputed aperture sweep read by 05 |
 | `modeling_inputs/` | PyLith meshes, the PyLith output points written by 07, impulse databases |
-| `modeling_uniform/` | Homogeneous-medium Green's functions (analytic, cached by 07) |
+| `modeling_uniform/` | Homogeneous-medium Green's functions (analytic, cached by 08) |
 | `modeling_SFCVM/` | SFSVM material grids and databases, PyLith runs, G matrices and run logs |
 | `sensitivity/` | The outputs of `scripts/sensitivity/` |
 | `outputs/`, `Figures_<date>/`, `executed/` | Notebook products, figures, and an HTML copy of every executed notebook |
@@ -99,7 +99,7 @@ python -m pytest -q                          # conventions, paths, functions, re
 ./run_all.sh 07 08 09 10                 # a subset (each reads only its upstream products)
 ```
 
-The PyLith runs are not part of `run_all.sh`; 08 and `scripts/sensitivity/` read their stored products
+The PyLith runs are not part of `run_all.sh`; 08, 09 and `scripts/sensitivity/` read their stored products
 (`pylith/README.md` gives the command of every run). Every number in the paper comes from a `run_all.sh` execution.
 
 Software: MintPy (OPERA fork, commit 054c6010; version 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.

@@ -78,7 +78,7 @@ def describe(path):
     if parts[0] in ("modeling_SFCVM", "modeling_uniform") and parts[1] == "gf":
         if name.startswith("G_analytic"):
             return ("analytic homogeneous Green's functions on the PyLith tents (CSI Meade 2007, n_sub in the name)",
-                    "model_utils.analytic_tent_G_cached (07 [7])", "paper")
+                    "model_utils.analytic_tent_G_cached (08_model_homogeneous, section 3)", "paper")
         run = name[2:].replace(".npz", "")
         return (f"fault-parallel G matrix of run {run} (samples x impulses, m/m, right-lateral +)", "model_utils.build_G / load_G", run_role(run))
     if parts[0] in ("modeling_SFCVM", "modeling_uniform") and parts[1] == "runs":
@@ -109,7 +109,7 @@ def describe(path):
     if parts[0] == "modeling_inputs" and parts[1] == "points":
         if name.startswith("insar_points"):
             return ("PyLith output points = 07's quadtree samples (txt: name x y z, m; npz: data, block sizes, noise model)",
-                    "07_model_data [6]", "paper" if name.startswith("insar_points.") else "sensitivity")
+                    "07_model_data, section 6", "paper" if name.startswith("insar_points.") else "sensitivity")
         return ("sample-set auxiliary file (coherence-0.7 field, old Fig-2 profile points)", "07 / old 08", "superseded")
     if parts[0] == "modeling_inputs":
         return ("pre-2026-10-06 sample-set drafts", "drafts", "superseded")
@@ -123,7 +123,7 @@ def describe(path):
     if parts[0] == os.path.basename(cfg.sensitivity_dir):
         return (f"sensitivity result ({name}), the csvs 10_model_sensitivity draws", "scripts/sensitivity/ (provenance column of each csv)", "sensitivity")
     if parts[0] == "Figures_2026-10-28":
-        return (f"figure ({name})", "09 / 08 / 10 (fig_date 2026-10-28)", "paper")
+        return (f"figure ({name})", "14 / 09 / 10 (fig_date 2026-10-28)", "paper")
     if parts[0] == "external_inputs":
         return ("USGS SFCVM v26.0 (Hirakawa & Aagaard 2026), third-party input: check the licence before redistributing", "USGS", "input")
     if parts[0] in ("sensitivity_2026-10-27", "depth_scan_2026-10-28", "order2_surface_tent_check_2026-10-25",

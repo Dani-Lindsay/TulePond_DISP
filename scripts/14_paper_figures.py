@@ -32,7 +32,7 @@
 # `figS_los_maps_profiles_coh<c>_<n>ev` (supplement), `fig3_history_forecast_*` (Fig 3).
 #
 # **What to check**
-# - Section 10: both model products are on the samples of notebook 07, and I = model + plane and J = E - I (asserted).
+# - Section 9: both model products are on the samples of notebook 07, and I = model + plane and J = E - I (asserted).
 # - Section 14: the per-block amplitudes printed for Fig 2 equal the registry rows `06_XX_*` and `06_YY_*`.
 # - Last section: each row prints its source file and notebook; the cell stops if a figure is missing or stale.
 
@@ -297,7 +297,7 @@ os.makedirs(cpt_dir, exist_ok=True)
 median_bin_m = 150.0            # running-median bin (five pixels), taken on each side of the fault separately
 median_col = "black"            # per-side running median
 grey = "gray55"                 # pixels
-homog_col = "#0072B2"           # 07's homogeneous model (Okabe-Ito blue)
+homog_col = "#0072B2"           # 08's homogeneous model (Okabe-Ito blue)
 hetero_col = "#D55E00"          # the 3D (SFSVM) model, the preferred model (Okabe-Ito vermillion)
 model_col = hetero_col
 
@@ -312,15 +312,15 @@ map_bar_font_pt = 13.0                      # the map colour bars ask GMT for 13
 
 # Fig 2 map window (unrotated, north up): centred on the trace at fig2_map_centre_km from Point Pinole,
 # +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km) north-south (10.4 x 12 km).
-# The values live in TulePond_filepaths so Fig 1 (notebook 04) draws the same box.
+# The values live in TulePond_filepaths.
 aa_labelled = ["HGIL", "HRKT"]  # the arrays used in the paper (notebook 11_alignment_arrays); the other arrays of the section are not drawn
 aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"),     # HGIL left of its symbol
                 "HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of each label about its symbol
 
 f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz")
 aa_file = common_paths["aa_summary"]
-selected_file = os.path.join(paths_out["09_model_3d"], "selected_model.npz")          # the preferred model (notebook 08, section 13)
-homogeneous_file = os.path.join(paths_out["08_model_homogeneous"], "homogeneous_model.npz")  # the homogeneous model of 07
+selected_file = os.path.join(paths_out["09_model_3d"], "selected_model.npz")          # the preferred model (notebook 09, section 13)
+homogeneous_file = os.path.join(paths_out["08_model_homogeneous"], "homogeneous_model.npz")  # the homogeneous model of 08
 model_data_file = os.path.join(paths_out["07_model_data"], "model_data.npz")         # 07's samples
 model_tag = "_selected3d"                                                                 # in the Fig 2 file name
 profile_half_width_m = 300.0    # G: model samples within this distance of each profile line (06's pixels: +/- 150 m)
@@ -881,25 +881,25 @@ def los_profile_pairs(fig, value_key, dist_key, lim, labels, ylab, prof_set, col
 
 
 # %% [markdown]
-# ## 9. The model products of notebooks 08 and 07
+# ## 9. The model products of notebooks 09 and 08
 #
-# The preferred 3D model (notebook 08) gives panels I to L and the vermillion line on G. The homogeneous model of
-# notebook 07 (the same fault, samples, weighting, plane, prior and corner rule, with analytic Green's functions on the
+# The preferred 3D model (notebook 09) gives panels I to L and the vermillion line on G. The homogeneous model of
+# notebook 08 (the same fault, samples, weighting, plane, prior and corner rule, with analytic Green's functions on the
 # same tents) gives the blue line on G. Panel I is the slip model plus its fitted plane,
 # $G\mathbf{s} + B\mathbf{a}$, so that J = E - I at every sample. CSI removes the fitted plane from the data, so
-# notebook 08 stores the plane separately.
+# notebook 09 stores the plane separately.
 #
 # Check: both models are on the samples of notebook 07, and J = E - I (both asserted).
 
 # %%
 for path in (selected_file, homogeneous_file, model_data_file):
-    assert os.path.exists(path), f"missing {path}: run 07_model_data and 09_model_3d first"
+    assert os.path.exists(path), f"missing {path}: run 07_model_data, 08_model_homogeneous and 09_model_3d first"
 model = np.load(selected_file)
 compare = np.load(homogeneous_file)
 model_data = np.load(model_data_file)
 for product, product_file in ((model, selected_file), (compare, homogeneous_file)):
     assert np.array_equal(product["sample_lon"], model_data["sample_lon"]) and np.array_equal(product["sample_lat"], model_data["sample_lat"]), \
-        f"{product_file} is not on the current samples of 07: re-run 07 and 08"
+        f"{product_file} is not on the current samples of 07: re-run 08 and 09"
 assert np.array_equal(model["keep"], compare["keep"]), "the two models have different fitted samples"
 model_with_plane_mm = model["model_mm"] + model["plane_mm"]
 assert np.allclose(model_data["data_mm"] - model_with_plane_mm, model["residual_mm"], atol=1e-6), "E - I != J at the samples"
@@ -915,7 +915,7 @@ def profile_dots(product):
     Parameters
     ----------
     product : numpy.lib.npyio.NpzFile
-        A model product of notebook 07 or 08 (`model_mm`, `plane_mm`).
+        A model product of notebook 08 or 09 (`model_mm`, `plane_mm`).
 
     Returns
     -------
@@ -943,7 +943,7 @@ model_lines = [(profile_dots(compare), homog_col, "Homogeneous"),     # no comma
 # %% [markdown]
 # ## 10. Panel K: the 60 to 150 m steps of the data and the model
 #
-# The steps are computed in notebook 08, section 6 (`model_utils.crossing_steps_like`). At each crossing $c$ of
+# The steps are computed in notebook 09, section 6 (`model_utils.crossing_steps_like`). At each crossing $c$ of
 # notebook 04, for the data and for the model,
 #
 # $$\Delta u_c = \operatorname{median}_{i \in E_c} u_i - \operatorname{median}_{i \in W_c} u_i ,$$
@@ -955,7 +955,7 @@ model_lines = [(profile_dots(compare), homog_col, "Homogeneous"),     # no comma
 
 # %%
 crossings04 = pd.read_csv(os.path.join(paths_out["04_event_detection"], "event_fraction_by_crossing.csv"))
-assert np.array_equal(np.asarray(model["crossing_km"], float), crossings04.km.values.astype(float)), "08's crossings are not 04's"
+assert np.array_equal(np.asarray(model["crossing_km"], float), crossings04.km.values.astype(float)), "09's crossings are not 04's"
 assert float(model["step_inner_km"]) == 0.06 and float(model["step_outer_km"]) == 0.15, "panel K steps must be 60-150 m"
 k_line_km = np.asarray(model["crossing_km"], float)
 k_data_mm = np.asarray(model["data_step_mm"], float)
@@ -988,7 +988,7 @@ def model_row(fig, product, lim, model_mm):
     fig : pygmt.Figure
         The figure.
     product : numpy.lib.npyio.NpzFile
-        The preferred model of notebook 08 (`selected_model.npz`).
+        The preferred model of notebook 09 (`selected_model.npz`).
     lim : float
         Half-range of the colour scale of I and J (the scale of the event row).
     model_mm : numpy.ndarray
@@ -1066,7 +1066,7 @@ def model_row(fig, product, lim, model_mm):
                  no_clip=True)                               # a rectangle symbol: GMT clips lines outside the frame, not symbols
         fig.text(x=float(np.mean(ends_km)), y=slip_bottom - 0.22 * mm_per_cm, text=name, font=annot_font, justify="CT", no_clip=True)
     print("K landmarks (km from Point Pinole): " + "; ".join(f"{n} {k[0]:.1f}-{k[1]:.1f}" for n, k in landmark_km.items()))
-    # the uncertainty (Monte Carlo, sensitivity range) is given in the caption (08 / 10 registry), not on the panel
+    # the uncertainty (Monte Carlo, sensitivity range) is given in the caption (09 / 10 registry), not on the panel
     fig.text(position="TR", text=f"M@-w@- {float(product['Mw_30gpa']):.2f} (30 GPa), {float(product['Mw_sfcvm']):.2f} "
                                  f"({float(product['mu_effective_gpa']):.1f} GPa, USGS SFSVM)",
              justify="BR", offset="0c/0.12c", font=annot_font, no_clip=True)
@@ -1186,7 +1186,7 @@ def draw_fig2(rate_maps, event_maps, profile_set, event_label, stem, cols, ylabs
         lines_here = model_lines
     los_profile_pairs(fig, "ve", "de", lims["event"], ["G", "H"], ylabs[1], profile_set, cols, xlabel=True,
                       model_lines=lines_here)
-    # row 3: the model of notebook 08, I and J on the same colour scale as E and F
+    # row 3: the model of notebook 09, I and J on the same colour scale as E and F
     fig.shift_origin(xshift=f"-{x_prof}c", yshift=f"-{gap_row + Hpair}c")
     model_row(fig, model, lim_event, model_with_plane_mm)
     fig.savefig(stem + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)   # +gwhite: opaque page
@@ -1203,7 +1203,7 @@ print(f"common pixel mask for the four LOS maps: {mask_los.sum()} pixels ({mask_
 #
 # Row 1 is the inter-event rate: the ascending and descending LOS maps with one shared colour bar, then the X-X' and
 # Y-Y' profiles of each track (pixels in grey, a per-side running median in black). Row 2 is the mean event, the field
-# inverted in notebooks 07 and 08, drawn in the same way. Row 3 is the model row of the 3D model (notebook 08), as in
+# inverted in notebooks 08 and 09, drawn in the same way. Row 3 is the model row of the 3D model (notebook 09), as in
 # Fig 2. The maps are LOS, positive toward the satellite, so a right-lateral step has opposite colours on the ascending
 # and descending tracks. This LOS version is a supplementary figure; Fig 2 (section 14) is the fault-parallel and
 # vertical version.
@@ -1561,7 +1561,7 @@ reads_from = {
     "05_validation": ["02_velocity_decomposition", "03_creep_timeseries", "04_event_detection"],
     "06_event_field_geometry": ["04_event_detection"],
     "07_model_data": ["04_event_detection", "06_event_field_geometry"],
-    "09_model_3d": ["04_event_detection", "06_event_field_geometry", "07_model_data"],
+    "09_model_3d": ["04_event_detection", "06_event_field_geometry", "07_model_data", "08_model_homogeneous"],
     "08_model_homogeneous": ["07_model_data"],
     "10_model_sensitivity": ["07_model_data", "09_model_3d"],
     "11_alignment_arrays": ["03_creep_timeseries", "04_event_detection", "06_event_field_geometry"],
