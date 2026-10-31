@@ -25,9 +25,14 @@ notebooks.
 | `run04_velocity.py` | MintPy conversion, common reference pixel at GNSS ZOA1, record and coherence masks, troposphere correction, velocity fit, and the same-orbit mosaics (step 6) | `<frame>/mintpy/timeseries*.h5`, `velocity*.h5`, `mask*.h5`, `mosaic/<orbit>_*.h5` |
 | `run05_GPS_InSAR_validation.py` | Plate-frame tie of each velocity field to the screened GNSS, and the tied mosaics that notebook 02 decomposes (step 5) | `<frame>/mintpy/velocity_NA.h5`, `mosaic/<orbit>_velocity_NA.h5`, `gps_insar_validation.csv` |
 | `run06_precip_ghcn.py` | NOAA GHCN-daily records for the gauges nearest Tule Pond, with the COOP observation-time shift documented | `external_inputs/GHCN_daily/*.csv` |
+| `run07_aperture_sweep.py` | The aperture sweep that notebook 05 scores: notebook 03's creep time series (`creep_profiles.py`) re-run for every cross-fault bin of 05's aperture ladder at coherence 0.9 and for the paper's 30-150 m bin at coherence 0.7, 0.8 and 0.9, each scored against the five creepmeters | `aperture_sweep_repo/<tag>/fp_ts.csv` (and the per-track series), `aperture_sweep_repo/sweep_summary_mp5.csv`, `sweep_results_mp5.csv`, `masks/<frame>/maskTempCoh_08.h5` |
 
 `run05` imports `frame_grid` and `merge_orbit` from `run04`, so those two stay
-together. `run00` is independent of `run01`-`run04` and only has to precede
+together. `run07` reads the MintPy products of `run04` (and imports its mask
+helpers to build the coherence-0.8 mask by the same rule), the fault crossings
+and the creepmeter records; it runs in minutes. Its run of the paper's bin at
+coherence 0.7 is the computation of notebook 03, and it asserts that this
+`fp_ts.csv` equals notebook 03's. `run00` is independent of `run01`-`run04` and only has to precede
 `run05`. `run02` depends on the stack grid written by `run01` and has no date
 dependence, so a refresh that keeps the same AOI bbox does not need to re-run it.
 
@@ -65,8 +70,7 @@ products; notebook 12 builds its own rain composite from
 ## Inputs that are not produced here
 
 These are received or made by hand, so they have no script. They are under
-`data_dir/external_inputs` (the aperture sweep under `data_dir/aperture_sweep`)
-and are fingerprinted by notebook 01:
+`data_dir/external_inputs` and are fingerprinted by notebook 01:
 
 | Input | Source |
 |---|---|
@@ -76,7 +80,7 @@ and are fingerprinted by notebook 01:
 | Relocated seismicity | B. Xie, GrowClust catalogue for the Hayward area |
 | Mapped fault trace (`hayward_fault_trace_*.kml`) | mapped by hand in QGIS from the USGS Quaternary faults plus the steps visible in the velocity fields; notebook 01 rebuilds the 100 m crossings from it and asserts they match the archived copy |
 | USGS Quaternary faults | public USGS download, used for context figures |
-| Aperture / coherence sweep (`aperture_sweep/`) | archived output of the aperture sweep of the original processing chain (`run11b_sweep_ladder.py`); notebook 05 reads it and does not re-run the sweep |
+| Aperture / coherence sweep (`aperture_sweep/`) | archived output of the aperture sweep of the original processing chain (`run11b_sweep_ladder.py`), which notebook 05 reads (`sweep_dir`). It is reproduced from this repository by `run07_aperture_sweep.py` into `aperture_sweep_repo/`; the differences from the archive are listed in `aperture_sweep_repo/README.md` |
 
 ## Download details
 

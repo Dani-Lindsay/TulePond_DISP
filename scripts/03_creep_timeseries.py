@@ -21,7 +21,9 @@
 #    the median of the east side minus the median of the west side is formed at
 #    every date (sections 4 and 5). This is done separately for the ascending
 #    (09157) and descending (11115) frames. Section 6 checks one crossing step
-#    by step, and Fig. S3 shows the rate mask (section 7).
+#    by step, and Fig. S3 shows the rate mask (section 7). The functions of
+#    the extraction and the decomposition (steps 2 to 5) are in
+#    `creep_profiles.py`, shared with the aperture sweep of notebook 05.
 # 3. **Common date grid**: each track is interpolated onto the union of the
 #    dates of both tracks, only across gaps shorter than 45 days (section 8).
 # 4. **Decomposition**: the ascending and descending series of each crossing are
@@ -76,6 +78,7 @@ import os
 import json
 
 import insar_utils as utils
+import creep_profiles as cp                      # the extraction and decomposition functions (shared with data_prep/run07)
 from TulePond_filepaths import (common_paths, insar_dic_list, creepmeters, unit, params,
                                 dist_min, dist_max, x_width, min_points, coh_timeseries,
                                 rate_nsigma, az_smooth_n, max_interp_gap_days, rate_smooth_km,
@@ -83,8 +86,6 @@ from TulePond_filepaths import (common_paths, insar_dic_list, creepmeters, unit,
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
-import h5py                                      # MintPy HDF5 products
-from pyproj import Transformer                   # lon/lat -> UTM
 import matplotlib.pyplot as plt                  # Figures
 
 # %% [markdown]
@@ -92,6 +93,8 @@ import matplotlib.pyplot as plt                  # Figures
 #
 # The aperture, mask and smoothing settings are read from
 # `TulePond_filepaths.py`, so that every notebook uses the same values. The
+# UTM grid and the landslide-flag settings are those of `creep_profiles.py`,
+# which the aperture sweep (`data_prep/run07_aperture_sweep.py`) shares. The
 # parameters set below are used only in this notebook.
 
 # %%
@@ -101,9 +104,9 @@ fig_dir = common_paths["fig_dir"]
 os.makedirs(out_dir, exist_ok=True)
 os.makedirs(fig_dir, exist_ok=True)
 
-utm_epsg = 32610         # UTM zone 10N, the grid of the frames
-trend_window = 21        # crossings (~2 km) in the running median used to flag landslide crossings
-trend_nsigma = 3.0       # a crossing whose FP rate departs from that trend by more than this (robust sigma) is dropped
+utm_epsg = cp.UTM_EPSG            # UTM zone 10N, the grid of the frames
+trend_window = cp.TREND_WINDOW    # crossings (~2 km) in the running median used to flag landslide crossings (21)
+trend_nsigma = cp.TREND_NSIGMA    # a crossing whose FP rate departs from that trend by more than this (robust sigma) is dropped (3)
 s1b_death = utils.date_to_decimal_year("2021-12-23")     # Sentinel-1B failure: the end of 6-day sampling (Fig S4)
 
 print(f"aperture {dist_min * 1000:.0f}-{dist_max * 1000:.0f} m, along-strike +/-{x_width * 1000:.0f} m, "
@@ -139,16 +142,11 @@ REG.inputs(*input_files)
 # (compass bearing, pointing south-east along the fault). The along-trace
 # distance of each crossing, in km from Point Pinole, is taken from
 # `utils.lat_to_km_map` (nearest crossing by latitude, 0.1 km per crossing).
+# `cp.load_crossings` reads the crossings, smooths the azimuth, and adds the
+# km and the UTM position of each crossing (for the pixel windows).
 
 # %%
-x_fault = pd.read_csv(common_paths["fault_profiles"])
-x_fault["az_smooth"] = x_fault["profile_az"].rolling(az_smooth_n, center=True, min_periods=3).median()
-km_of = utils.lat_to_km_map(common_paths["fault_profiles"])      # lat -> km from Point Pinole
-x_fault["km"] = km_of(x_fault["ft_lat"].values)
-
-# UTM position of every crossing, for the pixel windows
-ll2utm = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
-x_fault["easting"], x_fault["northing"] = ll2utm.transform(x_fault["ft_lon"].values, x_fault["ft_lat"].values)
+x_fault, km_of = cp.load_crossings(common_paths["fault_profiles"], az_smooth_n, utm_epsg)   # km_of: lat -> km from Point Pinole
 
 print(f"{len(x_fault)} crossings from {x_fault.ft_lat.min():.4f} N (south, {x_fault.km.max():.1f} km) "
       f"to {x_fault.ft_lat.max():.4f} N (Point Pinole, 0 km)")
@@ -159,8 +157,13 @@ print(f"cross-fault azimuth: raw {x_fault.profile_az.min():.1f} to {x_fault.prof
 # %% [markdown]
 # ## 4. Functions
 #
-# `get_window_points` returns the coherent pixels around one crossing with
-# their position relative to the crossing, computed in UTM:
+# The functions of the extraction and of the decomposition are in
+# `creep_profiles.py` (imported as `cp`) in the repository root, so that the
+# aperture sweep that notebook 05 scores (`data_prep/run07_aperture_sweep.py`)
+# runs the same code with other bins. `cp.read_insar_data` opens the MintPy
+# products of one track. `cp.get_window_points` returns the coherent pixels
+# around one crossing with their position relative to the crossing, computed
+# in UTM:
 #
 # $$ p = \frac{(E - E_0)\sin\tilde\phi + (N - N_0)\cos\tilde\phi}{1000}, \qquad
 #    q = \frac{(E - E_0)\sin(\tilde\phi + 90^\circ) + (N - N_0)\cos(\tilde\phi + 90^\circ)}{1000}, $$
@@ -170,7 +173,7 @@ print(f"cross-fault azimuth: raw {x_fault.profile_az.min():.1f} to {x_fault.prof
 # crossing, $p$ the distance across the fault (km, positive toward the east
 # side) and $q$ the distance along the fault (km). A pixel is kept if it is in
 # the coherence mask, has a finite LOS velocity and has $|q| \le x_w$
-# (`x_width`). `get_fault_pairs` then splits the pixels into the west side,
+# (`x_width`). `cp.get_fault_pairs` then splits the pixels into the west side,
 # $-d_{max} < p < -d_{min}$, and the east side, $d_{min} < p < d_{max}$
 # (`dist_min`, `dist_max`).
 #
@@ -184,146 +187,6 @@ print(f"cross-fault azimuth: raw {x_fault.profile_az.min():.1f} to {x_fault.prof
 # $\sqrt{d_{max}^2 + x_w^2}$ from the crossing, so the window contains the whole
 # box at any orientation. The window does not select pixels; any window that
 # contains the box gives the same result.
-
-# %%
-def read_insar_data(dic):
-    """Open the MintPy products of one track.
-
-    The displacement cube is not loaded: `ts` is the open h5py dataset and is
-    read per crossing window. Close `ts_h5` when done.
-
-    Parameters
-    ----------
-    dic : dict
-        Track entry of `insar_dic_list` (file paths, orbit direction, frame).
-
-    Returns
-    -------
-    dict
-        Incidence and azimuth (deg), coherence mask, LOS velocity (mm/yr),
-        the open time-series file and dataset, the dates (decimal years), the
-        grid (`x_first`, `y_first`, `x_step`, `y_step` in m; `length`,
-        `width` in pixels) and `win`, the half-width (pixels) of the window
-        read around each crossing.
-    """
-    print(f"Loading {dic['ORBIT_DIRECTION']} {dic['Frame']}")
-    with h5py.File(dic["geo_file"], "r") as hf:
-        inc = hf["incidenceAngle"][:].astype(np.float64)     # stored float16; cast before any arithmetic
-        azi = hf["azimuthAngle"][:].astype(np.float64)
-    with h5py.File(dic["mask_file"][coh_timeseries], "r") as hf:
-        mask = hf["mask"][:].astype(bool)
-    with h5py.File(dic["vel_file"], "r") as hf:
-        vel = hf["velocity"][:].astype(np.float64) * unit     # mm/yr, the rate-mask discriminator
-    ts_h5 = h5py.File(dic["ts_file"], "r")
-    attrs = ts_h5.attrs
-    ts_dates = np.array([utils.date_to_decimal_year(d.decode()) for d in ts_h5["date"][:]])
-    x_step = float(attrs["X_STEP"])
-    y_step = float(attrs["Y_STEP"])
-    # half-width of the pixel window read around each crossing: the dist_max x x_width box
-    # corners are hypot(dist_max, x_width) from the crossing, plus one pixel
-    win = int(np.ceil(np.hypot(dist_max, x_width) * 1000.0 / abs(x_step))) + 1
-    print(f"   cube {ts_h5['timeseries'].shape} (dates x rows x cols), {x_step:.0f} m grid, "
-          f"coherence-{coh_timeseries} mask keeps {100 * mask.mean():.1f}% of pixels")
-    return {"inc": inc, "azi": azi, "mask": mask, "vel": vel,
-            "ts_h5": ts_h5, "ts": ts_h5["timeseries"], "ts_dates": ts_dates,
-            "x_first": float(attrs["X_FIRST"]), "y_first": float(attrs["Y_FIRST"]),
-            "x_step": x_step, "y_step": y_step, "length": inc.shape[0], "width": inc.shape[1],
-            "win": win}
-
-
-def get_window_points(insar, easting_0, northing_0, az):
-    """Coherent pixels in a square window around one crossing.
-
-    Parameters
-    ----------
-    insar : dict
-        Track products from `read_insar_data`.
-    easting_0, northing_0 : float
-        UTM position of the crossing (m).
-    az : float
-        Cross-fault azimuth of the crossing (deg, compass bearing toward the
-        east side).
-
-    Returns
-    -------
-    pandas.DataFrame or None
-        One row per pixel: `row`, `col` (pixel), `p` (distance across the
-        fault, km, positive toward `az`), `q` (distance along the fault, km),
-        `vel` (mm/yr), `inc`, `azi` (deg) and `coherent`. Only coherent pixels
-        with a finite velocity and |q| <= x_width are returned. None if the
-        crossing is off the frame.
-    """
-    # The frame is a regular UTM grid: pixel (row, col) sits at
-    #     easting  = x_first + col * x_step        (x_step = +30 m, col 0 is the west edge)
-    #     northing = y_first + row * y_step        (y_step = -30 m, row 0 is the north edge)
-    # so the pixel under the crossing is found by inverting that.
-    col_centre = int(round((easting_0 - insar["x_first"]) / insar["x_step"]))
-    row_centre = int(round((northing_0 - insar["y_first"]) / insar["y_step"]))
-    # The square of +/- win pixels around it (large enough to contain the whole dist_max x x_width
-    # box at any orientation), clipped at the frame edge. No pixels are selected here; the
-    # selection is the p, q filter below and get_fault_pairs. Fewer than 3 pixels on a side means
-    # the crossing is off the frame.
-    row_min = max(0, row_centre - insar["win"])
-    row_max = min(insar["length"], row_centre + insar["win"] + 1)
-    col_min = max(0, col_centre - insar["win"])
-    col_max = min(insar["width"], col_centre + insar["win"] + 1)
-    if row_max - row_min < 3 or col_max - col_min < 3:
-        return None
-    # easting and northing of every pixel in the window, then the distance of each pixel from the
-    # crossing along the cross-fault azimuth (p) and along the fault (q)
-    cols, rows = np.meshgrid(np.arange(col_min, col_max), np.arange(row_min, row_max))
-    easting = insar["x_first"] + cols * insar["x_step"]
-    northing = insar["y_first"] + rows * insar["y_step"]
-    az = np.deg2rad(az)
-    p = ((easting - easting_0) * np.sin(az) + (northing - northing_0) * np.cos(az)) / 1000.0
-    q = ((easting - easting_0) * np.sin(az + np.pi / 2) + (northing - northing_0) * np.cos(az + np.pi / 2)) / 1000.0
-    points = pd.DataFrame({"row": rows.ravel(), "col": cols.ravel(), "p": p.ravel(), "q": q.ravel(),
-                           "vel": insar["vel"][row_min:row_max, col_min:col_max].ravel(),
-                           "inc": insar["inc"][row_min:row_max, col_min:col_max].ravel(),
-                           "azi": insar["azi"][row_min:row_max, col_min:col_max].ravel(),
-                           "coherent": insar["mask"][row_min:row_max, col_min:col_max].ravel()})
-    points = points[points.coherent & np.isfinite(points.vel) & (np.abs(points.q) <= x_width)]
-    return points
-
-
-def get_fault_pairs(points, dist_min, dist_max):
-    """Split the pixels of one crossing into the west and east sides.
-
-    Parameters
-    ----------
-    points : pandas.DataFrame
-        Pixels from `get_window_points`.
-    dist_min, dist_max : float
-        Inner and outer distance from the trace (km).
-
-    Returns
-    -------
-    w_subset, e_subset : pandas.DataFrame
-        Pixels with -dist_max < p < -dist_min (west) and
-        dist_min < p < dist_max (east).
-    """
-    w_subset = points[(points.p > -dist_max) & (points.p < -dist_min)]
-    e_subset = points[(points.p > dist_min) & (points.p < dist_max)]
-    return w_subset, e_subset
-
-
-def read_creep_ts(path):
-    """Read a latitude x decimal-year table written by this notebook.
-
-    Parameters
-    ----------
-    path : str
-        csv file with latitudes as the index and decimal years as columns.
-
-    Returns
-    -------
-    pandas.DataFrame
-        The table, with float index and float columns.
-    """
-    df = pd.read_csv(path, index_col=0)
-    df.columns = df.columns.astype(float)
-    df.index = df.index.astype(float)
-    return df
 
 # %% [markdown]
 # ## 5. Extract the cross-fault time series, one track at a time
@@ -374,36 +237,6 @@ def read_creep_ts(path):
 # %%
 params_now = dict(coh=coh_timeseries, dist_min=dist_min, dist_max=dist_max, x_width=x_width,
                   min_points=min_points, rate_nsigma=rate_nsigma)
-
-
-def ts_data_key(dic):
-    """Identity of the inputs of one track, for the reuse test.
-
-    Parameters
-    ----------
-    dic : dict
-        Track entry of `insar_dic_list`.
-
-    Returns
-    -------
-    dict
-        Number, first and last of the time-series dates, the decimal year of the first (so that a change of the time
-        convention is seen), and the
-        fingerprints of every file the extraction reads (time series,
-        velocity, geometry, coherence mask, fault crossings).
-    """
-    with h5py.File(dic["ts_file"], "r") as h:
-        dates = h["date"][:]
-    key = dict(n_dates=len(dates), first_date=dates[0].decode(), last_date=dates[-1].decode())
-    key["first_decimal_year"] = round(utils.date_to_decimal_year(dates[0].decode()), 8)     # the time convention of the columns
-    key["sha_ts_file"] = utils.file_fingerprint(dic["ts_file"])
-    key["sha_vel_file"] = utils.file_fingerprint(dic["vel_file"])
-    key["sha_geo_file"] = utils.file_fingerprint(dic["geo_file"])
-    key["sha_mask_file"] = utils.file_fingerprint(dic["mask_file"][coh_timeseries])
-    key["sha_fault_profiles"] = utils.file_fingerprint(common_paths["fault_profiles"])
-    return key
-
-
 mask_stats = {}
 
 for dic in insar_dic_list:
@@ -415,7 +248,7 @@ for dic in insar_dic_list:
 
     # ---------- already on disk with this reuse key: recompute only the mask statistics
     cache_key = dict(params_now)
-    cache_key.update(ts_data_key(dic))
+    cache_key.update(cp.ts_data_key(dic, coh_timeseries, common_paths["fault_profiles"]))   # dates and input fingerprints
     saved_key = None
     if os.path.exists(params_file) and os.path.exists(ts_file):
         with open(params_file) as fh:
@@ -423,7 +256,7 @@ for dic in insar_dic_list:
     if saved_key == cache_key:
         print(f"[{track}] extraction already on disk with this reuse key; reusing")
         rate_dev = pd.read_csv(dev_file)["rate_deviation_mm_yr"].to_numpy()
-        creep_ts = read_creep_ts(ts_file)
+        creep_ts = cp.read_creep_ts(ts_file)
         sigma = utils.robust_sigma(rate_dev)
         rate_cut = rate_nsigma * sigma
         mask_stats[track] = dict(track=track, n_crossings=len(creep_ts), n_dates=creep_ts.shape[1],
@@ -432,75 +265,23 @@ for dic in insar_dic_list:
                                  max_dev=float(np.abs(rate_dev).max()))
         continue
 
-    insar = read_insar_data(dic)
+    insar = cp.read_insar_data(dic, coh_timeseries, dist_max, x_width, unit)
 
-    # ---------- Loop 1: pixel pairs at every crossing, rate deviation of every pixel from its own side
-    print(f"[{track}] loop 1: pixel pairs and rate deviations ...")
-    pairs = {}                  # index in x_fault -> (w_subset, e_subset)
-    rate_dev = []
-    for index, row in x_fault.iterrows():
-        points = get_window_points(insar, row["easting"], row["northing"], row["az_smooth"])
-        if points is None:
-            continue
-        w_subset, e_subset = get_fault_pairs(points, dist_min, dist_max)
-        if len(w_subset) < min_points or len(e_subset) < min_points:
-            continue
-        pairs[index] = (w_subset, e_subset)
-        rate_dev.append(w_subset["vel"] - w_subset["vel"].median())
-        rate_dev.append(e_subset["vel"] - e_subset["vel"].median())
-    rate_dev = pd.concat(rate_dev).to_numpy()
-    sigma = utils.robust_sigma(rate_dev)
-    rate_cut = rate_nsigma * sigma
-
-    # ---------- Loop 2: drop the pixels beyond the cut, read the cube, median of each side, east - west
-    print(f"[{track}] loop 2: reading the cube at {len(pairs)} crossings ...")
-    creep_ts = {}               # ft_lat -> east - west LOS (mm) at every date
-    geometry = {}               # ft_lat -> (mean inc, mean azi) of the pixels used
-    n_rejected = 0
-    n_total = 0
-    n_dropped = 0
-    for index, (w_subset, e_subset) in pairs.items():
-        w_keep = w_subset[np.abs(w_subset["vel"] - w_subset["vel"].median()) <= rate_cut]
-        e_keep = e_subset[np.abs(e_subset["vel"] - e_subset["vel"].median()) <= rate_cut]
-        n_total += len(w_subset) + len(e_subset)
-        n_rejected += (len(w_subset) - len(w_keep)) + (len(e_subset) - len(e_keep))
-        if len(w_keep) < min_points or len(e_keep) < min_points:
-            n_dropped += 1
-            continue
-        # the smallest box holding both sides, read from the cube in one go (m -> mm)
-        both = pd.concat([w_keep, e_keep]).sort_values(["row", "col"])
-        box_row_min = both["row"].min()
-        box_row_max = both["row"].max() + 1
-        box_col_min = both["col"].min()
-        box_col_max = both["col"].max() + 1
-        ts_win = insar["ts"][:, box_row_min:box_row_max, box_col_min:box_col_max] * unit
-        w_rows = (w_keep["row"] - box_row_min).to_numpy()
-        w_cols = (w_keep["col"] - box_col_min).to_numpy()
-        e_rows = (e_keep["row"] - box_row_min).to_numpy()
-        e_cols = (e_keep["col"] - box_col_min).to_numpy()
-        w_avg = np.nanmedian(ts_win[:, w_rows, w_cols], axis=1)
-        e_avg = np.nanmedian(ts_win[:, e_rows, e_cols], axis=1)
-        west_east_ts = e_avg - w_avg
-        ft_lat = float(x_fault.loc[index, "ft_lat"])
-        creep_ts[ft_lat] = west_east_ts
-        geometry[ft_lat] = (float(np.nanmean(both["inc"])), float(np.nanmean(both["azi"])))
+    # ---------- loop 1 (pixel pairs, rate deviations, the cut) and loop 2 (rate mask, cube read, east - west)
+    extracted = cp.extract_track(insar, x_fault, dist_min, dist_max, x_width, min_points, rate_nsigma, unit, track)
     insar["ts_h5"].close()
+    creep_ts = extracted["creep_ts"]
+    rate_dev = extracted["rate_dev"]
+    sigma = extracted["sigma"]
+    rate_cut = extracted["rate_cut"]
 
-    # ---------- save: lat x decimal-year matrix (rows south -> north), geometry, parameters, deviations
-    creep_ts = pd.DataFrame.from_dict(creep_ts, orient="index", columns=np.round(insar["ts_dates"], 4))
-    creep_ts.index.name = "lat"
-    creep_ts.sort_index().to_csv(ts_file)
-    geometry = pd.DataFrame.from_dict(geometry, orient="index", columns=["inc_deg", "azi_deg"])
-    geometry.index.name = "lat"
-    geometry.sort_index().to_csv(geom_file)
-    with open(params_file, "w") as fh:
-        json.dump(cache_key, fh, indent=1)
-    pd.DataFrame({"rate_deviation_mm_yr": rate_dev}).to_csv(dev_file, index=False)
+    # ---------- save: lat x decimal-year matrix (rows south -> north), geometry, parameters (the reuse key), deviations
+    cp.write_track(extracted, ts_file, geom_file, params_file, dev_file, cache_key)
 
-    rej_pct = 100.0 * n_rejected / n_total
+    rej_pct = 100.0 * extracted["n_rejected"] / extracted["n_total"]
     print(f"[{track}] {len(creep_ts)}/{len(x_fault)} crossings, {len(insar['ts_dates'])} dates")
     print(f"          rate mask: sigma {sigma:.3f} mm/yr, cut +/-{rate_cut:.3f} ({rate_nsigma:g} sigma) -> "
-          f"{rej_pct:.1f}% of pixels rejected, {n_dropped} crossings dropped, max |dev| {np.abs(rate_dev).max():.1f}")
+          f"{rej_pct:.1f}% of pixels rejected, {extracted['n_dropped']} crossings dropped, max |dev| {np.abs(rate_dev).max():.1f}")
     print("")
     mask_stats[track] = dict(track=track, n_crossings=len(creep_ts), n_dates=len(insar["ts_dates"]),
                              ts_dates=insar["ts_dates"], sigma=sigma, rate_cut=rate_cut, rej_pct=rej_pct,
@@ -525,9 +306,9 @@ for code, cm_lat, cm_lon, cm_name in creepmeters:
         cfw1_lat = cm_lat
 assert cfw1_lat is not None, "CFW1 is not in the creepmeter list"
 cfw1_crossing = x_fault.loc[(x_fault.ft_lat - cfw1_lat).abs().idxmin()]     # the crossing at CFW1's latitude
-insar = read_insar_data(asc_dic)
-points = get_window_points(insar, cfw1_crossing["easting"], cfw1_crossing["northing"], cfw1_crossing["az_smooth"])
-w_subset, e_subset = get_fault_pairs(points, dist_min, dist_max)
+insar = cp.read_insar_data(asc_dic, coh_timeseries, dist_max, x_width, unit)
+points = cp.get_window_points(insar, cfw1_crossing["easting"], cfw1_crossing["northing"], cfw1_crossing["az_smooth"], x_width)
+w_subset, e_subset = cp.get_fault_pairs(points, dist_min, dist_max)
 last = insar["ts"][-1] * unit                                              # the last epoch, whole frame, mm
 insar["ts_h5"].close()
 # the rate mask, as loop 2 applies it
@@ -537,7 +318,7 @@ e_keep = e_subset[np.abs(e_subset["vel"] - e_subset["vel"].median()) <= rate_cut
 east_median = np.nanmedian(last[e_keep["row"].to_numpy(), e_keep["col"].to_numpy()])
 west_median = np.nanmedian(last[w_keep["row"].to_numpy(), w_keep["col"].to_numpy()])
 by_hand = east_median - west_median
-from_file = read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_ascending.csv")).loc[cfw1_crossing["ft_lat"]].iloc[-1]
+from_file = cp.read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_ascending.csv")).loc[cfw1_crossing["ft_lat"]].iloc[-1]
 print(f"crossing at CFW1's latitude, {cfw1_crossing.ft_lat:.4f} N ({cfw1_crossing.km:.1f} km), ascending, last epoch:")
 print(f"   {len(w_subset)} west px, {len(e_subset)} east px; after the rate mask {len(w_keep)} west, {len(e_keep)} east")
 print(f"   east median - west median, recomputed = {by_hand:.3f} mm;  in creep_ts_LOS_ascending.csv = {from_file:.3f} mm")
@@ -600,7 +381,8 @@ plt.show()
 # are left as NaN, and no values are extrapolated. Only crossings present on
 # both tracks are kept. An epoch counts as acquired on a track if that track
 # has an acquisition within half a day of it, so the ascending and descending
-# acquisitions of the same UTC day (about 12 h apart) form one epoch.
+# acquisitions of the same UTC day (about 12 h apart) form one epoch. The
+# grid and the interpolation are `cp.common_grid` and `cp.interp_to_dates`.
 #
 # The exact UTC time of every acquisition, the zero-Doppler start time of its
 # OPERA granule (the `time` coordinate of the rebased stack `<frame>_stack.nc`),
@@ -609,60 +391,17 @@ plt.show()
 # between these times.
 
 # %%
-def interp_to_dates(target_dates, dates, values):
-    """Linearly interpolate one crossing's series onto new dates.
-
-    Parameters
-    ----------
-    target_dates : numpy.ndarray
-        Dates of the common grid (decimal years).
-    dates : numpy.ndarray
-        Acquisition dates of the track (decimal years).
-    values : numpy.ndarray
-        Series of the crossing at `dates` (mm).
-
-    Returns
-    -------
-    numpy.ndarray
-        Series at `target_dates`; NaN inside gaps longer than
-        max_interp_gap_days, outside the observed range, and everywhere if
-        fewer than two values are finite.
-    """
-    out = np.full(len(target_dates), np.nan)
-    ok = np.isfinite(values)
-    if ok.sum() < 2:
-        return out
-    dates, values = dates[ok], values[ok]
-    interp = np.interp(target_dates, dates, values)
-    left = np.clip(np.searchsorted(dates, target_dates, side="right") - 1, 0, len(dates) - 1)   # acquisition date at or before
-    right = np.clip(left + 1, 0, len(dates) - 1)                                                # acquisition date after
-    is_real = np.isclose(target_dates, dates[left], rtol=0, atol=0.5 / 365.25)                  # an acquisition date
-    #                                       (rtol=0: on decimal years the default rtol=1e-5 alone is ~7 days)
-    gap_days = (dates[right] - dates[left]) * 365.25
-    inside = (target_dates >= dates[0] - 0.5 / 365.25) & (target_dates <= dates[-1] + 0.5 / 365.25)
-    keep = inside & (is_real | (gap_days <= max_interp_gap_days))
-    out[keep] = interp[keep]
-    return out
-
-
-asc_los = read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_ascending.csv"))
-desc_los = read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_descending.csv"))
-# the common grid runs over the overlap of the two tracks (registered as 03_window_start / _end)
-grid_start = max(asc_los.columns.min(), desc_los.columns.min())
-grid_end = min(asc_los.columns.max(), desc_los.columns.max())
-common_dates = np.array(sorted(set(asc_los.columns) | set(desc_los.columns)))
-common_dates = common_dates[(common_dates >= grid_start) & (common_dates <= grid_end)]
-lats = np.array(sorted(set(asc_los.index) & set(desc_los.index)))
+asc_los = cp.read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_ascending.csv"))
+desc_los = cp.read_creep_ts(os.path.join(out_dir, "creep_ts_LOS_descending.csv"))
+# the common grid runs over the overlap of the two tracks (registered as 03_window_start / _end); each crossing on both
+# tracks is interpolated onto it with cp.interp_to_dates
+grid = cp.common_grid(asc_los, desc_los, max_interp_gap_days)
+los_interp = grid["los_interp"]          # {"asc", "desc"} -> lat x common date (mm LOS)
+lats = grid["lats"]
+common_dates = grid["common_dates"]
+grid_start = grid["grid_start"]
+grid_end = grid["grid_end"]
 print(f"crossings on both tracks: {len(lats)}, {lats.min():.4f} to {lats.max():.4f} N")
-
-los_interp = {}
-for name, los in (("asc", asc_los), ("desc", desc_los)):
-    dates = los.columns.values.astype(float)
-    matrix = np.full((len(lats), len(common_dates)), np.nan)
-    for i, lat in enumerate(lats):
-        matrix[i] = interp_to_dates(common_dates, dates, los.loc[lat].values)
-    los_interp[name] = pd.DataFrame(matrix, index=lats, columns=common_dates)
-    los_interp[name].index.name = "lat"
 print(f"common grid: {len(lats)} crossings x {len(common_dates)} dates, {grid_start:.3f} to {grid_end:.3f}")
 
 # which epochs are acquired on each track (an acquisition within half a day) and which are interpolated
@@ -684,7 +423,7 @@ time_rows = []
 for dic in insar_dic_list:
     track = dic["ORBIT_DIRECTION"]
     clock = utils.acquisition_times(frames[dic["Frame"]]["stack"])
-    track_days = [utils.decimal_year_to_day(t) for t in read_creep_ts(os.path.join(out_dir, f"creep_ts_LOS_{track}.csv")).columns]
+    track_days = [utils.decimal_year_to_day(t) for t in cp.read_creep_ts(os.path.join(out_dir, f"creep_ts_LOS_{track}.csv")).columns]
     missing = [day for day in track_days if day not in clock.index]
     assert not missing, f"{track}: {len(missing)} acquisition dates have no frame {dic['Frame']} granule, e.g. {missing[:3]}"
     for day in track_days:
@@ -724,7 +463,8 @@ for track, rows in acquisition_times.groupby("track"):
 # solved by least squares (`utils.decompose_asc_desc`), which for two tracks is
 # the exact solution. FP is positive along the strike bearing (south-east), so
 # right-lateral creep is positive. All horizontal motion is assumed to be
-# fault-parallel.
+# fault-parallel. The per-crossing geometry, the strike and the solution are
+# `cp.crossing_geometry`, `cp.crossing_strike` and `cp.decompose_fp`.
 #
 # The local strike and geometry are used for all products derived from the time
 # series; the mean strike is used only for the decomposition of the velocity
@@ -736,41 +476,18 @@ for track, rows in acquisition_times.groupby("track"):
 crossing_inc = {}
 crossing_azi = {}
 for dic, key in zip(insar_dic_list, ("asc", "desc")):
-    geometry = pd.read_csv(os.path.join(out_dir, f"creep_geom_{dic['ORBIT_DIRECTION']}.csv"), index_col=0)
-    crossing_inc[key] = np.full(len(lats), np.nan)
-    crossing_azi[key] = np.full(len(lats), np.nan)
-    for i, lat in enumerate(lats):
-        nearest = int(np.argmin(np.abs(geometry.index.values - lat)))
-        assert np.isclose(geometry.index.values[nearest], lat, rtol=0, atol=1e-9), \
-            f"{key}: crossing {lat} has no geometry row"
-        crossing_inc[key][i] = geometry["inc_deg"].values[nearest]
-        crossing_azi[key][i] = geometry["azi_deg"].values[nearest]
-    assert np.isfinite(crossing_inc[key]).all() and np.isfinite(crossing_azi[key]).all(), f"{key}: missing geometry"
+    geom_file = os.path.join(out_dir, f"creep_geom_{dic['ORBIT_DIRECTION']}.csv")
+    crossing_inc[key], crossing_azi[key] = cp.crossing_geometry(geom_file, lats, key)
     print(f"{dic['ORBIT_DIRECTION']}: incidence {crossing_inc[key].min():.2f} to {crossing_inc[key].max():.2f}, "
           f"azimuth {crossing_azi[key].min():.2f} to {crossing_azi[key].max():.2f} deg")
 
 # local strike of every kept crossing: the smoothed cross-fault azimuth of its trace point + 90
-trace_lats = x_fault["ft_lat"].values
-strike = np.full(len(lats), np.nan)
-for i, lat in enumerate(lats):
-    nearest = int(np.argmin(np.abs(trace_lats - lat)))
-    assert np.isclose(trace_lats[nearest], lat, rtol=0, atol=1e-9), f"crossing {lat} is not a trace point"
-    strike[i] = x_fault["az_smooth"].values[nearest] + 90.0
+strike = cp.crossing_strike(x_fault, lats)
 
-fp_matrix = np.full((len(lats), len(common_dates)), np.nan)
-for i, lat in enumerate(lats):
-    d_asc = los_interp["asc"].values[i]
-    d_desc = los_interp["desc"].values[i]
-    ok = np.isfinite(d_asc) & np.isfinite(d_desc)
-    if ok.sum() == 0:
-        continue
-    _, fp_matrix[i, ok] = utils.decompose_asc_desc(
-        d_asc[ok], d_desc[ok], crossing_inc["asc"][i], crossing_azi["asc"][i],
-        crossing_inc["desc"][i], crossing_azi["desc"][i], strike[i])
-fp_ts = pd.DataFrame(fp_matrix, index=lats, columns=common_dates)
-fp_ts.index.name = "lat"
+# FP of every crossing at every epoch where both tracks have a value (utils.decompose_asc_desc)
+fp_ts = cp.decompose_fp(los_interp, crossing_inc, crossing_azi, strike, lats, common_dates)
 mid = len(lats) // 2
-print(f"decomposed {np.isfinite(fp_matrix).any(axis=1).sum()} crossings; G for the mid-fault crossing ({lats[mid]:.3f} N):")
+print(f"decomposed {np.isfinite(fp_ts.values).any(axis=1).sum()} crossings; G for the mid-fault crossing ({lats[mid]:.3f} N):")
 print(utils.design_matrix_up_fp([crossing_inc["asc"][mid], crossing_inc["desc"][mid]],
                                 [crossing_azi["asc"][mid], crossing_azi["desc"][mid]], strike[mid]).round(3), "  (columns U, FP)")
 
@@ -778,7 +495,7 @@ print(utils.design_matrix_up_fp([crossing_inc["asc"][mid], crossing_inc["desc"][
 # ## 10. Along-fault creep rate and the crossing-level landslide flag
 #
 # **Rate.** At every crossing a straight line is fitted by least squares
-# (`np.polyfit`) to the FP series,
+# (`np.polyfit`, in `cp.rate_per_crossing`) to the FP series,
 #
 # $$ FP_k(t_m) = c_k + r_k\,t_m , $$
 #
@@ -800,7 +517,8 @@ print(utils.design_matrix_up_fp([crossing_inc["asc"][mid], crossing_inc["desc"][
 # $$ \sigma_e = 1.4826\,\operatorname{median}_k \left| e_k - \operatorname{median}_j e_j \right| , $$
 #
 # a crossing is flagged if $|e_k| > n_e\,\sigma_e$ ($n_e$ = `trend_nsigma` = 3).
-# Flagged crossings are set to NaN in every product.
+# Flagged crossings (`cp.flag_landslide_crossings`) are set to NaN in every
+# product.
 #
 # **Smoothing.** The remaining rate profile is smoothed along the fault with a
 # Gaussian (`utils.gaussian_smooth_km`),
@@ -816,33 +534,8 @@ print(utils.design_matrix_up_fp([crossing_inc["asc"][mid], crossing_inc["desc"][
 # the kernel weight falls on crossings with data, and wherever $r_k$ is NaN.
 
 # %%
-def rate_per_crossing(ts):
-    """Least-squares linear rate of every crossing.
-
-    Parameters
-    ----------
-    ts : pandas.DataFrame
-        Latitude x decimal-year table (mm).
-
-    Returns
-    -------
-    numpy.ndarray
-        Rate of each row (mm/yr); NaN if fewer than 6 dates are finite.
-    """
-    dates = ts.columns.values.astype(float)
-    rate = np.full(len(ts), np.nan)
-    for i, values in enumerate(ts.values):
-        ok = np.isfinite(values)
-        if ok.sum() > 5:
-            rate[i] = np.polyfit(dates[ok], values[ok], 1)[0]
-    return rate
-
-
-fp_rate_raw = rate_per_crossing(fp_ts)
-trend = pd.Series(fp_rate_raw).rolling(trend_window, center=True, min_periods=5).median().to_numpy()
-resid = fp_rate_raw - trend
-trend_sigma = utils.robust_sigma(resid)
-landslide_flag = (np.abs(resid) > trend_nsigma * trend_sigma) & np.isfinite(fp_rate_raw)
+fp_rate_raw = cp.rate_per_crossing(fp_ts)
+landslide_flag, trend_sigma = cp.flag_landslide_crossings(fp_rate_raw, trend_window, trend_nsigma)
 print(f"along-fault rejection: {landslide_flag.sum()}/{len(fp_rate_raw)} crossings dropped "
       f"({100 * landslide_flag.mean():.1f}%), residual sigma {trend_sigma:.2f} mm/yr")
 fp_ts.iloc[landslide_flag, :] = np.nan
