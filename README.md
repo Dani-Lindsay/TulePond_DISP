@@ -72,7 +72,8 @@ All times are UTC and are expressed as decimal years with one convention, $y = 2
 where $t_{2000}$ is 1 January 2000, 00:00 UTC, so that a difference of decimal years times 365.25 is an exact number of
 days. Every notebook converts through the functions of `insar_utils` (`decimal_years`, `date_to_decimal_year`,
 `decimal_year_to_date`). The exact time of each InSAR acquisition (the zero-Doppler start time of its OPERA DISP-S1
-granule) is read once, in notebook 03 (`acquisition_times.csv`), and the onset windows of notebook 04 run between these
+granule, the `time` coordinate of the rebased stack `<frame>_stack.nc`) is read once, in notebook 03
+(`acquisition_times.csv`), and the onset windows of notebook 04 run between these
 times. The fault-parallel and vertical decomposition pairs the ascending and descending acquisitions of the same UTC
 day (about 12 h apart) as one epoch; no onset window is shorter than 5 d. Creepmeter and earthquake times are UTC;
 alignment-array surveys and rainfall are whole local days. External files written with calendar decimal years are

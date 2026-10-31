@@ -603,8 +603,9 @@ plt.show()
 # acquisitions of the same UTC day (about 12 h apart) form one epoch.
 #
 # The exact UTC time of every acquisition, the zero-Doppler start time of its
-# OPERA granule, is read here once and saved in `acquisition_times.csv` (track,
-# frame, UTC day, UTC time, decimal year). The onset windows of notebook 04 run
+# OPERA granule (the `time` coordinate of the rebased stack `<frame>_stack.nc`),
+# is read here once and saved in `acquisition_times.csv` (track, frame, UTC day,
+# UTC time, decimal year). The onset windows of notebook 04 run
 # between these times.
 
 # %%
@@ -676,12 +677,13 @@ both_real = real["asc"] & real["desc"]
 print(f"both tracks real at {both_real.sum()} epochs; interpolated: asc {(~real['asc']).sum()} "
       f"({100 * (~real['asc']).mean():.0f}%), desc {(~real['desc']).sum()} ({100 * (~real['desc']).mean():.0f}%)")
 
-# the exact UTC time of every acquisition of each track (the zero-Doppler start time of its OPERA granules), read
-# once here; the onset windows (04), the rain days (12) and the forecast (13) take their times from this table
+# the exact UTC time of every acquisition of each track (the time coordinate of the rebased stack, the zero-Doppler
+# start time of each OPERA granule), read once here; the onset windows (04), the rain days (12) and the forecast (13)
+# take their times from this table
 time_rows = []
 for dic in insar_dic_list:
     track = dic["ORBIT_DIRECTION"]
-    clock = utils.acquisition_times(frames[dic["Frame"]]["data_dir"], dic["Frame"])
+    clock = utils.acquisition_times(frames[dic["Frame"]]["stack"])
     track_days = [utils.decimal_year_to_day(t) for t in read_creep_ts(os.path.join(out_dir, f"creep_ts_LOS_{track}.csv")).columns]
     missing = [day for day in track_days if day not in clock.index]
     assert not missing, f"{track}: {len(missing)} acquisition dates have no frame {dic['Frame']} granule, e.g. {missing[:3]}"

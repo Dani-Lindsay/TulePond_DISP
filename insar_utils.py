@@ -143,38 +143,27 @@ def decimal_year_to_day(dec_year):
     return pd.Timestamp(decimal_year_to_date(dec_year)).round("D")
 
 
-def acquisition_times(granule_dir, frame):
-    """UTC time of every secondary acquisition of one OPERA DISP-S1 frame, from its granule names.
+def acquisition_times(stack_file):
+    """UTC time of every acquisition in a rebased OPERA DISP-S1 stack (`<frame>_stack.nc`, data_prep run01).
 
-    The names are OPERA_L3_DISP-S1_IW_F<frame>_VV_<reference>Z_<secondary>Z_v...nc; the secondary time is the
-    zero-Doppler start time of the acquisition (`identification/secondary_datetime` in the file), to the second.
+    The stack's `time` coordinate holds the secondary acquisition time of each layer, the zero-Doppler start time
+    of the OPERA product (`identification/secondary_datetime` of each granule).
 
     Parameters
     ----------
-    granule_dir : str
-        Directory of the granules.
-    frame : str or int
-        OPERA frame ID.
+    stack_file : str
+        The stack (netCDF).
 
     Returns
     -------
     pandas.Series
         UTC time of each acquisition, indexed by its UTC day.
     """
-    pattern = re.compile(rf"OPERA_L3_DISP-S1_IW_F{int(frame):05d}_VV_(\d{{8}}T\d{{6}})Z_(\d{{8}}T\d{{6}})Z_")
-    times = {}
-    for name in sorted(os.listdir(granule_dir)):
-        match = pattern.match(name)
-        if match is None:
-            continue
-        for stamp in match.groups():
-            time = pd.Timestamp(datetime.strptime(stamp, "%Y%m%dT%H%M%S"))
-            day = time.normalize()
-            assert abs((times.get(day, time) - time).total_seconds()) < 60, \
-                f"frame {frame}: two acquisition times on {day.date()}: {times[day]} and {time}"
-            times.setdefault(day, time)
-    assert times, f"no frame {frame} granules in {granule_dir}"
-    return pd.Series(times).sort_index()
+    import xarray as xr
+    with xr.open_dataset(stack_file) as stack:
+        times = pd.DatetimeIndex(stack["time"].values)
+    assert times.is_monotonic_increasing and times.normalize().is_unique, f"{stack_file}: times not one per day, in order"
+    return pd.Series(times, index=times.normalize())
 
 
 # ------------------------------
