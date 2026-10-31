@@ -386,13 +386,15 @@ def ts_data_key(dic):
     Returns
     -------
     dict
-        Number, first and last of the time-series dates, and the
+        Number, first and last of the time-series dates, the decimal year of the first (so that a change of the time
+        convention is seen), and the
         fingerprints of every file the extraction reads (time series,
         velocity, geometry, coherence mask, fault crossings).
     """
     with h5py.File(dic["ts_file"], "r") as h:
         dates = h["date"][:]
     key = dict(n_dates=len(dates), first_date=dates[0].decode(), last_date=dates[-1].decode())
+    key["first_decimal_year"] = round(utils.date_to_decimal_year(dates[0].decode()), 8)     # the time convention of the columns
     key["sha_ts_file"] = utils.file_fingerprint(dic["ts_file"])
     key["sha_vel_file"] = utils.file_fingerprint(dic["vel_file"])
     key["sha_geo_file"] = utils.file_fingerprint(dic["geo_file"])

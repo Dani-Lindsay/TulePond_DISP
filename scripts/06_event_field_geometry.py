@@ -503,11 +503,12 @@ def fit_time_func(cube, dates, keep, step_dates):
 #
 # The per-pixel fit is the slow step, so it is cached in
 # `timefunc_fit_<track>.npz`. The cache is reused only if it was made from the
-# same step dates, input dates, box, fit mask and model settings (`periodic`,
-# `min_obs`); otherwise the pixels are refitted and the reason is printed.
+# same step dates, input dates and their decimal years, box, fit mask and model
+# settings (`periodic`, `min_obs`); otherwise the pixels are refitted and the
+# reason is printed.
 
 # %%
-cache_meta_keys = ("step_dates", "names", "input_dates", "box_rows_cols", "periodic", "min_obs", "fit_mask")
+cache_meta_keys = ("step_dates", "names", "input_dates", "input_years", "box_rows_cols", "periodic", "min_obs", "fit_mask")
 fits = {}           # per track: the coefficient maps, the geometry, the step dates
 for dic in insar_dic_list:
     orbit = dic["ORBIT_DIRECTION"]
@@ -525,6 +526,7 @@ for dic in insar_dic_list:
     # The cache is keyed on everything the fit depends on; the step dates alone are not enough, because
     # appending epochs leaves them unchanged. A cache that does not match is recomputed.
     box_rows_cols = np.array([r0, r1, c0, c1])
+    input_years = np.array([utils.date_to_decimal_year(date) for date in dates])     # the time convention of the fit
     cache_ok = False
     if os.path.exists(f_fit):
         cached = np.load(f_fit)
@@ -533,6 +535,8 @@ for dic in insar_dic_list:
             mismatches.append("step dates differ")
         if "input_dates" not in cached.files or list(cached["input_dates"]) != dates:
             mismatches.append(f"input dates differ (now {len(dates)})")
+        if "input_years" not in cached.files or not np.allclose(cached["input_years"], input_years, rtol=0, atol=1e-9):
+            mismatches.append("decimal years of the input dates differ (time convention)")
         if "box_rows_cols" not in cached.files or not np.array_equal(cached["box_rows_cols"], box_rows_cols):
             mismatches.append("box differs")
         if "fit_mask" not in cached.files or not np.array_equal(cached["fit_mask"], keep):
@@ -557,7 +561,7 @@ for dic in insar_dic_list:
         print(f"[{orbit}] {len(dates)} dates, coherent pixels {keep.mean():.0%} of the box")
         coef, _, names = fit_time_func(cube, dates, keep, step_dates)
         np.savez(f_fit, step_dates=np.array(step_dates), names=np.array(names), input_dates=np.array(dates),
-                 box_rows_cols=box_rows_cols, periodic=np.array(periodic), min_obs=min_obs, fit_mask=keep, **coef)
+                 input_years=input_years, box_rows_cols=box_rows_cols, periodic=np.array(periodic), min_obs=min_obs, fit_mask=keep, **coef)
         del cube
     fits[orbit] = dict(coef=coef, keep=keep, inc=inc, azi=azi, steps=steps, dates=dates)
     print(f"  {orbit}: steps at {step_dates} (04's step epochs {[round(step_epoch, 4) for _, step_epoch in steps]})")

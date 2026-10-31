@@ -863,12 +863,12 @@ def load_aa(aa_dir, code):
     archive_year = d["year"].to_numpy()
     whole_year = np.floor(archive_year).astype(int)
     is_leap = ((whole_year % 4 == 0) & (whole_year % 100 != 0)) | (whole_year % 400 == 0)
-    first_of_year = pd.to_datetime(pd.DataFrame(dict(year=whole_year, month=1, day=1)))
+    first_of_year = pd.DatetimeIndex(pd.to_datetime(pd.DataFrame(dict(year=whole_year, month=1, day=1))))
     archive_time = first_of_year + pd.to_timedelta((archive_year - whole_year) * np.where(is_leap, 366.0, 365.0), unit="D")
     d["year"] = decimal_years(archive_time - pd.Timedelta(days=1))
     # the check against the survey dates
-    survey_day = pd.to_datetime(d["date"].astype(str).str.strip(), format="%m/%d/%Y", errors="coerce")
-    has_date = survey_day.notna().to_numpy()
+    survey_day = pd.DatetimeIndex(pd.to_datetime(d["date"].astype(str).str.strip(), format="%m/%d/%Y", errors="coerce"))
+    has_date = survey_day.notna()
     assert has_date.sum() >= 0.9 * len(d), f"{code}: only {has_date.sum()} of {len(d)} surveys have a readable date"
     archive_minus_date_d = np.asarray((archive_time[has_date] - survey_day[has_date]) / pd.Timedelta(days=1), float)
     median_offset_d = float(np.median(archive_minus_date_d))
