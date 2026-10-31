@@ -52,6 +52,7 @@
 #   `creep_params_<track>.json` (the reuse key of section 5),
 #   `rate_deviation_<track>.csv` (the rate deviations of section 5)
 # - common grid: `fp_ts.csv` (read by notebooks 04, 05, 11 and 13)
+# - `acquisition_times.csv`: the UTC time of every acquisition (read by notebooks 04 and 12)
 # - along-fault rates: `creep_rate_fp.csv` (read by notebook 04)
 # - `03_creep_stats.txt` and the registry rows `03_*`
 #
@@ -598,7 +599,13 @@ plt.show()
 # and 24 day sampling intervals and isolated missed acquisitions. Longer gaps
 # are left as NaN, and no values are extrapolated. Only crossings present on
 # both tracks are kept. An epoch counts as acquired on a track if that track
-# has an acquisition within half a day of it.
+# has an acquisition within half a day of it, so the ascending and descending
+# acquisitions of the same UTC day (about 12 h apart) form one epoch.
+#
+# The exact UTC time of every acquisition, the zero-Doppler start time of its
+# OPERA granule, is read here once and saved in `acquisition_times.csv` (track,
+# frame, UTC day, UTC time, decimal year). The onset windows of notebook 04 run
+# between these times.
 
 # %%
 def interp_to_dates(target_dates, dates, values):
