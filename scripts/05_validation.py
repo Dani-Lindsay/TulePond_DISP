@@ -246,13 +246,16 @@ REG.inputs(fp_ts_file, xf_file, map_file, lengths_file, events_file, event_steps
 # (within 0.15 km, asserted).
 
 # %%
-def read_fp_ts(path):
+def read_fp_ts(path, calendar=False):
     """Read a fault-parallel time-series table in the notebook 03 layout.
 
     Parameters
     ----------
     path : str
         CSV file, rows latitude (deg), columns decimal year, values mm.
+    calendar : bool
+        True for the precomputed sweep files, whose columns are calendar decimal years (1 January = year + 0, a
+        fraction of the actual year length); they are converted to the convention of `insar_utils.decimal_years`.
 
     Returns
     -------
@@ -261,6 +264,8 @@ def read_fp_ts(path):
     """
     table = pd.read_csv(path, index_col=0)
     table.columns = table.columns.astype(float)
+    if calendar:
+        table.columns = np.round(utils.from_calendar_decimal_years(table.columns), 4)
     table.index = table.index.astype(float)
     return table
 
@@ -1758,7 +1763,7 @@ assert coz1_lat is not None, "COZ1 is not in the creepmeter list"
 ladder_rows = []
 for set_name, inner, outer in ladder_bins:
     sweep_tag = f"ap{inner}-{outer}m_coh{ladder_coh:g}_mp{min_points}"
-    sweep_fp = read_fp_ts(os.path.join(common_paths["sweep_dir"], sweep_tag, "fp_ts.csv"))
+    sweep_fp = read_fp_ts(os.path.join(common_paths["sweep_dir"], sweep_tag, "fp_ts.csv"), calendar=True)
     # rate RMS over the stations where the fixed stack can be formed
     rate_differences = []
     for code, lat, lon, name in creepmeters:
@@ -1822,7 +1827,7 @@ print(f"selected bin {selected[0]}-{selected[1]} m at coherence {ladder_coh}: ra
 # the paper's stream uses coherence 0.7
 coh_rows = []
 for _, summary_row in selected_by_coh.iterrows():
-    sweep_fp = read_fp_ts(os.path.join(common_paths["sweep_dir"], summary_row.tag, "fp_ts.csv"))
+    sweep_fp = read_fp_ts(os.path.join(common_paths["sweep_dir"], summary_row.tag, "fp_ts.csv"), calendar=True)
     coh_rows.append(dict(coh=summary_row.coh, rate_rms=summary_row.rate_rms, rate_bias=summary_row.rate_bias, n_crossings=sweep_fp.shape[0]))
 coh_table = pd.DataFrame(coh_rows)
 print(coh_table.round(3).to_string(index=False))

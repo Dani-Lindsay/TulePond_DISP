@@ -84,6 +84,26 @@ def decimal_years(times):
     return 2000.0 + np.asarray((times - EPOCH_2000) / pd.Timedelta(days=1), float) / DAYS_PER_YEAR
 
 
+def from_calendar_decimal_years(values):
+    """Calendar decimal years (year + elapsed fraction of that year's length, 1 January 00:00 = year + 0), the
+    convention of external files, in the project convention of `decimal_years`.
+
+    Parameters
+    ----------
+    values : array-like of float
+
+    Returns
+    -------
+    numpy.ndarray
+    """
+    values = np.asarray(values, float)
+    whole_year = np.floor(values).astype(int)
+    is_leap = ((whole_year % 4 == 0) & (whole_year % 100 != 0)) | (whole_year % 400 == 0)
+    first_of_year = pd.DatetimeIndex(pd.to_datetime(pd.DataFrame(dict(year=whole_year, month=1, day=1))))
+    times = first_of_year + pd.to_timedelta((values - whole_year) * np.where(is_leap, 366.0, 365.0), unit="D")
+    return decimal_years(times)
+
+
 def date_to_decimal_year(date_input, format_str=None):
     """Decimal year of one date or time (str, bytes or datetime), UTC.
 
@@ -893,7 +913,8 @@ def load_aa_summary(aa_summary, fault="Hayward"):
 def load_cre_taira(path):
     """Repeating-earthquake catalogue of T. Taira (BSL), HFRC linkage clusters,
     GEN3. Whitespace (or comma) separated: YYYY Lat Lon Depth cumD(cm) EVID CSID
-    Mag D(cm). Returns YYYY, Lon, Lat, Depth, Mag, seqID, cat."""
+    Mag D(cm). YYYY is a calendar decimal year; it is returned in the convention
+    of `decimal_years`. Returns YYYY, Lon, Lat, Depth, Mag, seqID, cat."""
     names = ['YYYY', 'Lat', 'Lon', 'Depth', 'cumD(cm)', 'EVID', 'CSID', 'Mag', 'D(cm)']
     rows = []
     with open(path) as fh:
@@ -913,6 +934,8 @@ def load_cre_taira(path):
     for col in ('YYYY', 'Lat', 'Lon', 'Depth', 'Mag'):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     out = df[["YYYY", "Lon", "Lat", "Depth", "Mag", "CSID"]].rename(columns={"CSID": "seqID"})
+    out = out.dropna(subset=["YYYY"]).reset_index(drop=True)
+    out["YYYY"] = from_calendar_decimal_years(out["YYYY"])      # the catalogue's calendar decimal years -> decimal_years
     out["cat"] = "Taira26"
     return out
 
