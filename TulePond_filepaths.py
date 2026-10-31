@@ -36,7 +36,7 @@ repo_dir = os.path.dirname(os.path.abspath(__file__))
 #   external_inputs/       fault trace, arrays, creepmeters, GHCN, catalogues, qfaults, USGS SFCVM v26
 #   GPS/                   the screened UNR series and the run05 tie table
 #   prep_validation/       run05's GNSS-tie record and run06's rain tables
-#   aperture_sweep/        the archived aperture sweep that notebook 04 reads
+#   aperture_sweep/        the cross-fault aperture sweep that notebook 05 reads (data_prep/run07)
 #   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07), impulse and test-slip dbs
 #   modeling_uniform/      the homogeneous (30 GPa) PyLith runs and the analytic (CSI) Green's functions: G matrices, run
 #                          outputs, slip dbs, the CSI validation products
@@ -221,8 +221,8 @@ common_paths = {
     # relocated and unrelocated NCSS events, one row per event
     "growclust_cat": os.path.join(inputs_dir, "Bo_growclust", "hayward_growclust_catalog_relocated_plus_unrelocated.csv"),
 
-    # Archived outputs of the cross-fault aperture sweep. Notebook 05 reads
-    # these; it does not re-run the sweep.
+    # The cross-fault aperture sweep (data_prep/run07_aperture_sweep.py, notebook 03's chain per bin). Notebook 05
+    # reads it; it does not re-run the sweep.
     "sweep_dir": os.path.join(data_dir, "aperture_sweep"),
 
     # Written by the data_prep chain and not read by the notebooks: run05's

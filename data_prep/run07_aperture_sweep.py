@@ -31,11 +31,11 @@ it is built here by the same rule (unbroken record, `maskRecord.h5`, and average
 equal run04's masks.
 
 Usage (from the repo root; minutes, it reads the displacement cube once per bin and track):
-    python data_prep/run07_aperture_sweep.py                    # every bin, into data_dir/aperture_sweep_repo
+    python data_prep/run07_aperture_sweep.py                    # every bin, into data_dir/aperture_sweep (sweep_dir)
     python data_prep/run07_aperture_sweep.py --out-dir DIR      # elsewhere
     python data_prep/run07_aperture_sweep.py --tags ap30-150m_coh0.7_mp5 ap0-100m_coh0.9_mp5
 
-Output (`--out-dir`, default data_dir/aperture_sweep_repo):
+Output (`--out-dir`, default sweep_dir = data_dir/aperture_sweep, the folder notebook 05 reads):
     <tag>/fp_ts.csv                     FP (mm), latitude x decimal year, landslide-flagged crossings NaN (03 layout)
     <tag>/creep_ts_LOS_<track>.csv      per-track east - west LOS (mm), latitude x decimal year
     <tag>/creep_geom_<track>.csv        mean incidence and azimuth of the pixels used at each crossing
@@ -286,13 +286,11 @@ def run_bin(inner_m, outer_m, coh, track_dics, x_fault, km_of, out_dir):
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Aperture sweep read by notebook 05 (notebook 03's chain per bin).")
-    parser.add_argument("--out-dir", default=os.path.join(data_dir, "aperture_sweep_repo"),
-                        help="output folder (default: data_dir/aperture_sweep_repo)")
+    parser.add_argument("--out-dir", default=common_paths["sweep_dir"],
+                        help="output folder (default: sweep_dir, data_dir/aperture_sweep)")
     parser.add_argument("--tags", nargs="*", default=None, help="run only these bins (folder names)")
     args = parser.parse_args()
     out_dir = args.out_dir
-    assert os.path.realpath(out_dir) != os.path.realpath(common_paths["sweep_dir"]), \
-        "--out-dir is the archived sweep (sweep_dir); write the re-run elsewhere"
 
     bins = sweep_bins()
     if args.tags:
