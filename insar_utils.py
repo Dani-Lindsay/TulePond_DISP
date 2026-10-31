@@ -65,20 +65,35 @@ def require_disk_space(path, need_gb, what=""):
                      f"need ~{need_gb:.1f} GB plus a {RESERVE_GB:.0f} GB reserve.")
 
 
-def date_to_decimal_year(date_input, format_str=None):
-    """Convert a date (str, bytes, or datetime) to a decimal year
-    (1 January 00:00 = year + 0).
+# The one time convention of the project: a time t (UTC) is the decimal year
+#     y = 2000 + (t - 2000-01-01 00:00 UTC) / 365.25 d,
+# a uniform year of 365.25 days (the convention of the UNR GNSS series). A difference of two decimal years times
+# 365.25 is then the exact number of days between them. Every notebook converts through the functions below.
+EPOCH_2000 = pd.Timestamp("2000-01-01 00:00:00")
+DAYS_PER_YEAR = 365.25
 
-    Uses the exact length of the year in seconds (leap years handled), so a
-    date and its decimal year round-trip to the second. MintPy stores dates as
-    bytes b'20160717'; those are accepted directly. Strings are parsed with
-    `format_str`, or as YYYY-MM-DD, MM/DD/YYYY or YYYYMMDD when it is None.
-    Source: written for this project.
+
+def decimal_years(times):
+    """Decimal years of UTC times (array-like of datetimes, Timestamps or date strings), as a numpy array.
+
+    Times without a time zone are taken as UTC; times with one are converted to UTC.
+    """
+    times = pd.DatetimeIndex(pd.to_datetime(times))
+    if times.tz is not None:
+        times = times.tz_convert("UTC").tz_localize(None)
+    return 2000.0 + np.asarray((times - EPOCH_2000) / pd.Timedelta(days=1), float) / DAYS_PER_YEAR
+
+
+def date_to_decimal_year(date_input, format_str=None):
+    """Decimal year of one date or time (str, bytes or datetime), UTC.
+
+    MintPy stores dates as bytes b'20160717'; those are accepted directly. Strings are parsed with
+    `format_str`, or as YYYY-MM-DD, MM/DD/YYYY or YYYYMMDD when it is None. A date without a time is
+    00:00 UTC of that day.
     """
     if isinstance(date_input, bytes):
         date_input = date_input.decode("utf-8")
-
-    if isinstance(date_input, datetime):
+    if isinstance(date_input, (datetime, pd.Timestamp)):
         date = date_input
     else:
         if format_str is None:
@@ -91,30 +106,55 @@ def date_to_decimal_year(date_input, format_str=None):
             else:
                 raise ValueError("Unknown date format. Please provide a format string.")
         date = datetime.strptime(date_input, format_str)
-
-    start_of_year = datetime(year=date.year, month=1, day=1)
-    start_of_next_year = datetime(year=date.year + 1, month=1, day=1)
-    year_length = (start_of_next_year - start_of_year).total_seconds()
-    year_progress = (date - start_of_year).total_seconds()
-    return date.year + year_progress / year_length
+    return float(decimal_years([date])[0])
 
 
 def decimal_year_to_date(dec_year):
-    """Inverse of date_to_decimal_year, to the nearest second. Returns a datetime."""
-    year = int(np.floor(dec_year))
-    start_of_year = datetime(year=year, month=1, day=1)
-    start_of_next_year = datetime(year=year + 1, month=1, day=1)
-    seconds = (dec_year - year) * (start_of_next_year - start_of_year).total_seconds()
-    return start_of_year + pd.Timedelta(seconds=round(seconds))
+    """Inverse of date_to_decimal_year, to the nearest second. Returns a datetime (UTC, no time zone)."""
+    seconds = (dec_year - 2000.0) * DAYS_PER_YEAR * 86400.0
+    return (EPOCH_2000 + pd.Timedelta(seconds=round(seconds))).to_pydatetime()
 
 
 def decimal_year_to_day(dec_year):
-    """The calendar day nearest to a decimal year, as a Timestamp at midnight.
+    """The UTC calendar day of a decimal year, as a Timestamp at midnight.
 
-    Acquisition dates are whole days but their decimal years are stored rounded (2017.0986 is
-    6 Feb 2017 less 16 minutes), so truncating the time would give the day before; rounding gives
-    the acquisition day."""
+    The day is the one holding the time to within half a day: rounding, so that a decimal year
+    stored to a few places still gives its own day."""
     return pd.Timestamp(decimal_year_to_date(dec_year)).round("D")
+
+
+def acquisition_times(granule_dir, frame):
+    """UTC time of every secondary acquisition of one OPERA DISP-S1 frame, from its granule names.
+
+    The names are OPERA_L3_DISP-S1_IW_F<frame>_VV_<reference>Z_<secondary>Z_v...nc; the secondary time is the
+    zero-Doppler start time of the acquisition (`identification/secondary_datetime` in the file), to the second.
+
+    Parameters
+    ----------
+    granule_dir : str
+        Directory of the granules.
+    frame : str or int
+        OPERA frame ID.
+
+    Returns
+    -------
+    pandas.Series
+        UTC time of each acquisition, indexed by its UTC day.
+    """
+    pattern = re.compile(rf"OPERA_L3_DISP-S1_IW_F{int(frame):05d}_VV_(\d{{8}}T\d{{6}})Z_(\d{{8}}T\d{{6}})Z_")
+    times = {}
+    for name in sorted(os.listdir(granule_dir)):
+        match = pattern.match(name)
+        if match is None:
+            continue
+        for stamp in match.groups():
+            time = pd.Timestamp(datetime.strptime(stamp, "%Y%m%dT%H%M%S"))
+            day = time.normalize()
+            assert abs((times.get(day, time) - time).total_seconds()) < 60, \
+                f"frame {frame}: two acquisition times on {day.date()}: {times[day]} and {time}"
+            times.setdefault(day, time)
+    assert times, f"no frame {frame} granules in {granule_dir}"
+    return pd.Series(times).sort_index()
 
 
 # ------------------------------
@@ -659,15 +699,17 @@ def creepmeter_file(creepmeter_dir, code):
 def creepmeter_decimal_year(year, doy):
     """Decimal year of USGS creepmeter samples. The fractional day-of-year is
     1-based: 1 January 00:00 is doy 1.000 (`cfw1.10min.gz`: the first sample of
-    2020 is `2020 1.000000000`, the last of 2019 `2019 365.993055556`), so the
-    time is year + (doy - 1) / days in the year, the convention of
-    `date_to_decimal_year` (1 January = year + 0)."""
-    year = np.asarray(year)
+    2020 is `2020 1.000000000`, the last of 2019 `2019 365.993055556`). The times
+    are UTC (the site visits in the station headers fall at 16-23 h, working hours
+    in California). Returns decimal years in the convention of `decimal_years`."""
+    year = np.asarray(year).astype(int)
     doy = np.asarray(doy, float)
     is_leap = ((year % 4 == 0) & (year % 100 != 0)) | (year % 400 == 0)
     days_in_year = np.where(is_leap, 366.0, 365.0)
     assert np.all((doy >= 1.0) & (doy < days_in_year + 1.0)), "creepmeter day-of-year outside 1 to days-in-year + 1"
-    return year + (doy - 1.0) / days_in_year
+    first_of_year = pd.to_datetime(pd.DataFrame(dict(year=year, month=1, day=1)))
+    days_since_2000 = np.asarray((first_of_year - EPOCH_2000) / pd.Timedelta(days=1), float) + (doy - 1.0)
+    return 2000.0 + days_since_2000 / DAYS_PER_YEAR
 
 
 def read_creepmeter_10min(filepath, date_start=None, date_end=None):
@@ -757,11 +799,9 @@ def read_creepmeter_10min_raw(filepath, date_start=None, date_end=None):
 # ------------------------------
 
 def _decimal_year_from_ymdhms(yr, mo, dy, hr, mn, sc):
-    """Vectorised decimal year from year/month/day/hour/minute/second columns."""
+    """Vectorised decimal year (`decimal_years` convention) from UTC year/month/day/hour/minute/second columns."""
     t = pd.to_datetime(dict(year=yr, month=mo, day=dy, hour=hr, minute=mn), errors="coerce") + pd.to_timedelta(sc, unit="s")
-    start = pd.to_datetime(dict(year=yr, month=1, day=1))
-    end = pd.to_datetime(dict(year=yr + 1, month=1, day=1))
-    return yr + (t - start).dt.total_seconds() / (end - start).dt.total_seconds()
+    return 2000.0 + (t - EPOCH_2000).dt.total_seconds() / (DAYS_PER_YEAR * 86400.0)
 
 
 def load_growclust_catalog(path, bbox=None):
@@ -794,15 +834,16 @@ def load_aa(aa_dir, code):
 
     The archive's decimal year (`Measurement_yr`, or `Year` in the older layout)
     is year + doy / days with a 1-based day of year (HRKT `1979.726, 9/22/1979`:
-    265/365), so it is one day late relative to `date_to_decimal_year`
-    (1 January = year + 0) and the InSAR epochs. One day (1 / days in that year)
-    is subtracted here: year + (doy - 1) / days. The survey-date column
+    265/365), so it falls one day after the survey day. Each archive year is
+    turned into its calendar time, one day is subtracted, and the result is
+    returned in the convention of `decimal_years` (a survey is placed at 00:00 of
+    its day; the time of the survey is not recorded). The survey-date column
     (`Measurement_date`, or the third column of the older layout) is used as a
-    check: over each file the median of (archive year - date) must lie within
+    check: over each file the median of (archive time - date) must lie within
     0.5 to 1.5 d (asserted, so an archive issued in the other convention fails).
-    Rows where the corrected year and the date still disagree by more than 1.5 d
+    Rows where the corrected time and the date still disagree by more than 1.5 d
     are inconsistencies within the archive (e.g. HAPP 2024.68 against 10/5/2024);
-    they keep the archive's year and are printed."""
+    they keep the archive's time and are printed."""
     d = pd.read_csv(os.path.join(aa_dir, f"{code}.csv"), encoding="latin-1")
     d = d.rename(columns={c: c.replace("\xa0", " ").strip() for c in d.columns})
     if "Measurement_yr" in d.columns:
@@ -818,17 +859,18 @@ def load_aa(aa_dir, code):
         d[column] = pd.to_numeric(d[column], errors="coerce")
     d = d.dropna(subset=["year", "cum_mm"]).copy()
     d["std_mm"] = d["std_mm"].fillna(0.0).clip(lower=0.0)
-    # the archive's 1-based day of year -> 1 January = year + 0
-    whole_year = np.floor(d["year"].to_numpy()).astype(int)
-    is_leap = ((whole_year % 4 == 0) & (whole_year % 100 != 0)) | (whole_year % 400 == 0)
+    # the archive's calendar decimal year (1-based day of year) -> its calendar time, one day earlier
     archive_year = d["year"].to_numpy()
-    d["year"] = archive_year - 1.0 / np.where(is_leap, 366.0, 365.0)
+    whole_year = np.floor(archive_year).astype(int)
+    is_leap = ((whole_year % 4 == 0) & (whole_year % 100 != 0)) | (whole_year % 400 == 0)
+    first_of_year = pd.to_datetime(pd.DataFrame(dict(year=whole_year, month=1, day=1)))
+    archive_time = first_of_year + pd.to_timedelta((archive_year - whole_year) * np.where(is_leap, 366.0, 365.0), unit="D")
+    d["year"] = decimal_years(archive_time - pd.Timedelta(days=1))
     # the check against the survey dates
     survey_day = pd.to_datetime(d["date"].astype(str).str.strip(), format="%m/%d/%Y", errors="coerce")
     has_date = survey_day.notna().to_numpy()
     assert has_date.sum() >= 0.9 * len(d), f"{code}: only {has_date.sum()} of {len(d)} surveys have a readable date"
-    date_year = np.array([date_to_decimal_year(day.to_pydatetime()) for day in survey_day[has_date]])
-    archive_minus_date_d = (archive_year[has_date] - date_year) * 365.25
+    archive_minus_date_d = np.asarray((archive_time[has_date] - survey_day[has_date]) / pd.Timedelta(days=1), float)
     median_offset_d = float(np.median(archive_minus_date_d))
     assert 0.5 <= median_offset_d <= 1.5, (f"{code}: the archive year runs {median_offset_d:+.2f} d from the survey dates; "
                                            f"the 1-based day-of-year correction assumes ~ +1 d")

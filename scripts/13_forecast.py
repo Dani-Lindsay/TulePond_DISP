@@ -3,7 +3,7 @@
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: opera_disp_feb13. Run time: a few minutes (400 timing draws x 5 bootstrap refits per model, record and
+# Environment: opera_disp_feb13. Run time: about 10 minutes (4000 timing draws x 5 bootstrap refits per model, record and
 # aperiodicity branch).
 # ```
 #
@@ -58,8 +58,8 @@
 #
 # **Inputs**: 03 `fp_ts.csv` (the data end); 04 `section_lengths.csv` and the 90 % band-stack steps registered by 04
 # (`04_band90_step_<yr>_mm` and their CIs, read back from `registry.csv` for the latest run of 04), for the location
-# and magnitude of the prediction statement; 04 `creep_events.csv` (InSAR onset windows from `onset_lo`, the last
-# acquisition before the step and the step epoch of 04, to `onset_hi`, the first acquisition after it); 11
+# and magnitude of the prediction statement; 04 `creep_events.csv` (InSAR onset windows from `onset_lo_utc`, the UTC
+# time of the last acquisition before the step, to `onset_hi_utc`, that of the first acquisition after it); 11
 # `hrkt_aa_events.csv` (array onset windows `onset_lo` to `onset_hi`, and `onset_mid`, the window midpoint, used only
 # for sorting and for the reach of the forecast grid); 12 `fig3_rain_panel.npz` (the wet-season months of 12 and the
 # end of the bimonthly surveys at HRKT) and `rain_conditioning_summary.csv`.
@@ -71,7 +71,7 @@
 # stats sidecar `13_forecast_stats.txt`; registry rows `13_*` and, per record, `13_<rec>_*` (section 11).
 #
 # **Figures**: the five renewal models (`qc11_renewal_models_single_fits`, supplement). The paper's Fig 3
-# (`fig3_history_forecast_ntiming400_nboot5_issue<date>`) is drawn by notebook 14 from `fig3_inputs.npz`.
+# (`fig3_history_forecast_ntiming4000_nboot5_issue<date>`) is drawn by notebook 14 from `fig3_inputs.npz`.
 #
 # **What to check.** The closed-form InSAR clock date (`13_next_clock_date`) and its 95 % prediction interval
 # (`13_pi95_lo`, `13_pi95_hi`). The clock is unconditional; the printout in section 8 lists any of its dates that fall
@@ -115,8 +115,8 @@ os.makedirs(fig_dir, exist_ok=True)
 
 # the forecast
 loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, as in 11 and 12)
-n_timing = 400                 # timing draws: onsets drawn uniformly in their windows
-n_boot = 5                     # bootstrap refits per timing draw (per catalogue and model): 400 x 5 = 2000 curves per mean
+n_timing = 4000                # timing draws: onsets drawn uniformly in their windows
+n_boot = 5                     # bootstrap refits per timing draw (per catalogue and model): 4000 x 5 = 20000 curves per mean
 #                                forecast curve; a Monte Carlo setting (the parametric bootstrap does not widen alpha
 #                                beyond its refits, which are biased low; the alpha-pivot forecast of section 7 does)
 seed = 7                       # every generator starts from it (section 1)
@@ -184,7 +184,7 @@ REG.inputs(fp_ts_file, section_lengths_file, events_file, aa_events_file, rain_p
 
 # %%
 def decyear(dates):
-    """Decimal year of each date, as a fraction of the actual year length.
+    """Decimal year of each date or time (`insar_utils.decimal_years`).
 
     Parameters
     ----------
@@ -195,10 +195,7 @@ def decyear(dates):
     pandas.Index
         Decimal years.
     """
-    dates = pd.DatetimeIndex(dates)
-    year_start = pd.to_datetime(dates.year.astype(str) + "-01-01")
-    next_year_start = pd.to_datetime((dates.year + 1).astype(str) + "-01-01")
-    return dates.year + (dates - year_start) / (next_year_start - year_start)
+    return pd.Index(utils.decimal_years(dates))
 
 
 def decyear_to_date(years):
@@ -255,8 +252,8 @@ def wet_season_of(wy):
 # %% [markdown]
 # ## 3. Load the event catalogues, the forecast dates and grid, and the rainfall summary of 12
 #
-# **Catalogues.** The InSAR events come from 04 (window `onset_lo` to `onset_hi`; `onset_lo` is the last acquisition
-# before the step). The HRKT array events come from 11, all from the bimonthly era, since 11 runs the detector only
+# **Catalogues.** The InSAR events come from 04, with their exact windows: from the UTC time of the last acquisition
+# before the step (`onset_lo_utc`) to that of the first acquisition after it (`onset_hi_utc`). The HRKT array events come from 11, all from the bimonthly era, since 11 runs the detector only
 # there; their windows of `aa_dense_window_days` (130 d) or less resolve the season (asserted). The merged record holds
 # the bimonthly-era array events and the InSAR events. The years between the last array event (2006) and the first
 # InSAR event (2017) are treated as unobserved, because the arrays were surveyed only annually from mid-2007: no
@@ -267,10 +264,10 @@ def wet_season_of(wy):
 # $$t_\mathrm{start} = \lceil t_{\mathrm{lo},5} \rceil \quad \text{to} \quad
 # t_\mathrm{end} = \lceil t_\mathrm{obs} + g\, \bar x_\mathrm{max} \rceil,$$
 #
-# where $t_{\mathrm{lo},5}$ is the `onset_lo` of the last InSAR event (decimal year), $\lceil\cdot\rceil$ rounds up to
-# the next 1 January, $t_\mathrm{obs}$ is the last observation, $g$ = `grid_span_means` (4) and $\bar x_\mathrm{max}$
-# is the longest mean interval of the four records computed from point onsets (the window midpoints). The 95 %
-# quantile of an exponential lies $-\ln 0.05 \approx 3$ means after the reference date, and one more mean allows for
+# where $t_{\mathrm{lo},5}$ is the start of the last InSAR window (decimal year), $\lceil\cdot\rceil$ rounds up to
+# the next whole decimal year (1 January to within a day), $t_\mathrm{obs}$ is the last observation, $g$ =
+# `grid_span_means` (4) and $\bar x_\mathrm{max}$ is the longest mean interval of the four records computed from
+# point onsets (the window midpoints). The 95 % quantile of an exponential lies $-\ln 0.05 \approx 3$ means after the reference date, and one more mean allows for
 # the bootstrap spread of the mean. Every conditional curve is zero until the last observation, which must lie on the
 # grid (asserted).
 #
@@ -283,6 +280,11 @@ def wet_season_of(wy):
 # %%
 creep_events = pd.read_csv(events_file)
 insar_events = creep_events[creep_events.segment == "TULEPOND"].sort_values("onset_lo").reset_index(drop=True)
+# the exact windows of 04 (UTC times of the bounding acquisitions); the grid dates are kept for the check against 04
+insar_events["onset_lo_grid"] = insar_events.onset_lo
+insar_events["onset_hi_grid"] = insar_events.onset_hi
+insar_events["onset_lo"] = utils.decimal_years(insar_events.onset_lo_utc)
+insar_events["onset_hi"] = utils.decimal_years(insar_events.onset_hi_utc)
 insar_events["onset_mid"] = 0.5 * (insar_events.onset_lo + insar_events.onset_hi)     # as in 11: sort key and plot position only
 aa_dense = pd.read_csv(aa_events_file)
 assert (aa_dense.window_days <= resolvable_days).all(), f"11 returned an array window longer than {resolvable_days} d"
@@ -340,7 +342,7 @@ for cat_name, (catalogue, drop_lp) in catalogues.items():
         onsets_sorted = catalogue.onset_mid.values[order]
         keep_pairs &= ~((onsets_sorted[:-1] < loma_prieta) & (onsets_sorted[1:] > loma_prieta))
     longest_mean_yr = max(longest_mean_yr, float(point_intervals[keep_pairs].mean()))
-grid_start = float(np.ceil(insar_events.onset_lo.max()))     # the first 1 January after the last onset window opened
+grid_start = float(np.ceil(insar_events.onset_lo.max()))     # the first whole decimal year after the last onset window opened
 grid_end = float(np.ceil(last_obs_day_yr + grid_span_means * longest_mean_yr))
 grid = np.arange(grid_start, grid_end, 1 / 365.25)   # the time axis of the forecast curves (daily); a quantile beyond its end is '> end'
 assert grid[0] <= last_obs_day_yr <= grid[-1], f"the last observation {last_obs} is not on the forecast grid {grid[0]:.2f}-{grid[-1]:.2f}"
@@ -1004,7 +1006,7 @@ plt.show()
 # %% [markdown]
 # ## 6. The repeat intervals and the forecast (Fig 3C, 3D and the registered window)
 #
-# For each record, `n_timing` (400) draws of the onsets within their windows. Their intervals give the interval
+# For each record, `n_timing` (4000) draws of the onsets within their windows. Their intervals give the interval
 # statistics of the record (`interval_statistics`):
 #
 # $$\bar x_k = \frac{1}{m} \sum_{j=1}^{m} x_{kj}, \qquad
@@ -1016,7 +1018,7 @@ plt.show()
 # where $x_{kj}$ is interval $j$ of draw $k$ (yr), $m$ the number of intervals of the record and $K$ the number of
 # draws. These are drawn in Fig 3C and written to `recurrence_intervals.csv`. The AICc of each model is computed on
 # the median draw, the draw whose mean interval is the median of the $\bar x_k$. Then, for each model, the forecast
-# mixture of section 4 is computed with 400 further onset draws, each fitted and bootstrapped, conditioned on no event
+# mixture of section 4 is computed with `n_timing` further onset draws, each fitted and bootstrapped, conditioned on no event
 # through the last observation. For every record the last onset $t_L$ is drawn from the window of the last InSAR event.
 # The onset draws of this section are kept for the InSAR clock of section 8.
 
@@ -1397,7 +1399,7 @@ section_lengths_time = pd.Timestamp.fromtimestamp(np.floor(os.path.getmtime(sect
 assert run_04_time >= section_lengths_time - pd.Timedelta(seconds=1), \
     f"the latest registry run of 04 ({run_04_time}) is older than {section_lengths_file}: 04 stopped before registering; rerun it"
 event_labels = []
-for onset_lo, onset_hi in zip(insar_events.onset_lo, insar_events.onset_hi):
+for onset_lo, onset_hi in zip(insar_events.onset_lo_grid, insar_events.onset_hi_grid):
     label = f"{int(onset_lo)}"                     # key label in 04: the year of the step epoch
     event_labels.append(label)
     assert np.isclose(float(rows_04.loc[f"04_onset_lo_{label}", "value"]), onset_lo, rtol=0, atol=1e-4) and \

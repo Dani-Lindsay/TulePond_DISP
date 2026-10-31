@@ -244,6 +244,19 @@ def test_decimal_year_roundtrip():
     assert utils.date_to_decimal_year(b"20160717") == utils.date_to_decimal_year("2016-07-17")
 
 
+def test_decimal_year_differences_are_exact_days():
+    """A difference of decimal years times 365.25 is the exact time between them, across leap years and new year."""
+    pairs = [(datetime(2017, 2, 6), datetime(2019, 3, 10), 762.0),                    # the first two onset days
+             (datetime(2024, 12, 26, 14, 8), datetime(2025, 1, 7, 2, 8), 11.5),     # a window across the new year
+             (datetime(2020, 2, 28), datetime(2020, 3, 1), 2.0)]                       # across 29 Feb
+    for t0, t1, days in pairs:
+        assert np.isclose((utils.date_to_decimal_year(t1) - utils.date_to_decimal_year(t0)) * 365.25, days, rtol=0, atol=1e-9)
+    assert utils.date_to_decimal_year("2000-01-01") == 2000.0
+    assert np.allclose(utils.decimal_years(["2017-02-06 02:07:06", "2017-02-18 14:07:33"]),
+                       [utils.date_to_decimal_year(datetime(2017, 2, 6, 2, 7, 6)), utils.date_to_decimal_year(datetime(2017, 2, 18, 14, 7, 33))],
+                       rtol=0, atol=1e-12)
+
+
 def test_robust_sigma_matches_std_for_gaussian_and_ignores_outliers():
     rng = np.random.default_rng(0)
     x = rng.normal(0, 2.0, 200000)
@@ -408,13 +421,20 @@ def test_load_aa_is_one_day_earlier_than_the_archive_year():
         assert utils.decimal_year_to_day(hrkt.year.iloc[0]).date().isoformat() == "1979-09-22"
     header = "Site_code,Measurement_yr,Measurement_date,Cumulative_dextral_movement_mm,Dextral_movement_st_dev_mm\n"
     days = ["3/1/2018", "6/15/2018", "9/30/2018", "12/31/2018", "1/1/2019"]
+
+    def archive_year(day, first_day_of_year):
+        """The archive's calendar decimal year: year + (day of year - 1 + first_day_of_year) / days in the year."""
+        t = datetime.strptime(day, "%m/%d/%Y")
+        days_in_year = 366 if t.year % 4 == 0 else 365
+        return t.year + (t.timetuple().tm_yday - 1 + first_day_of_year) / days_in_year
+
     with tempfile.TemporaryDirectory() as folder:
         with open(os.path.join(folder, "TST1.csv"), "w") as f:                 # the archive's 1-based convention
-            f.write(header + "".join(f"TST1,{utils.date_to_decimal_year(day) + 1 / 365:.6f},{day},{k},0.1\n" for k, day in enumerate(days)))
+            f.write(header + "".join(f"TST1,{archive_year(day, 1):.6f},{day},{k},0.1\n" for k, day in enumerate(days)))
         aa = utils.load_aa(folder, "TST1")
         assert np.allclose(aa.year, [utils.date_to_decimal_year(day) for day in days], rtol=0, atol=1e-5)
         with open(os.path.join(folder, "TST2.csv"), "w") as f:                 # already 0-based: must fail loud
-            f.write(header + "".join(f"TST2,{utils.date_to_decimal_year(day):.6f},{day},{k},0.1\n" for k, day in enumerate(days)))
+            f.write(header + "".join(f"TST2,{archive_year(day, 0):.6f},{day},{k},0.1\n" for k, day in enumerate(days)))
         with pytest.raises(AssertionError, match="1-based"):
             utils.load_aa(folder, "TST2")
 

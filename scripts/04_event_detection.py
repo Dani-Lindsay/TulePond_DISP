@@ -139,12 +139,13 @@ map_file = os.path.join(paths_out["02_velocity_decomposition"], "fp_velocity_map
 track_files = {}
 for dic in insar_dic_list:
     track_files[dic["ORBIT_DIRECTION"]] = os.path.join(paths_out["03_creep_timeseries"], f"creep_ts_LOS_{dic['ORBIT_DIRECTION']}.csv")
+acquisition_times_file = os.path.join(paths_out["03_creep_timeseries"], "acquisition_times.csv")   # UTC time of every acquisition
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
 creepmeter_files = []
 for code, lat, lon, name in creepmeters:
     creepmeter_files.append(utils.creepmeter_file(common_paths["creepmeter_dir"], code))
-REG.inputs(fp_ts_file, map_file, *track_files.values(), common_paths["fault_profiles"], common_paths["aa_summary"],
+REG.inputs(fp_ts_file, map_file, *track_files.values(), acquisition_times_file, common_paths["fault_profiles"], common_paths["aa_summary"],
            common_paths["CRE_Taira"], common_paths["CRE_Wald"], common_paths["growclust_cat"],
            *creepmeter_files)
 
@@ -657,7 +658,7 @@ for title, key, _, _, _, cmcode in SEGS:
               f"amp {event_fit['amplitude_mm']:.2f} [{event_fit['amp_lo']:.2f}, {event_fit['amp_hi']:.2f}] mm" + cm_text)
         event_rows.append(dict(segment=key, label=seg["label"], onset_day=str(utils.decimal_year_to_day(event_fit["onset_lo"]).date()),
                                onset_lo=round(event_fit["onset_lo"], 4),
-                               onset_hi=round(event_fit["onset_hi"], 4), onset_window_days=round(window_days, 1),
+                               onset_hi=round(event_fit["onset_hi"], 4),
                                amplitude_mm=round(event_fit["amplitude_mm"], 2),
                                amp_lo=round(event_fit["amp_lo"], 2), amp_hi=round(event_fit["amp_hi"], 2), detect_stat_mm=round(float(stat), 2),
                                detect_sigma_mm=round(stat_sigma, 3), stream=params, k_sigma=k_sigma, creepmeter=cmcode,
@@ -667,9 +668,7 @@ for title, key, _, _, _, cmcode in SEGS:
                           cm_detections=cm_detections, cm_series=cm_series, cmcode=cmcode)
     print("")
 
-creep_events = pd.DataFrame(event_rows)
-creep_events.to_csv(os.path.join(out_dir, "creep_events.csv"), index=False)
-print(f"{len(creep_events)} events saved to creep_events.csv")
+creep_events = pd.DataFrame(event_rows)      # saved in section 6, with the exact window ends
 tulepond_events = creep_events[creep_events.segment == "TULEPOND"].reset_index(drop=True)
 # the step epoch of each event (the last acquisition before its step) is onset_lo (asserted in fit_all_events)
 step_epochs_tulepond = tulepond_events["onset_lo"].to_numpy(float)
@@ -701,6 +700,12 @@ print(f"COZ1 control: {len(coz1_events)} events, onset days {coz1_events.onset_d
 # (printed). Asserted: the window lies inside every track's bracket; each window end is a real acquisition
 # of at least one track, so the window is the intersection of the brackets; and no bracket is longer than
 # the 45 d interpolation limit of notebook 03.
+#
+# The exact window runs from the UTC time of the last acquisition before the step (the later of the two
+# tracks' last looks) to the UTC time of the first acquisition after it (the earlier of their first looks),
+# from `acquisition_times.csv` of notebook 03. These ends (`onset_lo_utc`, `onset_hi_utc`) and the window
+# length `onset_window_days` are saved in `creep_events.csv`, and notebooks 12 and 13 take the windows from
+# there.
 
 # %%
 stack_dates, stack, _ = load_stack(segments["TULEPOND"])
@@ -722,6 +727,11 @@ real_tolerance_yr = 0.5 / 365.25        # "real" = an acquisition within half a 
 real_dates = {}
 for track, track_file in track_files.items():
     real_dates[track] = np.sort(pd.read_csv(track_file, index_col=0, nrows=0).columns.astype(float).to_numpy())
+acquisition_times = pd.read_csv(acquisition_times_file)
+utc_of = {}                                   # (track, UTC day) -> exact UTC time of the acquisition
+for row in acquisition_times.itertuples():
+    utc_of[(row.track, pd.Timestamp(row.day))] = pd.Timestamp(row.utc_time)
+window_ends = []
 for event in creep_events.itertuples():
     track_lo = {}
     track_hi = {}
@@ -745,8 +755,23 @@ for event in creep_events.itertuples():
         f"{event.segment} {event.onset_lo:.4f}: onset_lo is not a real acquisition of either track"
     assert abs(min(track_hi.values()) - event.onset_hi) < real_tolerance_yr, \
         f"{event.segment} {event.onset_hi:.4f}: onset_hi is not a real acquisition of either track"
-    print(f"  {event.segment} window {utils.decimal_year_to_day(event.onset_lo).date()} to "
-          f"{utils.decimal_year_to_day(event.onset_hi).date()}: inside " + "; ".join(bracket_text))
+    # the exact window: from the last acquisition before the step (the later of the two tracks' last looks) to the
+    # first after it (the earlier of their first looks), at the UTC times of 03
+    utc_lo = max(utc_of[(track, utils.decimal_year_to_day(t))] for track, t in track_lo.items())
+    utc_hi = min(utc_of[(track, utils.decimal_year_to_day(t))] for track, t in track_hi.items())
+    assert utc_lo.normalize() == utils.decimal_year_to_day(event.onset_lo) and utc_hi.normalize() == utils.decimal_year_to_day(event.onset_hi), \
+        f"{event.segment} {event.onset_lo:.4f}: the exact window ends are not on the UTC days of onset_lo and onset_hi"
+    window_ends.append((utc_lo, utc_hi))
+    print(f"  {event.segment} window {utc_lo:%Y-%m-%d %H:%M} to {utc_hi:%Y-%m-%d %H:%M} UTC "
+          f"({(utc_hi - utc_lo) / pd.Timedelta(days=1):.2f} d): inside " + "; ".join(bracket_text))
+creep_events.insert(creep_events.columns.get_loc("onset_hi") + 1, "onset_lo_utc", [lo.strftime("%Y-%m-%d %H:%M:%S") for lo, hi in window_ends])
+creep_events.insert(creep_events.columns.get_loc("onset_lo_utc") + 1, "onset_hi_utc", [hi.strftime("%Y-%m-%d %H:%M:%S") for lo, hi in window_ends])
+creep_events.insert(creep_events.columns.get_loc("onset_hi_utc") + 1, "onset_window_days",
+                    [round((hi - lo) / pd.Timedelta(days=1), 2) for lo, hi in window_ends])
+creep_events.to_csv(os.path.join(out_dir, "creep_events.csv"), index=False)
+print(f"{len(creep_events)} events saved to creep_events.csv")
+tulepond_events = creep_events[creep_events.segment == "TULEPOND"].reset_index(drop=True)     # with the exact windows
+coz1_events = creep_events[creep_events.segment == "COZ1"].reset_index(drop=True)
 
 # %% [markdown]
 # ## 7. Figure: detection QC
@@ -1613,7 +1638,7 @@ for key, sol in solutions.items():
 stats_lines += ["", f"COZ1 control events ({len(coz1_events)}; label = onset day; the two large known ones at "
                 f"{', '.join(f'{known_yr:g}' for known_yr in coz1_large_events_yr)} asserted among them):"]
 for event in coz1_events.itertuples():
-    stats_lines.append(f"   {event.onset_day}: window [{event.onset_lo:.4f}, {event.onset_hi:.4f}] ({event.onset_window_days:.0f} d), "
+    stats_lines.append(f"   {event.onset_day}: window [{event.onset_lo:.4f}, {event.onset_hi:.4f}] ({event.onset_window_days:.1f} d), "
                        f"InSAR {event.amplitude_mm:.2f} [{event.amp_lo:.2f}, {event.amp_hi:.2f}] mm, statistic {event.detect_stat_mm:.2f} mm "
                        f"({event.detect_stat_mm / event.detect_sigma_mm:.2f} sigma), creepmeter step {event.creepmeter_step_mm:.2f} mm")
 stats_lines += ["", "event-driven fraction (crossings within the stack half-width of the section centre):"]
@@ -1659,7 +1684,7 @@ for step_epoch in step_epochs_tulepond:
 for label, (_, event) in zip(labels, tulepond_events.iterrows()):
     REG.register(f"04_onset_lo_{label}", event.onset_lo, "decyear", 4, where="P3", cell="joint-fit", sidecar=sidecar)
     REG.register(f"04_onset_hi_{label}", event.onset_hi, "decyear", 4, where="P3", cell="joint-fit", sidecar=sidecar)
-    REG.register(f"04_onset_window_days_{label}", event.onset_window_days, "d", 0, where="P3", cell="joint-fit", sidecar=sidecar)
+    REG.register(f"04_onset_window_days_{label}", event.onset_window_days, "d", 1, where="P3", cell="joint-fit", sidecar=sidecar)
     REG.register(f"04_stack_amp_{label}_mm", event.amplitude_mm, "mm", 2, where="M5", cell="joint-fit", sidecar=sidecar)
 for band_frac, (lo_km, hi_km, n_band) in bands.items():
     result = band_results[band_frac]

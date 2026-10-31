@@ -78,7 +78,7 @@ import insar_utils as utils
 from TulePond_filepaths import (common_paths, insar_dic_list, creepmeters, unit, params,
                                 dist_min, dist_max, x_width, min_points, coh_timeseries,
                                 rate_nsigma, az_smooth_n, max_interp_gap_days, rate_smooth_km,
-                                repo_dir)
+                                repo_dir, frames)
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -103,7 +103,7 @@ os.makedirs(fig_dir, exist_ok=True)
 utm_epsg = 32610         # UTM zone 10N, the grid of the frames
 trend_window = 21        # crossings (~2 km) in the running median used to flag landslide crossings
 trend_nsigma = 3.0       # a crossing whose FP rate departs from that trend by more than this (robust sigma) is dropped
-s1b_death = 2021.98      # Sentinel-1B failure, 2021-12-23 (decimal year 2021.975, rounded to 2021.98): end of 6-day sampling (Fig S4)
+s1b_death = utils.date_to_decimal_year("2021-12-23")     # Sentinel-1B failure: the end of 6-day sampling (Fig S4)
 
 print(f"aperture {dist_min * 1000:.0f}-{dist_max * 1000:.0f} m, along-strike +/-{x_width * 1000:.0f} m, "
       f"min {min_points} px per side, coherence {coh_timeseries}, rate mask {rate_nsigma:g} sigma")
@@ -666,6 +666,25 @@ for name, los in (("asc", asc_los), ("desc", desc_los)):
 both_real = real["asc"] & real["desc"]
 print(f"both tracks real at {both_real.sum()} epochs; interpolated: asc {(~real['asc']).sum()} "
       f"({100 * (~real['asc']).mean():.0f}%), desc {(~real['desc']).sum()} ({100 * (~real['desc']).mean():.0f}%)")
+
+# the exact UTC time of every acquisition of each track (the zero-Doppler start time of its OPERA granules), read
+# once here; the onset windows (04), the rain days (12) and the forecast (13) take their times from this table
+time_rows = []
+for dic in insar_dic_list:
+    track = dic["ORBIT_DIRECTION"]
+    clock = utils.acquisition_times(frames[dic["Frame"]]["data_dir"], dic["Frame"])
+    track_days = [utils.decimal_year_to_day(t) for t in read_creep_ts(os.path.join(out_dir, f"creep_ts_LOS_{track}.csv")).columns]
+    missing = [day for day in track_days if day not in clock.index]
+    assert not missing, f"{track}: {len(missing)} acquisition dates have no frame {dic['Frame']} granule, e.g. {missing[:3]}"
+    for day in track_days:
+        time_rows.append(dict(track=track, frame=dic["Frame"], day=day.strftime("%Y-%m-%d"),
+                              utc_time=clock[day].strftime("%Y-%m-%d %H:%M:%S"),
+                              decimal_year=round(utils.date_to_decimal_year(clock[day]), 8)))
+acquisition_times = pd.DataFrame(time_rows).sort_values(["track", "day"]).reset_index(drop=True)
+acquisition_times.to_csv(os.path.join(out_dir, "acquisition_times.csv"), index=False)
+for track, rows in acquisition_times.groupby("track"):
+    hours = pd.to_datetime(rows.utc_time).dt.hour + pd.to_datetime(rows.utc_time).dt.minute / 60
+    print(f"{track}: {len(rows)} acquisitions at {hours.min():.2f} to {hours.max():.2f} h UTC (acquisition_times.csv)")
 
 # %% [markdown]
 # ## 9. Decompose each crossing into fault-parallel and vertical

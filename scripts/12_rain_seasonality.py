@@ -32,24 +32,23 @@
 #    `rain_conditioning_summary.csv` (section 10).
 #
 # **Day convention.** This notebook defines the rain day of each onset window, and 14_paper_figures reads the days it
-# writes. InSAR acquisitions are timed in UTC and the times are read from the OPERA granule names. The ascending pass
+# writes. InSAR acquisitions are timed in UTC (the zero-Doppler times of the OPERA granules, `acquisition_times.csv` of
+# 03). The ascending pass
 # (frame 09157) is at about 02:08 UTC, the evening of the previous local day (18:08 PST). The descending pass (frame
 # 11115) is at about 14:08 UTC, the morning of the same local day (06:08 PST). Rainfall is booked by the local day:
 # Fremont is on the midnight basis and is not shifted, and Newark, a morning observer, is shifted by -1 d (both
 # checked). Each InSAR onset window is therefore converted to local calendar days before it is compared with the
-# rainfall. The first day is the local day of the later acquisition among the tracks that acquired on `onset_lo`. The
-# last day is the local day of the earlier acquisition among the tracks that acquired on `onset_hi`. The tracks that
-# acquired on a date are the columns of the per-track series of 03. The window includes both days. The local day is
+# rainfall. The first day is the local day of the last acquisition before the step (`onset_lo_utc` of 04), the last
+# day the local day of the first acquisition after it (`onset_hi_utc`). The window includes both days. The local day is
 # computed in `rain_day_timezone` and must equal the day in standard time (UTC-8) (asserted; no acquisition is near
 # local midnight, so daylight saving cannot change it). Array windows are survey days, which are already local. The
 # renewal forecast of 13_forecast works in continuous decimal years and is not affected, since the offsets are hours.
 #
 # **Inputs**: the three GHCN-daily gauge files (two in the composite, Hayward as the check gauge); 04
-# `creep_events.csv` (InSAR onset windows, `onset_lo` to `onset_hi`); 11 `hrkt_aa_events.csv` (array onset windows
-# with the same columns, plus `onset_mid`, the window midpoint, used only for plot positions) and `aa_insar_stacks.csv`
-# (the start of the InSAR record); the HRKT array file (the end of its bimonthly surveys); 03
-# `creep_ts_LOS_<track>.csv` (header only, for the acquisition dates of each track); the OPERA granule names of each
-# frame (`TulePond_filepaths.frames[<frame>]["data_dir"]`, names only, for the UTC time of each acquisition).
+# `creep_events.csv` (InSAR onset windows, `onset_lo` to `onset_hi`, and their exact UTC ends `onset_lo_utc` and
+# `onset_hi_utc`); 11 `hrkt_aa_events.csv` (array onset windows with the same columns, plus `onset_mid`, the window
+# midpoint, used only for plot positions) and `aa_insar_stacks.csv` (the start of the InSAR record); the HRKT array
+# file (the end of its bimonthly surveys); 03 `acquisition_times.csv` (the UTC time and track of every acquisition).
 #
 # **Outputs** (`outputs/12_rain_seasonality/`): `tulepond_daily_precip.csv`; `wateryear_totals.csv`;
 # `event_table.csv` (window ends as local days, with their basis in `window_day_basis`); the Fig 3 panel products
@@ -83,15 +82,12 @@
 
 # %%
 import calendar
-import glob
 import os
-import re
 import urllib.request
 
 import insar_utils as utils
 from TulePond_filepaths import common_paths, paths_out, repo_dir, forecast_issue_date, rain_total_days, rain_total_mm
 from TulePond_filepaths import wet_season_months as wet_season_first_last, aa_dense_window_days, loma_prieta_yr
-from TulePond_filepaths import frames, insar_dic_list
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -163,27 +159,23 @@ stacks_file = os.path.join(paths_out["11_alignment_arrays"], "aa_insar_stacks.cs
 hrkt_file = os.path.join(common_paths["aa_dir"], "HRKT.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
 aa_events_file = os.path.join(paths_out["11_alignment_arrays"], "hrkt_aa_events.csv")
-# the acquisition dates of each track (per-track series of 03, header only) and the frame whose granule names give their UTC times
-track_files = {}
-granule_dirs = {}
-for dic in insar_dic_list:
-    track_files[dic["ORBIT_DIRECTION"]] = os.path.join(paths_out["03_creep_timeseries"], f"creep_ts_LOS_{dic['ORBIT_DIRECTION']}.csv")
-    granule_dirs[dic["ORBIT_DIRECTION"]] = (dic["Frame"], frames[dic["Frame"]]["data_dir"])
+acquisition_times_file = os.path.join(paths_out["03_creep_timeseries"], "acquisition_times.csv")   # UTC time of every acquisition
 
 REG = utils.Registry(notebook, common_paths, repo_dir)
 gauge_files = []
 for sid in stations:
     gauge_files.append(os.path.join(common_paths["ghcn_dir"], f"{sid}.csv"))
-REG.inputs(events_file, aa_events_file, stacks_file, hrkt_file, *gauge_files, *track_files.values())
+REG.inputs(events_file, aa_events_file, stacks_file, hrkt_file, *gauge_files, acquisition_times_file)
 
 # %% [markdown]
 # ## 2. Functions: dates, water years and the local day of an acquisition
 #
-# A date $d$ in calendar year $Y$ has the decimal year
+# A time $t$ (UTC) has the decimal year of the whole project (`insar_utils.decimal_years`),
 #
-# $$y = Y + \frac{d - J_Y}{J_{Y+1} - J_Y},$$
+# $$y = 2000 + \frac{t - t_{2000}}{365.25\ \mathrm{d}},$$
 #
-# where $J_Y$ is 1 January of year $Y$ (differences in days). The water year of $d$ is
+# where $t_{2000}$ is 1 January 2000, 00:00 UTC, so that a difference of decimal years times 365.25 is the exact
+# number of days. The water year of a day $d$ in calendar year $Y$ is
 #
 # $$\mathrm{WY}(d) = \begin{cases} Y + 1 & \text{if the month of } d \text{ is October or later,} \\ Y & \text{otherwise,} \end{cases}$$
 #
@@ -194,8 +186,9 @@ REG.inputs(events_file, aa_events_file, stacks_file, hrkt_file, *gauge_files, *t
 # where $O_N$ is 1 October of year $N - 1$, so that 1 October is day 1. A decimal year is first turned into its nearest
 # calendar day, so every day of the water year in this notebook comes from the same calendar.
 #
-# The UTC time of an InSAR acquisition is read from its OPERA granule name. Its rain day is the date of that time in
-# `rain_day_timezone`, which must equal the date of the UTC time minus 8 h (asserted).
+# The InSAR onset windows run between the exact UTC times of their bounding acquisitions (`onset_lo_utc` and
+# `onset_hi_utc` of 04, from the OPERA zero-Doppler times in `acquisition_times.csv` of 03). The rain day of a UTC
+# time is its date in `rain_day_timezone`, which must equal the date of the UTC time minus 8 h (asserted).
 #
 # The InSAR step errors of 04 are 95 % bootstrap bounds; they are turned into 1 sigma as
 # $\sigma = (b_\mathrm{hi} - b_\mathrm{lo}) / 3.92$, where $b_\mathrm{lo}$ and $b_\mathrm{hi}$ are the bounds (mm), since a
@@ -203,7 +196,7 @@ REG.inputs(events_file, aa_events_file, stacks_file, hrkt_file, *gauge_files, *t
 
 # %%
 def decyear(dates):
-    """Decimal year of each date, as a fraction of the actual year length.
+    """Decimal year of each date or time (`insar_utils.decimal_years`).
 
     Parameters
     ----------
@@ -214,10 +207,7 @@ def decyear(dates):
     pandas.Index
         Decimal years.
     """
-    dates = pd.DatetimeIndex(dates)
-    year_start = pd.to_datetime(dates.year.astype(str) + "-01-01")
-    next_year_start = pd.to_datetime((dates.year + 1).astype(str) + "-01-01")
-    return dates.year + (dates - year_start) / (next_year_start - year_start)
+    return pd.Index(utils.decimal_years(dates))
 
 
 def to_date(decimal_years):
@@ -331,33 +321,21 @@ def sigma_from_ci95(lo, hi):
     return (hi - lo) / 3.92
 
 
-def acquisition_clock(frame, granule_dir):
-    """UTC time of every secondary acquisition of one OPERA DISP-S1 frame, from the granule names.
-
-    The names are OPERA_L3_DISP-S1_IW_F<frame>_VV_<reference>Z_<secondary>Z_v...nc.
+def window_length_days(window):
+    """Length of an onset window (d): between the exact UTC acquisition times (InSAR) or the survey days (array).
 
     Parameters
     ----------
-    frame : str or int
-        OPERA frame ID.
-    granule_dir : str
-        Directory of the granules.
+    window : namedtuple
+        A row of `onset_days` (section 6).
 
     Returns
     -------
-    pandas.Series
-        UTC time of each acquisition, indexed by its UTC day.
+    float
     """
-    names = sorted(glob.glob(os.path.join(granule_dir, f"OPERA_L3_DISP-S1_IW_F{frame}_VV_*.nc")))
-    assert names, f"no OPERA granules of frame {frame} in {granule_dir}"
-    times = []
-    for name in names:
-        match = re.search(r"_(\d{8}T\d{6})Z_(\d{8}T\d{6})Z_v", os.path.basename(name))
-        assert match, f"unexpected granule name {os.path.basename(name)}"
-        times.append(pd.Timestamp(match.group(2)))
-    clock = pd.Series(times, index=pd.DatetimeIndex(times).normalize()).sort_index()
-    assert clock.index.is_unique, f"frame {frame}: two granules share a secondary day"
-    return clock
+    if pd.notna(window.utc_lo):
+        return (window.utc_hi - window.utc_lo) / pd.Timedelta(days=1)
+    return (window.onset_hi - window.onset_lo) * 365.25
 
 
 def local_day(utc_time):
@@ -378,43 +356,30 @@ def local_day(utc_time):
     return local
 
 
-def insar_local_window(onset_lo, onset_hi):
+def insar_local_window(utc_lo, utc_hi):
     """An InSAR onset window as local calendar days, both included (the day convention in the header).
 
-    The first day is the local day of the later acquisition among the tracks that acquired on the UTC day of
-    onset_lo; the last day is the local day of the earlier acquisition among the tracks that acquired on the UTC
-    day of onset_hi.
+    The first day is the local day of the last acquisition before the step, the last day the local day of the first
+    acquisition after it.
 
     Parameters
     ----------
-    onset_lo, onset_hi : float
-        Window ends (decimal years).
+    utc_lo, utc_hi : pandas.Timestamp
+        Exact UTC times of the bounding acquisitions (`onset_lo_utc`, `onset_hi_utc` of 04).
 
     Returns
     -------
     day_lo, day_hi : pandas.Timestamp
         First and last local day.
-    utc_lo, utc_hi : pandas.Timestamp
-        The bounding UTC acquisitions.
     track_lo, track_hi : str
-        Their tracks.
+        The tracks of the bounding acquisitions.
     """
-    utc_day_lo = utils.decimal_year_to_day(onset_lo)
-    utc_day_hi = utils.decimal_year_to_day(onset_hi)
-    before = {}
-    after = {}
-    for track in track_days:
-        if utc_day_lo in track_days[track]:
-            before[track] = track_clock[track][utc_day_lo]
-        if utc_day_hi in track_days[track]:
-            after[track] = track_clock[track][utc_day_hi]
-    assert before and after, f"window {utc_day_lo.date()}..{utc_day_hi.date()}: an end is not an acquisition of either track"
-    track_lo = max(before, key=before.get)          # the last acquisition before the step
-    track_hi = min(after, key=after.get)            # the first acquisition after it
-    day_lo = local_day(before[track_lo])
-    day_hi = local_day(after[track_hi])
-    assert day_lo <= day_hi, f"window {utc_day_lo.date()}..{utc_day_hi.date()} is empty in local days"
-    return day_lo, day_hi, before[track_lo], after[track_hi], track_lo, track_hi
+    track_lo = track_of[utc_lo]
+    track_hi = track_of[utc_hi]
+    day_lo = local_day(utc_lo)
+    day_hi = local_day(utc_hi)
+    assert day_lo <= day_hi, f"window {utc_lo}..{utc_hi} is empty in local days"
+    return day_lo, day_hi, track_lo, track_hi
 
 # %% [markdown]
 # ## 3. The daily rain composite
@@ -635,8 +600,8 @@ stats_lines.append(f"Check, Newark shift: vs Hayward on storm days r {r_as_publi
 #
 # The windows are converted to local days here (the day convention in the header). `onset_days`, with one row per
 # window of both catalogues, is the only place where a window is converted to calendar days, and every rainfall
-# quantity below and 14_paper_figures read these days. The acquisition dates of each track are the per-track columns of
-# 03, and each must have a granule (asserted), so that each end of an InSAR window has a UTC time.
+# quantity below and 14_paper_figures read these days. The window length is the time between the bounding acquisitions
+# (InSAR, exact) or between the surveys (array).
 #
 # **Check, single gauge for the InSAR analysis.** Every InSAR onset window and the `insar_rain_check_days` (30) days
 # before it must be Fremont, with no Newark-filled day (asserted). Days inside those spans with no data from either
@@ -650,25 +615,22 @@ aa_dense = pd.read_csv(aa_events_file)
 assert (aa_dense.window_days <= resolvable_days).all(), f"11 returned an array window longer than {resolvable_days} d"
 print(f"InSAR {len(insar_events)} events; array bimonthly era {len(aa_dense)} events (windows <= {resolvable_days} d)")
 
-# the acquisition times of each track: its dates (columns of 03) and their UTC times (granule names)
-track_clock = {}
-track_days = {}
+# the UTC time and track of every acquisition (03)
+acquisition_times = pd.read_csv(acquisition_times_file, parse_dates=["day", "utc_time"])
+track_of = dict(zip(acquisition_times.utc_time, acquisition_times.track))
 clock_lines = []
-for track, (frame, granule_dir) in granule_dirs.items():
-    track_clock[track] = acquisition_clock(frame, granule_dir)
-    track_days[track] = set(to_date(pd.read_csv(track_files[track], index_col=0, nrows=0).columns.astype(float)))
-    no_granule = sorted(track_days[track] - set(track_clock[track].index))
-    assert not no_granule, f"{track}: {len(no_granule)} acquisition dates of 03 have no {frame} granule, e.g. {no_granule[:3]}"
-    seconds_of_day = (track_clock[track] - track_clock[track].index).dt.total_seconds()
-    clock_lines.append(f"  {track} (frame {frame}): {len(track_days[track])} acquisitions, UTC {seconds_of_day.min() / 3600:.2f}-"
+for track, rows in acquisition_times.groupby("track"):
+    seconds_of_day = (rows.utc_time - rows.day).dt.total_seconds()
+    clock_lines.append(f"  {track} (frame {rows.frame.iloc[0]}): {len(rows)} acquisitions, UTC {seconds_of_day.min() / 3600:.2f}-"
                        f"{seconds_of_day.max() / 3600:.2f} h = local day of the UTC date "
-                       f"{(local_day(track_clock[track].iloc[0]) - track_clock[track].index[0]).days:+d} d")
-print("acquisition clock (OPERA granule names):\n" + "\n".join(clock_lines))
+                       f"{(local_day(rows.utc_time.iloc[0]) - rows.day.iloc[0]).days:+d} d")
+print("acquisition clock (03, acquisition_times.csv):\n" + "\n".join(clock_lines))
 
 # every onset window as local calendar days, inclusive
 onset_rows = []
 for event in insar_events.itertuples():
-    day_lo, day_hi, utc_lo, utc_hi, track_lo, track_hi = insar_local_window(event.onset_lo, event.onset_hi)
+    utc_lo, utc_hi = pd.Timestamp(event.onset_lo_utc), pd.Timestamp(event.onset_hi_utc)
+    day_lo, day_hi, track_lo, track_hi = insar_local_window(utc_lo, utc_hi)
     onset_rows.append(dict(source="InSAR", src="insar", onset_lo=event.onset_lo, onset_hi=event.onset_hi, onset_mid=event.onset_mid,
                            day_lo=day_lo, day_hi=day_hi, utc_lo=utc_lo, utc_hi=utc_hi, track_lo=track_lo, track_hi=track_hi,
                            step_mm=event.amplitude_mm, step_err=sigma_from_ci95(event.amp_lo, event.amp_hi),
@@ -778,7 +740,7 @@ for window in onset_days.itertuples():
     window_days_all = pd.date_range(day_lo, day_hi)
     wet_fraction_by_window[(source, day_lo.date())] = float(window_days_all.month.isin(wet_season_months).mean())
     table_rows.append(dict(source=source, window_lo=day_lo.date(), window_hi=day_hi.date(), window_day_basis=window.window_day_basis,
-                           window_days=round((window_hi - window_lo) * 365.25),
+                           window_days=round(window_length_days(window), 1),
                            step_mm=round(step_mm, 1), step_1sigma_mm=round(step_err, 1), water_year=int(rain.wy[day_lo]),
                            dowy_lo=int(rain.dowy[day_lo]), dowy_hi=int(rain.dowy[day_hi]), season="/".join(seasons),
                            wy_rain_to_date_lo_mm=round(float(rain_to_date[day_lo]), 0), wy_rain_to_date_hi_mm=round(float(rain_to_date[day_hi]), 0),

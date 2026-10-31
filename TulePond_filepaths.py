@@ -16,6 +16,9 @@ shared functions, model_config.py the settings of the slip models, and the numbe
 notebooks the order of the analysis.
 """
 import os
+from datetime import datetime
+
+from insar_utils import date_to_decimal_year      # the one time convention of the project (UTC, 365.25-day years)
 
 # The repository holds the code only. Every product, figure and model run is written into data_dir (the results
 # directory), never inside the repository: asserted at the end of this file (`assert_outside_repo`) and by
@@ -258,13 +261,13 @@ segments = {
     "TULEPOND": {"label": "Tule Pond",      "lat": 37.5570, "lat_lo": 37.50, "lat_hi": 37.60},
     "COZ1":     {"label": "Oakland (COZ1)", "lat": 37.7500, "lat_lo": 37.68, "lat_hi": 37.82},
 }
-# The two large Oakland (COZ1) creep events the positive control must detect (notebooks 04 and 05): a decimal year
-# inside each one's InSAR onset window (the COZ1 creepmeter's Jan 2019 event, catalogued from 2019-01-11, and its
-# Feb 2022 surge, from 2022-02-14; Gittins et al. 2026). 04 asserts that each lies in exactly one COZ1 onset
+# The two large Oakland (COZ1) creep events the positive control must detect (notebooks 04 and 05): the start day
+# (UTC) of each in the creepmeter catalogue (the COZ1 creepmeter's Jan 2019 event, from 2019-01-11, and its Feb 2022
+# surge, from 2022-02-14; Gittins et al. 2026), as decimal years. 04 asserts that each lies in exactly one COZ1 onset
 # window (widened by coz1_large_tol_days each side) and 05 that they are the two COZ1 events with the largest
 # creepmeter steps. The control also detects the Oct 2022 COZ1 surge, so COZ1 events are labelled by their onset
 # day (`onset_day` in creep_events.csv), not by year.
-coz1_large_events_yr = (2019.02, 2022.13)
+coz1_large_events_yr = (date_to_decimal_year("2019-01-11"), date_to_decimal_year("2022-02-14"))
 coz1_large_tol_days = 12.0     # one long (12 d) acquisition interval
 
 # Box for the per-pixel event maps (notebook 06) and the slip models (07 to 09):
@@ -314,10 +317,10 @@ paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_ma
 # season of an onset; 11 runs the HRKT detector only on such intervals, 12 and 13 assert that every array window is
 # this short.
 aa_dense_window_days = 130
-# The 1989 Loma Prieta earthquake, 17 Oct 1989 local time, as a decimal year to two places (day of year 290:
-# 1989 + 289/365 = 1989.79, the convention of insar_utils.date_to_decimal_year), for the interval that spans it (11 asserts that the longest quiet HRKT
-# interval spans it; 12 saves it for Fig 3A; 13 forms the array forecasts with and without that interval).
-loma_prieta_yr = 1989.79
+# The 1989 Loma Prieta earthquake, 17 Oct 1989 17:04 PDT = 18 Oct 1989 00:04 UTC, as a decimal year, for the
+# interval that spans it (11 asserts that the longest quiet HRKT interval spans it; 12 saves it for Fig 3A; 13 forms
+# the array forecasts with and without that interval).
+loma_prieta_yr = date_to_decimal_year(datetime(1989, 10, 18, 0, 4))
 
 # Lake Elizabeth (Central Park, Fremont), east of the trace at the south end of the Tule Pond section: the area of
 # the mean-event VERTICAL signal the text quotes (notebook 06). Centre = the centroid of the open-water no-data hole

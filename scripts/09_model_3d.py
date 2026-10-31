@@ -679,7 +679,7 @@ REG.register("09_stress_drop_depth_m", best_depth_km * 1e3, "m", 0, where, "sect
 REG.register("09_stress_drop_slip_mm", best_slip_mm, "mm", 1, where, "section 12", stats)
 REG.register("09_stress_drop_mu_harmonic_gpa", mu_harmonic_upper / 1e9, "GPa", 2, where, "section 12", stats)
 REG.register("09_stress_drop_width_m", width_m, "m", 0, where, "section 12", stats)
-REG.register("09_stress_drop_30gpa_mpa", stress_drop.stress_drop_kpa.iloc[0] / 1e3, "MPa", 2, where, "section 12", stats)
+REG.register("09_stress_drop_30gpa_kpa", stress_drop.stress_drop_kpa.iloc[0], "kPa", 0, where, "section 12", stats)
 REG.register("09_stress_drop_harmonic_kpa", stress_drop.stress_drop_kpa.iloc[1], "kPa", 0, where, "section 12", stats)
 REG.render()
 print(f"wrote {selected_file}")
