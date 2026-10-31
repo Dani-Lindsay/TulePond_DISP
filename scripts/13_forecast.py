@@ -697,13 +697,14 @@ def forecast(model, catalogue, drop_lp, t_last_window, ref_yr, rng, alpha_fixed=
     interval_covs = []
     for _ in range(n_timing):
         # 1) one realisation of the onsets, uniform in their windows, and its intervals
-        intervals = intervals_from(rng.uniform(catalogue.onset_lo.values, catalogue.onset_hi.values), catalogue.src.values, drop_lp)
+        onsets = rng.uniform(catalogue.onset_lo.values, catalogue.onset_hi.values)
+        intervals = intervals_from(onsets, catalogue.src.values, drop_lp)
         # 2) the model fitted to those intervals
         fitted_dist = fit_interval_model(model, intervals, alpha_fixed)
         interval_means.append(fitted_dist.mean())
         interval_covs.append(np.sqrt(fitted_dist.var()) / fitted_dist.mean())
-        # 3) the last onset, uniform in its window, and how long ago it was at the reference date
-        t_last = rng.uniform(*t_last_window)
+        # 3) the last onset (the same draw when the record holds the last InSAR event) and how long ago it was
+        t_last = last_onset(catalogue, onsets, t_last_window, rng)
         time_since_last = ref_yr - t_last
         # 4) parametric bootstrap: refit to synthetic intervals from the fitted model, forecast from each refit
         for _ in range(n_boot):
@@ -721,6 +722,32 @@ def forecast(model, catalogue, drop_lp, t_last_window, ref_yr, rng, alpha_fixed=
     assert n_degenerate <= max_degenerate_fraction * n_curves, \
         f"{model}: {n_degenerate} of {n_curves} bootstrap refits give the elapsed quiet time zero survival"
     return cdf_sum / n_curves, float(np.mean(interval_means)), float(np.mean(interval_covs)), n_clipped, n_degenerate
+
+
+def last_onset(catalogue, onsets, t_last_window, rng):
+    """The last onset of one draw: the drawn onset of the last InSAR event if the record holds it, else a uniform
+    draw in its window (the array record, which ends in 2006).
+
+    Parameters
+    ----------
+    catalogue : pandas.DataFrame
+        Events with onset_lo and onset_hi.
+    onsets : numpy.ndarray
+        This draw's onsets, in the order of the catalogue.
+    t_last_window : tuple of float
+        Window of the last InSAR onset (decimal years).
+    rng : numpy.random.Generator
+
+    Returns
+    -------
+    float
+        The last onset (decimal year).
+    """
+    holds_last = (np.isclose(catalogue.onset_lo.values, t_last_window[0], rtol=0, atol=1e-9)
+                  & np.isclose(catalogue.onset_hi.values, t_last_window[1], rtol=0, atol=1e-9))
+    if holds_last.any():
+        return float(onsets[np.flatnonzero(holds_last)[0]])
+    return float(rng.uniform(*t_last_window))
 
 
 def forecast_bpt_alpha_pivot(catalogue, drop_lp, t_last_window, ref_yr, rng):
@@ -746,9 +773,10 @@ def forecast_bpt_alpha_pivot(catalogue, drop_lp, t_last_window, ref_yr, rng):
     cdf_sum = np.zeros_like(grid)
     alphas = []
     for _ in range(n_timing):
-        intervals = intervals_from(rng.uniform(catalogue.onset_lo.values, catalogue.onset_hi.values), catalogue.src.values, drop_lp)
+        onsets = rng.uniform(catalogue.onset_lo.values, catalogue.onset_hi.values)
+        intervals = intervals_from(onsets, catalogue.src.values, drop_lp)
         mean_yr = intervals.mean()
-        t_last = rng.uniform(*t_last_window)
+        t_last = last_onset(catalogue, onsets, t_last_window, rng)
         time_since_last = ref_yr - t_last
         for _ in range(n_boot):
             alpha = float(np.sqrt(mean_yr * np.sum(1 / intervals - 1 / mean_yr) / rng.chisquare(len(intervals) - 1)))
@@ -1019,7 +1047,9 @@ plt.show()
 # draws. These are drawn in Fig 3C and written to `recurrence_intervals.csv`. The AICc of each model is computed on
 # the median draw, the draw whose mean interval is the median of the $\bar x_k$. Then, for each model, the forecast
 # mixture of section 4 is computed with `n_timing` further onset draws, each fitted and bootstrapped, conditioned on no event
-# through the last observation. For every record the last onset $t_L$ is drawn from the window of the last InSAR event.
+# through the last observation. For every record the last onset $t_L$ is the last InSAR event: in the InSAR and merged
+# records it is that event's onset in the same draw as the intervals, and the array record (which ends in 2006) draws it
+# from the window of the last InSAR event.
 # The onset draws of this section are kept for the InSAR clock of section 8.
 
 # %%
