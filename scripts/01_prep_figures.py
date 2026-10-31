@@ -532,8 +532,8 @@ print("\n".join(lines))
 # (`utils.utm_to_lonlat_grid`, no interpolation), finer than a printed pixel of
 # a 2.7 cm panel at 600 dpi (the PNG is written at 600 dpi). The velocity and
 # correction panels have a grey background, so that nodata is grey and zero is
-# white. ZOA1 is the black square, and a 10 km scale bar is drawn in panels C
-# and I. There is one colour bar per column.
+# white. ZOA1 is the black square, and a 10 km scale bar is drawn in every panel. There is one colour bar per
+# column.
 #
 # GMT reduces the font size of a short colour bar (on a 2 cm bar a 12p font
 # prints at about 6p), so the colour bars are drawn with 12p fonts to print at
@@ -598,10 +598,9 @@ for i, orbit in enumerate(merged):
         fig.grdimage(grid=grid, cmap=cpts[j], nan_transparent=True)
         if column["grey"]:
             fig.plot(x=[ref_lon], y=[ref_lat], style="s0.12c", fill="black", pen="0.3p,white")
-        if j == 2:     # 10 km scale bar, on the velocity-before-tie panels (C and I)
-            fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"], map_scale="jBL+w10k+o0.15c/0.15c")
-        else:
-            fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"])
+        # 10 km scale bar in every panel, on a white box, lifted so the label below the bar clears the frame
+        fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"], map_scale="jBL+w10k+o0.25c/0.45c",
+                    box="+gwhite@15+c0.06c")
         letter = letters[i * len(columns) + j]
         if i == 0:
             title = column["title"]
