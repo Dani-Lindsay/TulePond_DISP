@@ -59,8 +59,8 @@
 #
 # **Figures** (Science style: Helvetica, bold capital panel letters, 7 pt text,
 # 18.3 cm wide, colour-blind-safe colour maps):
-# `Figures_<date>/figS1_velocity_chain_coh<c>_vel<v>_ramp<r>.png/.pdf`
-# (Fig. S1) and `figS2_gnss_tie_coh<c>_nasc<n>_ndesc<n>.png/.pdf` (Fig. S2).
+# `Figures_<date>/figS_velocity_chain_coh<c>_vel<v>_ramp<r>.png/.pdf`
+# (supplement) and `figS_gnss_tie_coh<c>_nasc<n>_ndesc<n>.png/.pdf` (supplement).
 #
 # **What to check.** Section 5 asserts that the straight-line refit matches the
 # run04 velocity on every frame. The sidecar and the printed output of sections
@@ -616,7 +616,7 @@ with pygmt.config(FONT_ANNOT_PRIMARY="12p,Helvetica", FONT_LABEL="12p,Helvetica"
     for j, column in enumerate(columns):
         fig.colorbar(cmap=cpts[j], position=f"x{j * (map_width + gap_x) + 0.1 * map_width}c/-0.2c+w{0.8 * map_width}c/0.18c+h+jTL",
                      frame=[f"x{column['annot']}+l{column['cbar_label']}"])
-f_s1 = os.path.join(fig_dir, f"figS1_velocity_chain_coh{COH_VELOCITY:g}_vel{vel_lim:g}_ramp{ramp_lim:g}")
+f_s1 = os.path.join(fig_dir, f"figS_velocity_chain_coh{COH_VELOCITY:g}_vel{vel_lim:g}_ramp{ramp_lim:g}")
 fig.savefig(f_s1 + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)
 fig.savefig(f_s1 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("wrote", f_s1 + ".png")
@@ -884,7 +884,7 @@ ax.set_ylabel("Pixels")
 ax.text(0.04, 0.96, f"median {np.median(d_overlap):+.2f} mm/yr\nRMS {rmse(d_overlap):.2f} mm/yr",
         transform=ax.transAxes, va="top", ha="left", fontsize=6)
 utils.panel_title(ax, "F", "Overlap difference")
-f_s2 = os.path.join(fig_dir, f"figS2_gnss_tie_coh{COH_VELOCITY:g}_nasc{tie_stats['ascending']['n']}_ndesc{tie_stats['descending']['n']}.png")
+f_s2 = os.path.join(fig_dir, f"figS_gnss_tie_coh{COH_VELOCITY:g}_nasc{tie_stats['ascending']['n']}_ndesc{tie_stats['descending']['n']}.png")
 fig.savefig(f_s2, dpi=300, facecolor="white")
 fig.savefig(f_s2.replace(".png", ".pdf"), facecolor="white")
 print("wrote", f_s2)

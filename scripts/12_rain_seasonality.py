@@ -610,6 +610,9 @@ stats_lines.append(f"Check, Newark shift: vs Hayward on storm days r {r_as_publi
 # %%
 creep_events = pd.read_csv(events_file)
 insar_events = creep_events[creep_events.segment == "TULEPOND"].sort_values("onset_lo").reset_index(drop=True)
+# the exact windows of 04 (UTC times of the bounding acquisitions), as notebook 13 uses them
+insar_events["onset_lo"] = utils.decimal_years(insar_events.onset_lo_utc)
+insar_events["onset_hi"] = utils.decimal_years(insar_events.onset_hi_utc)
 insar_events["onset_mid"] = 0.5 * (insar_events.onset_lo + insar_events.onset_hi)     # plot position only
 aa_dense = pd.read_csv(aa_events_file)
 assert (aa_dense.window_days <= resolvable_days).all(), f"11 returned an array window longer than {resolvable_days} d"
@@ -644,7 +647,7 @@ onset_days = pd.DataFrame(onset_rows)
 assert (onset_days.day_lo <= onset_days.day_hi).all()
 window_lines = ["InSAR onset windows, UTC days of the grid epochs -> local days (the rain days):"]
 for row in onset_days[onset_days.src == "insar"].itertuples():
-    window_lines.append(f"  {to_date([row.onset_lo])[0].date()}..{to_date([row.onset_hi])[0].date()} UTC -> {row.day_lo.date()}..{row.day_hi.date()} local "
+    window_lines.append(f"  {row.utc_lo:%Y-%m-%d}..{row.utc_hi:%Y-%m-%d} UTC -> {row.day_lo.date()}..{row.day_hi.date()} local "
                         f"(last look before {row.track_lo} {row.utc_lo:%Y-%m-%d %H:%M}Z, first after {row.track_hi} {row.utc_hi:%Y-%m-%d %H:%M}Z)")
 print("\n".join(window_lines))
 insar_days = onset_days[onset_days.src == "insar"].reset_index(drop=True)

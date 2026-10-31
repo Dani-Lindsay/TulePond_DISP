@@ -67,6 +67,7 @@ gf_run = "gf_shallow_dip70w_sfcvm_order2"   # PyLith 5.0.2 GreensFns run: order 
 #                                             trace), 70 W fault; its G is read from the archive, PyLith is not run here
 selected_dip_label = "70 W"                 # the dip of gf_run as the sensitivity rows and figures name it
 selected_dip_deg = 70.0                     # deg: the dip of gf_run (mesh report: measured 70.0 deg, dipping west)
+selected_dip_tag = "dip" + selected_dip_label.replace(" ", "").lower()     # "dip70w": in the file names of the model figures
 gf_run_vertical = "gf_shallow_sfcvm_order2"  # the vertical fault on the same fine mesh (sensitivity test)
 gf_pylith_output_dir = paths_sfcvm["pylith_output"]
 gf_gf_dir = paths_sfcvm["gf"]

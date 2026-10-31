@@ -39,7 +39,8 @@
 # **Outputs** (`outputs/10_model_sensitivity/`): `sensitivity_table.csv` and the stats file of the registry.
 # **Registry keys** `10_*`.
 #
-# **Figures**: `figS_sweeps`, `figS_depth_scan`, `figS_gf_error_vs_depth`, `figS_semivariogram` (Science style, png and
+# **Figures**: `figS_sweeps_<dip>`, `figS_depth_scan_<dip>` (<dip> = `model_config.selected_dip_tag`, e.g. `dip70w`),
+# `figS_gf_error_vs_depth`, `figS_semivariogram` (Science style, png and
 # pdf).
 #
 # **What to check**
@@ -260,7 +261,7 @@ for j, (name, series_list, ticks, tick_labels, selected_at) in enumerate(sweeps)
 handles["West"] = Line2D([], [], color="0.3", ls="-", marker="o", lw=lw, ms=ms, label="Within 500 m: west")
 handles["East"] = Line2D([], [], color="0.3", ls="--", marker="o", mfc="white", lw=lw, ms=ms, label="Within 500 m: east")
 legend_ax.legend(handles=list(handles.values()), loc="center", ncol=3, frameon=False)
-save(fig, "figS_sweeps")
+save(fig, f"figS_sweeps_{cfg.selected_dip_tag}")
 
 # %% [markdown]
 # ## 5. The fixed-depth scan (SM)
@@ -326,7 +327,7 @@ print(f"caption: grey band = base of the Cenozoic sediment west of the fault (SF
 for axis, fraction in ((axes[0], 0.25), (axes[1], 0.05), (axes[2], 0.05), (twin, 0.05)):
     lo, hi = axis.get_ylim()
     axis.set_ylim(lo, hi + fraction * (hi - lo))
-save(fig, "figS_depth_scan")
+save(fig, f"figS_depth_scan_{cfg.selected_dip_tag}")
 
 # %% [markdown]
 # ## 6. The Green's functions against the analytic solution (SM)

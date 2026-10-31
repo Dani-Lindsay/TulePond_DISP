@@ -28,8 +28,9 @@
 # **Outputs**: `Figures_<date>/paper/Fig_<name>.png` and `.pdf`; small GMT helper files in
 # `outputs/14_paper_figures/cpt/`.
 #
-# **Figures**: `fig1_tulepond_<params>_band90` (Fig 1), `fig2_fault_parallel_vertical_coh<c>_<n>ev_selected3d` (Fig 2),
-# `figS_los_maps_profiles_coh<c>_<n>ev` (supplement), `fig3_history_forecast_*` (Fig 3).
+# **Figures**: `fig1_tulepond_<params>_band90` (Fig 1), `fig2_fp_up_coh<c>_<n>ev_model3d_<dip>` (Fig 2; fp = fault-parallel,
+# up = vertical component, <dip> = `model_config.selected_dip_tag`), `figS_los_maps_profiles_coh<c>_<n>ev_model3d_<dip>`
+# (supplement), `fig3_history_forecast_*` (Fig 3).
 #
 # **What to check**
 # - Section 9: both model products are on the samples of notebook 07, and I = model + plane and J = E - I (asserted).
@@ -59,6 +60,7 @@ import pygmt
 
 import insar_utils as utils
 import model_utils
+import model_config as cfg                         # the dip of the preferred model, in the figure names
 from TulePond_filepaths import (alameda_creek_trace_lonlat, lake_elizabeth_trace_lonlat, common_paths, creepmeters, params,
                                 paths_out, paths_gps, des11115_dic, fig2_map_centre_km, fig2_map_half_km, fig2_map_extra_km,
                                 forecast_issue_date, repo_dir)
@@ -76,8 +78,10 @@ this_run_start = pd.Timestamp.now(tz="UTC")       # the figures drawn here must 
 # magnitude) and the repeating earthquakes (white squares) of notebook 04, section 13. The dashed lines mark
 # the 90 % band. (C) The cumulative slip of each event along strike (blues, light to dark in time). (D) The
 # creep rates: inter-event (bluish green), event-driven (orange, the five Tule Pond events) and their sum
-# (black), with the creepmeters over the InSAR window (gold) and the alignment arrays refit over the same
-# window (dark grey). The error bars are 1 sigma. (E) The InSAR stack: the mean fault-parallel series of the
+# (black), smoothed along the fault with the 0.5 km Gaussian of the supplement creep-rate figure, with the
+# creepmeters over the InSAR window (gold) and the whole-record alignment-array rates of the USGS archive (reddish
+# purple open diamonds, as in the supplement creep-rate figure). The error bars are 1 sigma (1 standard error for
+# the arrays). (E) The InSAR stack: the mean fault-parallel series of the
 # band crossings, zeroed at the first epoch with nothing subtracted, and the joint model drawn over it (bluish
 # green between events, orange across the steps). The colours are from the Okabe-Ito palette.
 #
@@ -125,7 +129,7 @@ for name in ("secular", "event_rate", "total"):
     rate_bands[name] = fig1_in[f"rate_band_{name}"]
 rate_band_half_km = float(fig1_in["rate_band_half_km"])
 span = float(fig1_in["span"])
-aa_rates = pd.DataFrame({"km": fig1_in["aa_km"], "rate_window": fig1_in["aa_rate_window"], "rate_window_se": fig1_in["aa_rate_window_se"]})
+aa_rates = pd.DataFrame({"km": fig1_in["aa_km"], "rate": fig1_in["aa_rate_longterm"], "rate_se": fig1_in["aa_rate_longterm_se"]})   # whole record
 cm_rates = {}                                    # code -> (km, mm/yr), in the order of TulePond_filepaths
 cm_rate_sigma = {}                               # code -> 1 sigma (mm/yr)
 for code, km_cm, rate_cm, sigma_cm in zip(fig1_in["cm_codes"], fig1_in["cm_km"], fig1_in["cm_rate"], fig1_in["cm_rate_sigma"]):
@@ -243,12 +247,11 @@ for name in ("total", "secular", "event_rate"):
 for name in ("secular", "event_rate", "total"):
     fig.plot(x=[-50, -49], y=[w_lo, w_lo], pen=rate_style[name][1], label=rate_labels[name])
 fig.plot(x=[-50], y=[w_lo], style="s0.2c", fill="gray50@70", label=f"5-95 % of crossings within ±{rate_band_half_km:g} km")
-arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi)]
-arrays_refit = arrays_window[arrays_window.rate_window.notna()]
-aa_grey = "gray30"                                                    # dark grey, distinct from the black total
-fig.plot(data=np.column_stack([arrays_refit.rate_window.values, arrays_refit.km.values, arrays_refit.rate_window_se.values]),
-         error_bar="x+p0.6p," + aa_grey + "+w0.08c", style="s0.16c", fill=aa_grey, pen="0.3p," + aa_grey,
-         label=f"Alignment arrays {t0:.1f} to {t1:.1f}")                   # +/- 1 sigma
+arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi) & aa_rates.rate.notna()]
+aa_purple = "#CC79A7"                                                 # Okabe-Ito reddish purple, as the arrays of the creep-rate figure
+fig.plot(data=np.column_stack([arrays_window.rate.values, arrays_window.km.values, arrays_window.rate_se.values]),
+         error_bar="x+p0.6p," + aa_purple + "+w0c", style="d0.2c", fill="white", pen="0.8p," + aa_purple,
+         label="Alignment arrays (whole record)")                     # +/- 1 standard error
 creepmeter_legend_done = False                                        # one legend entry for the creepmeters
 for code, (km_cm, rate_cm) in cm_rates.items():
     if w_lo <= km_cm <= w_hi:
@@ -322,7 +325,7 @@ aa_file = common_paths["aa_summary"]
 selected_file = os.path.join(paths_out["09_model_3d"], "selected_model.npz")          # the preferred model (notebook 09, section 13)
 homogeneous_file = os.path.join(paths_out["08_model_homogeneous"], "homogeneous_model.npz")  # the homogeneous model of 08
 model_data_file = os.path.join(paths_out["07_model_data"], "model_data.npz")         # 07's samples
-model_tag = "_selected3d"                                                                 # in the Fig 2 file name
+model_tag = f"_model3d_{cfg.selected_dip_tag}"                                         # in the Fig 2 file names: the preferred 3D model
 profile_half_width_m = 300.0    # G: model samples within this distance of each profile line (06's pixels: +/- 150 m)
 
 # %% [markdown]
@@ -1212,7 +1215,7 @@ print(f"common pixel mask for the four LOS maps: {mask_los.sum()} pixels ({mask_
 # vertical version.
 
 # %%
-f_fig2_los = os.path.join(fig_dir, f"figS_los_maps_profiles_coh{coh_maps:g}_{n_mean}ev")
+f_fig2_los = os.path.join(fig_dir, f"figS_los_maps_profiles_coh{coh_maps:g}_{n_mean}ev{model_tag}")
 draw_fig2(masked(rate_los, mask_los), masked(event_los, mask_los), los_profiles, f"Mean event ({n_mean} events)",
           f_fig2_los, tracks, ("LOS rate (mm/yr)", "LOS (mm)"), lim_prof_los)
 
@@ -1234,7 +1237,7 @@ for col in fpup_profiles:
         east = profile["blocks"]["E"]
         print(f"[{col}] {line}-{line}': per block W {west['amp']:+.2f} +/- {west['se']:.2f}, "
               f"E {east['amp']:+.2f} +/- {east['se']:.2f} mm")
-f_fig2_fp = os.path.join(fig_dir, f"fig2_fault_parallel_vertical_coh{coh_maps:g}_{n_mean}ev{model_tag}")
+f_fig2_fp = os.path.join(fig_dir, f"fig2_fp_up_coh{coh_maps:g}_{n_mean}ev{model_tag}")     # fp = fault-parallel, up = vertical component
 draw_fig2(fpup_rate, fpup_event, fpup_profiles, f"Mean event ({n_mean} events)", f_fig2_fp,
           list(fpup_rate), ("Rate (mm/yr)", "Displacement (mm)"), lim_prof_fpup)
 
@@ -1527,32 +1530,32 @@ os.makedirs(paper, exist_ok=True)
 # paper name -> (file pattern in fig_dir, notebook that draws it)
 wanted = {
     "Fig_1": ("fig1_tulepond_*.png", "14_paper_figures"),
-    "Fig_2": ("fig2_fault_parallel_vertical_*ev_selected3d.png", "14_paper_figures"),         # the preferred 3D (SFSVM) model of 09
+    "Fig_2": (f"fig2_fp_up_*ev{model_tag}.png", "14_paper_figures"),                       # the preferred 3D (SFSVM) model of 09
     "Fig_3": ("fig3_history_forecast_*.png", "14_paper_figures"),
-    "Fig_S_velocity_chain": ("figS1_velocity_chain_*.png", "01_prep_figures"),
-    "Fig_S_gnss_tie": ("figS2_gnss_tie_*.png", "01_prep_figures"),
+    "Fig_S_velocity_chain": ("figS_velocity_chain_*.png", "01_prep_figures"),
+    "Fig_S_gnss_tie": ("figS_gnss_tie_*.png", "01_prep_figures"),
     "Fig_S_ratemask": ("figS_ratemask_*.png", "03_creep_timeseries"),
     "Fig_S_acquisitions": ("figS_acquisitions_*.png", "03_creep_timeseries"),
     "Fig_S_event_detection": ("figS_event_detection_*.png", "04_event_detection"),
     "Fig_S_creep_rate_along_fault": ("figS_creep_rate_along_fault_*.png", "04_event_detection"),
-    "Fig_S_los_maps_profiles": ("figS_los_maps_profiles_*ev.png", "14_paper_figures"),
+    "Fig_S_los_maps_profiles": (f"figS_los_maps_profiles_*ev{model_tag}.png", "14_paper_figures"),
     "Fig_S_event_step_maps": ("figS_event_step_maps_*.png", "06_event_field_geometry"),
     "Fig_S_validation": ("figS_validation_*.png", "05_validation"),
     "Fig_S_binning_ladder": ("figS_binning_ladder_*.png", "05_validation"),
     "Fig_S_arrays_insar": ("figS_tulepond_arrays_insar_*.png", "11_alignment_arrays"),
     "Fig_S_hrkt_threshold": ("figS_hrkt_threshold_sweep_*.png", "11_alignment_arrays"),
-    "Fig_S_aa_history_HRKT": ("qc09_aa_history_HRKT_*.png", "11_alignment_arrays"),
-    "Fig_S_aa_history_HAPP": ("qc09_aa_history_HAPP_*.png", "11_alignment_arrays"),
+    "Fig_S_aa_history_HRKT": ("qc_aa_history_HRKT_*.png", "11_alignment_arrays"),
+    "Fig_S_aa_history_HAPP": ("qc_aa_history_HAPP_*.png", "11_alignment_arrays"),
     "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "12_rain_seasonality"),
-    "Fig_S_renewal_single_fits": ("qc11_renewal_models_single_fits.png", "13_forecast"),
-    "Fig_S_model_lcurve": ("figS_model_lcurve.png", "09_model_3d"),
-    "Fig_S_model_slip": ("figS_model_slip.png", "09_model_3d"),
-    "Fig_S_model_fit_maps": ("figS_model_fit_maps.png", "09_model_3d"),
-    "Fig_S_model_profiles": ("figS_model_profiles.png", "09_model_3d"),
-    "Fig_S_model_montecarlo": ("figS_model_montecarlo.png", "09_model_3d"),
+    "Fig_S_renewal_single_fits": ("qc_renewal_models_single_fits.png", "13_forecast"),
+    "Fig_S_model_lcurve": (f"figS_model_lcurve_{cfg.selected_dip_tag}.png", "09_model_3d"),
+    "Fig_S_model_slip": (f"figS_model_slip_{cfg.selected_dip_tag}.png", "09_model_3d"),
+    "Fig_S_model_fit_maps": (f"figS_model_fit_maps_{cfg.selected_dip_tag}.png", "09_model_3d"),
+    "Fig_S_model_profiles": (f"figS_model_profiles_{cfg.selected_dip_tag}.png", "09_model_3d"),
+    "Fig_S_model_montecarlo": (f"figS_model_montecarlo_{cfg.selected_dip_tag}.png", "09_model_3d"),
     "Fig_S_pylith_materials": ("figS_pylith_materials_sfcvm_v26.png", "09_model_3d"),       # scripts/model_plots/plot_materials.py
-    "Fig_S_sweeps": ("figS_sweeps.png", "10_model_sensitivity"),
-    "Fig_S_depth_scan": ("figS_depth_scan.png", "10_model_sensitivity"),
+    "Fig_S_sweeps": (f"figS_sweeps_{cfg.selected_dip_tag}.png", "10_model_sensitivity"),
+    "Fig_S_depth_scan": (f"figS_depth_scan_{cfg.selected_dip_tag}.png", "10_model_sensitivity"),
     "Fig_S_gf_error_vs_depth": ("figS_gf_error_vs_depth.png", "10_model_sensitivity"),
     "Fig_S_semivariogram": ("figS_semivariogram.png", "10_model_sensitivity"),
 }

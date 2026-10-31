@@ -35,13 +35,13 @@
 # **Outputs** (`outputs/11_alignment_arrays/`): `hrkt_aa_events.csv` (for each array event the survey window
 # `onset_lo` to `onset_hi`, its step, and `onset_mid`, the window midpoint, used only for labels, plot positions and
 # sorting); `aa_insar_stacks.csv` (read by 12 and 14); `aa_insar_steps.csv`; `aa_alongstrike_neighbours.csv`;
-# `hrkt_threshold_sweep.csv`; the map panel `qc09_arrays_map_panel.png` and its colour table `event_RdBu_r.cpt`;
+# `hrkt_threshold_sweep.csv`; the map panel `qc_arrays_map_panel.png` and its colour table `event_RdBu_r.cpt`;
 # the stats sidecar `11_aa_stats.txt`; registry rows `11_*` (including `11_hgil_*` and `11_hrkt_*`, the step medians of
 # section 4).
 #
 # **Figures**: the six-array supplement figure (`figS_tulepond_arrays_insar_*`); the threshold sweep
 # (`figS_hrkt_threshold_sweep_3sig-6mm-5mm`, supplement); QC figures of the HRKT and HAPP records
-# (`qc09_aa_history_*`). The paper's Fig 3 is drawn by 14_paper_figures.
+# (`qc_aa_history_*`). The paper's Fig 3 is drawn by 14_paper_figures.
 #
 # **What to check.** Every array lies within 150 m of the trace (asserted, section 2). The end of the HRKT bimonthly
 # era (`11_hrkt_dense_era_end_yr`) is printed in section 6. The longest quiet interval spans Loma Prieta (asserted,
@@ -417,7 +417,7 @@ for code, u_array, v_array, u_label in zip(array_pos.index, array_u, array_v, ar
 array_symbols.append(dict(x=array_pos.lon.values, y=array_pos.lat.values, style="s0.14c", fill="black", pen="0.3p,white"))
 section = pd.read_csv(lengths_file).set_index("name").loc["tulepond_creep_length"]     # the SSE extent bracket, as Fig 1A
 
-map_png = os.path.join(out_dir, "qc09_arrays_map_panel.png")
+map_png = os.path.join(out_dir, "qc_arrays_map_panel.png")
 gmt_map = pygmt.Figure()
 with pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain",
                   MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p"):   # as Fig 1
@@ -816,7 +816,7 @@ def draw_history(code, catalogue, excess_code, sigma_code, era_end, reference_wi
     axes[-1].set_xlabel("Year")
     axes[-1].set_xlim(1978.5, 2026.5)
     fig.tight_layout()
-    f_history = os.path.join(fig_dir, f"qc09_aa_history_{code}_thr{thr_mm:g}mm_nev{len(catalogue)}.png")
+    f_history = os.path.join(fig_dir, f"qc_aa_history_{code}_thr{thr_mm:g}mm_nev{len(catalogue)}.png")
     fig.savefig(f_history, dpi=300)
     print(f"Saved the {code} QC history figure to: {f_history}")
     plt.show()

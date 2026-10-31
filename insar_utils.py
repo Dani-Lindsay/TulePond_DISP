@@ -136,11 +136,17 @@ def decimal_year_to_date(dec_year):
 
 
 def decimal_year_to_day(dec_year):
-    """The UTC calendar day of a decimal year, as a Timestamp at midnight.
+    """The UTC calendar day of an acquisition epoch stored at midnight, as a Timestamp at midnight.
 
-    The day is the one holding the time to within half a day: rounding, so that a decimal year
-    stored to a few places still gives its own day."""
+    Rounds to the nearest midnight, so that an epoch stored to a few decimal places (notebook 03's columns, to 4
+    places) gives its own day. For a time of day (an exact acquisition time, a forecast date) use
+    `decimal_year_to_utc_date`."""
     return pd.Timestamp(decimal_year_to_date(dec_year)).round("D")
+
+
+def decimal_year_to_utc_date(dec_year):
+    """The UTC calendar day that contains a time given as a decimal year, as a Timestamp at midnight."""
+    return pd.Timestamp(decimal_year_to_date(dec_year)).floor("D")
 
 
 def acquisition_times(stack_file):

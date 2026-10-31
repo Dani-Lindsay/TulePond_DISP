@@ -52,7 +52,7 @@ if not data_dir:
 
 # Figures go into a dated directory, Figures_<fig_date>. Figure filenames carry their parameters; the date
 # identifies the run of the figure set.
-fig_date   = "2026-10-28"
+fig_date   = "2026-11-01"
 # Figures and notebook products are written with the data, not into the repository: the repository holds the code
 # and the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")

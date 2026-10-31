@@ -70,7 +70,7 @@
 # forecast); `fig3_inputs.npz` (the inputs of Fig 3 from this notebook, section 9); `prediction_statement.txt`; the
 # stats sidecar `13_forecast_stats.txt`; registry rows `13_*` and, per record, `13_<rec>_*` (section 11).
 #
-# **Figures**: the five renewal models (`qc11_renewal_models_single_fits`, supplement). The paper's Fig 3
+# **Figures**: the five renewal models (`qc_renewal_models_single_fits`, supplement). The paper's Fig 3
 # (`fig3_history_forecast_ntiming4000_nboot5_issue<date>`) is drawn by notebook 14 from `fig3_inputs.npz`.
 #
 # **What to check.** The closed-form InSAR clock date (`13_next_clock_date`) and its 95 % prediction interval
@@ -199,7 +199,7 @@ def decyear(dates):
 
 
 def decyear_to_date(years):
-    """Calendar day nearest to each decimal year (an acquisition's own day).
+    """UTC calendar day that contains each time given as a decimal year (forecast dates, exact window ends).
 
     Parameters
     ----------
@@ -212,7 +212,7 @@ def decyear_to_date(years):
     """
     out = []
     for value in np.atleast_1d(np.asarray(years, float)):
-        out.append(utils.decimal_year_to_day(value))
+        out.append(utils.decimal_year_to_utc_date(value))
     return pd.DatetimeIndex(out)
 
 
@@ -307,7 +307,7 @@ print(f"InSAR {n_insar_events} events; array bimonthly era {n_aa_events} events 
 
 # the end of the InSAR record: the end of the fault-parallel series of 03, the last acquisition seen by both tracks
 data_end_yr = float(pd.read_csv(fp_ts_file, index_col=0, nrows=1).columns.astype(float).max())
-data_end = (decyear_to_date(data_end_yr)[0] + pd.Timedelta(hours=12)).strftime("%Y-%m-%d")     # the columns are decimal years to 4 places: round to the day
+data_end = utils.decimal_year_to_day(data_end_yr).strftime("%Y-%m-%d")     # 03's columns are epochs at midnight, to 4 places
 # the reference date of the forecast: the last observation with no event (later than the record end)
 assert pd.Timestamp(forecast_last_obs_date) >= pd.Timestamp(data_end), \
     f"forecast_last_obs_date {forecast_last_obs_date} is before the end of the InSAR record {data_end}"
@@ -1025,7 +1025,7 @@ axes[2].set_xlabel("Year")
 axes[2].set_ylabel("P(onset by t)")
 utils.panel_title(axes[2], "C", "Forecast from each single fit")
 fig.tight_layout()
-f_models = os.path.join(fig_dir, "qc11_renewal_models_single_fits.png")
+f_models = os.path.join(fig_dir, "qc_renewal_models_single_fits.png")
 fig.savefig(f_models, dpi=300)
 fig.savefig(f_models.replace(".png", ".pdf"))
 print("Saved figure to:", f_models)

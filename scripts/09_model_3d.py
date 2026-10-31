@@ -53,8 +53,9 @@
 # `montecarlo_realisations.csv`, `montecarlo_summary.csv`, `stress_drop.csv`, `near_fault_deflection.csv`,
 # `09_selected_stats.txt`. **Registry keys** `09_*`.
 #
-# **Figures** (`Figures_<fig_date>/`): `figS_model_lcurve`, `figS_model_slip`, `figS_model_fit_maps`,
-# `figS_model_profiles`, `figS_model_montecarlo`, `figS_pylith_materials_sfcvm_v26` (`scripts/model_plots/plot_materials.py`).
+# **Figures** (`Figures_<fig_date>/`, each name ending in the dip of the model, `model_config.selected_dip_tag`, e.g.
+# `_dip70w`): `figS_model_lcurve`, `figS_model_slip`, `figS_model_fit_maps`, `figS_model_profiles`,
+# `figS_model_montecarlo`; `figS_pylith_materials_sfcvm_v26` (`scripts/model_plots/plot_materials.py`).
 #
 # **What to check**
 # - Section 2: every PyLith file exists, including the completion marker of the run.
@@ -432,8 +433,9 @@ def save(fig, name):
     fig : matplotlib.figure.Figure
         The figure.
     name : str
-        File name without extension.
+        File name without extension; the dip of the preferred model (`model_config.selected_dip_tag`) is appended.
     """
+    name = f"{name}_{cfg.selected_dip_tag}"
     for ext in ("png", "pdf"):
         fig.savefig(os.path.join(fig_dir, f"{name}.{ext}"), dpi=300, facecolor="white")
     print("saved", os.path.join(fig_dir, name + ".png"))
