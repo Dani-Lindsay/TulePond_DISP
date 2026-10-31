@@ -811,15 +811,15 @@ def cfw_level(t_edge, side):
 
 cfw_rows = []
 for _, event in events_tulepond.iterrows():
-    window_start = event.onset_lo
-    window_end = event.onset_hi
+    window_start = utils.date_to_decimal_year(pd.Timestamp(event.onset_lo_utc))     # the exact window of 04 (UTC times)
+    window_end = utils.date_to_decimal_year(pd.Timestamp(event.onset_hi_utc))
     level_start, time_start = cfw_level(window_start, +1)
     level_end, time_end = cfw_level(window_end, -1)
     in_window = (cfw_dates >= window_start) & (cfw_dates <= window_end)
     hours_with_data = len(np.unique(np.floor(cfw_dates[in_window] * 365.25 * 24)))
     window_hours = (window_end - window_start) * 365.25 * 24
     cover_pct = min(100.0, 100 * hours_with_data / window_hours)
-    cfw_rows.append(dict(onset_lo=event.onset_lo, onset_hi=event.onset_hi, win_days=(window_end - window_start) * 365.25, cover_pct=cover_pct,
+    cfw_rows.append(dict(onset_day=event.onset_day, onset_lo=window_start, onset_hi=window_end, win_days=(window_end - window_start) * 365.25, cover_pct=cover_pct,
                          slip_win_mm=level_end - level_start, span_win_d=(time_end - time_start) * 365.25,
                          expect_win_mm=cfw_rate * (time_end - time_start), insar_mm=event.amplitude_mm))
 cfw_windows = pd.DataFrame(cfw_rows)
@@ -1094,7 +1094,7 @@ near_lines = [f"CFW1 CATALOGUE EVENTS (ALL TYPES) OVERLAPPING EACH TULE POND InS
 for event in events_tulepond.itertuples():
     window_start = acquisition_day(event.onset_lo)                          # start of the pre-event acquisition day
     window_end = acquisition_day(event.onset_hi) + one_day                  # end of the post-event acquisition day (exclusive)
-    window_slip = cfw_windows.loc[np.isclose(cfw_windows.onset_lo, event.onset_lo, rtol=0, atol=1e-6), "slip_win_mm"]
+    window_slip = cfw_windows.loc[cfw_windows.onset_day == event.onset_day, "slip_win_mm"]
     assert len(window_slip) == 1, f"window {event.onset_lo}: no single CFW1 window slip in section 6"
     row_base = dict(event_year=int(event.onset_lo), window_first_day=window_start.date(), window_last_day=(window_end - one_day).date(),
                     cfw1_window_slip_mm=round(float(window_slip.iloc[0]), 2),
@@ -1291,7 +1291,8 @@ for k, (row_index, event_id, step_epoch) in enumerate(added):
 
 # the noise of a single-interval step: trial epochs in clear intervals, each with the full model
 clear_yr = noise_clear_days / 365.25
-busy_spans = [(event.onset_lo, event.onset_hi) for event in events_all.itertuples()]
+busy_spans = [(utils.date_to_decimal_year(pd.Timestamp(event.onset_lo_utc)), utils.date_to_decimal_year(pd.Timestamp(event.onset_hi_utc)))
+              for event in events_all.itertuples()]                     # the exact windows of 04
 cfw1_large = cfw1_catalogue[cfw1_catalogue["Displacement, mm"] >= noise_gittins_min_mm]
 for _, catalogued in cfw1_large.iterrows():
     busy_spans.append((utils.date_to_decimal_year(catalogued["Start Time"].to_pydatetime()),
@@ -1928,7 +1929,7 @@ REG.register("05_step_rms_mm_yr", agreement_stats["step"]["rms"], "mm/yr", 2, wh
 REG.register("05_step_bias_mm_yr", agreement_stats["step"]["bias"], "mm/yr", 2, where="M4", cell="agreement", sidecar=sidecar)
 REG.register("05_noise_floor_det_rmse_mm", floor_rmse, "mm", 2, where="P2, M4", cell="noise-floor", sidecar=sidecar)
 for _, window in cfw_windows.iterrows():
-    onset_tag = f"{window.onset_lo:.2f}".replace(".", "p")             # key label: the window start
+    onset_tag = window.onset_day.replace("-", "_")                       # key label: the onset day (UTC)
     REG.register(f"05_cfw1_win_{onset_tag}_mm", window.slip_win_mm, "mm", 2, where="P3, Fig S validation", cell="cfw1-windows", sidecar=sidecar)
     REG.register(f"05_cfw1_win_{onset_tag}_expected_mm", window.expect_win_mm, "mm", 2, where="P3", cell="cfw1-windows", sidecar=sidecar)
     REG.register(f"05_cfw1_win_{onset_tag}_data_pct", window.cover_pct, "%", 0, where="P3", cell="cfw1-windows", sidecar=sidecar)

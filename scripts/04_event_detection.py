@@ -1254,7 +1254,8 @@ for _, site in aa_summary.iterrows():
         rate_window_se = np.nan
     aa_rows.append(dict(code=site.site_code, name=site.site_name, lat=site.lat_deg, lon=site.long_deg, km=float(to_km([site.lat_deg])[0]),
                         rate_window=rate_window, rate_window_se=rate_window_se, n_window=len(surveys_in_window), span_window=span_in_window,
-                        rate_longterm=float(site["rate_lnrr"]), first_yr=float(site["first_yr"]), last_yr=float(site["last_yr"])))
+                        rate_longterm=float(site["rate_lnrr"]), rate_longterm_se=float(site["lnrr_sterr"]),
+                        first_yr=float(site["first_yr"]), last_yr=float(site["last_yr"])))
 aa_rates = pd.DataFrame(aa_rows).sort_values("km")
 print(f"{len(aa_rates)} Hayward arrays within {aa_max_dist_km:g} km of the trace; {aa_rates.rate_window.notna().sum()} refit over the InSAR window")
 
@@ -1391,14 +1392,15 @@ print("events in the window by catalogue span: " + "; ".join(catalogue_spans))
 # above the inter-event rate $u_x(t)$ of section 9 on a regular 6 day grid (GMT grids must be regular), each
 # node taking the nearest acquisition and left blank where none lies within 9 d. The per-event profiles are
 # the running sums of the five per-crossing steps $A_{k,x}$ of section 8 along strike, smoothed with the
-# 0.2 km Gaussian. The creep rates are the smoothed inter-event, event-driven and total rates of section 12
+# 0.2 km Gaussian. The creep rates are the inter-event, event-driven and total rates of section 12, smoothed
+# along the whole fault with the 0.5 km Gaussian of the supplement creep-rate figure (`rate_smooth_km`, section 15),
 # in the window, with the 5 to 95 % range of the per-crossing rates within 0.5 km along the trace, kept only
 # where at least 5 crossings have a rate. The band stack is the mean series of section 11 with its joint
 # model, split into the epochs between events and the epochs next to each step.
 #
 # The file also holds the trace, the EPSG code and the map strike (notebook 14 rebuilds the strike frame from
 # them), the window and band limits, the earthquakes and repeating earthquakes in the window (section 13),
-# the alignment-array rates (section 12), the creepmeter rates with their 1-sigma errors, and a provenance
+# the whole-record alignment-array rates (USGS archive, `rate_lnrr` with its standard error), the creepmeter rates with their 1-sigma errors, and a provenance
 # string.
 
 # %%
@@ -1467,15 +1469,20 @@ for i in range(step_epochs_tulepond.size):
     running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], km_window, profile_smooth_km)))
     cum_prof[i] = running
 
-# --- d) the creep rates of D on the window, south to north: the smoothed rates bridged across gaps as C, and the 5-95 %
-# range of the per-crossing rates within +/- rate_band_half_km (NaN with fewer than rate_band_min_n crossings: not bridged,
-# so the shading shows where crossings exist)
-budget_window = slip_budget[(slip_budget.km >= w_lo) & (slip_budget.km <= w_hi)].sort_values("km")
+# --- d) the creep rates of D on the window, south to north: the per-crossing rates of the whole fault smoothed with the
+# 0.5 km Gaussian of the supplement creep-rate figure (section 15), bridged across gaps as C, and the 5-95 % range of the
+# per-crossing rates within +/- rate_band_half_km (NaN with fewer than rate_band_min_n crossings: not bridged, so the
+# shading shows where crossings exist)
+budget_sorted = slip_budget.sort_values("km")
+budget_rate_smooth = {name: gaussian_smooth_km(budget_sorted[name].values, budget_sorted["km"].values, rate_smooth_km)
+                      for name in ("secular", "event_rate", "total")}
+in_window_budget = ((budget_sorted.km >= w_lo) & (budget_sorted.km <= w_hi)).values
+budget_window = budget_sorted[in_window_budget]
 km_budget = budget_window.km.values
 rate_lines = {}
 rate_bands = {}
 for name in ("secular", "event_rate", "total"):
-    rate_lines[name] = interp_nan(km_budget, budget_window[f"{name}_smooth"].values)
+    rate_lines[name] = interp_nan(km_budget, budget_rate_smooth[name][in_window_budget])
     per_crossing = budget_window[name].values
     band_lo_hi = np.full((km_budget.size, 2), np.nan)
     for j, km_j in enumerate(km_budget):
@@ -1514,8 +1521,9 @@ fig1_in = dict(
     cum_prof=cum_prof, km_window=km_window, step_epochs=step_epochs_tulepond,
     # D) the creep rates, the alignment arrays and the creepmeters
     km_budget=km_budget, rate_band_half_km=rate_band_half_km, span=span,
-    aa_km=aa_rates.km.to_numpy(float), aa_rate_window=aa_rates.rate_window.to_numpy(float),
-    aa_rate_window_se=aa_rates.rate_window_se.to_numpy(float),
+    aa_km=aa_rates.km.to_numpy(float), aa_rate_longterm=aa_rates.rate_longterm.to_numpy(float),
+    aa_rate_longterm_se=aa_rates.rate_longterm_se.to_numpy(float), aa_first_yr=aa_rates.first_yr.to_numpy(float),
+    aa_last_yr=aa_rates.last_yr.to_numpy(float),
     cm_codes=np.array(cm_codes), cm_km=np.array([cm_rates[code][0] for code in cm_codes], float),
     cm_rate=np.array([cm_rates[code][1] for code in cm_codes], float),
     cm_rate_sigma=np.array([cm_rate_sigma[code] for code in cm_codes], float),
