@@ -595,8 +595,10 @@ W_model = 2 * Wp + gap_col                          # the slip-model panels span
 print(f"map panels {Wm:.2f} x {Hm:.2f} cm; figure ~{x_prof + W_model + 0.7:.1f} x {3 * Hpair + 2 * gap_row + 0.9:.1f} cm")
 lim_prof_los = {"rate": 6.0, "event": 6.0}          # LOS profile axes (mm/yr, mm)
 lim_prof_fpup = {"rate": 10.0, "event": 10.0}       # fault-parallel and vertical profile axes (mm/yr, mm)
-pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY=annot_font, FONT_LABEL=annot_font, MAP_FRAME_TYPE="plain",
-             MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p", FORMAT_GEO_MAP="ddd.xx")
+# GMT keeps these settings per figure, so they are applied right after each figure is made (section 12)
+gmt_settings = dict(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY=annot_font, FONT_LABEL=annot_font, MAP_FRAME_TYPE="plain",
+                    MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p",
+                    FORMAT_GEO_MAP="ddd.xx")
 
 
 def colour_bar_font_pt(bar_length_cm):
@@ -1172,6 +1174,7 @@ def draw_fig2(rate_maps, event_maps, profile_set, event_label, stem, cols, ylabs
         Half-ranges of the profile axes ("rate", "event").
     """
     fig = pygmt.Figure()
+    pygmt.config(**gmt_settings)
     # row 1: the inter-event rate. A, B the maps; C, D the profiles (arrays, CFW1, the gauge and ZOA1 on B)
     los_maps(fig, rate_maps, True, "rate", ["A", "B"], "mm/yr", "Inter-event rate", cols, headings=True, stations_on=("B",))
     fig.shift_origin(xshift=f"{x_prof}c", yshift=f"{Hp + gap_pair}c")
