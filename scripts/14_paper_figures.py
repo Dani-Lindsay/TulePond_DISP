@@ -249,9 +249,10 @@ for name in ("secular", "event_rate", "total"):
 fig.plot(x=[-50], y=[w_lo], style="s0.2c", fill="gray50@70", label=f"5-95 % of crossings within ±{rate_band_half_km:g} km")
 arrays_window = aa_rates[(aa_rates.km >= w_lo) & (aa_rates.km <= w_hi) & aa_rates.rate.notna()]
 aa_purple = "#CC79A7"                                                 # Okabe-Ito reddish purple, as the arrays of the creep-rate figure
+fig.plot(x=arrays_window.rate.values, y=arrays_window.km.values, style="d0.13c", pen="0.7p," + aa_purple,
+         label="Alignment arrays (whole record)")                     # open diamonds
 fig.plot(data=np.column_stack([arrays_window.rate.values, arrays_window.km.values, arrays_window.rate_se.values]),
-         error_bar="x+p0.6p," + aa_purple + "+w0c", style="d0.2c", fill="white", pen="0.8p," + aa_purple,
-         label="Alignment arrays (whole record)")                     # +/- 1 standard error
+         error_bar="x+p0.7p," + aa_purple + "+w0.07c", style="p0.01c", fill=aa_purple)   # +/- 1 standard error, drawn over the symbol
 creepmeter_legend_done = False                                        # one legend entry for the creepmeters
 for code, (km_cm, rate_cm) in cm_rates.items():
     if w_lo <= km_cm <= w_hi:
