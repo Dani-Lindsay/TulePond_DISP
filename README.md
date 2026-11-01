@@ -81,7 +81,7 @@ converted on reading (`insar_utils.from_calendar_decimal_years`).
 
 ## Data
 
-The results directory (`data_dir`) holds only what the notebooks read, in the layout of the Zenodo deposit [DOI TBD]:
+The results directory (`data_dir`) holds only what the notebooks read, in the layout of the Zenodo deposit (doi:10.5281/zenodo.23850500, built by `scripts/zenodo_package.py`):
 
 | Directory | Contents |
 |---|---|
