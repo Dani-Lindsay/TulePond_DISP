@@ -3,48 +3,50 @@
 #
 # ```
 # Author: Danielle Lindsay
-# Environment: opera_disp_feb13. Run time: about 10 minutes (4000 timing draws x 5 bootstrap refits per model, record and
+# Environment: opera_disp_feb13. Run time: about 5 minutes (4000 timing draws x 5 bootstrap refits per model, record and
 # aperiodicity branch).
 # ```
 #
 # **What this notebook does.** It computes the repeat intervals, the renewal forecasts and the prediction statement
 # from the event catalogues of 04 and 11 and the rainfall products of 12_rain_seasonality.
 #
+# **Terms.** An *onset* is the start of an SSE. It is known only to lie within its *onset window*, from the last
+# acquisition (or array survey) before the SSE step to the first one after it. The *repeat interval* is the time
+# between the onsets of two consecutive SSEs of the same record.
+#
 # 1. **Repeat intervals** (section 6; computed only in this notebook). For each of `n_timing` draws of the onsets,
-#    uniform within their windows (no midpoints), the sample mean and sample SD of the intervals of a record are
+#    uniform within their windows (no midpoints), the sample mean and sample SD of the repeat intervals of a record are
 #    computed; both are averaged over the draws, and COV = SD / mean. "+/-" is 1 SD of the intervals, not a standard
 #    error. The records are the InSAR record (5 events, 4 intervals), the bimonthly-era HRKT array record without the
-#    interval that spans Loma Prieta (`aa_dense_nolp`, 9 events, 7 intervals) and with it (`aa_dense_withlp`, 8
-#    intervals), and the combined record (`merged`, 14 events, 11 intervals; no interval across the unobserved 2006
-#    to 2017 gap and none across Loma Prieta). Fig 3C draws the same statistics.
-# 2. **Renewal forecast** of the next onset (sections 4 to 6). The intervals of each draw are fitted by exponential,
-#    lognormal, Weibull, Brownian passage time (BPT) and Gaussian models, with a parametric bootstrap, and the
-#    forecast is conditioned on no event through the last observation, `forecast_last_obs_date` (TulePond_filepaths,
-#    the last descending acquisition of the CSLC + Dolphin extension). The BPT aperiodicity $\alpha$ is the
-#    maximum-likelihood estimate of the inverse-Gaussian shape (section 4), averaged over the onset draws; it is not
-#    the sample COV of step 1. The InSAR record of the paper ends at the data end, the last acquisition on both tracks
-#    (read from `fp_ts.csv` of 03).
+#    interval that spans Loma Prieta (`aa_dense_nolp`, 9 events, 7 intervals) and the combined record (`merged`, 14
+#    events, 11 intervals; no interval across the unobserved 2006 to 2017 gap and none across Loma Prieta). The array
+#    record with the Loma Prieta interval (`aa_dense_withlp`, 8 intervals) is kept for its interval statistics only (the
+#    onset-window table of the supplement). Fig 3C draws the same statistics.
+# 2. **Renewal forecast** of the next onset (sections 4 to 6). The repeat intervals of each draw are fitted by the
+#    Brownian passage time (BPT) model, with its mean and aperiodicity fitted by maximum likelihood (Ellsworth et al.
+#    1999); the aperiodicity is close to, but not the same as, the sample COV of step 1, and both are reported.
+#    Lognormal and Weibull fits are the check that the window does not depend on the model. Each fit is refitted to synthetic intervals (a parametric bootstrap, as Ellsworth et al. 1999
+#    do), and the forecast is conditioned on no event through the last observation, `forecast_last_obs_date`
+#    (TulePond_filepaths, the last descending acquisition of the CSLC + Dolphin extension). The InSAR record of the
+#    paper ends at the data end, the last acquisition on both tracks (read from `fp_ts.csv` of 03).
 # 3. **The Working Group aperiodicities** (section 7). WGCEP 1999 (USGS OFR 99-517, printed p16) used $\alpha$ = 0.3,
 #    0.5 and 0.7 as weighted branches rather than a fitted $\alpha$. The BPT forecast of each record is computed with
 #    $\alpha$ fixed at each branch (only the mean refitted), and the branches are mixed with the weights 0.2, 0.6 and
-#    0.2, the three-way branch convention of the report (App. C, printed p31). The $\alpha$ weights themselves are not
-#    printed in OFR 99-517, so the mixture is also computed with two other weightings. For the InSAR record this
-#    section also gives the 95 % CI of the fitted $\alpha$ from its chi-square pivot, the forecast with $\alpha$ drawn
-#    from that pivot, and the falsification dates, at which the conditional probability of no event under the
-#    fitted-$\alpha$ model falls to 5 % and to 1 %.
-# 4. **The InSAR clock** in closed form (section 8): the mean interval and a t-based prediction interval, on the same
-#    onset draws as step 1.
-# 5. **The inputs of Fig 3** (section 9). The interval ranges, interval statistics and BPT forecasts of the records
+#    0.2, the three-way branch convention of the report (App. C, printed p31). The falsification dates are the dates
+#    at which the conditional probability of no event under the InSAR BPT falls to 5 % and to 1 %.
+# 4. **The inputs of Fig 3** (section 8). The interval ranges, interval statistics and BPT forecasts of the records
 #    drawn in Fig 3C and 3D are written to `fig3_inputs.npz`. Notebook 14 draws Fig 3 from this file and the products
 #    of 11 and 12.
-# 6. **The prediction statement** (section 10). It combines the recurrence windows with the calendar window of the
+# 5. **The prediction statement** (section 9). It combines the recurrence windows with the calendar window of the
 #    onsets from `rain_conditioning_summary.csv` of 12_rain_seasonality, where the rainfall-conditioning tests are
 #    computed.
 #
-# **Loma Prieta.** The array forecast is given both without and with the interval spanning the 1989 earthquake (keys
-# `_nolp` and `_withlp`), as WGCEP 1999 ran its BPT calculations with and without the stress-interaction clock changes
-# in parallel (printed p17). The paper quotes `_nolp`, since creep on the southern Hayward fault was suppressed after
-# Loma Prieta (Lienkaemper et al. 1997).
+# **Loma Prieta.** The array and combined forecasts leave out the interval spanning the 1989 earthquake, since creep
+# on the southern Hayward fault was suppressed after Loma Prieta (Lienkaemper et al. 1997).
+#
+# **Not done.** The exponential (Poisson) model, which Ellsworth et al. (1999) reject for recurrent events; the
+# Gaussian, which gives probability to negative intervals (Matthews et al. 2002, p2234); and model ranking by
+# goodness of fit, which Matthews et al. (2002, Appendix 1) show cannot tell the two-parameter models apart.
 #
 # **Wet season.** October to April, `TulePond_filepaths.wet_season_months` = (first month, last month), shared with the
 # onset-season count of 12_rain_seasonality; this notebook checks it against the months saved by 12_rain_seasonality.
@@ -66,20 +68,17 @@
 #
 # **Outputs** (`outputs/13_forecast/`): `recurrence_forecast_models.csv` (every record and model, with the interval
 # statistics, quantiles and P(wet season)); `recurrence_intervals.csv` (the interval statistics of each record);
-# `recurrence_forecast_wg99.csv` (every record and aperiodicity branch, the mixtures and the InSAR alpha-pivot
-# forecast); `fig3_inputs.npz` (the inputs of Fig 3 from this notebook, section 9); `prediction_statement.txt`; the
-# stats sidecar `13_forecast_stats.txt`; registry rows `13_*` and, per record, `13_<rec>_*` (section 11).
+# `recurrence_forecast_wg99.csv` (every record and aperiodicity branch, and the mixtures); `fig3_inputs.npz` (the
+# inputs of Fig 3 from this notebook, section 8); `prediction_statement.txt`; the stats sidecar
+# `13_forecast_stats.txt`; registry rows `13_*` and, per record, `13_<rec>_*` (section 10).
 #
-# **Figures**: the five renewal models (`qc_renewal_models_single_fits`, supplement). The paper's Fig 3
+# **Figures**: the three renewal models (`figS_renewal_single_fits`, supplement). The paper's Fig 3
 # (`fig3_history_forecast_ntiming4000_nboot5_issue<date>`) is drawn by notebook 14 from `fig3_inputs.npz`.
 #
-# **What to check.** The closed-form InSAR clock date (`13_next_clock_date`) and its 95 % prediction interval
-# (`13_pi95_lo`, `13_pi95_hi`). The clock is unconditional; the printout in section 8 lists any of its dates that fall
-# before the last observation, and these are not a forecast window. The InSAR BPT 5-95 % window (`13_insar_bpt_q05`,
-# `13_insar_bpt_q95`) against the coming wet season, with the fitted $\alpha$ and with the Working Group
-# aperiodicities (`13_insar_bpt_wg99_p_wet_wy<N>`), and the same for the array and merged records (sections 6 and 7).
-# The range of the mixture's P(wet season) over the alternative weightings is printed in section 7. Every number is
-# registered in section 11.
+# **What to check.** The InSAR BPT 5-95 % window (`13_insar_bpt_q05`, `13_insar_bpt_q95`) against the coming wet
+# season, with the fitted aperiodicity and with the Working Group aperiodicities
+# (`13_insar_bpt_wg99_p_wet_wy<N>`), and the same for the array and merged records (sections 6 and 7). Every number is
+# registered in section 10.
 
 # %% [markdown]
 # ## 1. Imports and settings
@@ -87,10 +86,9 @@
 # The forecast settings, the Working Group aperiodicity branches, the wet season and the input files.
 #
 # **Random numbers.** Every generator is a fresh `np.random.default_rng(seed)`. The forecast of section 6 uses one
-# generator, which feeds, in order, the interval draws of each record and then its five model forecasts. Each
-# aperiodicity branch and the alpha-pivot forecast of section 7 have a generator each, so the three branches use the
-# same onset and bootstrap draws and differ only in $\alpha$. The closed-form clock of section 8 has no generator of
-# its own; it reads the InSAR onset draws of section 6.
+# generator, which feeds, in order, the interval draws of each record and then its three model forecasts. Each
+# aperiodicity branch of section 7 has a generator of its own, so the three branches use the same onset and bootstrap
+# draws and differ only in $\alpha$.
 
 # %%
 import calendar
@@ -104,6 +102,7 @@ import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
 from scipy import stats                          # the renewal distributions
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D             # legend handles of the single-fits figure
 
 # %%
 notebook = "13_forecast"
@@ -117,36 +116,33 @@ os.makedirs(fig_dir, exist_ok=True)
 loma_prieta = loma_prieta_yr   # 17 Oct 1989 (TulePond_filepaths, as in 11 and 12)
 n_timing = 4000                # timing draws: onsets drawn uniformly in their windows
 n_boot = 5                     # bootstrap refits per timing draw (per catalogue and model): 4000 x 5 = 20000 curves per mean
-#                                forecast curve; a Monte Carlo setting (the parametric bootstrap does not widen alpha
-#                                beyond its refits, which are biased low; the alpha-pivot forecast of section 7 does)
-seed = 7                       # every generator starts from it (section 1)
+#                                forecast curve
+seed = 7                      # every generator starts from it (section 1)
 # The forecast is conditioned on no event through the last observation, forecast_last_obs_date
 # (TulePond_filepaths: the last descending acquisition of the CSLC + Dolphin extension). The InSAR record of
 # the paper ends earlier, at the data end (the end of the fault-parallel series, read from the data below).
 # forecast_issue_date is the date the statement was first written (fixed, so that the file names are stable);
 # nothing is stated for the months after the last observation.
-models = ["exponential", "lognormal", "weibull", "bpt", "gaussian"]
+models = ["bpt", "lognormal", "weibull"]          # the BPT is the forecast; lognormal and Weibull are the check
 resolvable_days = aa_dense_window_days   # array windows longer than this (d) do not constrain the season (TulePond_filepaths: the bimonthly era of 11)
 min_interval_yr = 0.05         # bootstrap intervals shorter than this are clipped to it (counted and reported)
 max_degenerate_fraction = 0.01   # at most this share of the forecast curves may come from a refit with zero survival
-grid_span_means = 4.0          # the forecast grid runs this many of the longest mean interval past the last observation
-#                                (the 95 % quantile of the exponential lies 3.0 means after it, -ln 0.05; one more mean
-#                                allows for the bootstrap spread of the mean); its start and end are derived in section 3
+grid_span_means = 4.0          # the forecast grid runs this many of the longest mean interval past the last observation,
+#                                beyond the 95 % quantile of every forecast (p_by_grid_end is written and checked); its
+#                                start and end are derived in section 3
 
 # the Working Group aperiodicities: WGCEP (1999), "Earthquake Probabilities in the San Francisco Bay Region: 2000 to
 # 2030 - A Summary of Findings", USGS Open-File Report 99-517, printed p16: "For the aperiodicity, WG99 used three
 # (weighted) values: 0.3, 0.5, and 0.7" (representative of the 37 sequences of Ellsworth et al.). The alpha weights
 # are not printed in the report; the weights below are its stated convention for a three-way branch point (App. C,
 # printed p31: "branch weights of 0.2, 0.6, and 0.2 ... corresponding roughly to a confidence interval of one
-# standard deviation"). The alternative weightings are a sensitivity test only (equal weights, and 0.2/0.5/0.3, the
-# one other three-way weighting in the report, Table 2, for a different quantity); WG99 mixes branch probabilities
-# by weighted mean (printed p18), so the branch cdfs are mixed with the weights.
+# standard deviation"). WG99 mixes branch probabilities by weighted mean (printed p18), so the branch cdfs are mixed
+# with the weights.
 wg99_alpha_branches = (0.3, 0.5, 0.7)
 wg99_alpha_weights = (0.2, 0.6, 0.2)
-wg99_alternative_weights = {"equal": (1 / 3, 1 / 3, 1 / 3), "0.2/0.5/0.3": (0.2, 0.5, 0.3)}
-assert abs(sum(wg99_alpha_weights) - 1) < 1e-12 and all(abs(sum(w) - 1) < 1e-12 for w in wg99_alternative_weights.values())
-# falsification: the dates by which the conditional probability of no event under the fitted-alpha InSAR model (its
-# survival, 1 - the conditional cdf) falls to these levels; no event by then rejects that model at 1 - level
+assert abs(sum(wg99_alpha_weights) - 1) < 1e-12
+# falsification: the dates by which the conditional probability of no event under the InSAR BPT (its survival,
+# 1 - the conditional cdf) falls to these levels; no event by then rejects that model at 1 - level
 falsification_levels = (0.05, 0.01)
 
 # the wet season, (first month, last month), October to April: the same definition as the onset count of
@@ -267,9 +263,8 @@ def wet_season_of(wy):
 # where $t_{\mathrm{lo},5}$ is the start of the last InSAR window (decimal year), $\lceil\cdot\rceil$ rounds up to
 # the next whole decimal year (1 January to within a day), $t_\mathrm{obs}$ is the last observation, $g$ =
 # `grid_span_means` (4) and $\bar x_\mathrm{max}$ is the longest mean interval of the four records computed from
-# point onsets (the window midpoints). The 95 % quantile of an exponential lies $-\ln 0.05 \approx 3$ means after the reference date, and one more mean allows for
-# the bootstrap spread of the mean. Every conditional curve is zero until the last observation, which must lie on the
-# grid (asserted).
+# point onsets (the window midpoints). This reaches well beyond the 95 % quantile of every forecast. Every conditional
+# curve is zero until the last observation, which must lie on the grid (asserted).
 #
 # **Wet season of the forecast.** The first water year whose wet season ends after the last observation.
 #
@@ -300,6 +295,8 @@ catalogues = {"A_insar": (insar_events, False), "B_aa_dense": (aa_dense, False),
 # the key of each catalogue in the registry and the files: B_aa_dense keeps the Loma Prieta interval (withlp) and
 # B_aa_dense_noLP leaves it out (nolp)
 record_keys = {"A_insar": "insar", "B_aa_dense": "aa_dense_withlp", "B_aa_dense_noLP": "aa_dense_nolp", "C_merged": "merged"}
+# the records that are forecast; B_aa_dense (with the Loma Prieta interval) gives its interval statistics only
+forecast_records = ["A_insar", "B_aa_dense_noLP", "C_merged"]
 n_insar_events = len(insar_events)
 n_aa_events = len(aa_dense)
 print(f"InSAR {n_insar_events} events; array bimonthly era {n_aa_events} events (windows <= {resolvable_days} d); "
@@ -390,40 +387,33 @@ assert int(rain_value("n_insar_onsets")) == n_insar_events, "12's rain summary w
 # with $t_\mathrm{LP}$ = `loma_prieta` (decimal year). Below, $x_1, \dots, x_n$ are the $n$ intervals of one draw (yr)
 # and $\bar x$ their mean.
 #
-# **The five models** (`fit_interval_model`), each with density $f(x)$ and the fitted parameters:
+# **The three models** (`fit_interval_model`), each with density $f(x)$ and the fitted parameters:
 #
-# - Exponential (Poisson process): $f(x) = \mu^{-1} e^{-x/\mu}$, with the mean $\hat\mu = \bar x$ (the
-#   maximum-likelihood estimate).
+# - Brownian passage time, the inverse-Gaussian distribution (Matthews et al. 2002), the forecast model:
+#
+#   $$f(x) = \sqrt{\frac{\mu}{2\pi\alpha^2 x^3}} \exp\left[-\frac{(x - \mu)^2}{2\alpha^2\mu x}\right],$$
+#
+#   where $\mu$ is the mean interval (yr) and $\alpha$ the aperiodicity, the ratio of the standard deviation of the
+#   distribution to its mean, "equivalent to the familiar coefficient of variation" (Ellsworth et al. 1999, p3). In the
+#   usual inverse-Gaussian form with shape $\lambda$ (yr), $\alpha^2 = \mu/\lambda$. The code fits both by maximum
+#   likelihood, as Ellsworth et al. (1999) do,
+#
+#   $$\hat\mu = \bar x, \qquad \hat\alpha^2 = \frac{\bar x}{n} \sum_{j=1}^{n} \left(\frac{1}{x_j} - \frac{1}{\bar x}\right),$$
+#
+#   with $\hat\alpha^2 \ge 10^{-4}$. This $\hat\alpha$ is the coefficient of variation of the fitted distribution; it
+#   depends on the reciprocals of the intervals, so it is close to, but not the same as, the sample COV $s/\bar x$.
+#   In scipy the model is `invgauss(mu=alpha**2, scale=mu/alpha**2)`. With `alpha_fixed` (the Working Group branches
+#   of section 7) only $\hat\mu = \bar x$ is fitted.
 # - Lognormal: $f(x) = \dfrac{1}{x\,\sigma\sqrt{2\pi}} \exp\left[-\dfrac{(\ln x - m)^2}{2\sigma^2}\right]$, with
 #   $\hat m = \frac{1}{n}\sum_j \ln x_j$ and $\hat\sigma^2 = \frac{1}{n}\sum_j (\ln x_j - \hat m)^2$ (maximum
 #   likelihood; $\hat\sigma \ge 10^{-3}$).
 # - Weibull: $f(x) = \dfrac{k}{\lambda_W} \left(\dfrac{x}{\lambda_W}\right)^{k-1} e^{-(x/\lambda_W)^k}$, with the shape
 #   $k$ and the scale $\lambda_W$ (yr) fitted by maximum likelihood with the location fixed at 0 (scipy
 #   `weibull_min.fit`).
-# - Brownian passage time, the inverse-Gaussian distribution (Matthews et al. 2002):
 #
-#   $$f(x) = \sqrt{\frac{\mu}{2\pi\alpha^2 x^3}} \exp\left[-\frac{(x - \mu)^2}{2\alpha^2\mu x}\right],$$
-#
-#   where $\mu$ is the mean interval (yr) and $\alpha$ the aperiodicity, the ratio of the standard deviation of the
-#   distribution to its mean. In the usual inverse-Gaussian form with shape $\lambda$ (yr), $\alpha^2 = \mu/\lambda$.
-#   The code fits both by maximum likelihood,
-#
-#   $$\hat\mu = \bar x, \qquad \frac{1}{\hat\lambda} = \frac{1}{n} \sum_{j=1}^{n} \left(\frac{1}{x_j} - \frac{1}{\bar x}\right),
-#   \qquad \hat\alpha^2 = \frac{\hat\mu}{\hat\lambda} = \frac{\bar x}{n} \sum_{j=1}^{n} \left(\frac{1}{x_j} - \frac{1}{\bar x}\right),$$
-#
-#   with $\hat\alpha^2 \ge 10^{-4}$. This $\hat\alpha$ is the coefficient of variation of the fitted distribution; it is
-#   not the sample coefficient of variation $s/\bar x$ of the intervals, and the two differ. In scipy the model is
-#   `invgauss(mu=alpha**2, scale=mu/alpha**2)`. With `alpha_fixed` (the Working Group branches of section 7) only
-#   $\hat\mu = \bar x$ is fitted.
-# - Gaussian: mean $\bar x$ and sample standard deviation $s = \sqrt{\frac{1}{n-1}\sum_j (x_j - \bar x)^2}$
-#   ($s \ge 10^{-3}$), which is not the maximum-likelihood value.
-#
-# **Model comparison** (`aicc`). The corrected Akaike information criterion [citation needed],
-#
-# $$\mathrm{AICc} = -2 \ln L + 2p + \frac{2p(p + 1)}{n - p - 1},$$
-#
-# where $\ln L$ is the log-likelihood of the fitted model, $p$ the number of parameters (1 for the exponential, 2 for
-# the others) and $n$ the number of intervals; it is infinite when $n - p - 1 \le 0$.
+# The models are not ranked by goodness of fit: with records this short, fits cannot tell the two-parameter models
+# apart (Matthews et al. 2002, Appendix 1). The lognormal and Weibull windows are the check that the forecast does not
+# depend on the choice of model.
 #
 # **Conditional probability** (`conditional_cdf`). With the last onset at $t_L$ and no onset up to the reference date
 # $t_\mathrm{obs}$, the elapsed quiet time is $e = t_\mathrm{obs} - t_L$, and the probability of the next onset by
@@ -451,9 +441,8 @@ assert int(rain_value("n_insar_onsets")) == n_insar_events, "12's rain summary w
 # the curve does not reach $q$ on the grid). The probability of an onset between two dates $t_a$ and $t_b$ is
 # $\bar F_c(t_b) - \bar F_c(t_a)$, with $\bar F_c$ interpolated linearly on the grid.
 #
-# The functions also hold the interval statistics (`interval_statistics`, section 6), the BPT with a fixed aperiodicity
-# (`alpha_fixed`, section 7) and the fitted-$\alpha$ BPT with $\alpha$ drawn from its chi-square pivot
-# (`forecast_bpt_alpha_pivot`, section 7).
+# The functions also hold the interval statistics (`interval_statistics`, section 6) and the BPT with a fixed
+# aperiodicity (`alpha_fixed`, section 7).
 
 # %%
 def bpt_distribution(mean_yr, alpha):
@@ -479,17 +468,16 @@ def bpt_distribution(mean_yr, alpha):
 def fit_interval_model(model, intervals, alpha_fixed=None):
     """Fit one renewal model to a set of intervals (section 4).
 
-    exponential: mean = the mean interval. lognormal: mean and standard deviation of the log intervals (maximum
-    likelihood). weibull: scipy maximum likelihood, location 0. bpt (Brownian passage time, the inverse Gaussian;
-    Matthews et al. 2002): mean mu = the mean interval, shape lambda from 1/lambda = mean(1/x - 1/mu) (maximum
-    likelihood), aperiodicity alpha^2 = mu / lambda; scipy's invgauss(mu=alpha^2, scale=mu/alpha^2). With alpha_fixed
-    (bpt only, the Working Group branches): mu = the mean interval and alpha = alpha_fixed. gaussian: mean and sample
-    standard deviation (ddof = 1).
+    bpt (Brownian passage time, the inverse Gaussian; Matthews et al. 2002): mean mu = the mean interval, shape lambda
+    from 1/lambda = mean(1/x - 1/mu) (maximum likelihood), aperiodicity alpha^2 = mu / lambda; scipy's
+    invgauss(mu=alpha^2, scale=mu/alpha^2). With alpha_fixed (the Working Group branches): mu = the mean interval and
+    alpha = alpha_fixed. lognormal: mean and standard deviation of the log intervals (maximum likelihood). weibull:
+    scipy maximum likelihood, location 0.
 
     Parameters
     ----------
     model : str
-        'exponential', 'lognormal', 'weibull', 'bpt' or 'gaussian'.
+        'bpt', 'lognormal' or 'weibull'.
     intervals : array-like
         Repeat intervals (yr).
     alpha_fixed : float, optional
@@ -503,50 +491,17 @@ def fit_interval_model(model, intervals, alpha_fixed=None):
     assert alpha_fixed is None or model == "bpt", "alpha_fixed is a BPT setting"
     if model == "bpt" and alpha_fixed is not None:
         return bpt_distribution(intervals.mean(), alpha_fixed)
-    if model == "exponential":                    # Poisson process: memoryless
-        return stats.expon(scale=intervals.mean())
+    if model == "bpt":                            # Brownian passage time = inverse Gaussian, maximum likelihood
+        mean = intervals.mean()
+        alpha2 = max(mean * np.mean(1 / intervals - 1 / mean), 1e-4)
+        return stats.invgauss(mu=alpha2, scale=mean / alpha2)
     if model == "lognormal":
         log_intervals = np.log(intervals)
         return stats.lognorm(s=max(log_intervals.std(), 1e-3), scale=np.exp(log_intervals.mean()))
     if model == "weibull":
         shape, _, scale = stats.weibull_min.fit(intervals, floc=0)
         return stats.weibull_min(c=shape, scale=scale)
-    if model == "bpt":                            # Brownian passage time = inverse Gaussian
-        mean = intervals.mean()
-        alpha2 = max(mean * np.mean(1 / intervals - 1 / mean), 1e-4)
-        return stats.invgauss(mu=alpha2, scale=mean / alpha2)
-    if model == "gaussian":
-        return stats.norm(loc=intervals.mean(), scale=max(intervals.std(ddof=1), 1e-3))
     raise ValueError(model)
-
-
-def aicc(model, intervals):
-    """Corrected Akaike information criterion of one model on the intervals (section 4).
-
-    AICc = -2 lnL + 2k + 2k(k + 1) / (n - k - 1), infinite when n - k - 1 <= 0.
-
-    Parameters
-    ----------
-    model : str
-        Model name (see fit_interval_model).
-    intervals : array-like
-        Repeat intervals (yr).
-
-    Returns
-    -------
-    aicc : float
-    loglike : float
-        Log-likelihood of the fitted model.
-    """
-    dist = fit_interval_model(model, intervals)
-    loglike = dist.logpdf(intervals).sum()
-    n_param = 1 if model == "exponential" else 2
-    n = len(intervals)
-    if n - n_param - 1 > 0:
-        correction = 2 * n_param * (n_param + 1) / (n - n_param - 1)
-    else:
-        correction = np.inf
-    return -2 * loglike + 2 * n_param + correction, loglike
 
 
 def interval_mask(onsets_sorted, src, drop_lp):
@@ -750,41 +705,6 @@ def last_onset(catalogue, onsets, t_last_window, rng):
     return float(rng.uniform(*t_last_window))
 
 
-def forecast_bpt_alpha_pivot(catalogue, drop_lp, t_last_window, ref_yr, rng):
-    """Fitted-alpha BPT forecast with the uncertainty of alpha (section 7).
-
-    For each of n_timing onset draws (n intervals x) the mean mu = mean(x), and n_boot values of alpha from the
-    chi-square pivot of the inverse Gaussian, lambda * sum(1/x - 1/mu) ~ chi2(n - 1), so alpha^2 = mu * sum(1/x - 1/mu)
-    / chi2(n - 1) (a flat-prior approximation to the Bayesian approach of Ellsworth et al. 1999, p7). Conditioned as
-    forecast().
-
-    Parameters
-    ----------
-    catalogue, drop_lp, t_last_window, ref_yr, rng
-        As in forecast().
-
-    Returns
-    -------
-    cdf : numpy.ndarray
-        Mean conditional cdf on the grid.
-    alphas : numpy.ndarray
-        The alpha draws.
-    """
-    cdf_sum = np.zeros_like(grid)
-    alphas = []
-    for _ in range(n_timing):
-        onsets = rng.uniform(catalogue.onset_lo.values, catalogue.onset_hi.values)
-        intervals = intervals_from(onsets, catalogue.src.values, drop_lp)
-        mean_yr = intervals.mean()
-        t_last = last_onset(catalogue, onsets, t_last_window, rng)
-        time_since_last = ref_yr - t_last
-        for _ in range(n_boot):
-            alpha = float(np.sqrt(mean_yr * np.sum(1 / intervals - 1 / mean_yr) / rng.chisquare(len(intervals) - 1)))
-            alphas.append(alpha)
-            cdf_sum += conditional_cdf(bpt_distribution(mean_yr, alpha), t_last, time_since_last)
-    return cdf_sum / (n_timing * n_boot), np.array(alphas)
-
-
 def quantile_date(cdf, q):
     """Grid date at which a cdf first reaches q.
 
@@ -849,30 +769,30 @@ def prob_between(cdf, date_a, date_b):
 
 
 # %% [markdown]
-# ## 5. The five renewal models, one at a time
+# ## 5. The three renewal models, one at a time
 #
 # Each model on its own, fitted once (section 4) to the intervals between point onsets: for the InSAR record the step
 # epochs `onset_lo` of 04, the last acquisition before each step; for the array record the window midpoints
-# `onset_mid`. The forecast of section 6 does not use these single fits, since it draws the onsets within their windows
-# and bootstraps; they show the form of each model. For each fit `describe_fit` prints the fitted parameters, the AICc
-# and P(onset in the wet season of the forecast (`wet_label`) | no onset by the last observation). The hazard rate,
-# the probability of an onset per unit time given none yet, is
+# `onset_mid`, without the interval that spans Loma Prieta. The forecast of section 6 does not use these single fits,
+# since it draws the onsets within their windows and bootstraps; they show the form of each model. For each fit
+# `describe_fit` prints the fitted parameters and P(onset in the wet season of the forecast (`wet_label`) | no onset by
+# the last observation). The hazard rate, the probability of an onset per unit time given none yet, is
 #
 # $$h(x) = \frac{f(x)}{S(x)},$$
 #
 # where $x$ is the time since the last onset (yr).
 
 # %%
-insar_intervals = intervals_from(insar_events.onset_lo.values)          # point onsets, for illustration only
-array_intervals = intervals_from(aa_dense.onset_mid.values)             # window midpoints, for illustration only
+insar_intervals = intervals_from(insar_events.onset_lo.values)                        # point onsets, for illustration only
+array_intervals = intervals_from(aa_dense.onset_mid.values, drop_lp=True)             # window midpoints, for illustration only
 last_onset_lo = float(insar_events.onset_lo.iloc[-1])
 time_since_last_yr = last_obs_day_yr - last_onset_lo
-print(f"InSAR intervals (yr): {np.round(insar_intervals, 2)}; array intervals (yr): {np.round(array_intervals, 2)}")
+print(f"InSAR intervals (yr): {np.round(insar_intervals, 2)}; array intervals (yr, Loma Prieta interval left out): {np.round(array_intervals, 2)}")
 print(f"last observation {last_obs} = {last_obs_day_yr:.3f}; last onset window start {last_onset_lo:.3f}; {time_since_last_yr:.2f} yr elapsed with no event")
 
 
 def describe_fit(model, intervals, label):
-    """Fit one model once and print its mean, CoV, own parameters, AICc and conditional wet-season probability.
+    """Fit one model once and print its mean, CoV, own parameters and conditional wet-season probability.
 
     Parameters
     ----------
@@ -889,21 +809,16 @@ def describe_fit(model, intervals, label):
         The fitted model.
     """
     dist = fit_interval_model(model, intervals)
-    aicc_value, loglike = aicc(model, intervals)
     cdf = conditional_cdf(dist, last_onset_lo, time_since_last_yr)
     p_wet = prob_between(cdf, *forecast_wet_season)
-    if model == "exponential":
-        own = f"rate {1 / dist.mean():.2f} /yr"
-    elif model == "lognormal":
+    if model == "lognormal":
         own = f"median {dist.median():.2f} yr, sigma_log {dist.kwds['s']:.2f}"
     elif model == "weibull":
         own = f"shape k {dist.kwds['c']:.2f}, scale {dist.kwds['scale']:.2f} yr"
-    elif model == "bpt":
-        own = f"aperiodicity alpha {np.sqrt(dist.kwds['mu']):.2f}"
     else:
-        own = f"sd {np.sqrt(dist.var()) * 365.25:.0f} d"
-    print(f"  {label:<8} {model:<12} mean {dist.mean():.2f} yr, CoV {np.sqrt(dist.var()) / dist.mean():.2f}, {own}; "
-          f"AICc {aicc_value:6.1f}; P({wet_label} | quiet to last obs) {p_wet:.2f}; "
+        own = f"aperiodicity alpha {np.sqrt(dist.kwds['mu']):.2f}"
+    print(f"  {label:<8} {model:<10} mean {dist.mean():.2f} yr, CoV {np.sqrt(dist.var()) / dist.mean():.2f}, {own}; "
+          f"P({wet_label} | quiet to last obs) {p_wet:.2f}; "
           f"5-50-95% {quantile_label(cdf, 0.05)} {quantile_label(cdf, 0.5)} {quantile_label(cdf, 0.95)}")
     return dist
 
@@ -911,49 +826,7 @@ def describe_fit(model, intervals, label):
 single_fits = {}          # (catalogue, model) -> fitted distribution, for the comparison figure
 
 # %% [markdown]
-# ### 5.1 Exponential: the Poisson null
-#
-# One parameter, the mean interval $\mu$. The hazard rate is constant, $h = 1/\mu$, so the time elapsed since the last
-# event does not change the forecast. This is the time-independent null model against which time-dependent forecasts
-# are compared (WGCEP 1988; Ellsworth et al. 1999). The probability of an onset in any interval of length $T$ is
-# $1 - e^{-T/\mu}$.
-
-# %%
-print("exponential")
-single_fits[("A", "exponential")] = describe_fit("exponential", insar_intervals, "A InSAR")
-single_fits[("B", "exponential")] = describe_fit("exponential", array_intervals, "B array")
-
-# %% [markdown]
-# ### 5.2 Lognormal: the original time-dependent model
-#
-# The logarithm of the interval is Gaussian. Two parameters: the median interval $e^{m}$ and the spread $\sigma$ of the
-# logarithm. The hazard rises after the last event, peaks near the median and then decreases for long elapsed times.
-# Nishenko and Buland (1987) introduced it for earthquake recurrence, and the Working Group on California Earthquake
-# Probabilities used it (WGCEP 1988, 1990).
-
-# %%
-print("lognormal")
-single_fits[("A", "lognormal")] = describe_fit("lognormal", insar_intervals, "A InSAR")
-single_fits[("B", "lognormal")] = describe_fit("lognormal", array_intervals, "B array")
-
-# %% [markdown]
-# ### 5.3 Weibull: the ageing model
-#
-# Two parameters, a scale $\lambda_W$ and a shape $k$. The hazard is a power of the elapsed time,
-#
-# $$h(x) = \frac{k}{\lambda_W} \left(\frac{x}{\lambda_W}\right)^{k-1}.$$
-#
-# $k = 1$ gives the exponential, and for $k > 1$ the hazard increases without limit with elapsed time (ageing, as in
-# reliability engineering, where the family originates). A large $k$ corresponds to a regular recurrence. Hagiwara
-# (1974) applied it to earthquakes, and Utsu (1984) compared it with the other models.
-
-# %%
-print("weibull")
-single_fits[("A", "weibull")] = describe_fit("weibull", insar_intervals, "A InSAR")
-single_fits[("B", "weibull")] = describe_fit("weibull", array_intervals, "B array")
-
-# %% [markdown]
-# ### 5.4 Brownian passage time: the physical model
+# ### 5.1 Brownian passage time: the forecast model
 #
 # The inverse-Gaussian distribution of the first time a steadily loaded state variable, perturbed by Brownian noise,
 # reaches a fixed threshold (Matthews et al. 2002). Two parameters: the mean interval $\mu$ and the aperiodicity
@@ -968,56 +841,75 @@ single_fits[("A", "bpt")] = describe_fit("bpt", insar_intervals, "A InSAR")
 single_fits[("B", "bpt")] = describe_fit("bpt", array_intervals, "B array")
 
 # %% [markdown]
-# ### 5.5 Gaussian: the plain clock
+# ### 5.2 Lognormal
 #
-# The mean and standard deviation of the intervals, the arithmetic of the closed-form clock (next = last + mean, plus or
-# minus the SD). It is not a standard recurrence model in the forecasting literature, since its hazard rises without
-# bound and it allows negative intervals. It is included for comparison with the closed-form clock of section 8.
+# The logarithm of the interval is Gaussian. Two parameters: the median interval $e^{m}$ and the spread $\sigma$ of the
+# logarithm. The hazard rises after the last event, peaks near the median and then decreases for long elapsed times.
+# Nishenko and Buland (1987) introduced it for earthquake recurrence, and the Working Group on California Earthquake
+# Probabilities used it (WGCEP 1988, 1990).
 
 # %%
-print("gaussian")
-single_fits[("A", "gaussian")] = describe_fit("gaussian", insar_intervals, "A InSAR")
-single_fits[("B", "gaussian")] = describe_fit("gaussian", array_intervals, "B array")
+print("lognormal")
+single_fits[("A", "lognormal")] = describe_fit("lognormal", insar_intervals, "A InSAR")
+single_fits[("B", "lognormal")] = describe_fit("lognormal", array_intervals, "B array")
 
 # %% [markdown]
-# ### 5.6 The five models side by side
+# ### 5.3 Weibull
 #
-# (A) The interval density of each model fitted to the InSAR intervals, with the four intervals as ticks. (B) The
-# hazard rate $h(x)$ against the time since the last event; the dotted line marks the elapsed time at the last
-# observation. (C) The conditional forecast $F_c(t)$ from each single fit, with the wet season shaded. The array fits
-# are the thin lines.
+# Two parameters, a scale $\lambda_W$ and a shape $k$. The hazard is a power of the elapsed time,
+#
+# $$h(x) = \frac{k}{\lambda_W} \left(\frac{x}{\lambda_W}\right)^{k-1}.$$
+#
+# For $k > 1$ the hazard increases without limit with elapsed time (ageing, as in reliability engineering, where the
+# family originates). A large $k$ corresponds to a regular recurrence. Hagiwara (1974) applied it to earthquakes.
+
+# %%
+print("weibull")
+single_fits[("A", "weibull")] = describe_fit("weibull", insar_intervals, "A InSAR")
+single_fits[("B", "weibull")] = describe_fit("weibull", array_intervals, "B array")
+
+# %% [markdown]
+# ### 5.4 The three models side by side (supplementary figure)
+#
+# (A) The interval density of each model fitted to the InSAR intervals (thick) and the array intervals (thin). (B) The hazard rate $h(x)$ against the time since the last onset; the dotted line marks the
+# elapsed time at the last observation. (C) The conditional forecast $F_c(t)$ from each single fit, with the wet season
+# shaded and the last observation dash-dotted.
 
 # %%
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt
-model_colours = {"exponential": "0.4", "lognormal": "#0072B2", "weibull": "#CC79A7", "bpt": "#E69F00", "gaussian": "#56B4E9"}   # Okabe-Ito, no green
-model_names = {"exponential": "Exponential", "lognormal": "Lognormal", "weibull": "Weibull", "bpt": "Brownian passage time", "gaussian": "Gaussian"}
-insar_colour = "#D55E00"               # Okabe-Ito vermillion: InSAR, as in Fig 3
+model_colours = {"lognormal": "#0072B2", "weibull": "#CC79A7", "bpt": "#E69F00"}   # Okabe-Ito, no green
+model_names = {"lognormal": "Lognormal", "weibull": "Weibull", "bpt": "BPT"}
 wet_shade_colour = "#56B4E9"           # Okabe-Ito sky blue: the wet season
+insar_lw, array_lw = 1.4, 0.7          # line weights: fits to the InSAR intervals, fits to the array intervals
 interval_axis = np.linspace(0.05, 6.0, 600)
 fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.6))
-for model in models:
-    for cat, lw in (("A", 1.4), ("B", 0.7)):
+for model in ("lognormal", "weibull", "bpt"):          # the BPT last, on top: its fit is almost the lognormal's
+    for cat, lw in (("A", insar_lw), ("B", array_lw)):
         dist = single_fits[(cat, model)]
-        axes[0].plot(interval_axis, dist.pdf(interval_axis), color=model_colours[model], lw=lw, label=model_names[model] if cat == "A" else None)
+        axes[0].plot(interval_axis, dist.pdf(interval_axis), color=model_colours[model], lw=lw)
         hazard = dist.pdf(interval_axis) / np.clip(dist.sf(interval_axis), 1e-12, None)
-        axes[1].plot(interval_axis, hazard, color=model_colours[model], lw=lw)
+        axes[1].plot(interval_axis, hazard, color=model_colours[model], lw=lw, label=model_names[model] if cat == "A" else None)
         axes[2].plot(grid, conditional_cdf(dist, last_onset_lo, time_since_last_yr), color=model_colours[model], lw=lw)
-axes[0].plot(insar_intervals, np.full_like(insar_intervals, -0.1), "|", color=insar_colour, ms=10, mew=1.5, label="InSAR intervals")
-axes[0].plot(array_intervals, np.full_like(array_intervals, -0.25), "|", color="0.2", ms=8, mew=1.0, label="Array intervals")
 axes[0].set_xlim(0, 6)
-axes[0].set_ylim(-0.4, None)
+axes[0].set_ylim(0, None)
 axes[0].set_xlabel("Interval (yr)")
 axes[0].set_ylabel("Density (1/yr)")
 utils.panel_title(axes[0], "A", "Interval density")
-axes[0].legend(fontsize=6)
+# panel A explains the line weights, panel B the model colours (both in empty corners)
+weight_handles = [Line2D([], [], color="0.4", lw=insar_lw, label="Fit to InSAR intervals"),
+                  Line2D([], [], color="0.4", lw=array_lw, label="Fit to array intervals")]
+axes[0].legend(handles=weight_handles, fontsize=6, loc="upper right")
 axes[1].axvline(time_since_last_yr, color="0.3", lw=0.7, ls=":")
-axes[1].text(time_since_last_yr - 0.05, 0.97, "last obs.", transform=axes[1].get_xaxis_transform(), fontsize=6, color="0.3", va="top", ha="right")
+axes[1].text(time_since_last_yr - 0.05, 0.97, "Last obs.", transform=axes[1].get_xaxis_transform(), fontsize=6, color="0.3", va="top", ha="right")
 axes[1].set_xlim(0, 6)
 axes[1].set_yscale("log")
 axes[1].set_ylim(0.01, 100)
 axes[1].set_xlabel("Time since the last onset (yr)")
 axes[1].set_ylabel("Hazard rate (1/yr), log")
 utils.panel_title(axes[1], "B", "Hazard rate")
+handles, labels = axes[1].get_legend_handles_labels()
+legend_order = [labels.index(model_names[model]) for model in models]     # BPT first, as in the text
+axes[1].legend([handles[k] for k in legend_order], [labels[k] for k in legend_order], fontsize=6, loc="upper right")
 axes[2].axvspan(*decyear(pd.to_datetime(list(forecast_wet_season))), color=wet_shade_colour, alpha=0.15, lw=0)
 axes[2].axvline(last_obs_day_yr, color="0.3", lw=0.7, ls="-.")
 axes[2].set_xlim(2026.0, 2030.0)
@@ -1025,7 +917,7 @@ axes[2].set_xlabel("Year")
 axes[2].set_ylabel("P(onset by t)")
 utils.panel_title(axes[2], "C", "Forecast from each single fit")
 fig.tight_layout()
-f_models = os.path.join(fig_dir, "qc_renewal_models_single_fits.png")
+f_models = os.path.join(fig_dir, "figS_renewal_single_fits.png")
 fig.savefig(f_models, dpi=300)
 fig.savefig(f_models.replace(".png", ".pdf"))
 print("Saved figure to:", f_models)
@@ -1044,20 +936,17 @@ plt.show()
 # \mathrm{COV} = \frac{\mathrm{SD}}{\mathrm{mean}},$$
 #
 # where $x_{kj}$ is interval $j$ of draw $k$ (yr), $m$ the number of intervals of the record and $K$ the number of
-# draws. These are drawn in Fig 3C and written to `recurrence_intervals.csv`. The AICc of each model is computed on
-# the median draw, the draw whose mean interval is the median of the $\bar x_k$. Then, for each model, the forecast
-# mixture of section 4 is computed with `n_timing` further onset draws, each fitted and bootstrapped, conditioned on no event
-# through the last observation. For every record the last onset $t_L$ is the last InSAR event: in the InSAR and merged
-# records it is that event's onset in the same draw as the intervals, and the array record (which ends in 2006) draws it
-# from the window of the last InSAR event.
-# The onset draws of this section are kept for the InSAR clock of section 8.
+# draws. These are drawn in Fig 3C and written to `recurrence_intervals.csv`. Then, for each forecast record
+# (`forecast_records`) and each model, the forecast mixture of section 4 is computed with `n_timing` further onset
+# draws, each fitted and bootstrapped, conditioned on no event through the last observation. For every record the last
+# onset $t_L$ is the last InSAR event: in the InSAR and merged records it is that event's onset in the same draw as the
+# intervals, and the array record (which ends in 2006) draws it from the window of the last InSAR event.
 
 # %%
 rng = np.random.default_rng(seed)
 t_last_window = (float(insar_events.onset_lo.iloc[-1]), float(insar_events.onset_hi.iloc[-1]))
 forecast_rows = []
 forecast_curves = {}
-onset_draws = {}                  # catalogue -> (n_timing, n_events) onset draws of the interval statistics (the clock reads A_insar's)
 interval_stats = {}               # catalogue -> interval_statistics(...): the definition of mean, SD, COV
 stats_lines = ["13 FORECAST", "", "REPEAT INTERVALS AND RENEWAL FORECAST",
                f"last event onset window {ymd(t_last_window[0])} to {ymd(t_last_window[1])}; reference date (last observation) {last_obs}; InSAR record end {data_end}; "
@@ -1067,38 +956,28 @@ stats_lines = ["13 FORECAST", "", "REPEAT INTERVALS AND RENEWAL FORECAST",
                "COV = SD / mean; +/- = 1 SD of the intervals"]
 interval_rows = []
 for cat_name, (catalogue, drop_lp) in catalogues.items():
-    # the onset draws, their intervals and the record's interval statistics; the AICc of each model on the median draw
+    # the onset draws, their intervals and the record's interval statistics
     interval_draws = []
-    draws_this = []
     for _ in range(n_timing):
         onsets = rng.uniform(catalogue.onset_lo.values, catalogue.onset_hi.values)
-        draws_this.append(onsets)
         interval_draws.append(intervals_from(onsets, catalogue.src.values, drop_lp))
-    onset_draws[cat_name] = np.array(draws_this)
     interval_stats[cat_name] = interval_statistics(interval_draws, len(catalogue))
     record = interval_stats[cat_name]
-    draw_means = record["draw_means"]
-    median_draw = interval_draws[int(np.argsort(draw_means)[len(draw_means) // 2])]
-    aicc_by_model = {}
-    for model in models:
-        aicc_by_model[model] = aicc(model, median_draw)[0]
-    best_model = min(aicc_by_model, key=aicc_by_model.get)
-    aicc_text = []
-    for model in models:
-        aicc_text.append(f"{model} {aicc_by_model[model]:.1f}")
     lp_text = " (Loma Prieta-spanning interval dropped)" if drop_lp else ""
     stats_lines += [f"{cat_name} ({record_keys[cat_name]}): {record['n_events']} events, {record['n_intervals']} intervals" + lp_text,
                     f"  interval mean {record['mean_yr']:.2f} +/- {record['sd_yr']:.2f} yr (1 SD), COV {record['cov']:.2f}; "
-                    f"each interval over the draws: {', '.join(f'{v:.2f}' for v in record['per_interval_mean'])} yr; AICc: " + ", ".join(aicc_text)]
+                    f"each interval over the draws: {', '.join(f'{v:.2f}' for v in record['per_interval_mean'])} yr"]
     interval_rows.append(dict(catalog=cat_name, record=record_keys[cat_name], n_events=record["n_events"], n_intervals=record["n_intervals"],
                               mean_yr=record["mean_yr"], sd_yr=record["sd_yr"], cov=record["cov"], drop_loma_prieta=drop_lp,
                               intervals_yr=" ".join(f"{v:.4f}" for v in record["per_interval_mean"])))
+    if cat_name not in forecast_records:
+        stats_lines.append("    interval statistics only (not forecast)")
+        continue
     for model in models:
         cdf, model_mean, model_cov, n_clipped, n_degenerate = forecast(model, catalogue, drop_lp, t_last_window, last_obs_day_yr, rng)
         forecast_curves[(cat_name, model)] = cdf
         row = dict(catalog=cat_name, record=record_keys[cat_name], model=model, ref="last_obs", ref_date=last_obs,
                    n_intervals=record["n_intervals"], model_mean_yr=model_mean, model_cov=model_cov,
-                   aicc=aicc_by_model[model], daicc=aicc_by_model[model] - aicc_by_model[best_model],
                    q05=quantile_label(cdf, 0.05), q50=quantile_label(cdf, 0.5), q95=quantile_label(cdf, 0.95),
                    p_wet_season=prob_between(cdf, *forecast_wet_season),
                    p_by_grid_end=float(cdf[-1]),
@@ -1130,37 +1009,20 @@ forecasts.to_csv(os.path.join(out_dir, "recurrence_forecast_models.csv"), index=
 print("\n".join(stats_lines))
 
 # %% [markdown]
-# ## 7. The Working Group aperiodicities, the uncertainty of the fitted alpha, the falsification dates
+# ## 7. The Working Group aperiodicities and the falsification dates
 #
-# **WGCEP 1999 branches.** For each record, the BPT forecast of section 6 is recomputed with $\alpha$ fixed at each of
-# `wg99_alpha_branches` (0.3, 0.5, 0.7; OFR 99-517, printed p16), with only the mean fitted to each onset draw and
-# refitted in the bootstrap. Each branch has its own generator started from `seed`, so the three branches use the same
-# onset and bootstrap draws. The conditional curves of the branches are mixed as
+# **WGCEP 1999 branches.** For each forecast record, the BPT forecast of section 6 is recomputed with $\alpha$ fixed at
+# each of `wg99_alpha_branches` (0.3, 0.5, 0.7; OFR 99-517, printed p16), with only the mean set from each onset draw
+# and from each bootstrap refit. Each branch has its own generator started from `seed`, so the three branches use the
+# same onset and bootstrap draws. The conditional curves of the branches are mixed as
 #
 # $$F_\mathrm{mix}(t) = \sum_{b=1}^{3} w_b\, \bar F_c^{(\alpha_b)}(t),$$
 #
 # where $\alpha_b$ is branch $b$ and $w_b$ its weight in `wg99_alpha_weights` (0.2, 0.6, 0.2, the three-way branch
 # convention of the report, App. C, printed p31; the $\alpha$ weights themselves are not printed). WG99 mixes branch
-# probabilities by a weighted mean (printed p18). The P(wet season) of the mixture under the alternative weightings is
-# printed and its range registered.
+# probabilities by a weighted mean (printed p18).
 #
-# **The fitted alpha and its uncertainty (InSAR).** For inverse-Gaussian intervals,
-# $\lambda \sum_j (1/x_j - 1/\bar x)$ follows a chi-square distribution with $n - 1$ degrees of freedom
-# [citation needed]. With $\alpha^2 = \mu/\lambda$ and $\mu = \bar x$, the 95 % confidence interval of $\alpha$ is
-#
-# $$\alpha_\mathrm{lo} = \sqrt{\frac{\bar x\, \Sigma}{\chi^2_{0.975,\, n-1}}}, \qquad
-# \alpha_\mathrm{hi} = \sqrt{\frac{\bar x\, \Sigma}{\chi^2_{0.025,\, n-1}}}, \qquad
-# \Sigma = \sum_{j=1}^{n} \left(\frac{1}{x_j} - \frac{1}{\bar x}\right),$$
-#
-# where $\chi^2_{q,\, n-1}$ is the $q$ quantile of the chi-square distribution with $n - 1$ degrees of freedom and the
-# $x_j$ are the InSAR intervals averaged over the onset draws. The fitted-$\alpha$ forecast with $\alpha$ drawn from
-# that pivot (`forecast_bpt_alpha_pivot`) carries this uncertainty: for each onset draw, $n_\mathrm{boot}$ values
-# $\alpha^2 = \bar x\, \Sigma / c$ with $c \sim \chi^2_{n-1}$, each giving one conditional curve, all averaged. This is
-# a flat-prior approximation to the Bayesian approach of Ellsworth et al. (1999, p7). The parametric bootstrap of
-# section 6 does not carry this uncertainty, since its refits stay near the maximum-likelihood estimate, which is
-# biased low.
-#
-# **Falsification.** For the fitted-$\alpha$ InSAR forecast of section 6, the falsification date for level $\ell$
+# **Falsification.** For the InSAR BPT forecast of section 6, the falsification date for level $\ell$
 # (`falsification_levels`, 5 % and 1 %) is the first grid day on which the conditional survival falls to $\ell$,
 #
 # $$t_\ell = \min\{t : 1 - \bar F_c(t) \le \ell\},$$
@@ -1173,7 +1035,8 @@ wg99_rows = []
 wg99_curves = {}                  # (catalogue, alpha or "mixture") -> mean conditional cdf
 wg99_lines = ["", f"WORKING GROUP APERIODICITIES (WGCEP 1999, OFR 99-517 p16): BPT with alpha fixed at {wg99_alpha_branches}, "
               f"mixed with weights {wg99_alpha_weights} (App. C p31 three-way convention; the alpha weights are not printed in the report)"]
-for cat_name, (catalogue, drop_lp) in catalogues.items():
+for cat_name in forecast_records:
+    catalogue, drop_lp = catalogues[cat_name]
     for alpha in wg99_alpha_branches:
         cdf, model_mean, model_cov, n_clipped, n_degenerate = forecast("bpt", catalogue, drop_lp, t_last_window, last_obs_day_yr,
                                                                        np.random.default_rng(seed), alpha_fixed=alpha)
@@ -1188,151 +1051,31 @@ for cat_name, (catalogue, drop_lp) in catalogues.items():
     for alpha, weight in zip(wg99_alpha_branches, wg99_alpha_weights):
         mixture += weight * wg99_curves[(cat_name, alpha)]
     wg99_curves[(cat_name, "mixture")] = mixture
-    alternative_p = {}
-    for weights_name, weights in wg99_alternative_weights.items():
-        alternative_mixture = np.zeros_like(grid)
-        for alpha, weight in zip(wg99_alpha_branches, weights):
-            alternative_mixture += weight * wg99_curves[(cat_name, alpha)]
-        alternative_p[weights_name] = prob_between(alternative_mixture, *forecast_wet_season)
     mixture_p = prob_between(mixture, *forecast_wet_season)
-    all_weightings_p = [mixture_p] + list(alternative_p.values())
     wg99_rows.append(dict(catalog=cat_name, record=record_keys[cat_name], branch="WG99 mixture", alpha=np.nan, weight=1.0,
                           q05=quantile_label(mixture, 0.05), q50=quantile_label(mixture, 0.5), q95=quantile_label(mixture, 0.95),
-                          p_wet_season=mixture_p, p_by_grid_end=float(mixture[-1]),
-                          p_wet_weightings_min=min(all_weightings_p), p_wet_weightings_max=max(all_weightings_p)))
+                          p_wet_season=mixture_p, p_by_grid_end=float(mixture[-1])))
     branch_text = []
     for alpha in wg99_alpha_branches:
         branch_text.append(f"{alpha:g}: {prob_between(wg99_curves[(cat_name, alpha)], *forecast_wet_season):.2f}")
     wg99_lines.append(f"  {cat_name}: mixture 5-50-95% {wg99_rows[-1]['q05']} {wg99_rows[-1]['q50']} {wg99_rows[-1]['q95']}, "
-                      f"P({wet_label}) {mixture_p:.3f} (other weightings: " +
-                      ", ".join(f"{name} {value:.3f}" for name, value in alternative_p.items()) +
-                      f"); single branches P({wet_label}) " + ", ".join(branch_text))
+                      f"P({wet_label}) {mixture_p:.3f}; single branches P({wet_label}) " + ", ".join(branch_text))
 
-# the fitted alpha of the InSAR record: its 95 % CI (chi-square pivot on the intervals averaged over the onset draws)
-insar_mean_intervals = interval_stats["A_insar"]["per_interval_mean"]
-n_insar_intervals = insar_mean_intervals.size
-pivot_sum = float(np.sum(1 / insar_mean_intervals - 1 / insar_mean_intervals.mean()))
-insar_alpha_ci95 = (float(np.sqrt(insar_mean_intervals.mean() * pivot_sum / stats.chi2.ppf(0.975, n_insar_intervals - 1))),
-                    float(np.sqrt(insar_mean_intervals.mean() * pivot_sum / stats.chi2.ppf(0.025, n_insar_intervals - 1))))
-# the fitted-alpha forecast with alpha drawn from that pivot
-pivot_cdf, pivot_alphas = forecast_bpt_alpha_pivot(insar_events, False, t_last_window, last_obs_day_yr, np.random.default_rng(seed))
-wg99_curves[("A_insar", "alpha pivot")] = pivot_cdf
-wg99_rows.append(dict(catalog="A_insar", record="insar", branch="fitted alpha, drawn from its chi2 pivot", alpha=float(np.median(pivot_alphas)),
-                      weight=1.0, q05=quantile_label(pivot_cdf, 0.05), q50=quantile_label(pivot_cdf, 0.5), q95=quantile_label(pivot_cdf, 0.95),
-                      p_wet_season=prob_between(pivot_cdf, *forecast_wet_season), p_by_grid_end=float(pivot_cdf[-1])))
-insar_bpt_row = forecasts[(forecasts.catalog == "A_insar") & (forecasts.model == "bpt")].iloc[0]
-wg99_lines.append(f"  InSAR fitted alpha (MLE, mean over the forecast draws) {insar_bpt_row.model_cov:.3f}; 95 % CI (chi2 pivot, n-1 = "
-                  f"{n_insar_intervals - 1}) {insar_alpha_ci95[0]:.3f}-{insar_alpha_ci95[1]:.3f}; with alpha drawn from the pivot (median "
-                  f"{np.median(pivot_alphas):.3f}, 95th pct {np.percentile(pivot_alphas, 95):.3f}): 5-50-95% {wg99_rows[-1]['q05']} "
-                  f"{wg99_rows[-1]['q50']} {wg99_rows[-1]['q95']}, P({wet_label}) {wg99_rows[-1]['p_wet_season']:.3f} "
-                  f"(fitted alpha alone: {insar_bpt_row.p_wet_season:.3f})")
-
-# falsification: when the fitted-alpha InSAR model's conditional survival falls to each level
+# falsification: when the InSAR BPT's conditional survival falls to each level
 falsification_dates = {}
 for level in falsification_levels:
     falsification_dates[level] = quantile_label(forecast_curves[("A_insar", "bpt")], 1 - level)
     assert falsification_dates[level] != grid_end_label, f"the InSAR BPT never reaches survival {level} on the grid"
-pivot_falsification = {}
-for level in falsification_levels:
-    pivot_falsification[level] = quantile_label(pivot_cdf, 1 - level)
-wg99_lines.append("  falsification (fitted-alpha InSAR BPT): no event by " +
+wg99_lines.append("  falsification (InSAR BPT): no event by " +
                   ", ".join(f"{falsification_dates[level]} (survival {level:g})" for level in falsification_levels) +
-                  " rejects it at " + ", ".join(f"{1 - level:.0%}" for level in falsification_levels) +
-                  "; with alpha from its pivot the same levels fall on " + ", ".join(pivot_falsification[level] for level in falsification_levels))
+                  " rejects it at " + ", ".join(f"{1 - level:.0%}" for level in falsification_levels))
 wg99_table = pd.DataFrame(wg99_rows)
 wg99_table.to_csv(os.path.join(out_dir, "recurrence_forecast_wg99.csv"), index=False, float_format="%.4f")
 stats_lines += wg99_lines
 print("\n".join(wg99_lines))
 
 # %% [markdown]
-# ## 8. The InSAR clock in closed form
-#
-# The closed-form arithmetic, on the same `n_timing` draws of the InSAR onsets as the interval statistics of section 6
-# (`onset_draws["A_insar"]`). For each draw, with $m$ intervals of mean $\bar x$ and SD $s$ (as in section 6), the next
-# onset and the half-width of the 95 % prediction interval for a single new interval are
-#
-# $$\hat t_\mathrm{next} = t_{(m+1)} + \bar x, \qquad w = t_{0.975,\, m-1}\, s \sqrt{1 + \frac{1}{m}},$$
-#
-# where $t_{(m+1)}$ is the last onset of the draw (decimal year) and $t_{0.975,\, m-1}$ the 0.975 quantile of Student's
-# t distribution with $m - 1$ degrees of freedom. The registered values are the averages over the draws, and the
-# spread of the next date over the draws is printed. The mean and SD equal the interval statistics of section 6
-# (asserted). The 95 % confidence interval of the SD is
-#
-# $$\left[\, s \sqrt{\frac{m - 1}{\chi^2_{0.975,\, m-1}}},\ s \sqrt{\frac{m - 1}{\chi^2_{0.025,\, m-1}}} \,\right].$$
-#
-# The clock is not conditioned on the quiet time. Its dates that fall before the last observation are listed and are
-# not a forecast window.
-
-# %%
-def clock_prediction(intervals_yr, last_onset):
-    """The plain clock from one set of intervals (section 8).
-
-    Parameters
-    ----------
-    intervals_yr : numpy.ndarray
-        Repeat intervals (yr).
-    last_onset : float
-        Last onset (decimal year).
-
-    Returns
-    -------
-    mean_yr, sd_yr : float
-        Mean and sample SD (ddof = 1) of the intervals (yr).
-    next_yr : float
-        last_onset + mean (decimal year).
-    half_width : float
-        Half-width of the 95 % prediction interval, t(n - 1, 0.975) x sd x sqrt(1 + 1/n) (yr).
-    """
-    n = len(intervals_yr)
-    mean_yr = float(np.mean(intervals_yr))
-    sd_yr = float(np.std(intervals_yr, ddof=1))
-    half_width = float(stats.t.ppf(0.975, n - 1) * sd_yr * np.sqrt(1 + 1 / n))
-    return mean_yr, sd_yr, last_onset + mean_yr, half_width
-
-
-clock_draws = []
-interval_sum = None
-for onsets_this_draw in onset_draws["A_insar"]:
-    onsets_drawn = np.sort(onsets_this_draw)
-    intervals_drawn = np.diff(onsets_drawn)
-    clock_draws.append(clock_prediction(intervals_drawn, onsets_drawn[-1]))
-    interval_sum = intervals_drawn if interval_sum is None else interval_sum + intervals_drawn
-clock_draws = np.array(clock_draws)
-n_intervals = n_insar_events - 1
-clock_intervals = interval_sum / n_timing                 # each interval, averaged over the draws (for the printout)
-interval_mean_yr = float(clock_draws[:, 0].mean())
-interval_sd_yr = float(clock_draws[:, 1].mean())
-next_onset_yr = float(clock_draws[:, 2].mean())
-half_width_yr = float(clock_draws[:, 3].mean())
-next_spread_days = float(clock_draws[:, 2].std() * 365.25)
-assert abs(interval_mean_yr - interval_stats["A_insar"]["mean_yr"]) < 1e-12 and abs(interval_sd_yr - interval_stats["A_insar"]["sd_yr"]) < 1e-12, \
-    "the clock's mean / sd are not the interval statistics of section 6"
-assert n_intervals == interval_stats["A_insar"]["n_intervals"]
-sd_ci_days = (interval_sd_yr * np.sqrt((n_intervals - 1) / stats.chi2.ppf(.975, n_intervals - 1)) * 365.25,
-              interval_sd_yr * np.sqrt((n_intervals - 1) / stats.chi2.ppf(.025, n_intervals - 1)) * 365.25)
-clock_interval_text = []
-for value in clock_intervals:
-    clock_interval_text.append(f"{value:.2f}")
-clock_lines = ["InSAR clock, closed form, averaged over " + f"{n_timing} uniform onset draws: intervals " + ", ".join(clock_interval_text) +
-               f" yr; mean {interval_mean_yr:.3f} yr, sd {interval_sd_yr * 365.25:.0f} d (95% CI {sd_ci_days[0]:.0f}-{sd_ci_days[1]:.0f} d), "
-               f"CoV {interval_sd_yr / interval_mean_yr:.3f}",
-               f"  next = last + mean = {next_onset_yr:.3f} ({ymd(next_onset_yr)}; spread over the draws {next_spread_days:.0f} d sd); "
-               f"+/-1 sd {ymd(next_onset_yr - interval_sd_yr)}..{ymd(next_onset_yr + interval_sd_yr)}; "
-               f"95% prediction interval (t, n={n_intervals}) {ymd(next_onset_yr - half_width_yr)}..{ymd(next_onset_yr + half_width_yr)}"]
-# the clock is not conditioned on the quiet time: say which of its dates already lie before the last observation
-clock_dates = {"next": next_onset_yr, "-1 sd": next_onset_yr - interval_sd_yr, "+1 sd": next_onset_yr + interval_sd_yr,
-               "PI95 lo": next_onset_yr - half_width_yr, "PI95 hi": next_onset_yr + half_width_yr}
-clock_before = []
-for name, value in clock_dates.items():
-    if value <= last_obs_day_yr:
-        clock_before.append(f"{name} {ymd(value)}")
-clock_lines.append(f"  clock dates on or before the last observation {last_obs} (the clock is unconditional): " +
-                   (", ".join(clock_before) if clock_before else "none"))
-stats_lines += clock_lines
-print("\n".join(clock_lines))
-
-# %% [markdown]
-# ## 9. The inputs of Fig 3
+# ## 8. The inputs of Fig 3
 #
 # Fig 3 is drawn in notebook 14 from saved products. This section writes what the figure needs from this notebook to
 # `fig3_inputs.npz`; panels A and B read the products of 11 and 12 directly. The records drawn in Fig 3C and 3D
@@ -1402,7 +1145,7 @@ np.savez(fig3_inputs_file, provenance=utils.provenance_stamp(notebook, repo_dir)
 print("Saved the Fig 3 inputs to:", fig3_inputs_file)
 
 # %% [markdown]
-# ## 10. The prediction statement
+# ## 9. The prediction statement
 #
 # The statement is built from the numbers above in a fixed template, so that it is generated rather than typed. Part
 # (3) of the time window (the calendar window of the onsets) and the last day of the Fremont gauge come from
@@ -1450,10 +1193,8 @@ print(f"04 run {last_run_04} ({run_04_time}): {magnitude_band} steps {np.round(b
 
 insar_forecast = forecasts[forecasts.catalog == "A_insar"].set_index("model")
 array_forecast = forecasts[forecasts.catalog == "B_aa_dense_noLP"].set_index("model")
-array_lp_forecast = forecasts[forecasts.catalog == "B_aa_dense"].set_index("model")
 merged_forecast = forecasts[forecasts.catalog == "C_merged"].set_index("model")
 wg99_mixture = wg99_table[wg99_table.branch == "WG99 mixture"].set_index("catalog")
-insar_pivot_row = wg99_table[wg99_table.branch.str.startswith("fitted alpha")].iloc[0]
 insar_window_days = (insar_events.onset_hi - insar_events.onset_lo) * 365.25
 array_first_year = int(np.floor(aa_dense.onset_lo.min()))
 
@@ -1469,7 +1210,7 @@ def wg99_text(cat_name):
     Returns
     -------
     str
-        Its P(wet season), the range over the weightings, the P of each branch and the 5-95 % window.
+        Its P(wet season), the P of each branch and the 5-95 % window.
     """
     mixture_row = wg99_mixture.loc[cat_name]
     branch_p = []
@@ -1477,8 +1218,7 @@ def wg99_text(cat_name):
         branch_p.append(f"{prob_between(wg99_curves[(cat_name, alpha)], *forecast_wet_season):.2f}")
     return (f"with the Working Group aperiodicities (alpha {', '.join(f'{a:g}' for a in wg99_alpha_branches)}, weights "
             f"{', '.join(f'{w:g}' for w in wg99_alpha_weights)}; WGCEP 1999 p16) P({wet_label}) = {mixture_row.p_wet_season:.2f} "
-            f"({mixture_row.p_wet_weightings_min:.2f}-{mixture_row.p_wet_weightings_max:.2f} for the other weightings; single branches "
-            f"{' / '.join(branch_p)}), 5-95% {mixture_row.q05} .. {mixture_row.q95}")
+            f"(single branches {' / '.join(branch_p)}), 5-95% {mixture_row.q05} .. {mixture_row.q95}")
 
 
 # the lag spreads of the tightest rules A and B (12) beside the calendar spread of the onsets
@@ -1499,31 +1239,28 @@ statement_lines = [
     f"{magnitude_band_pct} % band stack ({int(peak_zone.n)} crossings; {n_insar_events} InSAR events; 95% CIs {min(band_ci_lo):.1f}-{max(band_ci_hi):.1f} mm), "
     f"within one {insar_window_days.min():.0f}-{insar_window_days.max():.0f} d acquisition interval", "",
     "TIME WINDOW",
-    f"  (1) InSAR record ({n_intervals} intervals, {interval_stats['A_insar']['n_events']} events): repeat interval {interval_mean_yr:.2f} +/- "
-    f"{interval_sd_yr:.2f} yr (1 SD, {interval_sd_yr * 365.25:.0f} d), COV {interval_stats['A_insar']['cov']:.2f}, over {n_timing} onset draws",
-    f"      clock: next = last + mean = {ymd(next_onset_yr)}; +/-1 sd {ymd(next_onset_yr - interval_sd_yr)}..{ymd(next_onset_yr + interval_sd_yr)}; "
-    f"95% prediction interval (t, n={n_intervals}) {ymd(next_onset_yr - half_width_yr)}..{ymd(next_onset_yr + half_width_yr)} (unconditional)",
-    f"      BPT with the alpha fitted to these intervals ({insar_forecast.loc['bpt', 'model_cov']:.3f}, 95 % CI {insar_alpha_ci95[0]:.2f}-{insar_alpha_ci95[1]:.2f}; "
+    f"  (1) InSAR record ({interval_stats['A_insar']['n_intervals']} intervals, {interval_stats['A_insar']['n_events']} events): repeat interval "
+    f"{interval_stats['A_insar']['mean_yr']:.2f} +/- {interval_stats['A_insar']['sd_yr']:.2f} yr (1 SD, {interval_stats['A_insar']['sd_yr'] * 365.25:.0f} d), "
+    f"COV {interval_stats['A_insar']['cov']:.2f}, over {n_timing} onset draws",
+    f"      BPT with the aperiodicity fitted to these intervals ({insar_forecast.loc['bpt', 'model_cov']:.3f}, maximum likelihood; "
     f"a statement conditional on the 2017-2025 regularity persisting): 5-95% {insar_forecast.loc['bpt', 'q05']} .. {insar_forecast.loc['bpt', 'q95']}, "
-    f"median {insar_forecast.loc['bpt', 'q50']}; P({wet_label}, {wet_months_text}) = {insar_forecast.loc['bpt', 'p_wet_season']:.2f}; "
-    f"with alpha drawn from its uncertainty {insar_pivot_row.p_wet_season:.2f}",
+    f"median {insar_forecast.loc['bpt', 'q50']}; P({wet_label}, {wet_months_text}) = {insar_forecast.loc['bpt', 'p_wet_season']:.2f}",
+    f"      check, other models: lognormal 5-95% {insar_forecast.loc['lognormal', 'q05']} .. {insar_forecast.loc['lognormal', 'q95']}, "
+    f"P = {insar_forecast.loc['lognormal', 'p_wet_season']:.2f}; Weibull 5-95% {insar_forecast.loc['weibull', 'q05']} .. "
+    f"{insar_forecast.loc['weibull', 'q95']}, P = {insar_forecast.loc['weibull', 'p_wet_season']:.2f}",
     f"      falsification: under that model the chance of no event falls to " +
     " and ".join(f"{level:.0%} by {falsification_dates[level]}" for level in falsification_levels) +
     f": no event by then rejects it at " + " / ".join(f"{1 - level:.0%}" for level in falsification_levels),
     f"      {wg99_text('A_insar')}",
     f"  (2) HRKT bimonthly-era record ({array_first_year}-{dense_era_end:.0f}), Loma Prieta interval dropped "
     f"({interval_stats['B_aa_dense_noLP']['n_intervals']} intervals, {interval_stats['B_aa_dense_noLP']['mean_yr']:.2f} +/- "
-    f"{interval_stats['B_aa_dense_noLP']['sd_yr']:.2f} yr, COV {interval_stats['B_aa_dense_noLP']['cov']:.2f}): BPT (fitted alpha "
+    f"{interval_stats['B_aa_dense_noLP']['sd_yr']:.2f} yr, COV {interval_stats['B_aa_dense_noLP']['cov']:.2f}): BPT (fitted aperiodicity "
     f"{array_forecast.loc['bpt', 'model_cov']:.2f}) 5-95% {array_forecast.loc['bpt', 'q05']} .. {array_forecast.loc['bpt', 'q95']}, "
     f"median {array_forecast.loc['bpt', 'q50']}; P({wet_label}) = {array_forecast.loc['bpt', 'p_wet_season']:.2f}; {wg99_text('B_aa_dense_noLP')}",
-    f"      with the Loma Prieta interval (as WGCEP 1999's parallel no-interaction run, p17; "
-    f"{interval_stats['B_aa_dense']['n_intervals']} intervals, {interval_stats['B_aa_dense']['mean_yr']:.2f} +/- {interval_stats['B_aa_dense']['sd_yr']:.2f} yr, "
-    f"COV {interval_stats['B_aa_dense']['cov']:.2f}): BPT P({wet_label}) = {array_lp_forecast.loc['bpt', 'p_wet_season']:.2f}; {wg99_text('B_aa_dense')}",
     f"      merged ({interval_stats['C_merged']['n_intervals']} intervals, {interval_stats['C_merged']['mean_yr']:.2f} +/- "
     f"{interval_stats['C_merged']['sd_yr']:.2f} yr, COV {interval_stats['C_merged']['cov']:.2f}): BPT 5-95% {merged_forecast.loc['bpt', 'q05']} .. "
     f"{merged_forecast.loc['bpt', 'q95']}, median {merged_forecast.loc['bpt', 'q50']}; P({wet_label}) = {merged_forecast.loc['bpt', 'p_wet_season']:.2f}; "
-    f"{wg99_text('C_merged')}; Poisson null (the merged record's exponential, mean interval {interval_stats['C_merged']['mean_yr']:.2f} yr) "
-    f"{merged_forecast.loc['exponential', 'p_wet_season']:.2f}",
+    f"{wg99_text('C_merged')}",
     f"      (a quantile written '{grid_end_label}' is beyond the forecast grid: the curve has not reached it there)",
     f"  (3) all {int(rain_value('n_insar_onsets'))} InSAR onset windows fell {int(rain_value('onset_dowy_min'))}-{int(rain_value('onset_dowy_max'))} d into the water year "
     f"({rain_summary.loc['onset_earliest', 'value']}-{rain_summary.loc['onset_latest', 'value']}), after {rain_value('cum_at_onset_min_mm'):.0f}-"
@@ -1542,16 +1279,17 @@ with open(os.path.join(out_dir, "prediction_statement.txt"), "w") as fh:
 print("\n".join(statement_lines))
 
 # %% [markdown]
-# ## 11. Registry: the stats sidecar `13_forecast_stats.txt` (with the prediction statement) and the registered numbers
+# ## 10. Registry: the stats sidecar `13_forecast_stats.txt` (with the prediction statement) and the registered numbers
 #
 # Per record `<rec>` (`insar`, `aa_dense_nolp`, `aa_dense_withlp`, `merged`), under `13_<rec>_*`: the interval
-# statistics of section 6 (`_interval_mean_yr`, `_interval_sd_yr`, `_interval_cov`, `_n_intervals`, `_n_events`); for
-# each model the 5, 50 and 95 % dates, P(wet season) and dAICc; the fitted BPT aperiodicity (`_bpt_alpha`); the Working
-# Group mixture (`_bpt_wg99_q05`, `_q50`, `_q95`, `_p_wet_wy<N>` and its range over the weightings, `_wmin` and
-# `_wmax`) and the P(wet season) of each branch (`_bpt_alpha03_p_wet_wy<N>` and so on). Under `13_*`: the issue date,
-# the data end and the last observation; each InSAR interval (`13_insar_interval_<y1>_<y2>_yr`, averaged over the
-# onset draws and labelled by the years of the step epochs of 04); the interval SD in days with its 95 % CI; the
-# $\alpha$ CI and the alpha-pivot forecast; the falsification dates; and the clock.
+# statistics of section 6 (`_interval_mean_yr`, `_interval_sd_yr`, `_interval_cov`, `_n_intervals`, `_n_events`).
+# Per forecast record (all but `aa_dense_withlp`): for each model the 5, 50 and 95 % dates and P(wet season); the BPT
+# aperiodicity (`_bpt_alpha`, maximum likelihood, averaged over the forecast draws); the Working Group mixture
+# (`_bpt_wg99_q05`, `_q50`, `_q95`, `_p_wet_wy<N>`) and the P(wet season) of each branch (`_bpt_alpha03_p_wet_wy<N>` and
+# so on). Under `13_*`: the issue date, the data end and the last observation; each InSAR interval
+# (`13_insar_interval_<y1>_<y2>_yr`) and each array interval with the Loma Prieta interval
+# (`13_aa_dense_withlp_interval_<y1>_<y2>_yr`), averaged over the onset draws and labelled by the years in which the
+# onset windows open; the InSAR interval SD in days; and the falsification dates.
 
 # %%
 sidecar = REG.sidecar("13_forecast", stats_lines + ["", *statement_lines])
@@ -1566,52 +1304,39 @@ for cat_name, key in record_keys.items():
     REG.register(f"13_{key}_interval_cov", record["cov"], "1", 2, where="P10", cell="intervals", sidecar=sidecar)
     REG.register(f"13_{key}_n_intervals", record["n_intervals"], "count", 0, where="P10, Fig3", cell="intervals", sidecar=sidecar)
     REG.register(f"13_{key}_n_events", record["n_events"], "count", 0, where="P10, Fig3", cell="intervals", sidecar=sidecar)
-# the InSAR intervals one by one (averaged over the onset draws), labelled by the years of 04's step epochs (onset_lo)
-insar_years = []
-for onset_lo in insar_events.onset_lo:
-    insar_years.append(f"{int(onset_lo)}")
-for k, value in enumerate(interval_stats["A_insar"]["per_interval_mean"]):
-    REG.register(f"13_insar_interval_{insar_years[k]}_{insar_years[k + 1]}_yr", value, "yr", 2, where="P9", cell="intervals", sidecar=sidecar)
-REG.register("13_insar_interval_sd_d", interval_sd_yr * 365.25, "d", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("13_insar_interval_sd_ci_lo_d", sd_ci_days[0], "d", 0, where="M9", cell="clock", sidecar=sidecar)
-REG.register("13_insar_interval_sd_ci_hi_d", sd_ci_days[1], "d", 0, where="M9", cell="clock", sidecar=sidecar)
-REG.register("13_next_clock_date", ymd(next_onset_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
-REG.register("13_next_1sd_lo", ymd(next_onset_yr - interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("13_next_1sd_hi", ymd(next_onset_yr + interval_sd_yr), "date", 0, where="P10", cell="clock", sidecar=sidecar)
-REG.register("13_pi95_lo", ymd(next_onset_yr - half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
-REG.register("13_pi95_hi", ymd(next_onset_yr + half_width_yr), "date", 0, where="P10, Fig3", cell="clock", sidecar=sidecar)
-# the renewal forecasts (fitted parameters) and the BPT aperiodicity
-for cat_name, key in record_keys.items():
+# the intervals one by one (averaged over the onset draws), labelled by the years in which the onset windows open: the
+# InSAR record and the array record with the Loma Prieta interval (the onset-window table of the supplement)
+for cat_name, catalogue in (("A_insar", insar_events), ("B_aa_dense", aa_dense)):
+    window_years = []
+    for onset_lo in catalogue.sort_values("onset_mid").onset_lo:
+        window_years.append(f"{int(onset_lo)}")
+    for k, value in enumerate(interval_stats[cat_name]["per_interval_mean"]):
+        REG.register(f"13_{record_keys[cat_name]}_interval_{window_years[k]}_{window_years[k + 1]}_yr", value, "yr", 2,
+                     where="P9, M10", cell="intervals", sidecar=sidecar)
+REG.register("13_insar_interval_sd_d", interval_stats["A_insar"]["sd_yr"] * 365.25, "d", 0, where="P10", cell="intervals", sidecar=sidecar)
+# the renewal forecasts and the BPT aperiodicity
+for cat_name in forecast_records:
+    key = record_keys[cat_name]
     issue = forecasts[forecasts.catalog == cat_name].set_index("model")
-    for model in ("bpt", "lognormal", "weibull", "exponential"):
+    for model in models:
         REG.register(f"13_{key}_{model}_q05", issue.loc[model, "q05"], "date", 0, where="P10, Fig3", cell="forecast", sidecar=sidecar)
         REG.register(f"13_{key}_{model}_q50", issue.loc[model, "q50"], "date", 0, where="P10, Fig3", cell="forecast", sidecar=sidecar)
         REG.register(f"13_{key}_{model}_q95", issue.loc[model, "q95"], "date", 0, where="P10, Fig3", cell="forecast", sidecar=sidecar)
         REG.register(f"13_{key}_{model}_p_wet_wy{forecast_wy}", issue.loc[model, "p_wet_season"], "1", 2, where="P10, Fig3", cell="forecast", sidecar=sidecar)
-        REG.register(f"13_{key}_{model}_daicc", issue.loc[model, "daicc"], "1", 2, where="M9", cell="forecast", sidecar=sidecar)
-    REG.register(f"13_{key}_bpt_alpha", float(issue.loc["bpt", "model_cov"]), "1", 3, where="P10, M9", cell="forecast", sidecar=sidecar)
+    REG.register(f"13_{key}_bpt_alpha", float(issue.loc["bpt", "model_cov"]), "1", 3, where="P10, M10", cell="forecast", sidecar=sidecar)
 # the Working Group aperiodicities: the mixture and each branch
-for cat_name, key in record_keys.items():
+for cat_name in forecast_records:
+    key = record_keys[cat_name]
     mixture_row = wg99_mixture.loc[cat_name]
-    REG.register(f"13_{key}_bpt_wg99_q05", mixture_row.q05, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-    REG.register(f"13_{key}_bpt_wg99_q50", mixture_row.q50, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-    REG.register(f"13_{key}_bpt_wg99_q95", mixture_row.q95, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-    REG.register(f"13_{key}_bpt_wg99_p_wet_wy{forecast_wy}", mixture_row.p_wet_season, "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
-    REG.register(f"13_{key}_bpt_wg99_p_wet_wy{forecast_wy}_wmin", mixture_row.p_wet_weightings_min, "1", 2, where="M9", cell="wg99", sidecar=sidecar)
-    REG.register(f"13_{key}_bpt_wg99_p_wet_wy{forecast_wy}_wmax", mixture_row.p_wet_weightings_max, "1", 2, where="M9", cell="wg99", sidecar=sidecar)
+    REG.register(f"13_{key}_bpt_wg99_q05", mixture_row.q05, "date", 0, where="P10, M10", cell="wg99", sidecar=sidecar)
+    REG.register(f"13_{key}_bpt_wg99_q50", mixture_row.q50, "date", 0, where="P10, M10", cell="wg99", sidecar=sidecar)
+    REG.register(f"13_{key}_bpt_wg99_q95", mixture_row.q95, "date", 0, where="P10, M10", cell="wg99", sidecar=sidecar)
+    REG.register(f"13_{key}_bpt_wg99_p_wet_wy{forecast_wy}", mixture_row.p_wet_season, "1", 2, where="P10, M10", cell="wg99", sidecar=sidecar)
     for alpha in wg99_alpha_branches:
         branch_tag = f"alpha{int(round(10 * alpha)):02d}"                 # 0.3 -> alpha03
         REG.register(f"13_{key}_bpt_{branch_tag}_p_wet_wy{forecast_wy}", prob_between(wg99_curves[(cat_name, alpha)], *forecast_wet_season),
-                     "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
-# the fitted alpha of the InSAR record: its CI, the forecast with alpha drawn from it, the falsification dates
-REG.register("13_insar_bpt_alpha_ci95_lo", insar_alpha_ci95[0], "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("13_insar_bpt_alpha_ci95_hi", insar_alpha_ci95[1], "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("13_insar_bpt_alpha_pivot_median", float(np.median(pivot_alphas)), "1", 3, where="M9", cell="wg99", sidecar=sidecar)
-REG.register("13_insar_bpt_alpha_pivot_p95", float(np.percentile(pivot_alphas, 95)), "1", 3, where="M9", cell="wg99", sidecar=sidecar)
-REG.register("13_insar_bpt_alpha_pivot_q05", insar_pivot_row.q05, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("13_insar_bpt_alpha_pivot_q50", insar_pivot_row.q50, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register("13_insar_bpt_alpha_pivot_q95", insar_pivot_row.q95, "date", 0, where="P10, M9", cell="wg99", sidecar=sidecar)
-REG.register(f"13_insar_bpt_alpha_pivot_p_wet_wy{forecast_wy}", insar_pivot_row.p_wet_season, "1", 2, where="P10, M9", cell="wg99", sidecar=sidecar)
+                     "1", 2, where="P10, M10", cell="wg99", sidecar=sidecar)
+# the falsification dates of the InSAR BPT
 for level in falsification_levels:
     level_tag = f"s{int(round(100 * level)):02d}"                         # 0.05 -> s05, 0.01 -> s01
     REG.register(f"13_insar_bpt_falsify_{level_tag}_date", falsification_dates[level], "date", 0, where="P10", cell="wg99", sidecar=sidecar)

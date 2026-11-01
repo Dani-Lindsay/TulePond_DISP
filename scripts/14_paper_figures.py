@@ -1547,7 +1547,7 @@ wanted = {
     "Fig_S_aa_history_HRKT": ("qc_aa_history_HRKT_*.png", "11_alignment_arrays"),
     "Fig_S_aa_history_HAPP": ("qc_aa_history_HAPP_*.png", "11_alignment_arrays"),
     "Fig_S_precip_conditioning": ("figS_precip_conditioning_*.png", "12_rain_seasonality"),
-    "Fig_S_renewal_single_fits": ("qc_renewal_models_single_fits.png", "13_forecast"),
+    "Fig_S_renewal_single_fits": ("figS_renewal_single_fits.png", "13_forecast"),
     "Fig_S_model_lcurve": (f"figS_model_lcurve_{cfg.selected_dip_tag}.png", "09_model_3d"),
     "Fig_S_model_slip": (f"figS_model_slip_{cfg.selected_dip_tag}.png", "09_model_3d"),
     "Fig_S_model_fit_maps": (f"figS_model_fit_maps_{cfg.selected_dip_tag}.png", "09_model_3d"),

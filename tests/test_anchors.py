@@ -58,7 +58,6 @@ ANCHORS = {
     "11_hrkt_n_surveys": (159, 0), "11_hrkt_n_events": (9, 0), "11_hrkt_amp_median_mm": (8.2, 1),
     # 13 forecast (interval statistics from the onset-window draws)
     "13_insar_interval_mean_yr": (1.97, 2), "13_insar_interval_sd_d": (29, 0), "13_insar_interval_cov": (0.04, 2),
-    "13_next_clock_date": ("2026-12-22", 0), "13_pi95_lo": ("2026-09-11", 0), "13_pi95_hi": ("2027-04-02", 0),
 }
 
 
