@@ -141,7 +141,7 @@ ref_lon = float(ref_row.Lon.iloc[0])
 ref_lat = float(ref_row.Lat.iloc[0])
 print(f"reference station {ref_station} at {ref_lon:.4f}, {ref_lat:.4f}")
 
-input_files = [gnss_table_file, paths_gps["validation"]]
+input_files = [gnss_table_file, paths_gps["validation"], paths_gps["StaList"].format(frame="09157")]
 for frame_id, paths in frames.items():
     mintpy_dir = paths["mintpy_dir"]
     input_files.append(os.path.join(mintpy_dir, "avgSpatialCoh.h5"))
@@ -697,6 +697,13 @@ for orbit in orbits:
     REG.register(f"01_gnss_rmse_after_{orbit[:3]}_mm_yr", tie_stats[orbit]["after"], "mm/yr", 1, where="M1, Fig S2", cell="figS2")
 common = set(stations["ascending"].StaID) & set(stations["descending"].StaID)
 REG.register("01_gnss_n_stations_common", len(common), "count", 0, where="M1", cell="figS2")
+# the GNSS screening of data_prep/run00: the stations of the area (StaList) and those kept (>= 70 % coverage,
+# vertical scatter <= 1 mm), the same for every frame
+n_area = sum(1 for line in open(paths_gps["StaList"].format(frame="09157")) if line.strip())
+n_screened = pd.read_csv(gnss_table_file).StaID.nunique()
+REG.register("01_gnss_n_stations_area", n_area, "count", 0, where="M1", cell="figS2")
+REG.register("01_gnss_n_stations_screened", n_screened, "count", 0, where="M1", cell="figS2")
+print(f"GNSS stations: {n_area} in the area, {n_screened} kept by the screening of data_prep/run00")
 print(pd.DataFrame(tie_stats).T.round(3))
 
 # %% [markdown]
