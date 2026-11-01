@@ -317,9 +317,8 @@ map_bar_font_pt = 13.0                      # the map colour bars ask GMT for 13
 # Fig 2 map window (unrotated, north up): centred on the trace at fig2_map_centre_km from Point Pinole,
 # +/- fig2_map_half_km east-west, +/- (fig2_map_half_km + fig2_map_extra_km) north-south (10.4 x 12 km).
 # The values live in TulePond_filepaths.
-aa_labelled = ["HGIL", "HRKT"]  # the arrays used in the paper (notebook 11_alignment_arrays); the other arrays of the section are not drawn
-aa_label_pos = {"HGIL": ("RM", "-0.15c/0c"),     # HGIL left of its symbol
-                "HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of each label about its symbol
+aa_labelled = ["HRKT"]  # the array the paper's event history uses (notebook 11_alignment_arrays, M8); the other arrays are not drawn
+aa_label_pos = {"HRKT": ("LM", "0.15c/0.12c")}   # (justify, offset) of the label about its symbol
 
 f_fig2_in = os.path.join(paths_out["06_event_field_geometry"], "fig2_inputs.npz")
 aa_file = common_paths["aa_summary"]
@@ -691,7 +690,7 @@ def map_base(fig, grid, cpt, label, stations=True, places=False):
     if stations:
         used = aa.site_code.isin(aa_labelled)                                    # only the arrays the paper uses are drawn
         fig.plot(x=aa.long_deg.values[used], y=aa.lat_deg.values[used], style="s0.18c", fill="black", pen="0.4p,white")
-        for _, array_row in aa[used].iterrows():                                 # HGIL left of its symbol, HRKT right and nudged up off the Y-Y' line
+        for _, array_row in aa[used].iterrows():                                 # HRKT right of its symbol, nudged up off the Y-Y' line
             justify, offset = aa_label_pos[array_row.site_code]
             utils.text_backed(fig, x=array_row.long_deg, y=array_row.lat_deg, text=array_row.site_code,
                               justify=justify, offset=offset, font=annot_font)

@@ -94,6 +94,8 @@ event_field_file = os.path.join(paths_out["06_event_field_geometry"], "fig2_inpu
 lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.csv")        # the SSE extent bracket
 strike_map = 144.0             # page rotation of the map (mean strike, notebook 02; as Fig 1A)
 map_h_cm = 9.2                 # map height (cm, as Fig 1A); the width follows at true scale
+map_u_km = (42.0, 70.0)        # along-strike extent of the map (km from Point Pinole): just north of CHP1 (Hayward) to the south end of Fig 1A
+map_half_km = 6.0              # across-fault half-width of the map (km)
 event_lim = 5.0                # map colour range, +/- mm of event slip
 array_label_u_km = [46.5, 49.0, 51.5, 54.0, 56.5, 59.0]   # along-strike km of the six array codes (north to south), north of CFW1 (62.2) and the scale bar
 
@@ -373,7 +375,7 @@ x_step = float(event_x[0, 1] - event_x[0, 0])
 y_step = float(event_y[1, 0] - event_y[0, 0])
 assert np.allclose(np.diff(event_x, axis=1), x_step) and np.allclose(np.diff(event_y, axis=0), y_step), "06's grid is not regular"
 frame = utils.strike_frame(int(event_fields["epsg"]), strike_map, trace.ft_lon.values, trace.ft_lat.values)
-_, _, corners = utils.fault_map_corners(frame)
+_, _, corners = utils.fault_map_corners(frame, map_u_km, map_half_km)
 lon_axis, lat_axis, event_lonlat = utils.utm_grid_to_lonlat(fp_event, float(event_x[0, 0]), x_step, float(event_y[0, 0]), y_step,
                                                             frame["to_utm"], corners)
 lon_grid, lat_grid = np.meshgrid(lon_axis, lat_axis)
@@ -423,7 +425,7 @@ with pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_L
                   MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p"):   # as Fig 1
     utils.fault_map_panel(gmt_map, frame, grid_ll, cpt_event, map_h_cm, trace.ft_lon.values, trace.ft_lat.values, creepmeters,
                           (section.km_lo, section.km_hi), letter=None, colorbar_frame="xa2f1+lMean event, fault-parallel (mm)",
-                          extra_symbols=array_symbols, extra_labels=array_labels)
+                          extra_symbols=array_symbols, extra_labels=array_labels, u_range_km=map_u_km, half_km=map_half_km)
 gmt_map.savefig(map_png, dpi=600, crop="+gwhite")
 
 # B to G) the arrays since 2015 with the InSAR, two rows of three, beside the map

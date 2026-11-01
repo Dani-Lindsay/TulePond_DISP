@@ -382,13 +382,12 @@ FAULT_MAP_U_KM = (-3.0, 70.0)     # along strike: from 3 km north of Point Pinol
 FAULT_MAP_HALF_KM = 10.9          # across the fault, each side (3.4 cm wide for 73 km tall at true scale)
 
 
-def fault_map_corners(frame):
+def fault_map_corners(frame, u_range_km=FAULT_MAP_U_KM, half_km=FAULT_MAP_HALF_KM):
     """The rectangle of the rotated fault maps in the strike frame (see strike_frame): u from
-    FAULT_MAP_U_KM[0] to FAULT_MAP_U_KM[1], v within +/- FAULT_MAP_HALF_KM of the trace.
+    u_range_km[0] to u_range_km[1] (default the whole fault, FAULT_MAP_U_KM), v within +/- half_km of the trace.
     Returns (the GMT region in its lower-left/upper-right '+r' form, (lon, lat) of the centre,
     the four corners as a (4, 2) array of lon, lat). A grid drawn on the map must cover the corners."""
-    u_north, u_south = FAULT_MAP_U_KM
-    half_km = FAULT_MAP_HALF_KM
+    u_north, u_south = u_range_km
     lon_ll, lat_ll = uv_to_lonlat(frame, u_south, -half_km)          # lower-left = south end, west side
     lon_ur, lat_ur = uv_to_lonlat(frame, u_north, half_km)           # upper-right = north end, east side
     lon_c, lat_c = uv_to_lonlat(frame, 0.5 * (u_north + u_south), 0.0)
@@ -433,7 +432,8 @@ def utm_grid_to_lonlat(values, x_first, x_step, y_first, y_step, to_utm, corners
 
 
 def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creepmeters, sse_u_km,
-                    letter="A", title="Hayward Fault", colorbar_frame=None, extra_symbols=(), extra_labels=()):
+                    letter="A", title="Hayward Fault", colorbar_frame=None, extra_symbols=(), extra_labels=(),
+                    u_range_km=FAULT_MAP_U_KM, half_km=FAULT_MAP_HALF_KM):
     """Draw the rotated fault map of Fig 1A at the current origin of a pygmt figure. The same panel is used
     by 14 (Fig 1A), 05 (the validation supplementary figure) and 11 (the alignment-array supplementary
     figure); only the field, its colours, the extra symbols and the panel letter differ.
@@ -449,14 +449,23 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
 
     The map is GMT's oblique Mercator with its x axis along strike - 90 deg, so the fault runs up the
     page with north at the top, at true scale: the height is map_h_cm and the width follows from it.
-    Fonts and frame pens are the caller's pygmt.config. Returns the map width in cm.
+    Fonts and frame pens are the caller's pygmt.config. u_range_km and half_km crop the map to part of the
+    fault (11 draws km 42-70 only); creepmeters and city names outside the crop are left out. Returns the map
+    width in cm.
     Source: written for this project (pygmt)."""
     import pygmt
-    region, (lon_c, lat_c), corners = fault_map_corners(frame)
-    u_north, u_south = FAULT_MAP_U_KM
+    region, (lon_c, lat_c), corners = fault_map_corners(frame, u_range_km, half_km)
+    u_north, u_south = u_range_km
     strike_deg = frame["strike_deg"]
     trace_u_km, trace_v_km = to_uv(frame, trace_lon, trace_lat)
     u_creepmeter, _ = creepmeter_u_km(frame, trace_lon, trace_lat, creepmeters)
+    city_u_all = {"Berkeley": float(to_uv(frame, [-122.2727], [37.8716])[0][0]),
+                  "Oakland": 0.5 * (u_creepmeter["CTM1"] + u_creepmeter["COZ1"]),
+                  "Hayward": u_creepmeter["CHP1"],
+                  "Union City": float(to_uv(frame, [-122.0439], [37.5934])[0][0]),
+                  "Fremont": max(float(to_uv(frame, [-121.9886], [37.5485])[0][0]), sse_u_km[1] + 2.0)}
+    whole_fault = tuple(u_range_km) == tuple(FAULT_MAP_U_KM)
+    creepmeters = [c for c in creepmeters if u_north < u_creepmeter[c[0]] < u_south]     # those on this map
     sse_lo_km, sse_hi_km = sse_u_km
     gold = "#F0E442"                                       # Okabe-Ito yellow: the creepmeters, as Fig 1D
     colorbar_w_cm = 2.5                                    # every colour bar of Fig 1 the same size
@@ -493,11 +502,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     #   Oakland: midway between CTM1 (Temescal) and COZ1 (Oakland Zoo), both in Oakland
     #   Hayward: at CHP1 (Palisade Street, Hayward)
     #   Fremont: its centre (Central Park) sits beside the SSE bracket, so just south of the bracket, still in the city
-    city_u = {"Berkeley": float(to_uv(frame, [-122.2727], [37.8716])[0][0]),
-              "Oakland": 0.5 * (u_creepmeter["CTM1"] + u_creepmeter["COZ1"]),
-              "Hayward": u_creepmeter["CHP1"],
-              "Union City": float(to_uv(frame, [-122.0439], [37.5934])[0][0]),
-              "Fremont": max(float(to_uv(frame, [-121.9886], [37.5485])[0][0]), sse_hi_km + 2.0)}
+    # (city_u_all, above; on a cropped map only the cities inside the crop are named)
+    city_u = {city: u_city for city, u_city in city_u_all.items() if whole_fault or u_north + 1.0 < u_city < u_south - 1.0}
     for city, u_city in city_u.items():
         assert u_north < u_city < u_south, f"{city} (u {u_city:.1f} km) falls off the map"
         nearest_vertex = int(np.argmin(np.abs(trace_u_km - u_city)))
