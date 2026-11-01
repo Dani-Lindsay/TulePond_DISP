@@ -520,7 +520,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
 
     # distance from Point Pinole down the left edge: the map's vertical axis is the strike frame u (true scale), so a
     # linear axis over the same box reads u directly. Asserted: GMT's own page y of the creepmeters matches the
-    # linear axis to 0.02 cm.
+    # linear axis to 0.16 km on the ground (0.02 cm on the whole-fault map; the creepmeters sit up to ~0.1 km from a vertex).
     creepmeter_lonlat = []
     creepmeter_axis_y = []                                 # where the linear axis puts each creepmeter (cm from the map bottom)
     for code, lat, lon, name in creepmeters:
@@ -532,7 +532,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
             lib.call_module("mapproject", f"{lonlat_file.name} -R{region} -J{projection} ->{page_xy.name}")
         creepmeter_page_y = np.loadtxt(page_xy.name, ndmin=2)[:, 1]
     axis_error_cm = float(np.max(np.abs(creepmeter_page_y - np.array(creepmeter_axis_y))))
-    assert axis_error_cm < 0.02, f"distance axis off the map by {axis_error_cm:.3f} cm"
+    axis_error_km = axis_error_cm * (u_south - u_north) / map_h_cm          # on the ground: the check holds for any crop
+    assert axis_error_km < 0.16, f"distance axis off the map by {axis_error_km:.3f} km ({axis_error_cm:.3f} cm)"
     fig.basemap(region=[0, 1, u_north, u_south], projection=f"X{map_w_cm:.3f}c/-{map_h_cm}c", frame=["W", "ya10f5+lDistance from Point Pinole (km)"])
     if colorbar_frame is not None:
         with pygmt.config(FONT_ANNOT_PRIMARY="13p", FONT_LABEL="13p"):     # GMT scales colour-bar text down with the bar thickness (-> ~6.5p)
