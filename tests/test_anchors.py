@@ -38,15 +38,15 @@ ANCHORS = {
     "04_onset_window_days_2017": (12.5, 1), "04_onset_window_days_2019": (6.0, 1), "04_onset_window_days_2021": (5.5, 1),
     "04_onset_window_days_2023": (11.5, 1), "04_onset_window_days_2024": (11.5, 1),
     # the 90 % band of the paper
-    "04_band90_lo_km": (58.2, 1), "04_band90_hi_km": (59.8, 1), "04_band90_n_crossings": (17, 0),
-    "04_band90_step_2017_mm": (10.69, 2), "04_band90_step_2019_mm": (10.46, 2), "04_band90_step_2021_mm": (11.25, 2),
-    "04_band90_step_2023_mm": (11.73, 2), "04_band90_step_2024_mm": (7.74, 2),
-    "04_band90_steps_sum_mm": (51.9, 1), "04_band90_inter_event_mm_yr": (0.96, 2), "04_band90_steps_mean_mm": (10.4, 1),
-    "04_band90_width_km": (1.6, 1),
+    "04_band90_lo_km": (58.2, 1), "04_band90_hi_km": (60.2, 1), "04_band90_n_crossings": (21, 0),
+    "04_band90_step_2017_mm": (10.74, 2), "04_band90_step_2019_mm": (10.81, 2), "04_band90_step_2021_mm": (10.89, 2),
+    "04_band90_step_2023_mm": (11.53, 2), "04_band90_step_2024_mm": (8.03, 2),
+    "04_band90_steps_sum_mm": (52.0, 1), "04_band90_inter_event_mm_yr": (1.09, 2), "04_band90_steps_mean_mm": (10.4, 1),
+    "04_band90_width_km": (2.0, 1),
     "04_creep_length_km": (5.9, 1), "04_creep_length_lo_km": (56.3, 1), "04_creep_length_hi_km": (62.2, 1),
     # 06 event field geometry (coherence 0.7, all five events in the mean, 30-150 m steps)
     "06_n_events_mean": (5, 0), "06_asc_desc_geom_ratio": (-0.56, 2),
-    "06_fp_rate_step_mm_yr": (0.98, 2), "06_fp_event_step_mm": (9.63, 2),
+    "06_fp_rate_step_mm_yr": (0.95, 2), "06_fp_event_step_mm": (9.75, 2),
     "06_XX_rate_step_mm_yr": (0.71, 2), "06_XX_event_step_mm": (10.15, 2),   # X-X' at 58.5 km, local strike, +/- 2 km
     "06_YY_rate_step_mm_yr": (6.56, 2), "06_YY_event_step_mm": (1.20, 2),
     # 09 the selected 3D model (70 W fault, model_config.py); 08 the homogeneous model
