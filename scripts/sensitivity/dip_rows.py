@@ -5,11 +5,13 @@ Author: Danielle Lindsay
 Geometries: vertical, 80 E / 80 W, 70 E / 70 W (PyLith order-2 SFSVM runs on the default mesh,
 `gf_default[_dip..]_sfcvm_order2`) and 60 W / 50 W (no PyLith run: analytic only). Families: "3D N^0" (the weighting of
 model_config, equal weights), "3D full Cd" (nugget / N^0.5 plus the exponential term) and "Homogeneous analytic N^0"
-(CSI triangular dislocations, Meade 2007, on the same tents, model_utils.analytic_tent_G). Each geometry uses one solve,
+(CSI triangular dislocations, Meade 2007, on the same tents, model_utils.analytic_tent_G, each fault triangle split into
+N_SUB^2 = 64 sub-triangles: n_sub 8, the value notebook 08 uses for its homogeneous model). Each geometry uses one solve,
 one corner rule (model_config) and one scoring (scripts/sensitivity/common.py).
-The analytic matrices are read from stored files computed with n_sub 4 (modeling_uniform/gf_dip_rows/G_analytic_<run>_nsub4.npy in the
-impulse order of each run; modeling_uniform/gf_dip_rows/G_analytic_dip{60w,50w}_nsub4.npz). Each analytic matrix is checked
-against its PyLith run (same-sign columns) before use.
+The analytic matrices are read from the files made by scripts/sensitivity/dip_rows_analytic_G.py (run it first):
+modeling_uniform/gf_dip_rows/G_analytic_<run>_nsub8.npy in the impulse order of each run, and
+modeling_uniform/gf_dip_rows/G_analytic_dip{60w,50w}_nsub8.npz (tents rebuilt from the default mesh and PyLith's impulse
+rule). Each analytic matrix is checked against its PyLith run (same-sign columns) before use.
 Output (model_config.sensitivity_dir): dip_rows.csv, lcurve_<geometry>_<family>.csv.
 Run (repo root): PYTHONPATH=. nice -n 15 python scripts/sensitivity/dip_rows.py      (~2 h)
 """
@@ -23,10 +25,11 @@ import common                                         # noqa: E402
 from common import cfg                                # noqa: E402
 from TulePond_filepaths import data_dir               # noqa: E402
 
-DIP_ANALYTIC = os.path.join(data_dir, "modeling_uniform", "gf_dip_rows")   # analytic G of the dip rows (n_sub 4)
+N_SUB = 8   # sub-triangles per fault triangle edge of the analytic G: the value notebook 08 uses (registry 08_analytic_nsub = 8)
+DIP_ANALYTIC = os.path.join(data_dir, "modeling_uniform", "gf_dip_rows")   # analytic G of the dip rows (dip_rows_analytic_G.py)
 PYLITH_RUNS = {"vertical": "gf_default_sfcvm_order2", "dip80e": "gf_default_dip80e_sfcvm_order2", "dip80w": "gf_default_dip80w_sfcvm_order2",
                "dip70e": "gf_default_dip70e_sfcvm_order2", "dip70w": "gf_default_dip70w_sfcvm_order2"}
-ANALYTIC_ONLY = {"dip60w": "analytic_dip60w_nsub4", "dip50w": "analytic_dip50w_nsub4"}     # G_<name>.npz in gf_dip_rows/
+ANALYTIC_ONLY = {"dip60w": f"analytic_dip60w_nsub{N_SUB}", "dip50w": f"analytic_dip50w_nsub{N_SUB}"}   # G_<name>.npz in gf_dip_rows/
 DIP_DEG = {"dip50w": -40, "dip60w": -30, "dip70w": -20, "dip80w": -10, "vertical": 0, "dip80e": 10, "dip70e": 20}   # from vertical, W < 0
 FAMILIES = {"3D N^0": ("pylith", cfg.weighting, cfg.nugget_power), "3D full Cd": ("pylith", "full", 0.5),
             "Homogeneous analytic N^0": ("analytic", cfg.weighting, cfg.nugget_power)}
@@ -41,7 +44,7 @@ if __name__ == "__main__":
             run = PYLITH_RUNS[geometry]
             setup = common.make_setup(inputs, run)
             G_pylith = setup["G"]["m"]
-            G_analytic = np.load(os.path.join(DIP_ANALYTIC, f"G_analytic_{run}_nsub4.npy"))
+            G_analytic = np.load(os.path.join(DIP_ANALYTIC, f"G_analytic_{run}_nsub{N_SUB}.npy"))
             assert G_analytic.shape == G_pylith.shape, f"{geometry}: analytic G {G_analytic.shape} vs PyLith {G_pylith.shape}"
             same_sign = np.einsum("ij,ij->j", G_analytic, G_pylith) > 0
             assert same_sign.mean() > 0.99, f"{geometry}: analytic and PyLith columns disagree in sign for {(~same_sign).sum()} tents"
