@@ -427,21 +427,45 @@ gmt_map = pygmt.Figure()
 with pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_LABEL="7p,Helvetica", MAP_FRAME_TYPE="plain",
                   MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p"):   # as Fig 1
     utils.fault_map_panel(gmt_map, frame, grid_ll, cpt_event, map_h_cm, trace.ft_lon.values, trace.ft_lat.values, creepmeters,
-                          (section.km_lo, section.km_hi), letter=None, colorbar_frame="xa2f1+lMean event, fault-parallel (mm)",
+                          (section.km_lo, section.km_hi), letter=None, colorbar_frame="xa2f1+lFault-parallel displacement (mm)",
                           extra_symbols=array_symbols, extra_labels=array_labels, u_range_km=map_u_km, half_km=map_half_km, scale_km=2)
 gmt_map.savefig(map_png, dpi=600, crop="+gwhite")
 
-# B to G) the arrays since 2015 with the InSAR, two rows of three, beside the map
+# B to G) the arrays since 2015 with the InSAR, two rows of three, beside the map. The panel boxes span exactly the
+# map frame: the frame is found in the map image as the longest unbroken dark column (its left edge, the full map
+# height), and the figure is laid out in inches around it (no automatic layout, so the alignment is exact).
+map_image = plt.imread(map_png)
+dark_pixels = map_image[:, :, :3].mean(axis=2) < 0.25
+longest_run = (0, 0, 0)                                            # (length, first row, last row)
+for column in range(dark_pixels.shape[1]):
+    rows = np.flatnonzero(np.diff(np.r_[0, dark_pixels[:, column].astype(int), 0]))
+    for first, last in zip(rows[::2], rows[1::2]):
+        if last - first > longest_run[0]:
+            longest_run = (last - first, first, last - 1)
+_, frame_top_px, frame_bottom_px = longest_run
+image_h_px, image_w_px = map_image.shape[:2]
+assert longest_run[0] > 0.6 * image_h_px, f"map frame not found in {map_png} (longest dark column {longest_run[0]} of {image_h_px} px)"
+fig_w_in, fig_h_in = 7.2, 4.0                                      # 18.3 cm wide
+frame_top_in, frame_bottom_in = fig_h_in - 0.30, 0.62              # frame top and bottom, inches from the figure bottom
+scale_in = (frame_top_in - frame_bottom_in) / (frame_bottom_px - frame_top_px)    # inches per map pixel
+image_bottom_in = frame_bottom_in - (image_h_px - frame_bottom_px) * scale_in
+assert image_bottom_in >= 0.0, f"the map's colour bar runs off the figure ({image_bottom_in:.2f} in)"
+map_w_in = image_w_px * scale_in
 utils.mpl_paper_style(base=7)
-fig = plt.figure(figsize=(7.2, 4.4), constrained_layout=True)          # 18.3 cm wide
-grid_spec = fig.add_gridspec(2, 4, width_ratios=[1.0, 1, 1, 1])             # the map column: the tall rotated map
-ax_map = fig.add_subplot(grid_spec[:, 0])
-ax_map.imshow(plt.imread(map_png))
+fig = plt.figure(figsize=(fig_w_in, fig_h_in))
+ax_map = fig.add_axes([0.02, image_bottom_in / fig_h_in, map_w_in / fig_w_in, image_h_px * scale_in / fig_h_in])
+ax_map.imshow(map_image)
 ax_map.axis("off")
-utils.panel_title(ax_map, "A", "Mean event and the six arrays")
+utils.panel_title(ax_map, "A", "Mean SSE displacement")
+panels_left_in = 0.02 * fig_w_in + map_w_in + 0.55                 # room for the y label of B and E
+panel_gap_x_in, panel_gap_y_in = 0.42, 0.55                        # between columns (tick labels), between rows (x ticks, titles)
+panel_w_in = (fig_w_in - 0.08 - panels_left_in - 2 * panel_gap_x_in) / 3
+panel_h_in = (frame_top_in - frame_bottom_in - panel_gap_y_in) / 2
 for i, (code, array) in enumerate(arrays.items()):
     insar_dates, insar_slip, n_crossings = stacks[code]
-    ax = fig.add_subplot(grid_spec[i // 3, 1 + i % 3])
+    left_in = panels_left_in + (i % 3) * (panel_w_in + panel_gap_x_in)
+    bottom_in = frame_top_in - panel_h_in if i < 3 else frame_bottom_in
+    ax = fig.add_axes([left_in / fig_w_in, bottom_in / fig_h_in, panel_w_in / fig_w_in, panel_h_in / fig_h_in])
     recent = array.year >= zoom_t0
     ax.errorbar(array.year[recent], array.cum_mm[recent], yerr=array.std_mm[recent], fmt="o", ms=2.5, color=aa_color, ecolor=aa_color,
                 elinewidth=0.6, lw=0.8, ls="-", label="Alignment array")
