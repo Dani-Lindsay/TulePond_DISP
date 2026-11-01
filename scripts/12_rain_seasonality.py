@@ -1189,9 +1189,9 @@ print("\n".join(sweep_lines))
 # %% [markdown]
 # ## 9. Supplementary figure: the rainfall conditioning
 #
-# (A) Water-year accumulation, with the onset windows. (B) The lag of each onset after each rule A threshold. (C) Onset
-# day against the day the best rule A threshold was crossed. (D) The p of every setting of the 3-day rainfall-total
-# test of section 8 (rows Z, columns X, the best setting outlined), with the search-corrected p in the panel title.
+# (A) Water-year accumulation, with the onset windows and the best rule A threshold. (B) The p of every setting of the
+# 3-day rainfall-total test of section 8 (rows Z, columns X, the best setting outlined). The lags of every rule A
+# threshold and the search-corrected p are printed and registered (sections 7 and 8), not drawn.
 
 # %%
 utils.mpl_paper_style(base=8)          # Helvetica, 8 pt, editable PDF text
@@ -1199,9 +1199,10 @@ insar_colour = insar_bar_colour         # Okabe-Ito vermillion: InSAR, as in eve
 event_colours = ["#0072B2", "#E69F00", "#CC79A7", "#000000", "#56B4E9"]   # Okabe-Ito, no green
 assert len(event_colours) >= n_insar, "more InSAR events than distinct colours"
 array_years_text = f"{int(np.floor(aa_dense.onset_lo.min()))} to {int(np.floor(aa_dense.onset_hi.max()))}"
-fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.8))
+best_Y = int(best_rule_a.thr)
+fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.0), width_ratios=[1.15, 1.0])
 # a) every water year's accumulation, the InSAR event years in colour, the onset windows as thick segments
-ax = axes[0, 0]
+ax = axes[0]
 for wy in range(wy_years[0], wy_years[1] + 1):
     this_year = wy_series(wy)
     ax.plot(this_year.dowy, this_year.cum, "-", color="0.8", lw=0.5, zorder=1)
@@ -1223,57 +1224,8 @@ ax.legend(handles=[Line2D([], [], color=insar_colour, lw=3, label="InSAR onset w
                    Line2D([], [], color="0.25", lw=2.2, alpha=0.7, label=f"Array onset window ({array_years_text})"),
                    Line2D([], [], color="0.8", lw=0.5, label=f"All water years {wy_years[0]} to {wy_years[1]}")], fontsize=6, loc="upper left")
 utils.panel_title(ax, "A", "Onsets against water-year accumulation")
-# b) the lag of each onset after every rule A threshold
-ax = axes[0, 1]
-thresholds = list(threshold_scores[threshold_scores.kind == "Y"].thr)
-for colour, event in zip(event_colours, insar_rain.itertuples()):
-    lag_lo = []
-    lag_hi = []
-    for Y in thresholds:
-        lag_lo.append(getattr(event, f"lagY{Y}_lo"))
-        lag_hi.append(getattr(event, f"lagY{Y}_hi"))
-    ax.fill_betweenx(thresholds, lag_lo, lag_hi, color=colour, alpha=0.5, lw=0)
-    ax.plot(lag_hi, thresholds, "-", color=colour, lw=0.8)
-for event in aa_rain.itertuples():
-    lag_lo = []
-    lag_hi = []
-    for Y in thresholds:
-        lag_lo.append(getattr(event, f"lagY{Y}_lo"))
-        lag_hi.append(getattr(event, f"lagY{Y}_hi"))
-    ax.fill_betweenx(thresholds, lag_lo, lag_hi, color="0.3", alpha=0.10, lw=0)
-ax.axvline(0, color="0.3", lw=0.6)
-ax.axhline(best_rule_a.thr, color=insar_colour, lw=0.7, ls="--")
-ax.set_xlim(-120, 160)
-ax.set_xlabel("Onset minus threshold crossing (d)")
-ax.set_ylabel("Water-year threshold (mm)")
-utils.panel_title(ax, "B", "Lag against threshold")
-# c) onset day against the day the best rule A threshold was crossed
-ax = axes[1, 0]
-best_Y = int(best_rule_a.thr)
-for colour, event in zip(event_colours, insar_rain.itertuples()):
-    crossing_day = event.dowy_hi - getattr(event, f"lagY{best_Y}_hi")
-    ax.plot([crossing_day, crossing_day], [event.dowy_lo, event.dowy_hi], "-", color=colour, lw=3, solid_capstyle="butt")
-for event in aa_rain.itertuples():
-    lag = getattr(event, f"lagY{best_Y}_hi")
-    if np.isfinite(lag):
-        crossing_day = event.dowy_hi - lag
-        ax.plot([crossing_day, crossing_day], [event.dowy_lo, event.dowy_hi], "-", color="0.25", lw=1.8, alpha=0.7, solid_capstyle="butt")
-diagonal = np.array([1, 366])
-ax.plot(diagonal, diagonal, "-", color="0.5", lw=0.6)
-ax.fill_between(diagonal, diagonal + best_rule_a.insar_lag_min, diagonal + best_rule_a.insar_lag_max, color=insar_colour, alpha=0.12, lw=0)
-ax.set_xlim(30, 220)
-ax.set_ylim(30, 260)
-ticks = [62, 124, 182, 244]
-tick_labels = ["Dec 1", "Feb 1", "Apr 1", "Jun 1"]
-ax.set_xticks(ticks)
-ax.set_xticklabels(tick_labels)
-ax.set_yticks(ticks)
-ax.set_yticklabels(tick_labels)
-ax.set_xlabel(f"Day water-year rain passes {best_Y} mm")
-ax.set_ylabel("Onset day of water year")
-utils.panel_title(ax, "C", f"Onset {best_rule_a.insar_lag_min:+.0f} to {best_rule_a.insar_lag_max:+.0f} d after the threshold")
-# d) the 3-day rainfall-total test: p of every setting (rows Z, columns X), the number written in each cell, the best outlined
-ax = axes[1, 1]
+# b) the 3-day rainfall-total test: p of every setting (rows Z, columns X), the number written in each cell, the best outlined
+ax = axes[1]
 p_cmap = plt.get_cmap("magma")                       # sequential, no blue or green
 image = ax.imshow(p_table.values, cmap=p_cmap, vmin=0, vmax=1, aspect="auto")
 for i, Z in enumerate(p_table.index):
@@ -1294,7 +1246,7 @@ ax.set_ylabel(f"Z, {rain_total_days}-day rain total at Fremont (mm)")
 colour_bar = fig.colorbar(image, ax=ax, fraction=0.05, pad=0.03)
 colour_bar.set_label("p (null: a random day of the season, same water year)", fontsize=7)
 colour_bar.ax.tick_params(labelsize=7)
-utils.panel_title(ax, "D", f"InSAR onsets, {n_settings} settings; corrected for the search: p = {p_search_paid:.3f}")
+utils.panel_title(ax, "B", f"3-day storms before the InSAR onsets, {n_settings} rules")
 fig.tight_layout()
 f_conditioning = os.path.join(fig_dir, f"figS_precip_conditioning_bestY{best_Y}mm_rain{rain_total_days}d_sweep{n_settings}_nnull{n_null}.png")
 fig.savefig(f_conditioning, dpi=300)
