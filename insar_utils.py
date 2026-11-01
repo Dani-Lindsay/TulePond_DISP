@@ -489,14 +489,16 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
         text_backed(fig, x=lon, y=lat, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")
     # the SSE extent bracket, east of the fault so it stays clear of the creepmeter labels, ticks reaching
     # almost to the trace; labelled in two rows (GMT has no newline outside paragraph mode), one size up
-    bracket_lon, bracket_lat = uv_to_lonlat(frame, [sse_lo_km, sse_hi_km], [2.0, 2.0])
+    bracket_v_km = 2.0 if whole_fault else 0.9          # a cropped (narrower) map keeps the label inside the frame
+    bracket_lon, bracket_lat = uv_to_lonlat(frame, [sse_lo_km, sse_hi_km], [bracket_v_km, bracket_v_km])
     fig.plot(x=bracket_lon, y=bracket_lat, pen="1.1p,black")
     for u_tick in (sse_lo_km, sse_hi_km):
-        tick_lon, tick_lat = uv_to_lonlat(frame, [u_tick, u_tick], [0.4, 2.0])
+        tick_lon, tick_lat = uv_to_lonlat(frame, [u_tick, u_tick], [0.4, bracket_v_km])
         fig.plot(x=tick_lon, y=tick_lat, pen="1.1p,black")
     u_mid = 0.5 * (sse_lo_km + sse_hi_km)
     row_km = 1.0 * (u_south - u_north) / (FAULT_MAP_U_KM[1] - FAULT_MAP_U_KM[0])     # the rows 1 km apart on the whole-fault map, the same page gap on a crop
-    label_lon, label_lat = uv_to_lonlat(frame, [u_mid - row_km, u_mid + row_km], [2.9, 2.9])   # left edge 0.9 km east of the bracket
+    label_v_km = bracket_v_km + (0.9 if whole_fault else 0.7)                        # left edge just east of the bracket
+    label_lon, label_lat = uv_to_lonlat(frame, [u_mid - row_km, u_mid + row_km], [label_v_km, label_v_km])
     text_backed(fig, x=label_lon, y=label_lat, text=["SSE", "extent"], justify="LM", font="8p,Helvetica,black")
     # the cities along the fault, east side opposite the creepmeter labels, each within the city's stretch of the
     # fault (labels only, nothing is measured from them):
