@@ -20,10 +20,10 @@
 #    acquisition interval of 6 or 12 d. The confidence intervals on the steps come from a moving-block
 #    bootstrap.
 # 3. **Along strike**, the same joint model is fitted at every crossing with the step epochs held fixed. It
-#    gives the per-event slip profiles, the inter-event (secular) rate and the event-driven fraction of slip.
+#    gives the per-event slip profiles and the inter-event (secular) rate.
 # 4. **Section lengths**: (a) the length of fault hosting the events, where the cumulative event slip exceeds
 #    a threshold set from the scatter on the flanks; (b) the width of the peak slip zone, where the
-#    event-driven fraction is at least 90 % of its peak (the 90 % band).
+#    cumulative event slip is at least 90 % of its peak (the 90 % band).
 # 5. **Band stack**: the joint model fitted to the mean series of the crossings in the 90 % band, which gives
 #    the step amplitudes quoted for the five events.
 # 6. **Slip budget**: the inter-event rate plus the event-driven rate (the five Tule Pond events only),
@@ -55,7 +55,7 @@
 # events, which must include the two large COZ1 events of January 2019 and February 2022 (asserted) and are
 # compared with the creepmeter's own detections. COZ1 events are labelled by onset day, not year. Section 6
 # repeats the detection at 3.5 and 4 times the noise level and asserts the same five events, and asserts that
-# every onset window agrees with each track's real acquisitions. The event-driven fraction near each section
+# every onset window agrees with each track's real acquisitions. The summed event slip near each section
 # centre (section 8), the band-stack amplitudes (section 11) and the slip-budget blocks against the
 # alignment-array rates (section 12) are printed.
 
@@ -82,10 +82,9 @@ import matplotlib.pyplot as plt
 #
 # The settings of the detector, the along-strike profiles and the slip budget. `SEGS` lists the two sections
 # analysed, Tule Pond and the Oakland control (COZ1). For each it gives a title, the segment key, the name of
-# its fraction column, a search window (centre and half-width, km from Point Pinole) and the creepmeter used
-# as a control. The search window only bounds where the along-fault peak of event slip is looked for: for
-# Tule Pond, the peak of the cumulative slip above the inter-event rate (section 9); for Oakland, the peak of
-# its event-driven fraction (section 10). The section extent and the bands are then measured from the data
+# its event-sum column, a search window (centre and half-width, km from Point Pinole) and the creepmeter used
+# as a control. The Tule Pond search window bounds where the along-fault peak of the cumulative slip above the
+# inter-event rate is looked for (section 9); the section extent and the band are then measured from the data
 # within it. The Tule Pond half-width also sets the half-width of the along-strike window of section 9. The
 # detection stacks are centred on the section centres of `segments` (TulePond_filepaths).
 
@@ -110,8 +109,7 @@ seed = 0                # bootstrap random seed
 # along strike
 min_epoch_frac = 0.5    # a crossing needs >50% finite epochs to be fitted
 smooth_km = 0.4         # along-fault smoothing of the profiles (gap-preserving; sigma in km along the trace)
-total_floor_mm = 1.0    # |total slip| below this: fraction undefined
-band_main = paper_band_frac  # the peak slip zone: fraction >= this x its local peak (TulePond_filepaths, also read by 13)
+band_main = paper_band_frac  # the peak slip zone: cumulative event slip >= this x its peak (TulePond_filepaths, also read by 13)
 band_fracs = (band_main,)
 flank_km = ((52.0, 56.0), (64.0, 68.0))   # flanks for the creep-length threshold (Tule Pond, km from Point Pinole)
 seis_max_dist_km = 2.0  # seismicity and repeaters within this of the trace
@@ -127,7 +125,7 @@ rate_band_min_n = 5      # ... drawn as shading only where at least this many cr
 strike_map = 144.0      # page rotation of the map panel (mean strike, notebook 02)
 ref_patch_km = 5.0      # map display reference: CTM1-COZ1 patch, +/- this across the fault
 
-# The two sections analysed: (title, segment key, fraction column, search centre km, search half-width km, creepmeter).
+# The two sections analysed: (title, segment key, event-sum column, search centre km, search half-width km, creepmeter).
 # The search window only bounds where the along-fault peak of event slip is looked for; the section extent and the
 # 90 % band are then measured from the data within it.
 SEGS = [("Tule Pond", "TULEPOND", "tulepond", 58.0, 10.0, ""),
@@ -830,18 +828,15 @@ plt.show()
 # is fitted at each crossing $x$ that has finite values at more than half of the epochs
 # (`min_epoch_frac`). It gives the inter-event rate $b_x$ (mm/yr) and the step $A_{k,x}$ (mm) of each event
 # at that crossing; the along-strike extent of each event is read from these steps. For a section with
-# event set $E$ (the five Tule Pond events, or the COZ1 control events), the summed event slip, the total
-# slip and the event-driven fraction are
+# event set $E$ (the five Tule Pond events, or the COZ1 control events), the summed event slip is
 #
-# $$S_x = \sum_{k \in E} A_{k,x}, \qquad T_x = b_x\,T + S_x, \qquad F_x = 100\,\frac{S_x}{T_x},$$
+# $$S_x = \sum_{k \in E} A_{k,x}$$
 #
-# where $T = t_N - t_1$ is the record length (yr), $S_x$ and $T_x$ are in mm and $F_x$ is in %. $F_x$ is
-# undefined where $|T_x| \le 1$ mm (`total_floor_mm`). It is a ratio of regression coefficients and is not
-# confined to 0 to 100 %. The profiles are smoothed along the fault with `utils.gaussian_smooth_km`, a
+# (mm). The profiles are smoothed along the fault with `utils.gaussian_smooth_km`, a
 # Gaussian of standard deviation 0.4 km (`smooth_km`) on the regular 100 m grid of crossings, whose weights
 # are renormalised over the finite neighbours; the result is NaN where less than 15 % of the kernel weight
-# is data, and wherever the input is NaN. The median and the 5 to 95 % range of the unsmoothed $F_x$ over the
-# crossings within 2 km of each section centre are printed.
+# is data, and wherever the input is NaN. The median of the unsmoothed $S_x$ over the crossings within 2 km of
+# each section centre is printed.
 
 # %%
 gaussian_smooth_km = utils.gaussian_smooth_km      # NaN-aware, gap-preserving Gaussian along the fault (insar_utils)
@@ -886,27 +881,20 @@ for i in range(len(lats)):
     inter_event_rate[i] = coef_i[1]
     event_amp[:, i] = coef_i[4:]
 
-# per section: summed event slip, the event-driven fraction, and the numbers near the centre
+# per section: summed event slip, and its median near the centre
 # (within the stack half-width, +/- stack_half_km along the trace, as the detection stack)
 columns = {"lat": lats, "km": km, "inter_event_rate": inter_event_rate,
            "inter_event_rate_smooth": gaussian_smooth_km(inter_event_rate, km, smooth_km)}
-frac_stats = {}
-for title, key, fraction_column, _, _, _ in SEGS:
+sum_stats = {}
+for title, key, sum_column, _, _, _ in SEGS:
     in_segment = segment_of == key
     event_sum = event_amp[in_segment].sum(axis=0)
-    total = inter_event_rate * span + event_sum
-    fraction = 100 * event_sum / np.where(np.abs(total) > total_floor_mm, total, np.nan)
-    columns[f"event_sum_{fraction_column}"] = event_sum
-    columns[f"event_frac_{fraction_column}"] = fraction
-    columns[f"event_frac_{fraction_column}_smooth"] = gaussian_smooth_km(fraction, km, smooth_km)
+    columns[f"event_sum_{sum_column}"] = event_sum
     for j in np.flatnonzero(in_segment):
         columns[f"amp_{step_epochs_all[j]:.3f}"] = event_amp[j]          # the column is named by the event's step epoch
     near_centre = np.abs(km - float(to_km([segments[key]["lat"]])[0])) <= stack_half_km + 1e-6
-    fraction_valid = fraction[near_centre & np.isfinite(fraction)]
-    frac_stats[key] = dict(n=int(near_centre.sum()), sum_median=float(np.nanmedian(event_sum[near_centre])), median=float(np.median(fraction_valid)),
-                           p5=float(np.percentile(fraction_valid, 5)), p95=float(np.percentile(fraction_valid, 95)))
-    print(f"{title}: {near_centre.sum()} crossings within the stack half-width; summed event slip median {np.nanmedian(event_sum[near_centre]):.1f} mm; "
-          f"fraction median {np.median(fraction_valid):.0f}%, 5-95% {np.percentile(fraction_valid, 5):.0f} to {np.percentile(fraction_valid, 95):.0f}%")
+    sum_stats[key] = dict(n=int(near_centre.sum()), sum_median=float(np.nanmedian(event_sum[near_centre])))
+    print(f"{title}: {near_centre.sum()} crossings within the stack half-width; summed event slip median {np.nanmedian(event_sum[near_centre]):.1f} mm")
 event_fraction = pd.DataFrame(columns)
 event_fraction.to_csv(os.path.join(out_dir, "event_fraction_by_crossing.csv"), index=False)
 
@@ -997,15 +985,14 @@ print(f"window re-centred on the cumulative-slip peak at {peak_km:.1f} km: {w_lo
 #    the peak to the north or to the south, first falls below 90 % and 10 % of its peak, interpolated
 #    linearly between crossings.
 # 2. **Width of the peak slip zone (the 90 % band).** The contiguous run of crossings around the peak of the
-#    smoothed event-driven fraction $\tilde{F}_x$ (section 8) where
+#    same cumulative event slip $C_x$ (the profile of Fig 1C) where
 #
-#    $$\tilde{F}_x \ge f \max_x \tilde{F}_x,$$
+#    $$C_x \ge f \max_x C_x,$$
 #
-#    with $f = 0.90$ (`band_main`, `paper_band_frac` in TulePond_filepaths).
+#    with $f = 0.90$ (`band_main`, `paper_band_frac` in TulePond_filepaths). Its ends are therefore the 90 %
+#    points of the edge widths, taken at the crossings.
 #
-# The Oakland control band is found in the same way on the Oakland event-driven fraction, at $f = 0.75$ of
-# its own peak, inside the Oakland search window of `SEGS`. The extents are saved to `section_lengths.csv`
-# for the map brackets (notebook 05) and the text.
+# The extents are saved to `section_lengths.csv` for the map brackets (notebook 05) and the text.
 
 # %%
 def contiguous_span(km_axis, values, threshold):
@@ -1089,31 +1076,22 @@ for end, step in (("north", -1), ("south", +1)):
     edge_widths[end] = (km_90, km_10, abs(km_10 - km_90))
     print(f"  {end} end: 90% of peak at {km_90:.2f} km, 10% at {km_10:.2f} km: 10-90% edge width {abs(km_10 - km_90):.2f} km")
 
-# the peak slip zone: where the smoothed fraction stays above band_fracs x its peak
-fraction_smooth = interp_nan(km_sorted, event_fraction[f"event_frac_{tulepond_column}_smooth"].values[north_to_south])
-fraction_window = np.where(in_window, fraction_smooth, np.nan)
-peak_frac = float(np.nanmax(fraction_window))
+# the peak slip zone: where the same cumulative event slip stays at or above band_fracs x its peak
 bands = {}
 for band_frac in band_fracs:
-    band_lo, band_hi, band_n = contiguous_span(km_sorted, fraction_window, band_frac * peak_frac)
+    band_lo, band_hi, band_n = contiguous_span(km_sorted, cum_event_slip_window, band_frac * peak_cum)
     bands[band_frac] = (band_lo, band_hi, band_n)
-    print(f"  peak slip zone at {100 * band_frac:.0f}% of the fraction peak ({peak_frac:.0f}%): {band_lo:.1f} to {band_hi:.1f} km = "
+    print(f"  peak slip zone at {100 * band_frac:.0f}% of the cumulative-slip peak ({peak_cum:.1f} mm): {band_lo:.1f} to {band_hi:.1f} km = "
           f"{band_hi - band_lo:.1f} km, {band_n} crossings")
-
-# the Oakland control band: 75 % of the peak of its own fraction, inside its search window
-_, _, _, coz1_centre_km, coz1_half_span_km, _ = SEGS[1]
-coz1_band_frac = 0.75
-fraction_coz1 = interp_nan(km_sorted, event_fraction["event_frac_coz1_smooth"].values[north_to_south])
-in_window_coz1 = (km_sorted >= coz1_centre_km - coz1_half_span_km) & (km_sorted <= coz1_centre_km + coz1_half_span_km)
-fraction_coz1_window = np.where(in_window_coz1, fraction_coz1, np.nan)
-coz1_lo, coz1_hi, coz1_n = contiguous_span(km_sorted, fraction_coz1_window, coz1_band_frac * np.nanmax(fraction_coz1_window))
+# its ends are the 90 % points of the edge widths, taken at the crossings (within one 100 m step)
+assert abs(bands[band_main][0] - edge_widths["north"][0]) <= 0.1 + 1e-6 and abs(bands[band_main][1] - edge_widths["south"][0]) <= 0.1 + 1e-6, \
+    (bands[band_main], edge_widths)
 
 # the measured extents, for the map brackets (notebook 05) and the text
 band_lo, band_hi, band_n = bands[band_main]
 section_lengths = pd.DataFrame([
     dict(name="tulepond_creep_length", km_lo=len_lo, km_hi=len_hi, lat_lo=lat_of_km(len_hi), lat_hi=lat_of_km(len_lo), n=len_n),
-    dict(name="tulepond_band90", km_lo=bands[0.90][0], km_hi=bands[0.90][1], lat_lo=lat_of_km(bands[0.90][1]), lat_hi=lat_of_km(bands[0.90][0]), n=bands[0.90][2]),
-    dict(name="oakland_band75", km_lo=coz1_lo, km_hi=coz1_hi, lat_lo=lat_of_km(coz1_hi), lat_hi=lat_of_km(coz1_lo), n=coz1_n)])
+    dict(name="tulepond_band90", km_lo=bands[0.90][0], km_hi=bands[0.90][1], lat_lo=lat_of_km(bands[0.90][1]), lat_hi=lat_of_km(bands[0.90][0]), n=bands[0.90][2])])
 section_lengths.to_csv(os.path.join(out_dir, "section_lengths.csv"), index=False)
 print("Saved section_lengths.csv")
 
@@ -1128,8 +1106,7 @@ print("Saved section_lengths.csv")
 # zeroed at its first finite epoch and fitted with the joint model of section 4, with the steps at the five
 # Tule Pond step epochs (`onset_lo` of `creep_events.csv`) and moving-block bootstrap intervals on the steps.
 # The steps $A_k$ of this fit are the amplitudes quoted for the five events. The standard deviation across
-# the band crossings is the grey envelope of Fig 1E. The Oakland control band is stacked in the same way with
-# the COZ1 control events.
+# the band crossings is the grey envelope of Fig 1E.
 
 # %%
 def band_stack(lo_km, hi_km, step_epochs):
@@ -1172,10 +1149,6 @@ for band_frac, (lo_km, hi_km, n_band) in bands.items():
     print(f"    sum {np.sum(result['steps']):.1f} mm, mean {np.mean(result['steps']):.1f} mm, "
           f"range {np.min(result['steps']):.1f} to {np.max(result['steps']):.1f} mm")
     print("")
-step_epochs_coz1 = coz1_events["onset_lo"].to_numpy(float)          # every COZ1 control event (section 5)
-coz1_band = band_stack(coz1_lo, coz1_hi, step_epochs_coz1)
-print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_band['n']}): steps "
-      f"{np.round(coz1_band['steps'], 2).tolist()} mm, secular {coz1_band['secular']:.2f} mm/yr")
 
 # %% [markdown]
 # ## 12. The slip budget, the alignment arrays and the creepmeters
@@ -1186,9 +1159,8 @@ print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_b
 #
 # where $S_x$ is the summed step of the section's own events (mm, section 8), $T$ the record length (yr),
 # $b_x$ the inter-event rate (mm/yr), and both rates are in mm/yr. Fig 1C, 1D and the Tule Pond blocks count
-# the five Tule Pond events only; the Oakland control block counts all of its own COZ1 events. Both sets of
-# steps stay in the joint model at every crossing (section 8). For Fig 1C and 1D the profiles are smoothed with
-# the 0.4 km Gaussian of the event-driven fraction (`smooth_km`). A block, the span of crossings from $x_{\mathrm{lo}}$ to
+# the five Tule Pond events only; the COZ1 control steps stay in the joint model at every crossing (section 8).
+# For Fig 1C and 1D the profiles are smoothed with the 0.4 km Gaussian of the section extent (`smooth_km`). A block, the span of crossings from $x_{\mathrm{lo}}$ to
 # $x_{\mathrm{hi}}$, reports the means of $b_x$, $r^{\mathrm{ev}}_x$ and $r^{\mathrm{tot}}_x$ over its
 # crossings and the event-driven share $100\,\overline{r^{\mathrm{ev}}} / \overline{r^{\mathrm{tot}}}$ (%).
 #
@@ -1221,14 +1193,6 @@ slip_budget["secular"] = event_fraction["inter_event_rate"]
 slip_budget["event_sum"] = event_fraction[tulepond_amp_columns].sum(axis=1, min_count=1)      # Tule Pond events only
 slip_budget["event_rate"] = slip_budget["event_sum"] / span
 slip_budget["total"] = slip_budget["secular"] + slip_budget["event_rate"]
-# the Oakland control block counts its own events instead, all of them (each block counts the events of its own section)
-coz1_amp_columns = []
-for step_epoch in step_epochs_coz1:
-    column = f"amp_{step_epoch:.3f}"
-    assert column in event_fraction.columns, f"no per-crossing step column {column} for the Oakland event"
-    coz1_amp_columns.append(column)
-slip_budget["event_rate_oakland"] = event_fraction[coz1_amp_columns].sum(axis=1, min_count=1) / span
-slip_budget["total_oakland"] = slip_budget["secular"] + slip_budget["event_rate_oakland"]
 slip_budget = slip_budget.sort_values("km").reset_index(drop=True)
 for name in ("secular", "event_rate", "total"):
     slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["km"].values, smooth_km)   # = Fig 1D
@@ -1288,8 +1252,7 @@ def budget_block(name, lo, hi, event_column="event_rate", total_column="total"):
     lo, hi : float
         Block limits along the trace (km from Point Pinole).
     event_column, total_column : str
-        Columns of slip_budget with the event-driven and total rates (the Tule Pond events by default;
-        the Oakland control block passes its own).
+        Columns of slip_budget with the event-driven and total rates (the Tule Pond events by default).
 
     Returns
     -------
@@ -1316,8 +1279,6 @@ for band_frac, (lo_km, hi_km, n_band) in bands.items():
     budget[f"band{int(band_frac * 100)}"] = budget_block(f"Tule Pond {100 * band_frac:.0f}% band", lo_km, hi_km)
 budget["length"] = budget_block("Tule Pond, length hosting events", len_lo, len_hi)
 budget["flanks"] = budget_block("Tule Pond band +/- 5 km (band included)", band_lo - 5.0, band_hi + 5.0)   # key name kept for the registry
-budget["coz1"] = budget_block(f"Oakland control 75% band (its own {len(step_epochs_coz1)} events)", coz1_lo, coz1_hi,
-                              event_column="event_rate_oakland", total_column="total_oakland")
 
 # %% [markdown]
 # ## 13. Seismicity near the section
@@ -1392,7 +1353,7 @@ print("events in the window by catalogue span: " + "; ".join(catalogue_spans))
 # above the inter-event rate $u_x(t)$ of section 9 on a regular 6 day grid (GMT grids must be regular), each
 # node taking the nearest acquisition and left blank where none lies within 9 d. The per-event profiles are
 # the running sums of the five per-crossing steps $A_{k,x}$ of section 8 along strike, smoothed with the
-# 0.4 km Gaussian of the event-driven fraction and the section extent (`smooth_km`). The creep rates are the
+# 0.4 km Gaussian of the section extent (`smooth_km`). The creep rates are the
 # inter-event, event-driven and total rates of section 12, smoothed along the whole fault with the same 0.4 km
 # Gaussian, in the window, with the 5 to 95 % range of the per-crossing rates within 0.5 km along the trace, kept only
 # where at least 5 crossings have a rate. The band stack is the mean series of section 11 with its joint
@@ -1546,8 +1507,7 @@ print("wrote", f_fig1_in)
 # crossing. (B) The fault-parallel creep rate of every crossing kept by notebook 03 (`creep_rate_fp.csv`; crossings
 # flagged by its along-fault rate test are not shown), the creepmeter rates over the InSAR window, and the interseismic
 # Hayward Fault rates of the Johnson et al. (2022) compilation (alignment arrays, InSAR and cultural offsets, 1 sigma).
-# (C) The slip budget: the inter-event, event-driven (five Tule Pond events) and total rates, with the creepmeter rates;
-# the Oakland control band also shaded.
+# (C) The slip budget: the inter-event, event-driven (five Tule Pond events) and total rates, with the creepmeter rates.
 
 # %%
 creep_rate_fp = pd.read_csv(os.path.join(paths_out["03_creep_timeseries"], "creep_rate_fp.csv"))
@@ -1604,9 +1564,7 @@ utils.panel_title(ax, "B")
 
 # C) slip budget
 ax = axes[2]
-ax.axvspan(coz1_lo, coz1_hi, color="0.9", zorder=0)
-for name, (span_lo, span_hi) in (("Tule Pond", (len_lo, len_hi)), ("Oakland", (coz1_lo, coz1_hi))):
-    ax.text(0.5 * (span_lo + span_hi), -0.75, name, ha="center", fontsize=7, color="0.35")
+ax.text(0.5 * (len_lo + len_hi), -0.75, "Tule Pond", ha="center", fontsize=7, color="0.35")
 ax.scatter(slip_budget.km, slip_budget.secular, s=3, color=green, alpha=0.25, lw=0)
 ax.scatter(slip_budget.km, slip_budget.event_rate, s=3, color=orange, alpha=0.25, lw=0)
 ax.scatter(slip_budget.km, slip_budget.total, s=3, color="k", alpha=0.2, lw=0)
@@ -1649,17 +1607,15 @@ for event in coz1_events.itertuples():
     stats_lines.append(f"   {event.onset_day}: window [{event.onset_lo:.4f}, {event.onset_hi:.4f}] ({event.onset_window_days:.1f} d), "
                        f"InSAR {event.amplitude_mm:.2f} [{event.amp_lo:.2f}, {event.amp_hi:.2f}] mm, statistic {event.detect_stat_mm:.2f} mm "
                        f"({event.detect_stat_mm / event.detect_sigma_mm:.2f} sigma), creepmeter step {event.creepmeter_step_mm:.2f} mm")
-stats_lines += ["", "event-driven fraction (crossings within the stack half-width of the section centre):"]
-for key, stats in frac_stats.items():
-    stats_lines.append(f"   {segments[key]['label']}: n {stats['n']}, summed slip median {stats['sum_median']:.1f} mm, "
-                       f"fraction median {stats['median']:.0f}%, 5-95% {stats['p5']:.0f} to {stats['p95']:.0f}%")
+stats_lines += ["", "summed event slip (crossings within the stack half-width of the section centre):"]
+for key, stats in sum_stats.items():
+    stats_lines.append(f"   {segments[key]['label']}: n {stats['n']}, summed slip median {stats['sum_median']:.1f} mm")
 stats_lines += ["", f"window {w_lo:.1f} to {w_hi:.1f} km (re-centred on the cumulative-slip peak at {peak_km:.1f} km); "
                 f"median of the per-crossing inter-event rates in the window {inter_event_rate_median:.2f} mm/yr",
                 f"cumulative event slip peak {peak_cum:.1f} mm; flank threshold {length_threshold:.2f} mm (median {flank_median:.2f} + 3 x {flank_sigma:.2f})",
                 f"length hosting the events: {len_lo:.1f} to {len_hi:.1f} km ({len_hi - len_lo:.1f} km, {len_n} crossings)",
                 "10-90% edge widths of the cumulative event slip: " + "; ".join(
-                    f"{end} {width:.2f} km (90% at {km_90:.2f}, 10% at {km_10:.2f} km)" for end, (km_90, km_10, width) in edge_widths.items()),
-                f"fraction peak {peak_frac:.1f}%"]
+                    f"{end} {width:.2f} km (90% at {km_90:.2f}, 10% at {km_10:.2f} km)" for end, (km_90, km_10, width) in edge_widths.items())]
 for band_frac, (lo_km, hi_km, n_band) in bands.items():
     result = band_results[band_frac]
     stats_lines.append(f"band {100 * band_frac:.0f}%: {lo_km:.1f} to {hi_km:.1f} km ({hi_km - lo_km:.1f} km, {n_band} crossings); "
@@ -1718,11 +1674,7 @@ REG.register("04_creep_length_n_crossings", len_n, "count", 0, where="P3", cell=
 REG.register("04_creep_length_threshold_mm", length_threshold, "mm", 2, where="M6", cell="section-length", sidecar=sidecar)
 for end, (km_90, km_10, width) in edge_widths.items():
     REG.register(f"04_edge_{end}_10_90_km", width, "km", 1, where="P3", cell="section-length", sidecar=sidecar)
-REG.register("04_fraction_peak_pct", peak_frac, "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
-REG.register("04_fraction_median_pct", frac_stats["TULEPOND"]["median"], "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
-REG.register("04_fraction_p5_pct", frac_stats["TULEPOND"]["p5"], "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
-REG.register("04_fraction_p95_pct", frac_stats["TULEPOND"]["p95"], "pct", 0, where="P3", cell="fraction", sidecar=sidecar)
-REG.register("04_event_slip_sum_median_mm", frac_stats["TULEPOND"]["sum_median"], "mm", 1, where="P3", cell="fraction", sidecar=sidecar)
+REG.register("04_event_slip_sum_median_mm", sum_stats["TULEPOND"]["sum_median"], "mm", 1, where="P3", cell="fraction", sidecar=sidecar)
 REG.register("04_hovmoller_bg_rate_mm_yr", inter_event_rate_median, "mm/yr", 1, where="Fig1 caption", cell="hovmoller", sidecar=sidecar)
 REG.register("04_hovmoller_vmax_mm", vmax, "mm", 0, where="Fig1 caption", cell="hovmoller", sidecar=sidecar)
 for name, block in budget.items():
