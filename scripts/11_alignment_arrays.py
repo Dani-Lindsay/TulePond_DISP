@@ -97,7 +97,7 @@ map_h_cm = 9.2                 # map height (cm, as Fig 1A); the width follows a
 map_u_km = (42.0, 70.0)        # along-strike extent of the map (km from Point Pinole): just north of CHP1 (Hayward) to the south end of Fig 1A
 map_half_km = 4.5              # across-fault half-width of the map (km)
 event_lim = 5.0                # map colour range, +/- mm of event slip
-array_label_u_km = [46.5, 49.0, 51.5, 54.0, 56.5, 59.0]   # along-strike km of the six array codes (north to south), north of CFW1 (62.2) and the scale bar
+array_label_gap_km = 2.3      # along-strike spacing of the six array codes on the map, centred on the arrays (km)
 
 fp_ts_file = os.path.join(paths_out["03_creep_timeseries"], "fp_ts.csv")
 events_file = os.path.join(paths_out["04_event_detection"], "creep_events.csv")
@@ -409,6 +409,9 @@ cpt_event = utils.write_cpt(os.path.join(out_dir, "event_RdBu_r.cpt"), "RdBu_r",
 # CFW1 label
 array_u, array_v = utils.to_uv(frame, array_pos.lon.values, array_pos.lat.values)
 assert np.all(np.diff(array_u) > 0), "array_codes must run north to south"
+# the codes in a column centred on the mean along-strike position of the arrays, evenly spaced north and south of it
+array_label_u_km = np.mean(array_u) + array_label_gap_km * (np.arange(len(array_u)) - 0.5 * (len(array_u) - 1))
+assert map_u_km[0] + 1.0 < array_label_u_km[0] and array_label_u_km[-1] < map_u_km[1] - 3.0, "array labels run into the map edge or the scale bar"
 array_symbols = []
 array_labels = []
 for code, u_array, v_array, u_label in zip(array_pos.index, array_u, array_v, array_label_u_km):
