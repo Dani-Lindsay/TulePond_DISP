@@ -95,7 +95,7 @@ lengths_file = os.path.join(paths_out["04_event_detection"], "section_lengths.cs
 strike_map = 144.0             # page rotation of the map (mean strike, notebook 02; as Fig 1A)
 map_h_cm = 9.2                 # map height (cm, as Fig 1A); the width follows at true scale
 map_u_km = (42.0, 70.0)        # along-strike extent of the map (km from Point Pinole): just north of CHP1 (Hayward) to the south end of Fig 1A
-map_half_km = 6.0              # across-fault half-width of the map (km)
+map_half_km = 4.5              # across-fault half-width of the map (km)
 event_lim = 5.0                # map colour range, +/- mm of event slip
 array_label_u_km = [46.5, 49.0, 51.5, 54.0, 56.5, 59.0]   # along-strike km of the six array codes (north to south), north of CFW1 (62.2) and the scale bar
 
@@ -412,9 +412,9 @@ assert np.all(np.diff(array_u) > 0), "array_codes must run north to south"
 array_symbols = []
 array_labels = []
 for code, u_array, v_array, u_label in zip(array_pos.index, array_u, array_v, array_label_u_km):
-    leader_lon, leader_lat = utils.uv_to_lonlat(frame, [u_array, u_label], [v_array, -3.6])
+    leader_lon, leader_lat = utils.uv_to_lonlat(frame, [u_array, u_label], [v_array, -2.4])
     array_symbols.append(dict(x=leader_lon, y=leader_lat, pen="0.3p,gray30"))
-    label_lon, label_lat = utils.uv_to_lonlat(frame, [u_label], [-3.8])
+    label_lon, label_lat = utils.uv_to_lonlat(frame, [u_label], [-2.6])
     array_labels.append(dict(x=label_lon[0], y=label_lat[0], text=code, justify="RM", font="6.5p,Helvetica"))
 array_symbols.append(dict(x=array_pos.lon.values, y=array_pos.lat.values, style="s0.14c", fill="black", pen="0.3p,white"))
 section = pd.read_csv(lengths_file).set_index("name").loc["tulepond_creep_length"]     # the SSE extent bracket, as Fig 1A
@@ -425,13 +425,13 @@ with pygmt.config(FONT="8p,Helvetica", FONT_ANNOT_PRIMARY="7p,Helvetica", FONT_L
                   MAP_FRAME_PEN="0.6p", MAP_TICK_LENGTH_PRIMARY="2p", MAP_LABEL_OFFSET="4p", MAP_ANNOT_OFFSET="3p"):   # as Fig 1
     utils.fault_map_panel(gmt_map, frame, grid_ll, cpt_event, map_h_cm, trace.ft_lon.values, trace.ft_lat.values, creepmeters,
                           (section.km_lo, section.km_hi), letter=None, colorbar_frame="xa2f1+lMean event, fault-parallel (mm)",
-                          extra_symbols=array_symbols, extra_labels=array_labels, u_range_km=map_u_km, half_km=map_half_km)
+                          extra_symbols=array_symbols, extra_labels=array_labels, u_range_km=map_u_km, half_km=map_half_km, scale_km=2)
 gmt_map.savefig(map_png, dpi=600, crop="+gwhite")
 
 # B to G) the arrays since 2015 with the InSAR, two rows of three, beside the map
 utils.mpl_paper_style(base=7)
 fig = plt.figure(figsize=(7.2, 4.4), constrained_layout=True)          # 18.3 cm wide
-grid_spec = fig.add_gridspec(2, 4, width_ratios=[0.9, 1, 1, 1])             # the map column: the tall rotated map
+grid_spec = fig.add_gridspec(2, 4, width_ratios=[1.0, 1, 1, 1])             # the map column: the tall rotated map
 ax_map = fig.add_subplot(grid_spec[:, 0])
 ax_map.imshow(plt.imread(map_png))
 ax_map.axis("off")

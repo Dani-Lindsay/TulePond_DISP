@@ -433,7 +433,7 @@ def utm_grid_to_lonlat(values, x_first, x_step, y_first, y_step, to_utm, corners
 
 def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creepmeters, sse_u_km,
                     letter="A", title="Hayward Fault", colorbar_frame=None, extra_symbols=(), extra_labels=(),
-                    u_range_km=FAULT_MAP_U_KM, half_km=FAULT_MAP_HALF_KM):
+                    u_range_km=FAULT_MAP_U_KM, half_km=FAULT_MAP_HALF_KM, scale_km=5):
     """Draw the rotated fault map of Fig 1A at the current origin of a pygmt figure. The same panel is used
     by 14 (Fig 1A), 05 (the validation supplementary figure) and 11 (the alignment-array supplementary
     figure); only the field, its colours, the extra symbols and the panel letter differ.
@@ -450,7 +450,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     The map is GMT's oblique Mercator with its x axis along strike - 90 deg, so the fault runs up the
     page with north at the top, at true scale: the height is map_h_cm and the width follows from it.
     Fonts and frame pens are the caller's pygmt.config. u_range_km and half_km crop the map to part of the
-    fault (11 draws km 42-70 only); creepmeters and city names outside the crop are left out. Returns the map
+    fault (11 draws km 42-70 only); creepmeters and city names outside the crop are left out. scale_km is the
+    length of the scale bar (km). Returns the map
     width in cm.
     Source: written for this project (pygmt)."""
     import pygmt
@@ -494,7 +495,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
         tick_lon, tick_lat = uv_to_lonlat(frame, [u_tick, u_tick], [0.4, 2.0])
         fig.plot(x=tick_lon, y=tick_lat, pen="1.1p,black")
     u_mid = 0.5 * (sse_lo_km + sse_hi_km)
-    label_lon, label_lat = uv_to_lonlat(frame, [u_mid - 1.0, u_mid + 1.0], [2.9, 2.9])   # left edge 0.9 km east of the bracket
+    row_km = 1.0 * (u_south - u_north) / (FAULT_MAP_U_KM[1] - FAULT_MAP_U_KM[0])     # the rows 1 km apart on the whole-fault map, the same page gap on a crop
+    label_lon, label_lat = uv_to_lonlat(frame, [u_mid - row_km, u_mid + row_km], [2.9, 2.9])   # left edge 0.9 km east of the bracket
     text_backed(fig, x=label_lon, y=label_lat, text=["SSE", "extent"], justify="LM", font="8p,Helvetica,black")
     # the cities along the fault, east side opposite the creepmeter labels, each within the city's stretch of the
     # fault (labels only, nothing is measured from them):
@@ -516,7 +518,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     if letter is not None:
         fig.text(position="TL", text=f"@%Helvetica-Bold%{letter}@%% @:7p:{title}@::", justify="BL", offset="0c/0.12c",
                  font="9p,Helvetica", no_clip=True)
-    fig.basemap(region=region, projection=projection, frame=["lrtb"], map_scale="jBL+w5k+o0.3c/0.4c")   # frame on top, scale bar
+    fig.basemap(region=region, projection=projection, frame=["lrtb"], map_scale=f"jBL+w{scale_km:g}k+o0.3c/0.4c")   # frame on top, scale bar
 
     # distance from Point Pinole down the left edge: the map's vertical axis is the strike frame u (true scale), so a
     # linear axis over the same box reads u directly. Asserted: GMT's own page y of the creepmeters matches the
