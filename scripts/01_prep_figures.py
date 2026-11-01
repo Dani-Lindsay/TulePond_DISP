@@ -530,7 +530,7 @@ print("\n".join(lines))
 # Drawn with pygmt, north up in longitude and latitude. Each mosaic is resampled
 # to a regular longitude-latitude grid at about 100 m by nearest pixel
 # (`utils.utm_to_lonlat_grid`, no interpolation), finer than a printed pixel of
-# a 2.7 cm panel at 600 dpi (the PNG is written at 600 dpi). The velocity and
+# a 2.7 cm panel (the PNG is written at 400 dpi, about 680 dpi as printed at 0.6 of the text width). The velocity and
 # correction panels have a grey background, so that nodata is grey and zero is
 # white. ZOA1 is the black square, and a 10 km scale bar is drawn in every panel. There is one colour bar per
 # column.
@@ -598,9 +598,8 @@ for i, orbit in enumerate(merged):
         fig.grdimage(grid=grid, cmap=cpts[j], nan_transparent=True)
         if column["grey"]:
             fig.plot(x=[ref_lon], y=[ref_lat], style="s0.12c", fill="black", pen="0.3p,white")
-        # 10 km scale bar in every panel, on a white box, lifted so the label below the bar clears the frame
-        fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"], map_scale="jBL+w10k+o0.25c/0.45c",
-                    box="+gwhite@15+c0.06c")
+        # 10 km scale bar in every panel, in the lower-left corner, lifted so the label below the bar clears the frame
+        fig.basemap(region=region_s1, projection=proj_s1, frame=["lrtb"], map_scale="jBL+w10k+o0.22c/0.3c")
         letter = letters[i * len(columns) + j]
         if i == 0:
             title = column["title"]
@@ -616,7 +615,7 @@ with pygmt.config(FONT_ANNOT_PRIMARY="12p,Helvetica", FONT_LABEL="12p,Helvetica"
         fig.colorbar(cmap=cpts[j], position=f"x{j * (map_width + gap_x) + 0.1 * map_width}c/-0.2c+w{0.8 * map_width}c/0.18c+h+jTL",
                      frame=[f"x{column['annot']}+l{column['cbar_label']}"])
 f_s1 = os.path.join(fig_dir, f"figS_velocity_chain_coh{COH_VELOCITY:g}_vel{vel_lim:g}_ramp{ramp_lim:g}")
-fig.savefig(f_s1 + ".png", dpi=600, transparent=False, crop="+gwhite", anti_alias=True, show=False)
+fig.savefig(f_s1 + ".png", dpi=400, transparent=False, crop="+gwhite", anti_alias=True, show=False)
 fig.savefig(f_s1 + ".pdf", transparent=False, crop="+gwhite", anti_alias=True, show=False)
 print("wrote", f_s1 + ".png")
 
