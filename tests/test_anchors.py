@@ -20,6 +20,8 @@ from TulePond_filepaths import common_paths                              # noqa:
 
 # key: (value, decimals)  -- strings are compared exactly
 ANCHORS = {
+    # 01 the GNSS tie
+    "01_gnss_n_stations_area": (52, 0), "01_gnss_n_stations_screened": (49, 0),
     # 02 velocity decomposition
     "02_strike_mean_deg": (144.10, 2),
     "02_xfault_step_CFW1_mm_yr": (6.62, 2),
@@ -31,12 +33,13 @@ ANCHORS = {
     "03_n_crossings_common": (611, 0),
     # 04 event detection
     "04_n_events": (5, 0),
-    "04_onset_lo_2017": (2017.099, 3), "04_onset_lo_2019": (2019.186, 3), "04_onset_lo_2021": (2021.107, 3),
-    "04_onset_lo_2023": (2023.080, 3), "04_onset_lo_2024": (2024.984, 3),
-    "04_onset_window_days_2017": (12, 0), "04_onset_window_days_2023": (12, 0),
+    "04_onset_lo_2017": (2017.101, 3), "04_onset_lo_2019": (2019.187, 3), "04_onset_lo_2021": (2021.109, 3),
+    "04_onset_lo_2023": (2023.080, 3), "04_onset_lo_2024": (2024.986, 3),
+    "04_onset_window_days_2017": (12.5, 1), "04_onset_window_days_2019": (6.0, 1), "04_onset_window_days_2021": (5.5, 1),
+    "04_onset_window_days_2023": (11.5, 1), "04_onset_window_days_2024": (11.5, 1),
     # the 90 % band of the paper
     "04_band90_lo_km": (58.2, 1), "04_band90_hi_km": (59.8, 1), "04_band90_n_crossings": (17, 0),
-    "04_band90_step_2017_mm": (10.69, 2), "04_band90_step_2019_mm": (10.47, 2), "04_band90_step_2021_mm": (11.25, 2),
+    "04_band90_step_2017_mm": (10.69, 2), "04_band90_step_2019_mm": (10.46, 2), "04_band90_step_2021_mm": (11.25, 2),
     "04_band90_step_2023_mm": (11.73, 2), "04_band90_step_2024_mm": (7.74, 2),
     "04_band90_steps_sum_mm": (51.9, 1), "04_band90_inter_event_mm_yr": (0.96, 2), "04_band90_steps_mean_mm": (10.4, 1),
     "04_band90_width_km": (1.6, 1),
@@ -50,11 +53,12 @@ ANCHORS = {
     "09_mw_30gpa": (3.91, 2), "09_mw_harmonic": (3.27, 2), "09_rms_mm": (0.89, 2), "09_rms_west500_mm": (0.85, 2),
     "09_rms_east500_mm": (0.98, 2), "09_potency_m3": (30671, 0), "09_sigma": (49.6, 1), "09_depth90_m": (695, 0),
     "08_hom_mw_30gpa": (3.80, 2),
+    "09_stress_drop_30gpa_kpa": (353, 0), "09_stress_drop_harmonic_kpa": (27, 0),
     # 11 alignment arrays: detector on the bimonthly era only, steps under 2 sigma dropped
     "11_hrkt_n_surveys": (159, 0), "11_hrkt_n_events": (9, 0), "11_hrkt_amp_median_mm": (8.2, 1),
     # 13 forecast (interval statistics from the onset-window draws)
     "13_insar_interval_mean_yr": (1.97, 2), "13_insar_interval_sd_d": (29, 0), "13_insar_interval_cov": (0.04, 2),
-    "13_next_clock_date": ("2026-12-21", 0), "13_pi95_lo": ("2026-09-08", 0), "13_pi95_hi": ("2027-04-04", 0),
+    "13_next_clock_date": ("2026-12-22", 0), "13_pi95_lo": ("2026-09-11", 0), "13_pi95_hi": ("2027-04-02", 0),
 }
 
 
