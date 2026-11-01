@@ -78,7 +78,7 @@ this_run_start = pd.Timestamp.now(tz="UTC")       # the figures drawn here must 
 # magnitude) and the repeating earthquakes (white squares) of notebook 04, section 13. The dashed lines mark
 # the 90 % band. (C) The cumulative slip of each event along strike (blues, light to dark in time). (D) The
 # creep rates: inter-event (bluish green), event-driven (orange, the five Tule Pond events) and their sum
-# (black), smoothed along the fault with the 0.5 km Gaussian of the supplement creep-rate figure, with the
+# (black), smoothed along the fault with the 0.4 km Gaussian of C (notebook 04's `smooth_km`), with the
 # creepmeters over the InSAR window (gold) and the whole-record alignment-array rates of the USGS archive (reddish
 # purple open diamonds, as in the supplement creep-rate figure). The error bars are 1 sigma (1 standard error for
 # the arrays). (E) The InSAR stack: the mean fault-parallel series of the

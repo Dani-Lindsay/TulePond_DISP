@@ -245,7 +245,7 @@ rate_nsigma = 3.0      # near-fault rate mask: reject pixels > 3 robust sigma fr
 az_smooth_n = 21       # crossings in the rolling median of the local strike (2.1 km)
 max_interp_gap_days = 45   # interpolate asc/desc onto common dates only across gaps shorter than this
 rate_smooth_km = 0.5   # Gaussian smoothing of the along-fault rate profile
-profile_smooth_km = 0.2    # Gaussian sigma of the drawn along-strike slip profiles: Fig 1C per event, Fig 1D rates, Fig 2K mean event
+profile_smooth_km = 0.2    # Gaussian sigma of the drawn along-strike mean-event profile, Fig 2K (Fig 1C and 1D use 04's smooth_km, 0.4 km)
 
 # Along-strike parameter string that goes into every product and figure name
 # (NC_ALOS-2 convention: the filename tells you what was run).

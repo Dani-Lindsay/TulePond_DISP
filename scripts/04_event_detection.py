@@ -70,7 +70,7 @@ import insar_utils as utils
 from TulePond_filepaths import (common_paths, segments, creepmeters, params, coh_timeseries, insar_dic_list,
                                 max_interp_gap_days, profile_smooth_km, creepmeter_glitches, paper_band_frac,
                                 coz1_large_events_yr, coz1_large_tol_days, rate_smooth_km,
-                                paths_out, repo_dir)   # profile_smooth_km: the 0.2 km Gaussian of Fig 1C and 1D
+                                paths_out, repo_dir)   # profile_smooth_km: the 0.2 km Gaussian of Fig 2K
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -1187,8 +1187,8 @@ print(f"control, Oakland 75% band {coz1_lo:.1f} to {coz1_hi:.1f} km (n = {coz1_b
 # where $S_x$ is the summed step of the section's own events (mm, section 8), $T$ the record length (yr),
 # $b_x$ the inter-event rate (mm/yr), and both rates are in mm/yr. Fig 1C, 1D and the Tule Pond blocks count
 # the five Tule Pond events only; the Oakland control block counts all of its own COZ1 events. Both sets of
-# steps stay in the joint model at every crossing (section 8). For Fig 1C the profiles are smoothed with a
-# 0.2 km Gaussian (`profile_smooth_km`). A block, the span of crossings from $x_{\mathrm{lo}}$ to
+# steps stay in the joint model at every crossing (section 8). For Fig 1C and 1D the profiles are smoothed with
+# the 0.4 km Gaussian of the event-driven fraction (`smooth_km`). A block, the span of crossings from $x_{\mathrm{lo}}$ to
 # $x_{\mathrm{hi}}$, reports the means of $b_x$, $r^{\mathrm{ev}}_x$ and $r^{\mathrm{tot}}_x$ over its
 # crossings and the event-driven share $100\,\overline{r^{\mathrm{ev}}} / \overline{r^{\mathrm{tot}}}$ (%).
 #
@@ -1231,7 +1231,7 @@ slip_budget["event_rate_oakland"] = event_fraction[coz1_amp_columns].sum(axis=1,
 slip_budget["total_oakland"] = slip_budget["secular"] + slip_budget["event_rate_oakland"]
 slip_budget = slip_budget.sort_values("km").reset_index(drop=True)
 for name in ("secular", "event_rate", "total"):
-    slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["km"].values, profile_smooth_km)   # = Fig 1C
+    slip_budget[f"{name}_smooth"] = gaussian_smooth_km(slip_budget[name].values, slip_budget["km"].values, smooth_km)   # = Fig 1D
 
 # alignment arrays within aa_max_dist_km of the trace: refit over the InSAR window and the archive's whole-record rate
 # Every array must load (a missing or unreadable survey file stops the notebook).
@@ -1392,9 +1392,9 @@ print("events in the window by catalogue span: " + "; ".join(catalogue_spans))
 # above the inter-event rate $u_x(t)$ of section 9 on a regular 6 day grid (GMT grids must be regular), each
 # node taking the nearest acquisition and left blank where none lies within 9 d. The per-event profiles are
 # the running sums of the five per-crossing steps $A_{k,x}$ of section 8 along strike, smoothed with the
-# 0.2 km Gaussian. The creep rates are the inter-event, event-driven and total rates of section 12, smoothed
-# along the whole fault with the 0.5 km Gaussian of the supplement creep-rate figure (`rate_smooth_km`, section 15),
-# in the window, with the 5 to 95 % range of the per-crossing rates within 0.5 km along the trace, kept only
+# 0.4 km Gaussian of the event-driven fraction and the section extent (`smooth_km`). The creep rates are the
+# inter-event, event-driven and total rates of section 12, smoothed along the whole fault with the same 0.4 km
+# Gaussian, in the window, with the 5 to 95 % range of the per-crossing rates within 0.5 km along the trace, kept only
 # where at least 5 crossings have a rate. The band stack is the mean series of section 11 with its joint
 # model, split into the epochs between events and the epochs next to each step.
 #
@@ -1466,15 +1466,15 @@ event_amp_window = np.column_stack([event_fraction[column].values[in_window_rows
 cum_prof = np.zeros((step_epochs_tulepond.size, km_window.size))
 running = np.zeros(km_window.size)
 for i in range(step_epochs_tulepond.size):
-    running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], km_window, profile_smooth_km)))
+    running = running + np.nan_to_num(interp_nan(km_window, gaussian_smooth_km(event_amp_window[:, i], km_window, smooth_km)))
     cum_prof[i] = running
 
 # --- d) the creep rates of D on the window, south to north: the per-crossing rates of the whole fault smoothed with the
-# 0.5 km Gaussian of the supplement creep-rate figure (section 15), bridged across gaps as C, and the 5-95 % range of the
+# 0.4 km Gaussian of C (`smooth_km`), bridged across gaps as C, and the 5-95 % range of the
 # per-crossing rates within +/- rate_band_half_km (NaN with fewer than rate_band_min_n crossings: not bridged, so the
 # shading shows where crossings exist)
 budget_sorted = slip_budget.sort_values("km")
-budget_rate_smooth = {name: gaussian_smooth_km(budget_sorted[name].values, budget_sorted["km"].values, rate_smooth_km)
+budget_rate_smooth = {name: gaussian_smooth_km(budget_sorted[name].values, budget_sorted["km"].values, smooth_km)
                       for name in ("secular", "event_rate", "total")}
 in_window_budget = ((budget_sorted.km >= w_lo) & (budget_sorted.km <= w_hi)).values
 budget_window = budget_sorted[in_window_budget]
