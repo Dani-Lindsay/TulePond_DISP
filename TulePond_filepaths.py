@@ -33,7 +33,7 @@ repo_dir = os.path.dirname(os.path.abspath(__file__))
 # The data root holds what this repository reads, in the layout of the Zenodo deposit:
 #   09156/ 09157/ 11115/   the DISP-S1 frames (data, stack, tropo, mintpy) from data_prep/run01-04
 #   mosaic_velfield/       the tied same-orbit velocity + geometry mosaics (run04 step 6, run05)
-#   external_inputs/       fault trace, arrays, creepmeters, GHCN, catalogues, qfaults, USGS SFCVM v26
+#   external_inputs/       fault trace, arrays, creepmeters, GHCN, catalogues, USGS SFCVM v26
 #   GPS/                   the screened UNR series and the run05 tie table
 #   prep_validation/       run05's GNSS-tie record and run06's rain tables
 #   aperture_sweep/        the cross-fault aperture sweep that notebook 05 reads (data_prep/run07)
@@ -161,7 +161,6 @@ common_paths = {
     # fields) and the crossings derived from it every 100 m (Point Pinole -> 37.41 N).
     "fault_trace":    os.path.join(inputs_dir, "hayward_fault_trace_2026-07-24.kml"),
     "fault_profiles": os.path.join(inputs_dir, "hayward_fault_profiles.csv"),
-    "qfaults_dir":    os.path.join(inputs_dir, "qfaults"),
 
     # USGS creepmeters: instrument locations and the .10min records
     # (insar_utils.creepmeter_file prefers the .10min.gz copies).
@@ -186,9 +185,6 @@ common_paths = {
     # NOAA GHCN-daily rain gauges near Tule Pond (the csv files in ghcn_dir are
     # the archived inputs of notebooks 12 and 14).
     "ghcn_dir": os.path.join(inputs_dir, "GHCN_daily"),
-    # the ACWD indicator wells (levels) and their positions (public registers; see the file header)
-    "acwd_dir": os.path.join(inputs_dir, "ACWD_water_well_data"),
-    "well_locations": os.path.join(inputs_dir, "ACWD_water_well_data", "well_locations.csv"),
 
     # Seismicity / repeating-earthquake catalogues.
     # T. Taira's HFRC linkage-cluster catalogue, GEN3 (1984 to end-2025), at the

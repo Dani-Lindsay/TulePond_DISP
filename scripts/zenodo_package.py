@@ -7,7 +7,8 @@ the three rebased OPERA DISP-S1 stacks as they are (netCDF, already compressed i
 (below), a snapshot of this repository at its current commit, and MANIFEST.csv (every file in every zip, with its size
 and group). The raw DISP granules, the MintPy products and the static layers are not deposited: they are public
 (OPERA DISP-S1, OPERA TROPO-ZENITH, OPERA CSLC-S1-STATIC) and data_prep/run01-04 rebuild them. The USGS SFSVM grid is
-cited, not deposited. Only the PyLith runs that the code names (model_config.py, scripts/) are packed, so superseded
+cited, not deposited. Of the external inputs only the files the code reads (common_paths of TulePond_filepaths) are
+packed. Only the PyLith runs that the code names (model_config.py, scripts/) are packed, so superseded
 runs and tests stay out.
 
 Zips use deflate, except files that are already compressed (.nc, .npz, .gz, .png, .pdf, .zip), which are stored.
@@ -29,11 +30,13 @@ import pandas as pd
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-from TulePond_filepaths import data_dir, fig_dir, frames, executed_dir, out_dir as outputs_dir   # noqa: E402
+from TulePond_filepaths import common_paths, data_dir, fig_dir, frames, executed_dir, inputs_dir, out_dir as outputs_dir   # noqa: E402
 
 STORED = (".nc", ".npz", ".gz", ".png", ".pdf", ".zip", ".jpg")   # already compressed: stored, not deflated
 SKIP = ["*/.DS_Store", "*/__pycache__/*", "*/_to_delete*", "*/retired_*", "*.pyc", "*/.ipynb_checkpoints/*"]
 CREEPMETERS_USED = ["cpp1", "ctm1", "coz1", "chp1", "cfw1"]        # the five creepmeters of the paper (.10min.gz)
+# unpublished catalogues of other authors: deposited only with their permission (cited; available from the authors)
+NOT_REDISTRIBUTED = ["growclust_cat", "CRE_Taira"]
 
 
 def referenced_runs():
@@ -74,13 +77,16 @@ def groups(runs):
         run = run_of(path)
         return run is None or run in runs
 
+    # the external inputs the code reads: every file and folder of common_paths under inputs_dir (TulePond_filepaths)
+    read_paths = [p for key, p in common_paths.items()
+                  if isinstance(p, str) and p.startswith(inputs_dir + os.sep) and key not in NOT_REDISTRIBUTED]
+
     def keep_inputs(path):
-        rel = os.path.relpath(path, data_dir)
-        if rel.startswith(os.path.join("external_inputs", "USGS_SFCVM_v26-0")):
-            return False                                    # cited (USGS), not deposited
-        if rel.startswith(os.path.join("external_inputs", "creepmeter_data")):
+        if path.startswith(common_paths["creepmeter_dir"] + os.sep):
             return os.path.basename(path) in {f"{code}.10min.gz" for code in CREEPMETERS_USED}
-        return True
+        if os.path.basename(path).endswith(".zip"):
+            return False                                    # archives of folders that are included unpacked
+        return any(path == p or path.startswith(p + os.sep) for p in read_paths)
 
     def keep_homogeneous(path):
         rel = os.path.relpath(path, data_dir)
@@ -89,9 +95,9 @@ def groups(runs):
         return keep_run_files(path)
 
     return {
-        "inputs_external.zip": ("External inputs: fault trace and crossings, alignment arrays, the five creepmeters, GHCNd "
-                                "rain, earthquake and repeating-earthquake catalogues, the creep-event catalogue, Quaternary "
-                                "faults, the Johnson et al. (2022) compilation (the USGS SFSVM grid is cited, not included)",
+        "inputs_external.zip": ("External inputs the code reads: fault trace and crossings, alignment arrays, the five "
+                                "creepmeters, GHCNd rain, earthquake and repeating-earthquake catalogues, the creep-event "
+                                "catalogue, the Johnson et al. (2022) compilation (the USGS SFSVM grid is cited, not included)",
                                 [("external_inputs", keep_inputs)]),
         "gnss_velocity.zip": ("GNSS series and tie table, the tied velocity mosaics, the GNSS-tie record (data_prep run00, run04, run05)",
                               [("GPS", None), ("mosaic_velfield", None), ("prep_validation", None)]),
