@@ -332,7 +332,7 @@ lake_elizabeth_trace_lonlat = ((-121.969, 37.5497), (-121.963, 37.5433))
 
 # Issue date of the forecast (notebook 13; notebook 12 ends its rain series on it). Fixed so that the forecast
 # numbers are reproducible.
-forecast_issue_date = "2026-08-25"
+forecast_issue_date = "2026-11-03"   # the lock date: the day the forecast is archived (Zenodo DOI); 2026-08-25 until 2 Nov 2026
 # The last observation with no event, on which notebook 13 conditions the forecast. The CSLC + Dolphin extension of
 # the time series (~/work/proj_TulePond_DISP/extension_2026-09, run 2 Nov 2026) runs to 2026-10-30 on both tracks with no
 # event-sized step; the forecast is conditioned on 2026-10-24, the acquisition before the last, because the last
