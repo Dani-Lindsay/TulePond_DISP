@@ -58,7 +58,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `11_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |
 | `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
 | `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast; the Fig 3 inputs. | Renewal fits |
-| `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles |
+| `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, the six-panel Hovmöller set of the cross-fault series along the whole fault, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles, six-panel Hovmöller |
 | `15_check_original_2025_code` | Independent check: DL's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
 
 ## The number registry
