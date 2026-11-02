@@ -169,6 +169,17 @@ def test_design_matrix_matches_mintpy_convention():
         assert np.isclose(G[row, 1], mintpy, atol=1e-12)
 
 
+def test_design_matrix_equals_los_dot_products():
+    """The explicit trig form of design_matrix_up_fp equals the geometric derivation:
+    each row is [L . up, L . strike_hat] with L the ground -> satellite LOS unit vector."""
+    G = utils.design_matrix_up_fp([ASC["inc"], DESC["inc"]], [ASC["azi"], DESC["azi"]], STRIKE)
+    strike_hat = utils.horizontal_unit_vector(STRIKE)
+    for row, g in enumerate((ASC, DESC)):
+        L = utils.los_unit_vector(g["inc"], g["azi"])
+        assert np.isclose(G[row, 0], L @ np.array([0.0, 0.0, 1.0]), atol=1e-12)
+        assert np.isclose(G[row, 1], L @ strike_hat, atol=1e-12)
+
+
 def test_design_matrix_is_well_conditioned():
     G = utils.design_matrix_up_fp([ASC["inc"], DESC["inc"]], [ASC["azi"], DESC["azi"]], STRIKE)
     assert np.linalg.cond(G) < 5.0

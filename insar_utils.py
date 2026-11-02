@@ -215,24 +215,28 @@ def horizontal_unit_vector(bearing_deg):
 
 
 def design_matrix_up_fp(inc_deg, azi_deg, strike_deg):
-    """Design matrix G mapping [U, FP] -> LOS, one row per track:
+    """Design matrix G mapping [U, FP] -> LOS, one row per track. The same
+    matrix as MintPy's get_design_matrix4horz_vert (Yunjun et al. 2019) with
+    the horizontal direction set to the fault strike:
 
-        d_los_i = U * (L_i . up) + FP * (L_i . strike_hat)
+        d_los_i = U * cos(inc_i) + FP * sin(inc_i) * cos(azi_i - horz_az),    horz_az = -strike
+
+    inc is the incidence angle from vertical, azi the azimuth of the ground ->
+    satellite LOS vector (anticlockwise from north, MintPy convention) and
+    strike a compass bearing (clockwise from north), so the strike enters
+    MintPy's anticlockwise horizontal azimuth as -strike. The two columns are
+    the dot products of the LOS unit vector with up and with the strike unit
+    vector (los_unit_vector, horizontal_unit_vector); the two forms are
+    asserted equal in tests/test_insar_utils.py.
 
     Assumes all horizontal motion is fault-parallel (the two-look assumption).
-    Angles in deg (incidence, azimuth as los_unit_vector; strike as a compass
-    bearing). Returns G with shape (n_tracks, 2), columns [U, FP].
-    Source: written for this project.
+    Returns G with shape (n_tracks, 2), columns [U, FP].
+    Source: written for this project, after MintPy.
     """
-    inc_deg = np.atleast_1d(inc_deg)
-    azi_deg = np.atleast_1d(azi_deg)
-    up = np.array([0.0, 0.0, 1.0])
-    strike_hat = horizontal_unit_vector(strike_deg)
-    G = np.zeros((len(inc_deg), 2), dtype=float)
-    for i in range(len(inc_deg)):
-        L = los_unit_vector(inc_deg[i], azi_deg[i])
-        G[i, 0] = L @ up
-        G[i, 1] = L @ strike_hat
+    inc = np.deg2rad(np.atleast_1d(inc_deg).astype(float))
+    azi = np.deg2rad(np.atleast_1d(azi_deg).astype(float))
+    horz_az = np.deg2rad(-float(strike_deg))
+    G = np.column_stack([np.cos(inc), np.sin(inc) * np.cos(azi - horz_az)])
     return G
 
 
