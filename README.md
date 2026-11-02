@@ -33,6 +33,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `scripts/model_plots/` | The SFSVM materials figure (called by 09). |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |
 | `data_prep/` | The download and preparation chain from the public archives; `data_prep/README.md`. |
+| `original_2025_code/` | DL's pre-repository script of February 2025 (verbatim), its surviving output and figure, and the SCEC 2025 poster reference; run and compared by notebook 15. |
 | `tests/` | pytest: projection conventions, paths, the slip-model functions, the registry, and `test_anchors.py`, which pins the numbers quoted in the paper. |
 | `run_all.sh` | Runs the notebook chain in order, then the tests. |
 | `environment.yml` | The packages and versions used for the paper; `environment_full_2026-09-25.yml` is the full export of the working environment. |
@@ -58,6 +59,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
 | `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast; the Fig 3 inputs. | Renewal fits |
 | `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles |
+| `15_check_original_2025_code` | Independent check: DL's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
 
 ## The number registry
 
