@@ -54,11 +54,10 @@ def test_mosaic_products_exist():
 
 
 def test_paths_out_keys_are_notebooks():
-    """Every outputs/<nb> key names a notebook script in scripts/ (renumbering leaves no stale key), and the
+    """Every outputs/<nb> key names a notebook in the repo (renumbering leaves no stale key), and the
     slip-model notebooks (07, 09, 08, 10_model_sensitivity; rewire 2026-10-30) have their keys."""
-    scripts_dir = os.path.join(fp.repo_dir, "scripts")
     for nb in fp.paths_out:
-        assert os.path.exists(os.path.join(scripts_dir, nb + ".py")), f"paths_out key {nb} has no scripts/{nb}.py"
+        assert os.path.exists(os.path.join(fp.repo_dir, nb + ".ipynb")), f"paths_out key {nb} has no {nb}.ipynb"
     assert {"07_model_data", "08_model_homogeneous", "09_model_3d", "10_model_sensitivity"} <= set(fp.paths_out)
 
 

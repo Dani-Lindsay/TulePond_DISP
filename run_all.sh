@@ -40,8 +40,7 @@ for nb in $nbs; do
     echo ""
     echo "=============================== $nb  $(date '+%H:%M:%S')"
     start=$(date +%s)
-    # sync the .py source into the .ipynb first, then execute in place
-    jupytext --sync "$nb"
+    # execute in place (the notebooks are the source; no paired .py scripts since 2 Nov 2026)
     jupyter nbconvert --to notebook --execute --inplace \
         --ExecutePreprocessor.timeout=-1 --ExecutePreprocessor.kernel_name=python3 "$nb"
     jupyter nbconvert --to html "$nb" --output-dir "$EXECUTED" >/dev/null 2>&1

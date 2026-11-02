@@ -28,7 +28,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `insar_utils.py` | Shared helpers: MintPy readers, line-of-sight projections, the along-fault axis, statistics, creepmeter and alignment-array readers, figure style, the number registry. |
 | `model_config.py` | The settings of the slip models, each with its unit and source. |
 | `model_utils.py` | The slip-model functions: data sets and quadtree samples, noise model, CSI inversions on the PyLith fault, Green's functions from the PyLith output, L-curve, rigidity, moment and stress drop. |
-| `NN_*.ipynb`, `scripts/NN_*.py` | The notebooks, paired with jupytext (`jupytext.toml`): the `.py` in `scripts/` is the readable source, the `.ipynb` holds the executed outputs. |
+| `NN_*.ipynb` | The notebooks, the analysis code with its executed outputs (`run_all.sh` runs them in order). |
 | `scripts/sensitivity/` | The sensitivity tests of the slip model (inversion choices, fault dip, elastic structure, depth scan), run by hand; 10 draws their results. |
 | `scripts/model_plots/` | The SFSVM materials figure (called by 09). |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |

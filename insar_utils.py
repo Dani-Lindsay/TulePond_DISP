@@ -25,6 +25,7 @@ Sections
 """
 import csv
 import hashlib
+import json
 import os
 import re
 import sys
@@ -1024,6 +1025,32 @@ def git_hash(repo_dir):
         return h, dirty
     except Exception:
         return "nogit", True
+
+
+def notebook_source(path):
+    """The code of a notebook: its code cells joined in order, as one Python source string.
+
+    The notebooks are the only copy of the analysis code (no paired .py scripts since 2 Nov 2026), so the tests, the
+    deposit packer and the extension check read the code from here.
+
+    Parameters
+    ----------
+    path : str
+        Path to an .ipynb file.
+
+    Returns
+    -------
+    str
+    """
+    with open(path) as fh:
+        cells = json.load(fh)["cells"]
+    code = []
+    for cell in cells:
+        if cell["cell_type"] == "code":
+            source = cell["source"]
+            code.append(source if isinstance(source, str) else "".join(source))
+    assert code, f"{path} has no code cells"
+    return "\n\n".join(code)
 
 
 def file_fingerprint(path, full_limit_mb=256):

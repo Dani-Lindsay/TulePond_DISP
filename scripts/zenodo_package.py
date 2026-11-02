@@ -35,6 +35,7 @@ import pandas as pd
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 from TulePond_filepaths import common_paths, data_dir, fig_dir, frames, executed_dir, out_dir as outputs_dir   # noqa: E402
+import insar_utils as utils                                                                                        # noqa: E402
 import model_config as cfg                                                                                     # noqa: E402
 
 STORED = (".nc", ".npz", ".gz", ".png", ".pdf", ".zip", ".jpg")   # already compressed: stored, not deflated
@@ -44,16 +45,18 @@ NOT_REDISTRIBUTED = ["growclust_cat", "CRE_Taira"]
 
 
 def referenced_runs():
-    """PyLith run names that the code refers to (model_config.py and scripts/), so only those runs are packed.
+    """PyLith run names that the code refers to (model_config.py, the notebooks and scripts/), so only those runs are packed.
 
     Returns
     -------
     set of str
     """
-    sources = [os.path.join(REPO, "model_config.py")] + glob.glob(os.path.join(REPO, "scripts", "**", "*.py"), recursive=True)
+    sources = ([os.path.join(REPO, "model_config.py")] + glob.glob(os.path.join(REPO, "[0-9][0-9]_*.ipynb"))
+               + glob.glob(os.path.join(REPO, "scripts", "**", "*.py"), recursive=True))
     names = set()
     for path in sources:
-        names |= set(re.findall(r"\b(gf_[a-z0-9_]+)\b", open(path).read()))
+        text = utils.notebook_source(path) if path.endswith(".ipynb") else open(path).read()
+        names |= set(re.findall(r"\b(gf_[a-z0-9_]+)\b", text))
     return {name for name in names if name.endswith(("order2", "homog", "strip"))}
 
 
