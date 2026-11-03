@@ -32,7 +32,7 @@ m per m of right-lateral slip), G_analytic_dip{60w,50w}_nsub8.npz (the npz layou
 common.make_setup reads it with run_dir=(gf_dip_rows, gf_dip_rows)), analytic_G_nsub8_check.csv (one row per geometry).
 Run (repo root), one process per geometry, at most --processes at a time (each about 2 GB of memory):
     OMP_NUM_THREADS=2 PYTHONPATH=. nice -n 10 python scripts/sensitivity/dip_rows_analytic_G.py [geometry ...] [--processes 4]
-Run time: 2 h 49 min for the seven geometries with 4 processes (1 Nov 2026, 10-core laptop): 73-82 min per PyLith-run
+Run time: 2 h 49 min for the seven geometries with 4 processes (1 Nov 2026): 73-82 min per PyLith-run
 geometry, 95 min (60 W) and 106 min (50 W); peak memory 2.1 GB per process.
 """
 import argparse

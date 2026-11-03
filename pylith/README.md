@@ -18,7 +18,7 @@ bash $REPO/pylith/run_gf.sh gf_shallow_dip70w_sfcvm_order2 mat_sfcvm_nocap.cfg m
 ```
 (log `modeling_SFCVM/runs/gf_shallow_dip70w_sfcvm_order2.log`.)
 
-The material-geometry test of the preferred model (the SFCVM boundary on the dipping fault at every depth; ~35 h):
+The material-geometry test of the preferred model (the SFCVM boundary on the dipping fault at every depth):
 
 ```bash
 cd $DATA
@@ -105,8 +105,7 @@ The cfg stack of a run is always `pylithapp.cfg` + one `mat_*.cfg` + `gf.cfg` or
 followed by the command-line overrides the wrappers add: `--problem.defaults.name=<run>`, the mesh
 (`--problem.mesh_initializer.phases.read_mesh.reader.filename`), for GreensFns the impulse database
 (`--problem.interfaces.fault.db_auxiliary_field.filename`) and the output points
-(`--problem.solution_observers.points.reader.filename`), and `--nodes=<ranks>`. Run times below are wall times on an
-Apple M-series laptop (from `runs/run_gf.log`).
+(`--problem.solution_observers.points.reader.filename`), and `--nodes=<ranks>`.
 
 ## The Green's-function runs (GreensFns)
 
@@ -115,20 +114,20 @@ Apple M-series laptop (from `runs/run_gf.log`).
 All with `gf.cfg` + `order2.cfg`, impulses `impulses_km54-65_z3000.spatialdb`, 5 ranks, SFCVM without the Poisson cap
 and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 
-| Run | Material cfg | Mesh | Points | Role | Time |
-|---|---|---|---|---|---|
-| `gf_shallow_dip70w_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | **Preferred model** (08, 09; baseline of the inversion-choice sensitivity tests; depth scan) | 35 h |
-| `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh | 17 h |
-| `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh | 32 h |
-| `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh | see `runs/run_gf.log` |
-| `gf_shallow_dip70w_sfcvmdip_order2` | `mat_sfcvm_dip70w_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: the preferred model with the SFCVM block boundary moved onto the 70 W fault at every depth (`sfcvm_grid.py --no-cap --dip 70w`), not only at the surface | ~35 h |
-| `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: baseline of the forward-model tests (vertical fault, default mesh) and of the default-mesh dip sweep | 4.2 h |
-| `gf_default_sfcvm_e50_order2` / `_w50_order2` | `mat_sfcvm_e50_nocap.cfg` / `_w50_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: SFCVM alignment +/- 50 m | 4.5 / 4.3 h |
-| `gf_default_sfcvmasis_order2` | `mat_sfcvm_asis_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity test: SFCVM as is (not aligned) | 4.8 h |
-| `gf_default_sfcvm_coh07_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | Sensitivity test: data at coherence 0.7 | 4.5 h |
-| `gf_default_dip{80e,80w,70e,70w}_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | Sensitivity tests: dip sweep on the default mesh (`scripts/sensitivity/dip_rows.py`) | 4.5-5 h each |
-| `gf_default_homog_order2` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Green's-function check against the analytic solution (`scripts/sensitivity/gf_check.py`, A and B) | 143 min |
-| `gf_shallow_homog_order2_strip` / `gf_fine_homog_order2_strip` | `mat_homog.cfg` | `mesh_vertical_tet_shallow.msh` / `_fine.msh` | `insar_points.txt` | Green's-function check B (mesh refinement); impulses only in the strip `impulses_test_km58.8-59.3_z1100.spatialdb` | 42 / 46 min |
+| Run | Material cfg | Mesh | Points | Role |
+|---|---|---|---|---|
+| `gf_shallow_dip70w_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | **Preferred model** (08, 09; baseline of the inversion-choice sensitivity tests; depth scan) |
+| `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh |
+| `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh |
+| `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh |
+| `gf_shallow_dip70w_sfcvmdip_order2` | `mat_sfcvm_dip70w_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: the preferred model with the SFCVM block boundary moved onto the 70 W fault at every depth (`sfcvm_grid.py --no-cap --dip 70w`), not only at the surface |
+| `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: baseline of the forward-model tests (vertical fault, default mesh) and of the default-mesh dip sweep |
+| `gf_default_sfcvm_e50_order2` / `_w50_order2` | `mat_sfcvm_e50_nocap.cfg` / `_w50_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: SFCVM alignment +/- 50 m |
+| `gf_default_sfcvmasis_order2` | `mat_sfcvm_asis_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity test: SFCVM as is (not aligned) |
+| `gf_default_sfcvm_coh07_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | Sensitivity test: data at coherence 0.7 |
+| `gf_default_dip{80e,80w,70e,70w}_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | Sensitivity tests: dip sweep on the default mesh (`scripts/sensitivity/dip_rows.py`) |
+| `gf_default_homog_order2` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Green's-function check against the analytic solution (`scripts/sensitivity/gf_check.py`, A and B) |
+| `gf_shallow_homog_order2_strip` / `gf_fine_homog_order2_strip` | `mat_homog.cfg` | `mesh_vertical_tet_shallow.msh` / `_fine.msh` | `insar_points.txt` | Green's-function check B (mesh refinement); impulses only in the strip `impulses_test_km58.8-59.3_z1100.spatialdb` |
 
 The homogeneous comparison model is not a PyLith run: it uses the analytic half-space solution of CSI (triangular
 dislocations, Meade 2007) on the tents of the preferred run (`model_utils.analytic_tent_G`, 08; cache
@@ -148,19 +147,19 @@ recorded.
 All with `gf.cfg`, impulses `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb`, 8 ranks. Products in the
 medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G) in its `gf/`.
 
-| Run | Material cfg | Mesh (`modeling_inputs/mesh/`) | Points (`modeling_inputs/points/`) | Extra cfg | Use | Time |
-|---|---|---|---|---|---|---|
-| `gf_default_homog` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | Green's-function check A (element order, `scripts/sensitivity/gf_check.py`) | 32 min |
-| `gf_default_sfcvm` | `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none | 33 min |
-| `gf_default_sfcvm_e50` / `_w50` | `mat_sfcvm_e50.cfg` / `_w50.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none | 36 / 33 min |
-| `gf_shallow_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | | none | 125 / 131 min |
-| `gf_default_dip80e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip80e_tet_default.msh` | `insar_points.txt` | | none | 34 / 34 min |
-| `gf_default_dip70e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip70e_tet_default.msh` | `insar_points.txt` | | none | 39 / 38 min |
-| `gf_default_dip80w_homog` / `_sfcvm`, `gf_default_dip70w_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | none | see `runs/run_gf.log` |
-| `gf_default_dip<d>_homog`, d = 50e, 60e, 60w, 50w | `mat_homog.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | none | see `runs/run_gf.log` |
-| `gf_default_homog_swath7` / `gf_default_sfcvm_swath7` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_swath7.txt` | | none | 34 / 33 min |
-| `gf_default_homog_coh07` / `gf_default_sfcvm_coh07` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | | none | 32 / 33 min |
-| `gf_default_sfcvmasis` | `mat_sfcvm_asis.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none | 33 min |
+| Run | Material cfg | Mesh (`modeling_inputs/mesh/`) | Points (`modeling_inputs/points/`) | Extra cfg | Use |
+|---|---|---|---|---|---|
+| `gf_default_homog` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | Green's-function check A (element order, `scripts/sensitivity/gf_check.py`) |
+| `gf_default_sfcvm` | `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none |
+| `gf_default_sfcvm_e50` / `_w50` | `mat_sfcvm_e50.cfg` / `_w50.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none |
+| `gf_shallow_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | | none |
+| `gf_default_dip80e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip80e_tet_default.msh` | `insar_points.txt` | | none |
+| `gf_default_dip70e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip70e_tet_default.msh` | `insar_points.txt` | | none |
+| `gf_default_dip80w_homog` / `_sfcvm`, `gf_default_dip70w_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | none |
+| `gf_default_dip<d>_homog`, d = 50e, 60e, 60w, 50w | `mat_homog.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | none |
+| `gf_default_homog_swath7` / `gf_default_sfcvm_swath7` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_swath7.txt` | | none |
+| `gf_default_homog_coh07` / `gf_default_sfcvm_coh07` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | | none |
+| `gf_default_sfcvmasis` | `mat_sfcvm_asis.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none |
 
 The sample positions of every point set are asserted unchanged each time 07 rewrites them
 (`model_utils.write_points_list`): a set whose positions change requires its GreensFns runs to be remade.
