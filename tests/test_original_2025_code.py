@@ -1,24 +1,11 @@
-"""Checks against Danielle Lindsay's own pre-repository code (February and August 2025).
+"""Checks against the first author's pre-repository code (2025).
 
-The functions below are copied VERBATIM from the scripts that produced the SCEC 2025 poster
-"Seasonal to Multiannual Creep Rate Changes Along the Hayward, Rodgers Creek, and Maacama Faults"
-(Lindsay, Taira, Burgmann; poster file 2025_SCSC_Sep3_Final.pdf) and its creepmeter validation
-figure. They were written by DL before any code in this repository existed and are kept here,
-unchanged, as an independent statement of the same geometry. The tests pin the repository's
-conventions to them.
-
-Sources (kept outside the repository, ~/work/proj_TulePond_DISP/checks_original_2025_code/original_2025/):
-  los2fault_projection       Old_WD2TB_PhD/Scripts/HW1_creeprate.py, 14 Feb 2025, lines 256-283
-  invert_single_point_ad2eu  NC_ALOS2_S1_Seismica/Scripts/insar_utils.py, 15 Aug 2025, lines 978-1003
-
-Finding recorded by these tests (3 Nov 2026): los2fault_projection converts `aspect` to
-"anticlockwise from east" (aspect' = 90 - aspect) and then uses the MintPy LOS formula, which expects
-an angle anticlockwise from NORTH. The 2025 Hayward loop called it with aspect = profile_az + 90
-(the strike, 144 deg), so the projection vector pointed along bearing 54 deg (the cross-fault
-direction), not along the strike. On the descending track the two factors differ by 1.4 %
-(0.487 vs 0.494), so the 2025 descending-only Hayward results (the poster, the COZ1 figure) stand
-to that precision; on an ascending track the factor would have been about 2x. The repository's
-design_matrix_up_fp uses the strike directly and is tested against MintPy's formula.
+`los2fault_projection` is copied verbatim from the February 2025 script in original_2025_code/ (the code behind the
+SCEC 2025 poster, Lindsay, Taira and Burgmann 2025), and `invert_single_point_ad2eu` verbatim from the first author's
+August 2025 code (not in the repository). They are an independent statement of the same geometry, and the tests pin
+the repository's conventions to them. The projection error they record in the 2025 script (the projection vector
+along the cross-fault bearing instead of the strike) is described in original_2025_code/README.md, and notebook 15
+computes its effect.
 """
 import numpy as np
 import pandas as pd

@@ -8,7 +8,7 @@ the three rebased OPERA DISP-S1 stacks as they are (netCDF, already compressed i
 and group). The raw DISP granules, the MintPy products and the static layers are not deposited: they are public
 (OPERA DISP-S1, OPERA TROPO-ZENITH, OPERA CSLC-S1-STATIC) and data_prep/run01-04 rebuild them. The USGS SFSVM grid is
 cited, not deposited. The inputs of the notebooks (external inputs, GNSS tables, velocity mosaics, aperture sweep) are
-exactly the files a run of notebooks 01-14 opened for reading (the read audit of scripts/read_audit, --reads), less the
+exactly the files a run of notebooks 01-15 opened for reading (the read audit of scripts/read_audit, --reads), less the
 unpublished catalogues of other authors (NOT_REDISTRIBUTED). The slip models follow the PyLith manual (publishing
 models): for every PyLith run the code names (model_config.py, scripts/), its input files (meshes, spatial databases,
 output points, as named in its parameters; the cfg files are in the repository) and the outputs behind the results
@@ -101,7 +101,7 @@ def groups(runs, reads):
     runs : set of str
         The PyLith runs the code names.
     reads : set of str
-        Files (relative to the data root) that a run of notebooks 01-14 opened for reading (read audit).
+        Files (relative to the data root) that a run of notebooks 01-15 opened for reading (read audit).
 
     Returns
     -------
@@ -163,7 +163,7 @@ def groups(runs, reads):
                         [(os.path.relpath(outputs_dir, data_dir), None)]),
         "figures.zip": ("All figures of the run, and the paper figures under their manuscript names (paper/)",
                         [(os.path.relpath(fig_dir, data_dir), None)]),
-        "executed_notebooks.zip": ("HTML copies of the executed notebooks 01-14 of the run",
+        "executed_notebooks.zip": ("HTML copies of the executed notebooks 01-15 of the run",
                                    [(os.path.relpath(executed_dir, data_dir), None)]),
     }
 

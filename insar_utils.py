@@ -905,10 +905,10 @@ def _decimal_year_from_ymdhms(yr, mo, dy, hr, mn, sc):
 
 
 def load_growclust_catalog(path, bbox=None):
-    """GrowClust relocated catalogue of the Hayward area (2000-2025, B. Xie),
-    relocated and unrelocated events: latitude/longitude/depth_km hold the
-    relocation where the event clustered (nbranch > 1) and the NCSS location
-    otherwise. Returns the common schema YYYY (decimal year), Lon, Lat, Depth
+    """The relocated catalogue of the Hayward area (2000-2025; B. Rong, from the
+    statewide catalogue of Rong et al. 2026): latitude/longitude/depth_km hold
+    the cross-correlation relocation where the event was relocated (nbranch > 1)
+    and the absolute location otherwise. Returns the common schema YYYY (decimal year), Lon, Lat, Depth
     (km), Mag, evID, source; clipped to bbox (W, S, E, N, deg) if given."""
     df = pd.read_csv(path)
     need = ["yr", "mon", "day", "hr", "min", "sec", "latitude", "longitude", "depth_km", "magnitude", "evid", "nbranch"]

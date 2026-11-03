@@ -10,9 +10,7 @@
 # The sensitivity scripts (scripts/sensitivity/*.py, ~5 h) are not run here: 10_model_sensitivity draws their stored
 # outputs. Run them by hand when a model setting changes (scripts/sensitivity/common.py).
 #
-# Uses the python next to this script's env (opera_disp_feb13); call it with
-# the env's full path if `jupyter` is not on PATH:
-#     PATH=/Users/dlindsay/miniforge3/envs/opera_disp_feb13/bin:$PATH ./run_all.sh
+# Run with `jupyter` and `python` of the environment.yml environment on PATH.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -50,7 +48,7 @@ for nb in $nbs; do
     echo ""
     echo "=============================== $nb  $(date '+%H:%M:%S')"
     start=$(date +%s)
-    # execute in place (the notebooks are the source; no paired .py scripts since 2 Nov 2026)
+    # execute in place (the notebooks are the source)
     jupyter nbconvert --to notebook --execute --inplace \
         --ExecutePreprocessor.timeout=-1 --ExecutePreprocessor.kernel_name=python3 "$nb"
     jupyter nbconvert --to html "$nb" --output-dir "$EXECUTED" >/dev/null 2>&1

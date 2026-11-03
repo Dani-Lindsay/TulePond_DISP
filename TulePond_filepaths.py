@@ -128,11 +128,6 @@ model_frame_lonlat = (-121.968, 37.557)   # CSI local frame centre (lon0, lat0) 
 # they are the record of the preparation chain.
 prep_dir   = os.path.join(data_dir, "prep_validation")
 
-# ------------------------
-# Notebooks that are not part of the paper: their registry keys are left out of paper_numbers.md
-# (insar_utils.Registry.render). registry.csv keeps their rows (append-only).
-# ------------------------
-retired_notebooks = ("07b_uniform_model_tests", "08b_3d_model_tests", "08c_3d_model_sensitivity")
 
 # ------------------------
 # Common paths & constants
@@ -149,7 +144,6 @@ common_paths = {
     # DL's pre-repository code of February 2025 and what survived of its outputs (read only; 15_check_original_2025_code)
     "original_2025_dir": os.path.join(repo_dir, "original_2025_code"),
     "paper_numbers": os.path.join(out_dir, "paper_numbers.md"),
-    "retired_notebooks": retired_notebooks,     # their keys are left out of paper_numbers.md (see above)
 
     # InSAR reference: every displacement/velocity product is referenced at the
     # pixel co-located with GNSS station ZOA1 (Fremont, west of the fault), so
@@ -222,8 +216,9 @@ common_paths = {
     # the analysis AOI (catalogue clipping in notebook 04, the GNSS ROI in
     # run00, the TROPO crop in run03) is unaffected.
     "aoi_bbox_disp": (-122.494858, 37.269967, -121.711070, 38.10),
-    # GrowClust relocated catalogue of the Hayward area (2000-2025, B. Xie),
-    # relocated and unrelocated NCSS events, one row per event
+    # the relocated catalogue of the Hayward area (2000-2025; B. Rong, from the machine-learning statewide catalogue of
+    # Rong et al. 2026, SCEC poster 145): the cross-correlation relocation where an event was relocated, the absolute
+    # location otherwise, one row per event (not redistributed: available from its authors)
     "growclust_cat": os.path.join(inputs_dir, "Bo_growclust", "hayward_growclust_catalog_relocated_plus_unrelocated.csv"),
 
     # The cross-fault aperture sweep (data_prep/run07_aperture_sweep.py, notebook 03's chain per bin). Notebook 05
@@ -319,7 +314,7 @@ paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_ma
 # The rotated fault maps (insar_utils.strike_frame / fault_map_panel): the page rotation of 04's Fig 1A grid (saved in
 # fig1_inputs.npz, which 05 and 14 read) and of 11's alignment-array map.
 fault_map_strike_deg = 144.0   # deg: the mean strike of the trace (notebook 02)
-# The settings of the slip models (sigma rule, near-trace cut, surface constraint, weighting, ...) are in model_config.py.
+# The settings of the slip models (sigma rule, near-trace cut, weighting, ...) are in model_config.py.
 # The bimonthly era of the alignment arrays (11, 12, 13): a survey interval of at most this many days resolves the
 # season of an onset; 11 runs the HRKT detector only on such intervals, 12 and 13 assert that every array window is
 # this short.
@@ -345,7 +340,7 @@ lake_elizabeth_trace_lonlat = ((-121.969, 37.5497), (-121.963, 37.5433))
 # numbers are reproducible.
 forecast_issue_date = "2026-11-04"   # the lock date: the day the forecast is archived (Zenodo DOI)
 # The last observation with no event, on which notebook 13 conditions the forecast. The CSLC + Dolphin extension of
-# the time series (~/work/proj_TulePond_DISP/extension_2026-09, run 2 Nov 2026) runs to 2026-10-30 on both tracks with no
+# the time series (extension_check_2026-10-30.zip in the Zenodo record) runs to 2026-10-30 on both tracks with no
 # event-sized step; the forecast is conditioned on 2026-10-24, the acquisition before the last, because the last
 # descending epoch (2026-10-30) has no later acquisition and sits ~1 mm high (below threshold). Until 2 Nov 2026 this was
 # 2026-09-24. The paper's InSAR record ends at notebook 13's data_end (the end of 03's fp_ts).

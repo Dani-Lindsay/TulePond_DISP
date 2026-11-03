@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Anchor tests: every number quoted in the manuscript, at its quoted precision,
+Anchor tests: the headline numbers of the paper, at their quoted precision,
 against the latest row of the registry. When a number legitimately moves,
-edit ANCHORS and the manuscript in the same commit.
-
-The values were seeded on 2026-09-21 from the first full run (coherence 0.7
-stream). Run the notebooks first; the test is skipped if the registry is absent.
+edit ANCHORS and the manuscript in the same commit. Run the notebooks first;
+the test is skipped if the registry is absent.
 
 Run:  pytest tests/test_anchors.py -v
 """

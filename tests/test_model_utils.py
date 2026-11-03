@@ -64,10 +64,10 @@ def test_match_impulse_order_rejects_a_different_mesh():
 
 
 def test_match_impulse_order_on_the_5_and_8_rank_order2_runs():
-    """The real case: gf_default_sfcvm_order2 (5 ranks, 2026-10-25) vs gf_default_homog_order2 (8 ranks, 2026-09-30)."""
-    data = os.path.expanduser("~/work/proj_TulePond_DISP")
-    a = os.path.join(data, "modeling_SFCVM", "gf", "G_gf_default_sfcvm_order2.npz")
-    b = os.path.join(data, "modeling_uniform", "gf", "G_gf_default_homog_order2.npz")
+    """The real case: gf_default_sfcvm_order2 (5 ranks) vs gf_default_homog_order2 (8 ranks)."""
+    from TulePond_filepaths import paths_sfcvm, paths_uniform
+    a = os.path.join(paths_sfcvm["gf"], "G_gf_default_sfcvm_order2.npz")
+    b = os.path.join(paths_uniform["gf"], "G_gf_default_homog_order2.npz")
     if not (os.path.exists(a) and os.path.exists(b)):
         pytest.skip("order-2 G matrices not available")
     ga, gb = np.load(a), np.load(b)
@@ -76,7 +76,7 @@ def test_match_impulse_order_on_the_5_and_8_rank_order2_runs():
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# 2026-10-30 (rewire, code_audit_2026-10-28): the locked weighting, the noise-model mask, the metrics, the Monte Carlo
+# the weighting, the noise-model mask, the metrics, the Monte Carlo
 # ---------------------------------------------------------------------------------------------------------------------
 from types import SimpleNamespace                                               # noqa: E402
 

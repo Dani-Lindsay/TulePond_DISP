@@ -1,4 +1,4 @@
-# products, stats sidecars and the number registry are written to the data directory by the notebooks
+# safety net: products go to TULEPOND_DATA_DIR, never into the repository
 outputs/
 Figures_*/
 executed/
@@ -8,3 +8,4 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 *.log
+.claude/

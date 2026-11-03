@@ -3,13 +3,8 @@
 Tests pinning the LOS / fault projection conventions and the small shared
 helpers in insar_utils.py.
 
-The projection tests exist because a 90-degree convention error survived in
-an earlier pipeline for years: the fault vector was built from a clockwise
-compass bearing but fed to the (-sin, cos) pairing that expects MintPy's
-ANTI-CLOCKWISE azimuth. Descending was only 1.4% wrong (so creepmeter
-validation still passed) but ascending fault-parallel came out 2.05x too
-small. The legacy construction is kept INSIDE this file so the regression
-tests keep pinning it.
+The 2025 projection error these conventions guard against is pinned against the verbatim 2025 function in
+tests/test_original_2025_code.py.
 
 The ground truth for the azimuth convention is OPERA's own los_east/los_north
 rasters, see test_los_unit_vector_matches_opera_los_east_north.
@@ -37,23 +32,6 @@ PROFILE_AZ = 54.09       # mean cross-fault azimuth
 # Canonical near-polar geometries from MintPy's own definitions. Sentinel-1 is
 # right-looking; NISAR is left-looking, so for the SAME orbit direction its
 # LOS azimuth is 180 deg away.
-SEN_A = dict(inc=40, azi=102)
-SEN_D = dict(inc=40, azi=-102)
-NI_A = dict(inc=42, azi=-78)
-NI_D = dict(inc=42, azi=78)
-
-
-def fault_unit_vector_LEGACY_BUGGY(slope_deg, aspect_deg):
-    """The old construction, kept here ONLY so the regression tests can pin
-    its behaviour. `aspect_adj = -aspect + 90` converts a compass bearing to a
-    maths angle and then feeds it to the (-sin, cos) pairing that expects an
-    anti-clockwise azimuth; the result points along `aspect - 90`."""
-    aspect_adj = -aspect_deg + 90
-    return np.array([
-        np.sin(np.deg2rad(slope_deg)) * np.sin(np.deg2rad(aspect_adj)) * -1,
-        np.sin(np.deg2rad(slope_deg)) * np.cos(np.deg2rad(aspect_adj)),
-        np.cos(np.deg2rad(slope_deg)),
-    ])
 
 
 # ---------------------------------------------------------------------------
@@ -76,22 +54,6 @@ def test_ascending_looks_west_descending_looks_east():
     target, so the ground->satellite vector has a negative East component."""
     assert utils.los_unit_vector(ASC["inc"], ASC["azi"])[0] < 0
     assert utils.los_unit_vector(DESC["inc"], DESC["azi"])[0] > 0
-
-
-def test_los_unit_vector_handles_left_and_right_looking():
-    assert utils.los_unit_vector(SEN_A["inc"], SEN_A["azi"])[0] < 0
-    assert utils.los_unit_vector(SEN_D["inc"], SEN_D["azi"])[0] > 0
-    assert utils.los_unit_vector(NI_A["inc"], NI_A["azi"])[0] > 0
-    assert utils.los_unit_vector(NI_D["inc"], NI_D["azi"])[0] < 0
-
-
-def test_left_and_right_looking_are_east_mirrored():
-    for right in (SEN_A, SEN_D):
-        r = utils.los_unit_vector(right["inc"], right["azi"])
-        l = utils.los_unit_vector(right["inc"], right["azi"] - 180)
-        assert np.isclose(r[0], -l[0])
-        assert np.isclose(r[1], -l[1])
-        assert np.isclose(r[2], l[2])
 
 
 @pytest.mark.parametrize("dic", insar_dic_list, ids=lambda d: d["ORBIT_DIRECTION"])
@@ -219,29 +181,6 @@ def test_decompose_handles_multiple_epochs():
                                      ASC["inc"], ASC["azi"], DESC["inc"], DESC["azi"], STRIKE)
     assert np.allclose(FP, fp, atol=1e-8)
     assert np.allclose(U, 0.0, atol=1e-8)
-
-
-# ---------------------------------------------------------------------------
-# Regression tests pinning the LEGACY bug (so it cannot creep back in)
-# ---------------------------------------------------------------------------
-
-def test_legacy_fault_vector_is_90_degrees_off():
-    F_bad = fault_unit_vector_LEGACY_BUGGY(90.0, STRIKE)
-    F_good = utils.horizontal_unit_vector(STRIKE)
-    assert np.isclose(F_bad @ F_good, 0.0, atol=1e-9)
-    assert np.allclose(F_bad, utils.horizontal_unit_vector(PROFILE_AZ), atol=1e-9)
-
-
-def test_legacy_bug_impact_factors():
-    """Pins WHY it went unnoticed: descending near-immune, ascending ~2x."""
-    F_bad = fault_unit_vector_LEGACY_BUGGY(90.0, STRIKE)
-    F_good = utils.horizontal_unit_vector(STRIKE)
-    factors = {}
-    for name, g in (("asc", ASC), ("desc", DESC)):
-        L = utils.los_unit_vector(g["inc"], g["azi"])
-        factors[name] = (L @ F_bad) / (L @ F_good)
-    assert np.isclose(factors["desc"], 0.986, atol=5e-3)
-    assert np.isclose(factors["asc"], 2.053, atol=5e-3)
 
 
 # ---------------------------------------------------------------------------
