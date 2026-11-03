@@ -1109,8 +1109,8 @@ def git_hash(repo_dir):
 def notebook_source(path):
     """The code of a notebook: its code cells joined in order, as one Python source string.
 
-    The notebooks are the only copy of the analysis code (no paired .py scripts since 2 Nov 2026), so the tests, the
-    deposit packer and the extension check read the code from here.
+    The notebooks are the only copy of the analysis code (no paired .py scripts since 2 Nov 2026), so the tests and
+    the deposit packer (scripts/zenodo_package.py) read the code from here.
 
     Parameters
     ----------
@@ -1197,16 +1197,15 @@ def _unit_label(units):
 class Registry:
     """Registry of the manuscript numbers of one notebook run.
 
-        REG = utils.Registry("05_event_detection", common_paths, repo_dir)
+        REG = utils.Registry("04_event_detection", common_paths, repo_dir)
         REG.inputs(path1, path2)                       # files this notebook read
-        REG.register("05_n_events", 5, "count", 0, where="P3", cell="detector")
+        REG.register("04_n_events", 5, "count", 0, where="P3", cell="detector")
         REG.sidecar("events_stats", ["n events: 5", ...])
         REG.render()                                   # rewrite paper_numbers.md
     """
 
     def __init__(self, notebook, common_paths, repo_dir):
         self.notebook = notebook
-        self.common_paths = common_paths
         self.csv_path = common_paths["registry_csv"]
         self.numbers_path = common_paths["paper_numbers"]
         self.out_dir = os.path.join(common_paths["out_dir"], notebook)
@@ -1281,9 +1280,9 @@ class Registry:
 
     def render(self):
         """Rewrite paper_numbers.md: the current value of every registered number, one table per notebook, in the
-        order the notebook registers them. A number is current if its notebook is in the repo, is not retired from
-        the paper (common_paths["retired_notebooks"]) and its latest run registered it; other rows of registry.csv
-        are left out of the file. Returns the path."""
+        order the notebook registers them. A number is current if its notebook is in the repo (a notebook retired
+        from the paper has been removed from it) and its latest run registered it; other rows of registry.csv are
+        left out of the file. Returns the path."""
         rows = pd.read_csv(self.csv_path, dtype=str)
         rows["row"] = np.arange(len(rows))
         latest = rows.groupby("key", as_index=False).last()
@@ -1292,9 +1291,7 @@ class Registry:
         in_last_run = latest.apply(lambda r: r["run_id"] == last_run.get(r["notebook"]), axis=1).astype(bool)
         # a run that wrote its sidecar but registered nothing retires all of its notebook's numbers
         silent = self._notebooks_whose_latest_run_registered_nothing(rows)
-        retired_by_decision = set(self.common_paths.get("retired_notebooks", ()))
-        is_live = (latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
-                   & ~latest["notebook"].isin(retired_by_decision))
+        is_live = latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
         live = latest[is_live].sort_values("row")
         for nb in sorted(silent):
             print(f"  {nb}: its latest run registered no numbers; its numbers are left out")
