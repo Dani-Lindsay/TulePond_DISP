@@ -438,7 +438,7 @@ def utm_grid_to_lonlat(values, x_first, x_step, y_first, y_step, to_utm, corners
 
 def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creepmeters, sse_u_km,
                     letter="A", title="Hayward Fault", colorbar_frame=None, extra_symbols=(), extra_labels=(),
-                    u_range_km=FAULT_MAP_U_KM, half_km=FAULT_MAP_HALF_KM, scale_km=5, city_no_clip=False):
+                    u_range_km=FAULT_MAP_U_KM, half_km=FAULT_MAP_HALF_KM, scale_km=5):
     """Draw the rotated fault map of Fig 1A at the current origin of a pygmt figure. The same panel is used
     by 14 (Fig 1A), 05 (the validation supplementary figure) and 11 (the alignment-array supplementary
     figure); only the field, its colours, the extra symbols and the panel letter differ.
@@ -456,8 +456,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     page with north at the top, at true scale: the height is map_h_cm and the width follows from it.
     Fonts and frame pens are the caller's pygmt.config. u_range_km and half_km crop the map to part of the
     fault (11 draws km 42-70 only); creepmeters and city names outside the crop are left out. scale_km is the
-    length of the scale bar (km). city_no_clip lets the city names run past the map frame (the narrow A of the
-    locator-map version of Fig 1). Returns the map
+    length of the scale bar (km). Returns the map
     width in cm.
     Source: written for this project (pygmt)."""
     import pygmt
@@ -518,7 +517,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
         assert u_north < u_city < u_south, f"{city} (u {u_city:.1f} km) falls off the map"
         nearest_vertex = int(np.argmin(np.abs(trace_u_km - u_city)))
         city_lon, city_lat = uv_to_lonlat(frame, [u_city], [trace_v_km[nearest_vertex] + 0.6])
-        text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black", no_clip=city_no_clip)
+        text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black")
     for code, lat, lon, name in creepmeters:               # the creepmeter symbol of Fig 1D, on top of every label
         fig.plot(x=[lon], y=[lat], style="i0.22c", fill=gold, pen="0.5p,black")
     fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
