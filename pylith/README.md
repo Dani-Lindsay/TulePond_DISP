@@ -18,17 +18,6 @@ bash $REPO/pylith/run_gf.sh gf_shallow_dip70w_sfcvm_order2 mat_sfcvm_nocap.cfg m
 ```
 (log `modeling_SFCVM/runs/gf_shallow_dip70w_sfcvm_order2.log`.)
 
-The material-geometry test of the preferred model (the SFCVM boundary on the dipping fault at every depth):
-
-```bash
-cd $DATA
-~/miniforge3/envs/opera_disp_feb13/bin/python $REPO/pylith/build/sfcvm_grid.py --no-cap --dip 70w
-bash $REPO/pylith/pylith_env.sh $DATA python3 $REPO/pylith/build/write_sfcvm_griddb.py \
-     modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_dip70w_nocap_grid.npz modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_aligned_dip70w_nocap.spatialdb
-bash $REPO/pylith/run_gf.sh gf_shallow_dip70w_sfcvmdip_order2 mat_sfcvm_dip70w_nocap.cfg modeling_inputs/mesh/mesh_dip70w_tet_shallow.msh \
-     modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb 5 modeling_inputs/points/insar_points.txt order2.cfg
-```
-
 The same fault with a vertical dip, 70 deg east, 60 deg west and 50 deg west on the same mesh type, and the
 forward-model variants on the default mesh, are sensitivity tests (`scripts/sensitivity/sensitivity_rows.py`). The
 homogeneous comparison model is not a PyLith run (see below).
@@ -120,7 +109,6 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 | `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh |
 | `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh |
 | `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh |
-| `gf_shallow_dip70w_sfcvmdip_order2` | `mat_sfcvm_dip70w_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: the preferred model with the SFCVM block boundary moved onto the 70 W fault at every depth (`sfcvm_grid.py --no-cap --dip 70w`), not only at the surface |
 | `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: baseline of the forward-model tests (vertical fault, default mesh) and of the default-mesh dip sweep |
 | `gf_default_sfcvm_e50_order2` / `_w50_order2` | `mat_sfcvm_e50_nocap.cfg` / `_w50_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: SFCVM alignment +/- 50 m |
 | `gf_default_sfcvmasis_order2` | `mat_sfcvm_asis_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity test: SFCVM as is (not aligned) |
@@ -133,50 +121,22 @@ The homogeneous comparison model is not a PyLith run: it uses the analytic half-
 dislocations, Meade 2007) on the tents of the preferred run (`model_utils.analytic_tent_G`, 08; cache
 `modeling_uniform/gf/G_analytic_<gf_run>_nsub<n>.npz`).
 
-The order-1 SFCVM runs made with a 150 m/s Vs floor are archived in `backup_vsfloor150_2026-10-25/` in the results
-directory and are not used. The current `mat_sfcvm.cfg` / `mat_sfcvm_asis.cfg` (order 1, Poisson cap 0.40) read the
-grids without the floor; no run of the paper uses them.
-
 **Meshes:** the report header of each mesh (`<mesh>_report.txt`) records the script that generated it. The vertical
 meshes `mesh_vertical_tet_{default,shallow}.msh` were generated with an earlier copy of
 `build/generate_gmsh_vertical.py` with the same presets (`PRESETS`); bit identity of the two scripts' output is not
 recorded.
 
-### Order-1 runs (not used by the paper)
+### Element order
 
-All with `gf.cfg`, impulses `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb`, 8 ranks. Products in the
-medium's `pylith_output/`; `G_<run>.npz` (fault-parallel G) in its `gf/`.
-
-| Run | Material cfg | Mesh (`modeling_inputs/mesh/`) | Points (`modeling_inputs/points/`) | Extra cfg | Use |
-|---|---|---|---|---|---|
-| `gf_default_homog` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | Green's-function check A (element order, `scripts/sensitivity/gf_check.py`) |
-| `gf_default_sfcvm` | `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none |
-| `gf_default_sfcvm_e50` / `_w50` | `mat_sfcvm_e50.cfg` / `_w50.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none |
-| `gf_shallow_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | | none |
-| `gf_default_dip80e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip80e_tet_default.msh` | `insar_points.txt` | | none |
-| `gf_default_dip70e_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip70e_tet_default.msh` | `insar_points.txt` | | none |
-| `gf_default_dip80w_homog` / `_sfcvm`, `gf_default_dip70w_homog` / `_sfcvm` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | none |
-| `gf_default_dip<d>_homog`, d = 50e, 60e, 60w, 50w | `mat_homog.cfg` | `mesh_dip<d>_tet_default.msh` | `insar_points.txt` | | none |
-| `gf_default_homog_swath7` / `gf_default_sfcvm_swath7` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_swath7.txt` | | none |
-| `gf_default_homog_coh07` / `gf_default_sfcvm_coh07` | `mat_homog.cfg` / `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | | none |
-| `gf_default_sfcvmasis` | `mat_sfcvm_asis.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | | none |
+The paper uses order-2 (quadratic) elements. One order-1 run is kept for the element-order check of
+`scripts/sensitivity/gf_check.py`: `gf_default_homog` (`mat_homog.cfg`, `mesh_vertical_tet_default.msh`,
+`insar_points.txt`, `gf.cfg`, 8 ranks). Against the analytic solution for the same fault (CSI triangular dislocations,
+Meade 2007), the median relative RMS error of the Green's functions of surface impulses is 0.68 at order 1 and 0.19 at
+order 2 (0.93 and 0.32 for impulses 1-100 m deep), so order 1 is not accurate enough near the surface. Order-1 runs made
+while the model was being set up are not used and are not listed.
 
 The sample positions of every point set are asserted unchanged each time 07 rewrites them
 (`model_utils.write_points_list`): a set whose positions change requires its GreensFns runs to be remade.
-
-## The forward runs (FaultCohesiveKin; order 1, not used by the paper)
-
-| Run | Material cfg | Mesh | Forward cfg (+ extra) | Overrides | Ranks |
-|---|---|---|---|---|---|
-| `fwd_default_homog` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `fwd_kin.cfg` | | 2 |
-| `fwd_fine_homog` | `mat_homog.cfg` | `mesh_vertical_tet_fine.msh` | `fwd_kin.cfg` | | 2 |
-| `fwd_default_o2_homog` / `fwd_default_o2_sfcvm` | `mat_homog.cfg` / `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `fwd_kin.cfg` + `order2_fwd.cfg` | | 2 |
-| `fwd_fig2_nuggetcd` / `fwd_fig2_full` | `mat_sfcvm.cfg` | `mesh_vertical_tet_default.msh` | `fwd_kin_simpledb.cfg` | points `modeling_inputs/points/fig2_points_<label>.txt`; slip db `modeling_SFCVM/spatialdb/fig2_slip_<label>.spatialdb` | 4 |
-| `fwd_fig2_nuggetcd_homog` | `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `fwd_kin_simpledb.cfg` | as above, slip db in `modeling_uniform/spatialdb/` | 4 |
-| `fwd_traction_nuggetcd` / `fwd_traction_nuggetcd_homog` | `mat_sfcvm.cfg` / `mat_homog.cfg` | `mesh_vertical_tet_default.msh` | `fwd_kin_simpledb.cfg` | as `fwd_fig2_<label>`, plus `'--problem.interfaces.fault.observers.observer.data_fields=[slip,traction_change]'` | 4 |
-
-Each forward run takes about 2 minutes. The slip database of a forward run of an inverted model is written with
-`build/make_vertex_slip_db.py` from the inverted vertex slip.
 
 ## The inputs (build/)
 
@@ -230,7 +190,5 @@ vertices. This follows the reading pattern of `examples/subduction-3d/invert_sli
 
 ## Provenance of the earlier runs
 
-The order-1 runs and the early order-2 runs were made before the cfg files were placed in this folder; their cfg
-files differ from the ones here only in file paths (and in the default impulse database of `gf.cfg`, which every run
-sets on the command line). A forward run remade with the current cfg files and wrappers
-(`smoke_2026-10-06_fwd_default_homog` in `modeling_uniform/pylith_output/`) reproduces `fwd_default_homog` bit for bit.
+The early order-2 runs were made before the cfg files were placed in this folder; their cfg files differ from the ones
+here only in file paths (and in the default impulse database of `gf.cfg`, which every run sets on the command line).
