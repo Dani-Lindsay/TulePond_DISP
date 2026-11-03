@@ -163,9 +163,9 @@ common_paths = {
     # fields) and the crossings derived from it every 100 m (Point Pinole -> 37.41 N).
     "fault_trace":    os.path.join(inputs_dir, "hayward_fault_trace_2026-07-24.kml"),
     "fault_profiles": os.path.join(inputs_dir, "hayward_fault_profiles.csv"),
-    # USGS Quaternary fault and fold database (usgs2020qfaults): the plate-boundary faults (> 5 mm/yr) of the Fig 1 locator map
-    "qfaults_shp": os.path.join(inputs_dir, "qfaults", "Qfaults_GIS", "SHP", "Qfaults_US_Database.shp"),
-    "qfaults_offshore_shp": os.path.join(inputs_dir, "qfaults", "Qfaults_GIS", "SHP", "ca_offshore.shp"),
+    # PB2002 plate boundaries (Bird 2003, doi:10.1029/2001GC000252), GMT file with segment types by C. Heine
+    # (wiki.paleoearthlabs.org, CC BY 4.0): Fig 1F
+    "pb2002": os.path.join(inputs_dir, "pb2002", "pb2002_boundaries.gmt"),
 
     # USGS creepmeters: instrument locations and the .10min records
     # (insar_utils.creepmeter_file prefers the .10min.gz copies).

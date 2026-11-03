@@ -23,7 +23,6 @@ dependencies:
   - xarray
   - pyproj=3.7
   - shapely=2.1          # notebook 06: burst seams from the CSLC static bounding polygons
-  - geopandas=1.1        # notebook 14: the USGS Quaternary faults of the Fig 1 locator map
   - gmt=6.6
   - pygmt=0.18
   - geopy
