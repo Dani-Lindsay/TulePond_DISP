@@ -43,9 +43,9 @@ repo_dir = os.path.dirname(os.path.abspath(__file__))
 #   GPS/                   the screened UNR series and the run05 tie table
 #   prep_validation/       run05's GNSS-tie record and run06's rain tables
 #   aperture_sweep/        the cross-fault aperture sweep that notebook 05 reads (data_prep/run07)
-#   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07), impulse and test-slip dbs
+#   modeling_inputs/       the slip models' shared inputs: PyLith meshes, the sample point sets (07), impulse dbs
 #   modeling_uniform/      the homogeneous (30 GPa) PyLith runs and the analytic (CSI) Green's functions: G matrices, run
-#                          outputs, slip dbs, the CSI validation products
+#                          outputs
 #   modeling_SFCVM/        the USGS SFCVM PyLith runs: material grids and dbs (aligned, +/- 50 m, as is, no Poisson cap),
 #                          G matrices, run outputs
 #   outputs/<notebook>/    every notebook's own products (the selected models, the sensitivity tables, the registry)
@@ -70,13 +70,12 @@ gps_dir    = os.path.join(data_dir, "GPS")
 # The slip models (notebooks 07 to 10 and scripts/sensitivity/) and their PyLith runs (pylith/, README there).
 # Three folders:
 #   modeling_inputs/   shared by both media: the gmsh meshes and fault geometry, the quadtree sample sets written by
-#                      07 (the PyLith output points), the impulse and test-slip spatial databases
+#                      07 (the PyLith output points), the impulse spatial databases
 #   modeling_uniform/  the homogeneous medium (mu 30 GPa, nu 0.25): its PyLith runs, G matrices (including the analytic
-#                      CSI Green's functions of the homogeneous comparison model), slip databases of its forward runs,
-#                      and the CSI-vs-PyLith validation products
+#                      CSI Green's functions of the homogeneous comparison model)
 #   modeling_SFCVM/    the USGS SFCVM medium: its material grids and databases (aligned, +/- 50 m, as is, no Poisson
-#                      cap), its PyLith runs, G matrices and slip databases
-# The PyLith runs are made from data_dir (pylith/run_gf.sh, run_fwd.sh); the cfg files in pylith/cfg give every path
+#                      cap), its PyLith runs and G matrices
+# The PyLith runs are made from data_dir (pylith/run_gf.sh); the cfg files in pylith/cfg give every path
 # relative to it, and each material cfg names its own medium folder as the output directory.
 # ------------------------
 model_inputs_dir  = os.path.join(data_dir, "modeling_inputs")
@@ -85,14 +84,14 @@ model_sfcvm_dir   = os.path.join(data_dir, "modeling_SFCVM")
 pylith_dir = os.path.join(repo_dir, "pylith")             # cfg files, run wrappers, mesh and spatial-database build scripts
 paths_pylith = {
     "root":  pylith_dir,
-    "cfg":   os.path.join(pylith_dir, "cfg"),             # PyLith .cfg files (common, materials, GF, forward runs, order 2)
+    "cfg":   os.path.join(pylith_dir, "cfg"),             # PyLith .cfg files (common, materials, GF, order 2)
     "build": os.path.join(pylith_dir, "build"),           # mesh, SFCVM grid and spatial-database writers
     "workdir": data_dir,                                  # every PyLith run is made from here (the cfg paths are relative to it)
 }
 paths_inputs = {
     "root":      model_inputs_dir,
     "mesh":      os.path.join(model_inputs_dir, "mesh"),       # gmsh meshes (.msh, *_fault.npz, *_report.txt), trace_tmerc.txt
-    "points":    os.path.join(model_inputs_dir, "points"),     # the sample sets (07): insar_points[_swath7|_coh07].{txt,npz}; fig2_points_<label>.txt
+    "points":    os.path.join(model_inputs_dir, "points"),     # the sample sets (07): insar_points[_coh07].{txt,npz}
     "spatialdb": os.path.join(model_inputs_dir, "spatialdb"),  # impulse region and validation-slip databases (medium independent)
 }
 
@@ -103,13 +102,12 @@ def _medium_paths(root):
         "root":          root,
         "gf":            os.path.join(root, "gf"),             # G_<run>.npz: the fault-parallel G matrices (model_utils.build_G)
         "pylith_output": os.path.join(root, "pylith_output"),  # <run>-points.h5, -fault.h5, -elastic_info.h5, -parameters.json
-        "spatialdb":     os.path.join(root, "spatialdb"),      # material grids / databases (SFCVM) and the forward runs' slip databases
+        "spatialdb":     os.path.join(root, "spatialdb"),      # material grids / databases (SFCVM)
         "runs":          os.path.join(root, "runs"),           # PyLith run logs (run_gf.log: start/done times)
     }
 
 
 paths_uniform = _medium_paths(model_uniform_dir)
-paths_uniform["validation"] = os.path.join(model_uniform_dir, "validation")   # 08: PyLith homogeneous vs CSI Meade, 2D screw
 paths_sfcvm = _medium_paths(model_sfcvm_dir)
 
 

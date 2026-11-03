@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shared by run_gf.sh and run_fwd.sh (sourced): where the runs are made and where their logs go.
+# Sourced by run_gf.sh: where the runs are made and where their logs go.
 #   HERE   this folder (pylith/), CFG its cfg/ folder (the parameter files the runs are made with)
 #   WORK   the results directory data_dir (TulePond_filepaths.paths_pylith['workdir'], or $PYLITH_WORKDIR): every path in
 #          the cfg files and on the command line is relative to it

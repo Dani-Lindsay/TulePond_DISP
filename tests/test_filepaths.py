@@ -75,7 +75,7 @@ def test_pylith_cfg_in_repo():
     """The PyLith parameter files the runs are made with are carried by the repo (pylith/cfg), and each material cfg
     names its medium's output folder."""
     assert os.path.exists(os.path.join(fp.paths_pylith["cfg"], "pylithapp.cfg"))
-    for name, medium_root in (("mat_homog.cfg", "modeling_uniform"), ("mat_sfcvm.cfg", "modeling_SFCVM")):
+    for name, medium_root in (("mat_homog.cfg", "modeling_uniform"), ("mat_sfcvm_nocap.cfg", "modeling_SFCVM")):
         text = open(os.path.join(fp.paths_pylith["cfg"], name)).read()
         assert f"defaults.output_directory = {medium_root}/pylith_output" in text, name
 
