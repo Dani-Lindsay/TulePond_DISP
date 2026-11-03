@@ -5,6 +5,10 @@ This repository contains the code that reproduces every figure and every number 
 the Hayward Fault* (Lindsay and Bürgmann, in preparation for Science) from the OPERA DISP-S1 Sentinel-1 displacement
 products.
 
+**Archive.** The data products, model files and this code at the commit of the paper's run are in the Zenodo record
+[doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500). Code: https://github.com/Dani-Lindsay/TulePond_DISP.
+Please cite the paper and the Zenodo record (`CITATION.cff`).
+
 ## Overview
 
 The analysis runs as a numbered chain of Jupyter notebooks. Each notebook reads only the products of the notebooks
@@ -28,13 +32,16 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `insar_utils.py` | Shared helpers: MintPy readers, line-of-sight projections, the along-fault axis, statistics, creepmeter and alignment-array readers, figure style, the number registry. |
 | `model_config.py` | The settings of the slip models, each with its unit and source. |
 | `model_utils.py` | The slip-model functions: data sets and quadtree samples, noise model, CSI inversions on the PyLith fault, Green's functions from the PyLith output, L-curve, rigidity, moment and stress drop. |
+| `creep_profiles.py` | The cross-fault series at each trace crossing, their interpolation to the common dates and the fault-parallel decomposition (03; `data_prep/run07`). |
+| `renewal.py` | The renewal statistics of the forecast (13): posterior draws of the Brownian passage time, lognormal and Weibull models, the posterior predictive conditioned on the open interval, the Poisson baseline and the calibration test. |
 | `NN_*.ipynb` | The notebooks, the analysis code with its executed outputs (`run_all.sh` runs them in order). |
 | `scripts/sensitivity/` | The sensitivity tests of the slip model (inversion choices, fault dip, elastic structure, depth scan), run by hand; 10 draws their results. |
 | `scripts/model_plots/` | The SFSVM materials figure (called by 09). |
+| `scripts/zenodo_package.py`, `scripts/read_audit/` | The files of the Zenodo deposit, built from a clean results directory; the list of files the notebooks read. |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |
 | `data_prep/` | The download and preparation chain from the public archives; `data_prep/README.md`. |
 | `original_2025_code/` | DL's pre-repository script of February 2025 (verbatim), its surviving output and figure, and the SCEC 2025 poster reference; run and compared by notebook 15. |
-| `tests/` | pytest: projection conventions, paths, the slip-model functions, the registry, and `test_anchors.py`, which pins the numbers quoted in the paper. |
+| `tests/` | pytest: projection conventions, paths, the creep-profile extraction, the slip-model functions, the renewal statistics, the registry, and `test_anchors.py`, which pins the numbers quoted in the paper. |
 | `run_all.sh` | Runs the notebook chain in order, then the tests. |
 | `environment.yml` | The packages and versions used for the paper; `environment_full_2026-09-25.yml` is the full export of the working environment. |
 
@@ -54,10 +61,10 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `07_model_data` | The data of the slip models: quadtree samples (the PyLith output points), the noise model, the coherence-0.7 sample set. | |
 | `08_model_homogeneous` | The homogeneous slip model on the same 70 deg W fault (analytic half-space Green's functions). | |
 | `09_model_3d` | The preferred slip model (3D SFSVM, PyLith Green's functions, fault dipping 70 deg west): fit, moment, depth extent, Monte Carlo of correlated noise, stress drop. | Model figures, SFSVM materials |
-| `10_model_sensitivity` | Draws the sensitivity tests of `scripts/sensitivity/`: sweeps, depth scan, semivariogram. | Sensitivity figures |
+| `10_model_sensitivity` | Draws the sensitivity tests of `scripts/sensitivity/`: sweeps, depth scan, semivariogram, the fault-normal leak test and the forward check of the two-look decomposition. | Sensitivity figures |
 | `11_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |
 | `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
-| `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time and alternatives) and the next-event forecast; the Fig 3 inputs. | Renewal fits |
+| `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time, lognormal, Weibull) and the next-event forecast, a Bayesian posterior predictive conditioned on the open interval (`renewal.py`), with Poisson and seasonal baselines and a calibration test on synthetic records; the Fig 3 inputs. | Renewal fits |
 | `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, the six-panel Hovmöller set of the cross-fault series along the whole fault, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles, six-panel Hovmöller |
 | `15_check_original_2025_code` | Independent check: DL's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
 

@@ -7,7 +7,7 @@ on the repository's inputs. It is the code behind the first version of this resu
 > Rodgers Creek, and Maacama Faults. Poster 079, 2025 SCEC Annual Meeting, SCEC Contribution 14951.
 > https://central.scec.org/publication/14951
 
-The poster PDF (`2025_SCSC_Sep3_Final.pdf`, 17 MB) is in the Zenodo data record of this paper, not in the repository.
+The poster is public at the SCEC link above; it is not in the repository or the Zenodo record.
 The code was written on a drive that later failed; this script, one output table and one figure were recovered.
 
 | File | What it is |

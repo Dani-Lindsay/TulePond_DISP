@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper and the Zenodo record that archives the code and data."
+title: "Data and code: Predictable Slow Slip Events on the Hayward Fault"
+authors:
+  - family-names: Lindsay
+    given-names: Danielle
+    orcid: "https://orcid.org/0009-0003-5119-6082"
+  - family-names: Bürgmann
+    given-names: Roland
+    orcid: "https://orcid.org/0000-0002-3560-044X"
+doi: 10.5281/zenodo.23850500
+repository-code: "https://github.com/Dani-Lindsay/TulePond_DISP"
+date-released: 2026-11-03
