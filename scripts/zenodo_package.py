@@ -4,10 +4,9 @@ Author: Danielle Lindsay
 
 Packs the data root of a clean run (TULEPOND_DATA_DIR, e.g. proj_TulePond_DISP_release) into the files of the deposit:
 the three rebased OPERA DISP-S1 stacks as they are (netCDF, already compressed inside), one zip per group of products
-(below), a snapshot of this repository at its current commit, and MANIFEST.csv (every file in every zip, with its size
-and group). The raw DISP granules, the MintPy products and the static layers are not deposited: they are public
-(OPERA DISP-S1, OPERA TROPO-ZENITH, OPERA CSLC-S1-STATIC) and data_prep/run01-04 rebuild them. The USGS SFSVM grid is
-cited, not deposited. The inputs of the notebooks (external inputs, GNSS tables, velocity mosaics, aperture sweep) are
+(below), and MANIFEST.csv (every file in every zip, with its size and group). The code is archived separately. The raw
+DISP granules, the MintPy products and the static layers are not deposited: they are public (OPERA DISP-S1, OPERA
+TROPO-ZENITH, OPERA CSLC-S1-STATIC) and data_prep/run01-04 rebuild them. The USGS SFSVM grid is cited, not deposited. The inputs of the notebooks (external inputs, GNSS tables, velocity mosaics, aperture sweep) are
 exactly the files a run of notebooks 01-15 opened for reading (the read audit of scripts/read_audit, --reads), less the
 unpublished catalogues of other authors (NOT_REDISTRIBUTED). The slip models follow the PyLith manual (publishing
 models): for every PyLith run the code names (model_config.py, scripts/), its input files (meshes, spatial databases,
@@ -26,7 +25,6 @@ import fnmatch
 import glob
 import os
 import re
-import subprocess
 import sys
 import zipfile
 
@@ -195,7 +193,7 @@ def main():
     parser.add_argument("out", help="folder for the deposit files (outside the data root)")
     parser.add_argument("--manifest-only", action="store_true", help="write MANIFEST.csv without zipping")
     parser.add_argument("--only", nargs="*", help="build only these zips")
-    parser.add_argument("--reads", required=True, help="read audit: files opened for reading by a run of notebooks 01-14 "
+    parser.add_argument("--reads", required=True, help="read audit: files opened for reading by a run of notebooks 01-15 "
                                                        "(one path per line, relative to the data root; scripts/read_audit)")
     args = parser.parse_args()
     out = os.path.abspath(args.out)
@@ -221,15 +219,6 @@ def main():
         stack = frames[frame]["stack"]
         rows.append(dict(deposit_file=os.path.basename(stack), path=os.path.relpath(stack, data_dir),
                          bytes=os.path.getsize(stack), group="Rebased OPERA DISP-S1 stack of frame " + frame + " (data_prep run01)"))
-    # the repository snapshot at its current commit
-    commit = subprocess.run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-    code_zip = f"code_TulePond_DISP_{commit}.zip"
-    if not args.manifest_only and (not args.only or code_zip in args.only or "code" in args.only):
-        dirty = subprocess.run(["git", "-C", REPO, "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip()
-        assert not dirty, "commit the repository before packing its snapshot"
-        subprocess.run(["git", "-C", REPO, "archive", "--format=zip", f"--prefix=TulePond_DISP/", "-o", os.path.join(out, code_zip), "HEAD"], check=True)
-        print(f"  wrote {code_zip}")
-    rows.append(dict(deposit_file=code_zip, path="TulePond_DISP/", bytes=None, group=f"The code repository at commit {commit}"))
     manifest = pd.DataFrame(rows)
     manifest.to_csv(os.path.join(out, "MANIFEST.csv"), index=False)
     print(f"MANIFEST.csv: {len(manifest)} rows; deposit {manifest.bytes.sum() / 1e9:.1f} GB before compression")

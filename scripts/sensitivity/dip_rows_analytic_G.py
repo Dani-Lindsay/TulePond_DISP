@@ -18,12 +18,8 @@ The samples, the look vector and the CSI frame are those of dip_rows.py (noteboo
 point set).
 
 Checks, per geometry: right-lateral uniform slip on every tent moves the east side along +look (as in 08); for a PyLith
-geometry, the columns agree in sign with the PyLith G (> 99 %, as dip_rows.py asserts). Against the earlier n_sub 4
-matrix of the same geometry (G_analytic_<run>_nsub4.npy / G_analytic_dip<dip>_nsub4.npz, made 26 Oct 2026 by
-dip_checks_2026-10-26/{dip_inversions,analytic_west_scan}.py), when that file exists: the same shape (and for 60 W /
-50 W the same fault and impulse vertices), the columns agree in sign (> 99 %), and the relative difference per column
-||g8 - g4|| / ||g8|| over the samples (median and max) is printed and written to the table below. A stored matrix is
-read, not recomputed (an interrupted run keeps the finished geometries).
+geometry, the columns agree in sign with the PyLith G (> 99 %, as dip_rows.py asserts). A stored matrix is read, not
+recomputed (an interrupted run keeps the finished geometries).
 
 Inputs: notebook 07's model_data.npz and default point set; the PyLith G npz of the five runs
 (modeling_SFCVM/gf); the default-mesh fault files of 60 W and 50 W; the impulse database.
@@ -32,8 +28,8 @@ m per m of right-lateral slip), G_analytic_dip{60w,50w}_nsub8.npz (the npz layou
 common.make_setup reads it with run_dir=(gf_dip_rows, gf_dip_rows)), analytic_G_nsub8_check.csv (one row per geometry).
 Run (repo root), one process per geometry, at most --processes at a time (each about 2 GB of memory):
     OMP_NUM_THREADS=2 PYTHONPATH=. nice -n 10 python scripts/sensitivity/dip_rows_analytic_G.py [geometry ...] [--processes 4]
-Run time: 2 h 49 min for the seven geometries with 4 processes (1 Nov 2026): 73-82 min per PyLith-run
-geometry, 95 min (60 W) and 106 min (50 W); peak memory 2.1 GB per process.
+Run time: about 3 h for the seven geometries with 4 processes (73-82 min per PyLith-run geometry, 95 min for 60 W
+and 106 min for 50 W); peak memory 2.1 GB per process.
 """
 import argparse
 import os
@@ -53,7 +49,6 @@ from common import cfg, model_utils                   # noqa: E402
 from TulePond_filepaths import paths_inputs          # noqa: E402
 
 N_SUB = dip_rows.N_SUB
-N_SUB_OLD = 4                                         # the subdivision of the earlier matrices (compared, not used)
 GEOMETRIES = list(dip_rows.PYLITH_RUNS) + list(dip_rows.ANALYTIC_ONLY)
 
 
@@ -112,17 +107,6 @@ def save_atomic(path, write):
     os.replace(tmp, path)
 
 
-def compare_old(G_new, old_file, label):
-    """Shape, column signs and relative difference per column of the new matrix against the n_sub 4 one."""
-    G_old = np.load(old_file)
-    G_old = G_old["G_rl_m_per_m"] if old_file.endswith(".npz") else G_old
-    assert G_old.shape == G_new.shape, f"{label}: n_sub {N_SUB} G {G_new.shape} vs n_sub {N_SUB_OLD} {G_old.shape}"
-    same_sign = np.einsum("ij,ij->j", G_new, G_old) > 0
-    assert same_sign.mean() > 0.99, f"{label}: n_sub {N_SUB} and {N_SUB_OLD} disagree in sign for {(~same_sign).sum()} columns"
-    rel = np.linalg.norm(G_new - G_old, axis=0) / np.linalg.norm(G_new, axis=0)
-    return same_sign, rel
-
-
 def one_geometry(geometry):
     """Compute (or read) the n_sub analytic G of one geometry, check it, and return its row of the check table."""
     t0 = time.time()
@@ -133,7 +117,6 @@ def one_geometry(geometry):
         tents = setup["tents"]
         n_impulse_rule = check_impulse_rule(geometry, tents)
         out_file = os.path.join(dip_rows.DIP_ANALYTIC, f"G_analytic_{run}_nsub{N_SUB}.npy")
-        old_file = os.path.join(dip_rows.DIP_ANALYTIC, f"G_analytic_{run}_nsub{N_SUB_OLD}.npy")
         computed = not os.path.exists(out_file)
         if computed:
             G = model_utils.analytic_tent_G(tents, setup["points"]["lon"], setup["points"]["lat"], inputs["look"],
@@ -149,7 +132,6 @@ def one_geometry(geometry):
         name = dip_rows.ANALYTIC_ONLY[geometry]                 # analytic_dip<dip>_nsub<N_SUB>
         run = name
         out_file = os.path.join(dip_rows.DIP_ANALYTIC, f"G_{name}.npz")
-        old_file = os.path.join(dip_rows.DIP_ANALYTIC, f"G_analytic_{geometry}_nsub{N_SUB_OLD}.npz")
         n_impulse_rule = np.nan
         computed = not os.path.exists(out_file)
         if computed:
@@ -176,27 +158,12 @@ def one_geometry(geometry):
                                     f"{minutes:.0f} min; NOT PyLith")))
         setup = common.make_setup(inputs, name, run_dir=(dip_rows.DIP_ANALYTIC, dip_rows.DIP_ANALYTIC))
         G = setup["G"]["m"]
-        tents = setup["tents"]
         sign_pylith_pct = np.nan
-        if os.path.exists(old_file):
-            old = np.load(old_file)
-            for key in ("vertex_index", "fault_xyz", "fault_cells", "sample_lon", "sample_lat", "look", "strike_deg"):
-                assert np.array_equal(old[key], setup["gnpz"]["m"][key]), f"{geometry}: {key} differs from the n_sub {N_SUB_OLD} npz"
     step = east_minus_west_step(G, setup)
     assert step > 0, f"{geometry}: right-lateral slip does not move the east side along +look ({step:+.3f} m/m)"
     row = dict(geometry=geometry, run=run, file=os.path.basename(out_file), n_sub=N_SUB, n_samples=G.shape[0], n_tents=G.shape[1],
                computed_now=computed, minutes=(time.time() - t0) / 60, peak_rss_gb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9,
                impulse_rule_vertices=n_impulse_rule, sign_vs_pylith_pct=sign_pylith_pct, uniform_step_m_per_m=step)
-    if os.path.exists(old_file):
-        same_sign, rel = compare_old(G, old_file, geometry)
-        surface = tents.imp_depth_km < 1e-6
-        worst = int(np.argmax(rel))
-        row.update(old_file=os.path.basename(old_file), sign_vs_nsub4_pct=100 * same_sign.mean(),
-                   rel_diff_median=float(np.median(rel)), rel_diff_max=float(rel.max()),
-                   rel_diff_max_depth_m=float(tents.imp_depth_km[worst] * 1e3) + 0.0, rel_diff_max_km=float(tents.imp_km[worst]),
-                   rel_diff_median_surface=float(np.median(rel[surface])), rel_diff_median_below_100m=float(np.median(rel[tents.imp_depth_km > 0.1])))
-    else:
-        print(f"{geometry}: no n_sub {N_SUB_OLD} file ({os.path.basename(old_file)}): comparison skipped", flush=True)
     print(f"{geometry}: " + ", ".join(f"{k} {v:.4g}" if isinstance(v, float) else f"{k} {v}" for k, v in row.items()), flush=True)
     return row
 

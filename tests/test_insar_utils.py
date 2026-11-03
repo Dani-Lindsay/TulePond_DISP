@@ -226,6 +226,13 @@ def test_linear_rate_recovers_slope_and_ignores_nan():
     assert np.allclose(utils.detrend(t, y)[np.isfinite(y)], 0.0, atol=1e-9)
 
 
+def test_step_fit_recovers_line_and_step():
+    """step_fit (02, 05): a line with a step at the trace (east side, d > 0) is recovered exactly."""
+    d = np.linspace(-500.0, 500.0, 41)
+    v = 1.5 + 0.002 * d + 4.0 * (d > 0)
+    assert np.allclose(utils.step_fit(d, v), (1.5, 0.002, 4.0))
+
+
 def test_joint_design_columns_and_steps():
     """The joint model of 04 (also 05 and 11): constant, centred time, annual sine and cosine, then H(t > step)."""
     t = np.array([2020.0, 2020.25, 2020.5, 2021.0, 2021.5])

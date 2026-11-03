@@ -1,7 +1,6 @@
 """creep_profiles.py: the cross-fault extraction recovers a known step with the east-minus-west sign, the sign flips
 with the profile direction, the interpolation keeps real dates and leaves long gaps empty, and the per-crossing
-decomposition returns right-lateral motion as positive fault-parallel slip. (Until 3 Nov 2026 nothing tested this
-module; the synthetic of the 2026-11-03 audit is the first test.)"""
+decomposition returns right-lateral motion as positive fault-parallel slip."""
 import os
 import sys
 

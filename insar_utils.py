@@ -641,7 +641,7 @@ okabe_ito = ["#0072B2", "#E69F00", "#D55E00", "#CC79A7", "#000000", "#56B4E9", "
 
 
 def panel_title(ax, letter, text="", size=7):
-    """Science panel label on a matplotlib axis: a bold capital letter, then a
+    """Figure panel label on a matplotlib axis: a bold capital letter, then a
     plain `size`-pt description, left-aligned above the axis."""
     label = rf"$\bf{{{letter}}}$" + (f"  {text}" if text else "")
     ax.set_title(label, loc="left", fontsize=size)
@@ -693,6 +693,29 @@ def linear_rate(t, y):
         return np.nan, np.nan, np.nan, int(m.sum())
     slope, intercept, r_value, p_value, std_err = stats.linregress(t[m], y[m])
     return slope, intercept, std_err, int(m.sum())
+
+
+def step_fit(dist_m, velocity):
+    """Fit one straight line across the fault with a step at the trace (notebooks 02 and 05).
+
+    velocity = intercept + gradient * dist + step * H(dist), with H = 1 for dist > 0, by least squares. The step is
+    the fault-crossing creep rate.
+
+    Parameters
+    ----------
+    dist_m : numpy.ndarray
+        Signed distance from the trace (m, positive to the east).
+    velocity : numpy.ndarray
+        Fault-parallel velocity (mm/yr).
+
+    Returns
+    -------
+    tuple of float
+        (intercept mm/yr, gradient mm/yr per m, step mm/yr).
+    """
+    design_matrix = np.column_stack([np.ones_like(dist_m), dist_m, (dist_m > 0).astype(float)])
+    intercept, gradient, step = np.linalg.lstsq(design_matrix, velocity, rcond=None)[0]
+    return intercept, gradient, step
 
 
 def joint_design(dates, step_epochs):
@@ -1109,8 +1132,8 @@ def git_hash(repo_dir):
 def notebook_source(path):
     """The code of a notebook: its code cells joined in order, as one Python source string.
 
-    The notebooks are the only copy of the analysis code (no paired .py scripts since 2 Nov 2026), so the tests and
-    the deposit packer (scripts/zenodo_package.py) read the code from here.
+    The notebooks are the only copy of the analysis code, so the tests and the deposit packer
+    (scripts/zenodo_package.py) read the code from here.
 
     Parameters
     ----------
@@ -1187,11 +1210,6 @@ def _quantity_label(key, units):
             break
     name = name.replace("_", " ")
     return name[:1].upper() + name[1:]
-
-
-def _unit_label(units):
-    """The unit column of paper_numbers.md."""
-    return _UNIT_LABELS.get(str(units), str(units))
 
 
 class Registry:
@@ -1309,18 +1327,16 @@ class Registry:
                 f.write(f"\n<a id=\"{nb.replace('_', '-')}\"></a>\n## {_notebook_title(nb)}\n\n")
                 f.write("| Quantity | Value | Unit | Cell | Key |\n|---|---:|---|---|---|\n")
                 for _, r in grp.iterrows():
-                    f.write(f"| {_quantity_label(r['key'], r['units'])} | {r['rendered']} | {_unit_label(r['units'])} | "
+                    f.write(f"| {_quantity_label(r['key'], r['units'])} | {r['rendered']} | {_UNIT_LABELS.get(str(r['units']), str(r['units']))} | "
                             f"{r['cell']} | `{r['key']}` |\n")
         print(f"Wrote the numbers to: {self.numbers_path}")
         return self.numbers_path
 
     def _notebooks_whose_latest_run_registered_nothing(self, rows):
         """Notebooks whose newest sidecar (outputs/<notebook>/*_stats.txt with that notebook's provenance header)
-        comes from a run that registered no row. A sidecar from 2026-10-05 on carries its run id ('# run <id>',
-        second line): that run registered nothing if the id is not in registry.csv and the sidecar is not older
-        than the notebook's last registry row (the header time is to the minute). An older sidecar has no run id:
-        it counts only if its minute is strictly after the minute of the last registry row (a run writes its
-        sidecar before it registers, so the sidecar of the run that made the last rows is never later)."""
+        comes from a run that registered no row. A sidecar carries its run id ('# run <id>', second line): that run
+        registered nothing if the id is not in registry.csv and the sidecar is not older than the notebook's last
+        registry row (the header time is to the minute)."""
         outputs_root = os.path.dirname(self.out_dir)
         silent = set()
         for nb, nb_rows in rows.groupby("notebook"):
@@ -1338,11 +1354,9 @@ class Registry:
                 if not first_line.startswith(f"# {nb} | git "):
                     continue                                        # another notebook's (or an old name's) sidecar
                 written = pd.Timestamp(first_line.rsplit("|", 1)[1].strip())
-                if second_line.startswith("# run "):
-                    run_id = second_line[len("# run "):].strip()
-                    if run_id not in registered_runs and written >= last_row_minute:
-                        silent.add(nb)
-                elif written > last_row_minute:
+                assert second_line.startswith("# run "), f"{nb}/{name}: sidecar with no run id"
+                run_id = second_line[len("# run "):].strip()
+                if run_id not in registered_runs and written >= last_row_minute:
                     silent.add(nb)
         return silent
 

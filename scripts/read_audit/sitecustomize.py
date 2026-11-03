@@ -1,4 +1,4 @@
-"""Read audit for the Zenodo deposit (1 Nov 2026): log every file under the data root that a Python process opens for
+"""Read audit for the Zenodo deposit: log every file under the data root that a Python process opens for
 reading, including HDF5 / netCDF files opened from C (h5py, netCDF4, xarray), and every folder it lists.
 Active only when TULEPOND_READ_LOG is set; one line per event: <pid> <kind> <path>."""
 import os

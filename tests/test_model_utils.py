@@ -41,8 +41,8 @@ def test_km_from_pinole_index_rule():
 
 
 def test_match_impulse_order_undoes_a_vertex_renumbering():
-    """Two GreensFns runs of one mesh with different MPI rank counts number the fault vertices differently
-    (2026-10-25): the match must recover the reference impulse order from coordinates alone."""
+    """Two GreensFns runs of one mesh with different MPI rank counts number the fault vertices differently:
+    the match must recover the reference impulse order from coordinates alone."""
     rng = np.random.default_rng(0)
     fault = rng.uniform(-1000, 1000, (50, 3))
     vertex_index = np.array([3, 7, 11, 20, 42, 5])                               # the impulse vertices of the reference run
@@ -108,7 +108,7 @@ def test_data_cd_full_and_the_near_trace_cut():
 
 
 def test_covariance_refuses_a_mask_the_swath_cannot_hold():
-    """Until 2026-10-30 a 5 km mask on a 4 km swath silently became 1.6 km."""
+    """A covariance mask wider than the swath is refused, not silently shrunk."""
     sar = SimpleNamespace(x=np.zeros(5), y=np.zeros(5), vel=np.zeros(5))
     fault = SimpleNamespace(xf=np.zeros(2), yf=np.array([-1.0, 1.0]))
     with pytest.raises(AssertionError):

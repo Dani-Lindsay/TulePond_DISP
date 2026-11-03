@@ -269,7 +269,7 @@ assert not invalid.any(), "columns with no valid SFCVM value at any depth"
 # reported (and listed in a csv), not changed.
 n_floor = int((vs < 150.0).sum())                                   # the points a 150 m/s floor would change (reported)
 low = vs < vs_flag
-print(f"Vs: min {vs.min():.1f} m/s; {n_floor:,} points below 150 m/s (the old floor), {int(low.sum()):,} below {vs_flag:g} m/s")
+print(f"Vs: min {vs.min():.1f} m/s; {n_floor:,} points below 150 m/s, {int(low.sum()):,} below {vs_flag:g} m/s")
 if low.any():
     il, jl, kl = np.nonzero(low)
     low_table = pd.DataFrame(dict(x_m=x_axis[il], y_m=y_axis[jl], depth_m=np.maximum(-z_axis[kl], 0.0), vs_m_s=vs[low],

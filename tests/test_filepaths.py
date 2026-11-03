@@ -55,7 +55,7 @@ def test_mosaic_products_exist():
 
 def test_paths_out_keys_are_notebooks():
     """Every outputs/<nb> key names a notebook in the repo (renumbering leaves no stale key), and the
-    slip-model notebooks (07, 09, 08, 10_model_sensitivity; rewire 2026-10-30) have their keys."""
+    slip-model notebooks (07, 08, 09, 10_model_sensitivity) have their keys."""
     for nb in fp.paths_out:
         assert os.path.exists(os.path.join(fp.repo_dir, nb + ".ipynb")), f"paths_out key {nb} has no {nb}.ipynb"
     assert {"07_model_data", "08_model_homogeneous", "09_model_3d", "10_model_sensitivity"} <= set(fp.paths_out)
@@ -65,7 +65,7 @@ def test_paths_out_keys_are_notebooks():
                                        ("uniform", "gf"), ("uniform", "pylith_output"), ("sfcvm", "gf"),
                                        ("sfcvm", "pylith_output"), ("sfcvm", "spatialdb")])
 def test_model_folders_exist(group, key):
-    """The PyLith products of the slip models in the 2026-10-06 layout: modeling_inputs (mesh, points, impulse dbs),
+    """The PyLith products of the slip models: modeling_inputs (mesh, points, impulse dbs),
     modeling_uniform (homogeneous runs), modeling_SFCVM (SFCVM grids and runs)."""
     folders = {"inputs": fp.paths_inputs, "uniform": fp.paths_uniform, "sfcvm": fp.paths_sfcvm}[group]
     assert os.path.isdir(folders[key]), f"paths_{group}[{key}] -> {folders[key]}"
@@ -89,7 +89,7 @@ def test_medium_paths():
 
 
 def test_every_output_location_is_outside_the_repo():
-    """Nothing is written inside the repo (2026-10-06): every output, figure and model folder resolves outside
+    """Nothing is written inside the repo: every output, figure and model folder resolves outside
     repo_dir (TulePond_filepaths.assert_outside_repo also runs at import)."""
     repo_real = os.path.realpath(fp.repo_dir)
     names = []

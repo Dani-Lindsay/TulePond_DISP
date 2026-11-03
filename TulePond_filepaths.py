@@ -342,8 +342,8 @@ forecast_issue_date = "2026-11-04"   # the lock date: the day the forecast is ar
 # The last observation with no event, on which notebook 13 conditions the forecast. The CSLC + Dolphin extension of
 # the time series (extension_check_2026-10-30.zip in the Zenodo record) runs to 2026-10-30 on both tracks with no
 # event-sized step; the forecast is conditioned on 2026-10-24, the acquisition before the last, because the last
-# descending epoch (2026-10-30) has no later acquisition and sits ~1 mm high (below threshold). Until 2 Nov 2026 this was
-# 2026-09-24. The paper's InSAR record ends at notebook 13's data_end (the end of 03's fp_ts).
+# descending epoch (2026-10-30) has no later acquisition and sits ~1 mm high (below threshold). The paper's InSAR record
+# ends at notebook 13's data_end (the end of 03's fp_ts).
 forecast_last_obs_date = "2026-10-24"
 
 # Running rain totals (notebook 12). 12 tests a grid of totals and lags before the InSAR onsets (Fremont gauge); its
