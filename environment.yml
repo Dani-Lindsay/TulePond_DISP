@@ -25,7 +25,7 @@ dependencies:
   - pygmt=0.18
   - geopy=2.5           # notebook 15 (the 2025 script) and tests/test_filepaths.py
   - fonttools
-  - mintpy=1.6.3          # asc_desc2horz_vert (02, 06) and time_func (06): the conda-forge build the numbers used
+  - mintpy=1.6.3          # asc_desc2horz_vert (02, 06), time_func (06), ptime (01): these modules are identical in 1.6.2 and 1.6.3
   - rasterio=1.5         # the LOS ground-truth test against the OPERA rasters (tests/test_insar_utils.py)
   - gdal=3.12
   - opera-utils=0.25.4   # data_prep: DISP-S1 download and reformatting
