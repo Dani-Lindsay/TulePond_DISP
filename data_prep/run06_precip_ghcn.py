@@ -82,8 +82,8 @@ T0 = "1978-10-01"                    # start of WY1979: first HRKT survey 1979.7
 
 
 def decyear(dates):
-    """Decimal year, project convention (insar_utils.date_to_decimal_year):
-    Jan 1 00:00 = year.000, fraction of the actual year length."""
+    """Calendar decimal year (Jan 1 00:00 = year.000, fraction of the actual year length), for this script's
+    own tables. Not the notebooks' convention (insar_utils.decimal_years: 365.25-day years from 2000)."""
     d = pd.DatetimeIndex(dates)
     y0 = pd.to_datetime(d.year.astype(str) + "-01-01")
     y1 = pd.to_datetime((d.year + 1).astype(str) + "-01-01")

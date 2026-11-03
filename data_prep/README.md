@@ -8,8 +8,7 @@ traced back through this directory.
 
 They are not part of `run_all.sh`. Between them they download tens of
 gigabytes and run MintPy over ~360 acquisitions per frame, so they are run once
-per data refresh, by hand, in the order below. `run_all.sh` re-runs only the
-notebooks, which read the products these scripts write.
+per data refresh, by hand, in the order below.
 
 The `runNN` names belong to the data-preparation chain and are unrelated to the `NN_name` numbers of the analysis
 notebooks.
@@ -21,11 +20,11 @@ notebooks.
 | `run00_prepUNR.py` | UNR / Nevada Geodetic Laboratory daily GNSS time series (`geodesy.unr.edu`), screened for steps and non-linearity, trends fitted over the InSAR window | `GPS/<frame>_enu_NA.csv`, `GPS/NA/*.tenv3`, station plots |
 | `run01_download_opera.py` | OPERA DISP-S1 v1.0 granules for frames 09156, 09157, 11115, subset to the AOI, then rebased into one continuous stack per frame (`disp-s1-reformat`) | `<frame>/data/*.nc`, `<frame>/<frame>_stack.nc` |
 | `run02_static_layers.py` | CSLC static layers for the bursts intersecting the AOI, and one ellipsoidal Copernicus GLO-30 DEM, resampled onto each frame's stack grid | `<frame>/geometry/*.tif`, `dem_glo30.tif` |
-| `run03_tropo.py` (+ `tropo_to_mintpy.py`) | OPERA L4 TROPO zenith-delay granules bracketing each acquisition (found via CMR), cropped to the AOI and projected into line of sight | `<frame>/tropo/cropped/`, `<frame>/tropo/corrections/`, `<frame>/mintpy/TROPO.h5` |
-| `run04_velocity.py` | MintPy conversion, common reference pixel at GNSS ZOA1, record and coherence masks, troposphere correction, velocity fit, and the same-orbit mosaics (step 6) | `<frame>/mintpy/timeseries*.h5`, `velocity*.h5`, `mask*.h5`, `mosaic/<orbit>_*.h5` |
-| `run05_GPS_InSAR_validation.py` | Plate-frame tie of each velocity field to the screened GNSS, and the tied mosaics that notebook 02 decomposes (step 5) | `<frame>/mintpy/velocity_NA.h5`, `mosaic/<orbit>_velocity_NA.h5`, `gps_insar_validation.csv` |
+| `run03_tropo.py` | OPERA L4 TROPO zenith-delay granules bracketing each acquisition (found via CMR), cropped to the AOI and projected into line of sight | `<frame>/tropo/cropped/`, `<frame>/tropo/corrections/` |
+| `run04_velocity.py` (+ `tropo_to_mintpy.py`) | MintPy conversion, common reference pixel at GNSS ZOA1, record and coherence masks, troposphere correction (`TROPO.h5` from run03's corrections), velocity fit, and the same-orbit mosaics | `<frame>/mintpy/timeseries*.h5`, `TROPO.h5`, `velocity*.h5`, `mask*.h5`, `mosaic_velfield/<orbit>_*.h5` |
+| `run05_GPS_InSAR_validation.py` | Plate-frame tie of each velocity field to the screened GNSS, and the tied mosaics that notebook 02 decomposes | `<frame>/mintpy/velocity_NA.h5`, `mosaic_velfield/<orbit>_velocity_NA.h5`, `gps_insar_validation.csv` |
 | `run06_precip_ghcn.py` | NOAA GHCN-daily records for the gauges nearest Tule Pond, with the COOP observation-time shift documented | `external_inputs/GHCN_daily/*.csv` |
-| `run07_aperture_sweep.py` | The aperture sweep that notebook 05 scores: notebook 03's creep time series (`creep_profiles.py`) re-run for every cross-fault bin of 05's aperture ladder at coherence 0.9 and for the paper's 30-150 m bin at coherence 0.7, 0.8 and 0.9, each scored against the five creepmeters | `aperture_sweep_repo/<tag>/fp_ts.csv` (and the per-track series), `aperture_sweep_repo/sweep_summary_mp5.csv`, `sweep_results_mp5.csv`, `masks/<frame>/maskTempCoh_08.h5` |
+| `run07_aperture_sweep.py` | The aperture sweep that notebook 05 scores: notebook 03's creep time series (`creep_profiles.py`) re-run for every cross-fault bin of 05's aperture ladder at coherence 0.9 and for the paper's 30-150 m bin at coherence 0.7, 0.8 and 0.9, each scored against the five creepmeters | `aperture_sweep/<tag>/fp_ts.csv` (and the per-track series), `aperture_sweep/sweep_summary_mp5.csv`, `sweep_results_mp5.csv`, `masks/<frame>/maskTempCoh_08.h5` |
 
 `run05` imports `frame_grid` and `merge_orbit` from `run04`, so those two stay
 together. `run07` reads the MintPy products of `run04` (and imports its mask
@@ -39,16 +38,12 @@ dependence, so a refresh that keeps the same AOI bbox does not need to re-run it
 ## Running them
 
 ```bash
-PATH=$HOME/miniforge3/envs/opera_disp_feb13/bin:$PATH
-python data_prep/run01_download_opera.py          # from the repo root
+python data_prep/run01_download_opera.py          # from the repo root, in the environment.yml environment
 ```
 
-Requirements: the `opera_disp_feb13` environment (`opera-utils`, MintPy, h5py,
-xarray, rasterio, pyproj), and Earthdata credentials in `~/.netrc` for
-everything that accesses ASF or CMR. Long runs are wrapped in `caffeinate -is`
-so the machine does not sleep during a rebase. The scripts check free disk space
-before starting (`insar_utils.require_disk_space`) and stop if the job would not
-fit.
+Requirements: the `environment.yml` environment (`opera-utils`, MintPy, h5py, xarray, rasterio, pyproj), and
+Earthdata credentials in `~/.netrc` for everything that accesses ASF or CMR. `run01`-`run03` and `run07` check free
+disk space before starting (`insar_utils.require_disk_space`) and stop if the job would not fit.
 
 The observation window comes from `TulePond_filepaths.py` (`date_start`,
 `date_end`): edit those two and re-run, rather than editing any script here.
@@ -76,11 +71,14 @@ These are received or made by hand, so they have no script. They are under
 |---|---|
 | USGS creepmeter records (`*.10min.gz`) | Langbein et al. (2024), USGS; the `.gz` copies are the ones the notebooks read |
 | Bay Area alignment arrays v3.0 | USGS |
-| Repeating-earthquake catalogues | T. Taira (HFRC GEN3); Waldhauser & Schaff (2021) |
-| Relocated seismicity | B. Xie, GrowClust catalogue for the Hayward area |
+| Repeating-earthquake catalogues | T. Taira (GEN3; not redistributed, available from its author); Waldhauser & Schaff (2021) |
+| Relocated seismicity | B. Rong, from the statewide catalogue of Rong et al. (2026, SCEC poster 145); not redistributed, available from its authors |
 | Mapped fault trace (`hayward_fault_trace_*.kml`) | mapped by hand in QGIS from the USGS Quaternary faults plus the steps visible in the velocity fields; notebook 01 rebuilds the 100 m crossings from it and asserts they match the archived copy |
-| USGS Quaternary faults | public USGS download, used for context figures |
-| Aperture / coherence sweep (`aperture_sweep/`) | archived output of the aperture sweep of the original processing chain (`run11b_sweep_ladder.py`), which notebook 05 reads (`sweep_dir`). It is reproduced from this repository by `run07_aperture_sweep.py` into `aperture_sweep_repo/`; the differences from the archive are listed in `aperture_sweep_repo/README.md` |
+| Creep-event catalogue | Gittins et al. (2026) |
+| Creep-rate compilation | Johnson et al. (2022) |
+| Creepmeter locations (`creepmeter_locations.csv`) | USGS creepmeter metadata |
+| Plate boundaries (`pb2002/`, Fig 1F) | PB2002, Bird (2003), as a GMT file |
+| SFSVM v26.0 (GeoModelGrids HDF5; `pylith/build/sfcvm_grid.py`) | USGS, doi:10.5066/P13AEJFI |
 
 ## Download details
 
