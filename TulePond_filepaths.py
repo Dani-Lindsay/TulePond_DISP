@@ -52,7 +52,7 @@ if not data_dir:
 
 # Figures go into a dated directory, Figures_<fig_date>. Figure filenames carry their parameters; the date
 # identifies the run of the figure set.
-fig_date   = "2026-11-01"
+fig_date   = "2026-11-03"
 # Figures and notebook products are written with the data, not into the repository: the repository holds the code
 # and the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
@@ -247,7 +247,7 @@ rate_nsigma = 3.0      # near-fault rate mask: reject pixels > 3 robust sigma fr
 az_smooth_n = 21       # crossings in the rolling median of the local strike (2.1 km)
 max_interp_gap_days = 45   # interpolate asc/desc onto common dates only across gaps shorter than this
 rate_smooth_km = 0.5   # Gaussian smoothing of the along-fault rate profile
-profile_smooth_km = 0.2    # Gaussian sigma of the drawn along-strike mean-event profile, Fig 2K (Fig 1C and 1D use 04's smooth_km, 0.4 km)
+profile_smooth_km = 0.2    # NOT USED (imported by 04 only): Fig 2K is drawn per crossing without smoothing (3 Nov 2026)
 
 # Along-strike parameter string that goes into every product and figure name
 # (NC_ALOS-2 convention: the filename tells you what was run).
