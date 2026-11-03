@@ -79,3 +79,19 @@ def test_decompose_fp_returns_right_lateral_slip_as_positive():
         los[track] = pd.DataFrame([motion @ unit], index=[37.5], columns=dates)
     fp = cp.decompose_fp(los, inc, azi, np.array([strike]), np.array([37.5]), dates)
     assert np.allclose(fp.values[0], fp_true, atol=1e-6)
+
+
+def test_stack_near_keeps_rows_with_more_than_half_the_epochs():
+    """rows_near / stack_near (04, 05, 11): rows within the half-width, finite at > 50 % of the epochs; the mean ignores
+    NaN and an epoch with no finite row is dropped."""
+    dates = np.array([2020.0, 2020.1, 2020.2, 2020.3])
+    table = pd.DataFrame([[1.0, 2.0, 3.0, np.nan],          # km 0.0: 3 of 4 finite, kept
+                          [3.0, 4.0, np.nan, np.nan],       # km 0.1: 2 of 4 (not > half), dropped
+                          [5.0, 6.0, 7.0, np.nan],          # km 0.2: kept
+                          [9.0, 9.0, 9.0, 9.0]],            # km 0.5: outside the window
+                         index=[37.53, 37.52, 37.51, 37.50], columns=dates)
+    row_km = np.array([0.0, 0.1, 0.2, 0.5])
+    near = cp.rows_near(table, row_km, 0.1, 0.1 + 1e-6)
+    assert list(near.index) == [37.53, 37.51]
+    stack_dates, stack, n_rows = cp.stack_near(table, row_km, 0.1, 0.1 + 1e-6)
+    assert n_rows == 2 and np.array_equal(stack_dates, dates[:3]) and np.allclose(stack, [3.0, 4.0, 5.0])

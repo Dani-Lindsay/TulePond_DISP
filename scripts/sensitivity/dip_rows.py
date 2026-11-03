@@ -61,7 +61,7 @@ if __name__ == "__main__":
             label = f"{geometry} {family}"
             settings = dict(weighting=weighting, nug_power=power)
             sigma, sigma_base = common.own_corner(inputs, setup, matrices[medium], samples, label, **settings)
-            fault_model, insar_data, _ = common.solve(inputs, setup, matrices[medium], samples, sigma, label=label, **settings)
+            fault_model, insar_data = common.solve(inputs, setup, matrices[medium], samples, sigma, label=label, **settings)
             numbers, _ = common.score(inputs, setup, fault_model, insar_data, mu_per_triangle=mu_harmonic if medium == "pylith" else None)
             rows.append(dict(geometry=geometry, dip_from_vertical_deg=DIP_DEG[geometry], family=family, run=run, weighting=weighting,
                              nugget_power=power, sigma=sigma, sigma_base_corner=sigma_base, **numbers))

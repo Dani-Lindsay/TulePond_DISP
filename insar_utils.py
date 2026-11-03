@@ -3,21 +3,23 @@
 """
 @author: Danielle Lindsay
 
-insar_utils.py: shared helper functions of the TulePond_DISP repository: reading and writing MintPy HDF5
-products, dates, the LOS projection conventions, the along-fault distance axis and the rotated fault maps,
-statistics, creepmeter and catalogue readers, and the provenance and number-registry helpers.
+insar_utils.py: shared helper functions of the TulePond_DISP repository: reading MintPy HDF5 attributes, dates,
+the LOS projection conventions, the along-fault distance axis and the rotated fault maps, statistics, creepmeter
+and catalogue readers, and the provenance and number-registry helpers.
 
-Functions used by a single notebook are written in that notebook; the functions here are shared by several
-notebooks or scripts. Most have a test in tests/.
+Most functions here are shared by several notebooks or scripts; the few used by one notebook belong with a shared
+convention (the time and LOS conventions, the readers, the rotated fault maps). Functions specific to one step of
+the analysis are written in its notebook. Most have a test in tests/.
 
 Sections
     Disk space, dates    disk-space check before downloads; decimal years
-    Read-Write           h5py readers and writers for MintPy files
-    Projections          LOS unit vector, fault-parallel design matrix, decomposition
+    Read                 MintPy attributes (h5py)
+    Projections          LOS unit vector, fault-parallel design matrix, decomposition of series and of maps
     pygmt helpers        resampling to lon/lat grids, map sizes, colour tables
     Along-fault axis     km from Point Pinole along the mapped trace; the map strike frame (u, v); the fault map panel
     Figure style         matplotlib paper style, panel titles, pygmt labels
-    Statistics           robust sigma, detrend, linear rate, along-trace smoothing, annual-increment rate
+    Statistics           robust sigma, detrend, linear rate, the joint-model design matrix, sigma from a 95 % interval,
+                         along-trace smoothing, annual-increment rate
     Creepmeters          USGS .10min reader; the daily record with listed glitch days removed
     Catalogues           seismicity, repeating-earthquake and alignment-array readers
     Provenance/Registry  git hash, file fingerprints, the registry class
@@ -174,7 +176,7 @@ def acquisition_times(stack_file):
 
 
 # ------------------------------
-# Read-Write (MintPy HDF5)
+# Read (MintPy HDF5)
 # ------------------------------
 
 def load_h5_attrs(h5_file):
@@ -258,6 +260,35 @@ def decompose_asc_desc(d_asc, d_desc, inc_asc_deg, azi_asc_deg,
                    np.asarray(d_desc, dtype=float)])   # (2, n_epochs)
     UV_FP = np.linalg.lstsq(G, D, rcond=None)[0]       # (2, n_epochs)
     return UV_FP[0, :], UV_FP[1, :]
+
+
+def decompose_asc_desc_maps(los_asc, los_desc, inc_both, azi_both, strike_deg, window_px):
+    """Fault-parallel and vertical maps from the ascending and descending LOS maps, with MintPy's
+    `asc_desc2horz_vert` (Yunjun et al. 2019). Used by notebook 06 and model_utils.fault_parallel_from_steps (07).
+
+    Parameters
+    ----------
+    los_asc, los_desc : numpy.ndarray
+        (n_rows, n_cols) LOS maps (mm or mm/yr, positive toward the satellite); only pixels valid on both are used.
+    inc_both, azi_both : numpy.ndarray
+        (2, n_rows, n_cols) incidence and azimuth angles (deg, MintPy convention above), ascending first.
+    strike_deg : float
+        Strike (deg, compass bearing); MintPy's horizontal direction is horz_az_angle = -strike_deg, as MintPy counts
+        anticlockwise.
+    window_px : int
+        MintPy's decomposition window (`step`, pixels).
+
+    Returns
+    -------
+    fault_parallel, up : numpy.ndarray
+        (n_rows, n_cols) components along the strike and vertical, in the units of the input (float64).
+    """
+    from mintpy.asc_desc2horz_vert import asc_desc2horz_vert
+    valid_both = np.isfinite(los_asc) & np.isfinite(los_desc)
+    los_stack = np.stack([los_asc, los_desc]).astype(np.float32)
+    los_stack[:, ~valid_both] = np.nan
+    fault_parallel, up = asc_desc2horz_vert(los_stack, inc_both, azi_both, horz_az_angle=-strike_deg, step=window_px)
+    return fault_parallel.astype(float), up.astype(float)
 
 
 # ------------------------------
@@ -664,6 +695,44 @@ def linear_rate(t, y):
     return slope, intercept, std_err, int(m.sum())
 
 
+def joint_design(dates, step_epochs):
+    """Design matrix of the joint model of a creep series (notebook 04, section 3; also used by 05 and 11).
+
+    Parameters
+    ----------
+    dates : numpy.ndarray
+        Epochs (decimal years).
+    step_epochs : sequence of float
+        Step epoch of each event (decimal years); an empty sequence gives the model without steps.
+
+    Returns
+    -------
+    numpy.ndarray
+        (n_dates, 4 + n_steps). Columns: constant, epoch minus its mean (the rate), sin(2 pi t), cos(2 pi t) (the
+        annual cycle), then one Heaviside step H(t > step epoch) per event.
+    """
+    columns = [np.ones_like(dates), dates - dates.mean(), np.sin(2 * np.pi * dates), np.cos(2 * np.pi * dates)]
+    for step_epoch in step_epochs:
+        columns.append((dates > step_epoch).astype(float))
+    return np.column_stack(columns)
+
+
+def sigma_from_ci95(ci_lo, ci_hi):
+    """1-sigma from a 95 % interval, taken as Gaussian (the mean +/- 1.96 sigma): (hi - lo) / 3.92.
+
+    Parameters
+    ----------
+    ci_lo, ci_hi : float or numpy.ndarray
+        Bounds of the 95 % interval.
+
+    Returns
+    -------
+    float or numpy.ndarray
+        The 1-sigma, in the units of the bounds.
+    """
+    return (ci_hi - ci_lo) / 3.92
+
+
 def gaussian_smooth_km(x, km_of_x, sigma_km):
     """NaN-aware, gap-preserving Gaussian smoothing along the trace. `km_of_x`
     is the along-trace km of each sample (km from Point Pinole, e.g. from
@@ -1040,8 +1109,8 @@ def git_hash(repo_dir):
 def notebook_source(path):
     """The code of a notebook: its code cells joined in order, as one Python source string.
 
-    The notebooks are the only copy of the analysis code (no paired .py scripts since 2 Nov 2026), so the tests, the
-    deposit packer and the extension check read the code from here.
+    The notebooks are the only copy of the analysis code (no paired .py scripts since 2 Nov 2026), so the tests and
+    the deposit packer (scripts/zenodo_package.py) read the code from here.
 
     Parameters
     ----------
@@ -1128,16 +1197,15 @@ def _unit_label(units):
 class Registry:
     """Registry of the manuscript numbers of one notebook run.
 
-        REG = utils.Registry("05_event_detection", common_paths, repo_dir)
+        REG = utils.Registry("04_event_detection", common_paths, repo_dir)
         REG.inputs(path1, path2)                       # files this notebook read
-        REG.register("05_n_events", 5, "count", 0, where="P3", cell="detector")
+        REG.register("04_n_events", 5, "count", 0, where="P3", cell="detector")
         REG.sidecar("events_stats", ["n events: 5", ...])
         REG.render()                                   # rewrite paper_numbers.md
     """
 
     def __init__(self, notebook, common_paths, repo_dir):
         self.notebook = notebook
-        self.common_paths = common_paths
         self.csv_path = common_paths["registry_csv"]
         self.numbers_path = common_paths["paper_numbers"]
         self.out_dir = os.path.join(common_paths["out_dir"], notebook)
@@ -1212,9 +1280,9 @@ class Registry:
 
     def render(self):
         """Rewrite paper_numbers.md: the current value of every registered number, one table per notebook, in the
-        order the notebook registers them. A number is current if its notebook is in the repo, is not retired from
-        the paper (common_paths["retired_notebooks"]) and its latest run registered it; other rows of registry.csv
-        are left out of the file. Returns the path."""
+        order the notebook registers them. A number is current if its notebook is in the repo (a notebook retired
+        from the paper has been removed from it) and its latest run registered it; other rows of registry.csv are
+        left out of the file. Returns the path."""
         rows = pd.read_csv(self.csv_path, dtype=str)
         rows["row"] = np.arange(len(rows))
         latest = rows.groupby("key", as_index=False).last()
@@ -1223,9 +1291,7 @@ class Registry:
         in_last_run = latest.apply(lambda r: r["run_id"] == last_run.get(r["notebook"]), axis=1).astype(bool)
         # a run that wrote its sidecar but registered nothing retires all of its notebook's numbers
         silent = self._notebooks_whose_latest_run_registered_nothing(rows)
-        retired_by_decision = set(self.common_paths.get("retired_notebooks", ()))
-        is_live = (latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
-                   & ~latest["notebook"].isin(retired_by_decision))
+        is_live = latest["notebook"].isin(current) & in_last_run & ~latest["notebook"].isin(silent)
         live = latest[is_live].sort_values("row")
         for nb in sorted(silent):
             print(f"  {nb}: its latest run registered no numbers; its numbers are left out")

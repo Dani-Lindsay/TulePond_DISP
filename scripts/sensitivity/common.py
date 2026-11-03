@@ -67,7 +67,7 @@ def make_setup(inputs, run, points_set="default", cut_km=cfg.near_trace_cut_km, 
         assert os.path.exists(os.path.join(MARK, run)), f"{run}: no done marker in {MARK}"
         run_dir = (paths_sfcvm["pylith_output"], paths_sfcvm["gf"])
     lo, hi = inputs["section_km"]
-    return model_utils.tent_model_setup({"m": run}, inputs["points"][points_set], inputs["strike_deg"], {"m": run_dir}, cfg.km_window,
+    return model_utils.tent_model_setup({"m": run}, inputs["points"][points_set], inputs["strike_deg"], {"m": run_dir},
                                         lo, hi, inputs["trace_xy_m"], inputs["frame_lonlat"], model_crs, inputs["profile_lats"],
                                         cut_km, cfg.near_field_km, inputs["trace"]["km_pp"])
 
@@ -78,8 +78,8 @@ def solve(inputs, setup, G, samples, sigma, weighting=cfg.weighting, nug_power=c
     `nug_power` (model_utils.data_cd) over the fitted samples keep_fit (default: the set-up's keep)."""
     keep_fit = setup["keep"] if keep_fit is None else keep_fit
     Cd = model_utils.data_cd(weighting, samples, inputs["cov_p"], nug_power, keep=keep_fit)
-    return model_utils.invert_tents(setup["template"], samples, G, Cd, None, None, sigma, lam_xz, inputs["frame_lonlat"],
-                                    use_surface=cfg.use_surface, vel_insar=vel, name=label, ramp_spec=ramp_spec)
+    return model_utils.invert_tents(setup["template"], samples, G, Cd, sigma, lam_xz, inputs["frame_lonlat"], vel_insar=vel,
+                                    name=label, ramp_spec=ramp_spec)
 
 
 def own_corner(inputs, setup, G, samples, label, keep_fit=None, **settings):

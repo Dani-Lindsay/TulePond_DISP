@@ -7,7 +7,8 @@ creep_profiles.py: the cross-fault creep time series of notebook 03 (Methods M3)
 and the aperture sweep (data_prep/run07_aperture_sweep.py), so that both run one code. Notebook 03 calls them with
 the parameters of TulePond_filepaths.py; run07 calls them with every aperture bin and coherence that notebook 05
 scores. The notebook explains the method and the equations; each function here states what it does and its inputs
-and outputs with units.
+and outputs with units. Notebooks 04, 05 and 11 read 03's tables with `read_creep_ts` and stack their rows near a
+point along the trace with `rows_near` / `stack_near`.
 
 Sections
     Fault crossings      the 100 m crossings with the smoothed cross-fault azimuth, km and UTM position
@@ -16,11 +17,13 @@ Sections
     Common date grid     gap-limited interpolation of both tracks onto the union of their dates
     Decomposition        the per-crossing geometry and strike, fault-parallel (FP) series by least squares
     Rates and flags      linear FP rate per crossing and the crossing-level landslide flag
+    Stacks               the fp_ts rows near a point along the trace and their mean series (notebooks 04, 05, 11)
 
 Source: written for this project, following the cross-fault differencing of Li et al. (2023); the decomposition uses
 insar_utils.design_matrix_up_fp and decompose_asc_desc.
 """
 import json
+import warnings
 
 import numpy as np                               # Matrix calculations
 import pandas as pd                              # Tables
@@ -590,3 +593,57 @@ def flag_landslide_crossings(fp_rate_raw, trend_window=TREND_WINDOW, trend_nsigm
     trend_sigma = utils.robust_sigma(resid)
     landslide_flag = (np.abs(resid) > trend_nsigma * trend_sigma) & np.isfinite(fp_rate_raw)
     return landslide_flag, trend_sigma
+
+
+# ------------------------------
+# Stacks of the fp_ts rows
+# ------------------------------
+
+def rows_near(fp_ts, row_km, centre_km, half_km):
+    """The rows of a fault-parallel table within a distance along the trace of a point, finite at more than half of
+    the epochs.
+
+    Parameters
+    ----------
+    fp_ts : pandas.DataFrame
+        Latitude x decimal-year table (mm), as read by `read_creep_ts`.
+    row_km : numpy.ndarray
+        Along-trace position of each row (km from Point Pinole, `utils.lat_to_km_map` of the index).
+    centre_km : float
+        Along-trace position of the point (km from Point Pinole).
+    half_km : float
+        A row is near if |row_km - centre_km| <= half_km (km; the caller adds any tolerance for the 0.1 km grid).
+
+    Returns
+    -------
+    pandas.DataFrame
+        The near rows with more than 50 % finite epochs, in the order of fp_ts.
+    """
+    nearby = fp_ts[np.abs(row_km - centre_km) <= half_km]
+    return nearby[nearby.notna().sum(axis=1) > 0.5 * fp_ts.shape[1]]
+
+
+def stack_near(fp_ts, row_km, centre_km, half_km):
+    """Mean fault-parallel series of the rows near a point along the trace (`rows_near`).
+
+    Parameters
+    ----------
+    fp_ts, row_km, centre_km, half_km
+        As `rows_near`.
+
+    Returns
+    -------
+    dates : numpy.ndarray
+        The epochs at which the mean is finite (decimal years).
+    stack : numpy.ndarray
+        The NaN-ignoring mean of the rows at those epochs (mm).
+    n_rows : int
+        Number of rows averaged.
+    """
+    nearby = rows_near(fp_ts, row_km, centre_km, half_km)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)          # an epoch with no finite row gives NaN, dropped below
+        stack = np.nanmean(nearby.values, axis=0)
+    ok = np.isfinite(stack)
+    dates = fp_ts.columns.values.astype(float)
+    return dates[ok], stack[ok], len(nearby)

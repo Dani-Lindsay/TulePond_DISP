@@ -11,25 +11,22 @@ it follows no published code). No function reads a path on its own: every file i
 
 Contents:
   1. Along-trace distance and the fault trace          km_from_pinole, model_trace, signed_distance_m
-  2. The data: fault-parallel field, noise, quadtree   look_vector, decompose_fault_parallel, los_from_steps,
-                                                       fault_parallel_from_steps, dist_to_trace, fault_parallel_dataset,
-                                                       semivariogram_model, covariance, downsample, covariance_matrix,
-                                                       build_cd, quadtree_block_corners, write_points_list,
-                                                       samples_from_arrays
+  2. The data: fault-parallel field, noise, quadtree   los_from_steps, fault_parallel_from_steps, dist_to_trace,
+                                                       fault_parallel_dataset, semivariogram_model, covariance,
+                                                       downsample, covariance_matrix, build_cd, quadtree_block_corners,
+                                                       write_points_list, samples_from_arrays
   3. Magnitudes and the L-curve                        moment_magnitude, lcurve_corner
-  4. Surface constraint (sensitivity tests only)       arc_length_on_polyline, local_scatter_mm, tent_rows,
-                                                       crossing_constraint, surface_slip_data
-  5. PyLith Green's functions -> G                     read_gf_run, trace_top, build_G, load_G
-  6. Tent (vertex) parameterisation and inversion      TentFault, tent_fault_template, data_cd, invert_tents,
+  4. PyLith Green's functions -> G                     read_gf_run, trace_top, build_G, load_G
+  5. Tent (vertex) parameterisation and inversion      TentFault, tent_fault_template, data_cd, invert_tents,
                                                        match_impulse_order, analytic_tent_G,
                                                        positions_fingerprint, analytic_tent_G_cached,
                                                        tent_model_setup, tent_numbers, tent_lcurve, own_corner,
                                                        uniform_slip_shape, uniform_slip_fit, profile_samples, side_deflection_mm,
                                                        correlated_noise, strike_slip_stress_drop_pa
-  7. PyLith materials, rigidity, extent of slip        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
+  6. PyLith materials, rigidity, extent of slip        shear_modulus_pa, mu_beside_fault, harmonic_mean_rigidity,
                                                        potency_extent
-  8. Provenance                                        field_fingerprint
-  9. Cross-fault steps at the crossings                crossing_steps_like
+  7. Provenance                                        field_fingerprint
+  8. Cross-fault steps at the crossings                crossing_steps_like
 The settings of the paper's models are in model_config.py.
 """
 import copy
@@ -46,7 +43,7 @@ from scipy.spatial import cKDTree
 import insar_utils as utils
 
 # CSI: Classic Slip Inversion (Jolivet et al.; external/csi at commit 1277bb4)
-from csi import TriangularPatches, TriangularTents, insar, surfaceslip
+from csi import TriangularPatches, TriangularTents, insar
 from csi import imagedownsampling as imdown
 from csi import transformation as transform
 from csi import multisourcesolve as multisrc
@@ -104,27 +101,6 @@ def signed_distance_m(line_x, line_y, px, py):
 # =====================================================================================================================
 # 2. The data: the fault-parallel mean event, its noise model and the quadtree samples
 # =====================================================================================================================
-def look_vector(strike_deg):
-    """Horizontal unit vector (east, north, up) along the strike bearing (deg clockwise from north): the 'look
-    vector' of the fault-parallel field, with which right-lateral motion of the east side is positive.
-    Source: written for this project."""
-    return np.array([np.sin(np.deg2rad(strike_deg)), np.cos(np.deg2rad(strike_deg)), 0.0])
-
-
-def decompose_fault_parallel(los_asc, los_desc, inc_both, azi_both, strike_deg, window_px):
-    """Fault-parallel and vertical maps (mm) from the ascending and descending LOS maps, with MintPy's
-    `asc_desc2horz_vert` (horizontal direction = the strike, horz_az_angle = -strike as MintPy counts anticlockwise;
-    only pixels valid on both tracks; decomposition window window_px pixels). inc_both / azi_both: (2, nr, nc),
-    ascending first. Returns (fault_parallel, up), mm.
-    Source: MintPy asc_desc2horz_vert (Yunjun et al. 2019), called with the same arguments as notebook 06."""
-    from mintpy.asc_desc2horz_vert import asc_desc2horz_vert
-    valid_both = np.isfinite(los_asc) & np.isfinite(los_desc)
-    los_stack = np.stack([los_asc, los_desc]).astype(np.float32)
-    los_stack[:, ~valid_both] = np.nan
-    fault_parallel, up = asc_desc2horz_vert(los_stack, inc_both, azi_both, horz_az_angle=-strike_deg, step=window_px)
-    return fault_parallel.astype(float), up.astype(float)
-
-
 def los_from_steps(steps_h5, mask_files=None):
     """Notebook 06's per-track LOS mean event (mm; MintPy convention, positive toward the satellite), with the incidence
     and azimuth angles (deg) of the box, from its saved `tulepond_steps_<track>.h5`, optionally masked at another temporal
@@ -153,16 +129,16 @@ def los_from_steps(steps_h5, mask_files=None):
 def fault_parallel_from_steps(steps_h5, strike_deg, window_px, mask_files=None):
     """The fault-parallel mean event recomputed from notebook 06's saved per-track products (los_from_steps: the
     per-pixel mean of the kept events at the time-series coherence, with the incidence and azimuth of the box), optionally
-    masked at another temporal coherence, and decomposed with decompose_fault_parallel (strike_deg in deg, window_px in
-    pixels). Returns the fault-parallel map (mm) on 06's box grid.
+    masked at another temporal coherence, and decomposed with insar_utils.decompose_asc_desc_maps (strike_deg in deg,
+    window_px in pixels). Returns the fault-parallel map (mm) on 06's box grid.
     With the coherence-0.9 masks the result equals 06's fp_maps.npz `fp_event` (asserted in 07); without masks it is
     the field at coherence 0.7, the mask of the time-series fit (the coherence-0.7 sensitivity sample set).
     Source: written for this project."""
     tracks = los_from_steps(steps_h5, mask_files)
     inc_both = np.stack([tracks["ascending"]["inc"], tracks["descending"]["inc"]]).astype(np.float32)
     azi_both = np.stack([tracks["ascending"]["azi"], tracks["descending"]["azi"]]).astype(np.float32)
-    fault_parallel, _ = decompose_fault_parallel(tracks["ascending"]["mean"], tracks["descending"]["mean"], inc_both, azi_both,
-                                                 strike_deg, window_px)
+    fault_parallel, _ = utils.decompose_asc_desc_maps(tracks["ascending"]["mean"], tracks["descending"]["mean"], inc_both,
+                                                      azi_both, strike_deg, window_px)
     return fault_parallel
 
 
@@ -181,7 +157,7 @@ def fault_parallel_dataset(fp_event, lon, lat, strike_deg, fault, frame_lonlat, 
     to the along-strike km_window (km from Point Pinole). No plane or offset is removed from the field here; the
     reference frame is solved for in the inversion. Returns (sar, look).
     Source: written for this project (CSI insar.read_from_binary; Jolivet et al.)."""
-    look = look_vector(strike_deg)
+    look = utils.horizontal_unit_vector(strike_deg)
     ok = np.isfinite(fp_event)
     sar = insar("fault-parallel", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
     sar.read_from_binary(fp_event[ok], lon[ok], lat[ok], err=np.ones(ok.sum()),
@@ -383,84 +359,7 @@ def lcurve_corner(sigmas, misfit, roughness):
 
 
 # =====================================================================================================================
-# 4. Surface constraint of the 3D model (measured crossings tied to the tent slip on the top edge; sensitivity only)
-# =====================================================================================================================
-def arc_length_on_polyline(px, py, vx, vy):
-    """Arc length along the polyline (vx, vy) of the point on it nearest to each (px, py), that distance, and the arc
-    length of every polyline vertex, in the units of the inputs (m in the mesh CRS). Source: written for this project."""
-    seg_x, seg_y = np.diff(vx), np.diff(vy)
-    seg_len = np.hypot(seg_x, seg_y)
-    assert np.all(seg_len > 0), "repeated vertex on the polyline"
-    s_vert = np.r_[0.0, np.cumsum(seg_len)]
-    dx = px[:, None] - vx[None, :-1]
-    dy = py[:, None] - vy[None, :-1]
-    t = np.clip((dx * seg_x + dy * seg_y) / seg_len ** 2, 0.0, 1.0)
-    dist = np.hypot(dx - t * seg_x, dy - t * seg_y)
-    j = dist.argmin(axis=1)
-    rows = np.arange(len(px))
-    return s_vert[j] + t[rows, j] * seg_len[j], dist[rows, j], s_vert
-
-
-def local_scatter_mm(km, values, half_window_km=0.2, floor_mm=0.5):
-    """Local scatter (mm) of each crossing: 1.4826 x MAD of the values (mm) of the crossings within +/- half_window_km
-    (km) of it, floored at floor_mm (2 x floor_mm with fewer than 3 neighbours). A 1e-6 km tolerance keeps the window
-    edges (the crossings lie on a 0.1 km grid). Source: written for this project."""
-    err = np.empty(len(km))
-    for i, k in enumerate(km):
-        nb = values[np.abs(km - k) <= half_window_km + 1e-6]
-        err[i] = max(1.4826 * np.median(np.abs(nb - np.median(nb))), floor_mm) if nb.size >= 3 else 2.0 * floor_mm
-    return err
-
-
-def tent_rows(s, s_vert, top_columns, n_param):
-    """G rows of the surface constraint: each datum at arc length s is linear between the two bracketing top-edge
-    vertices (the order-1 PyLith tents), d = (1 - w) slip_j + w slip_(j+1), w = (s - s_j) / (s_(j+1) - s_j).
-    s and s_vert in m; top_columns[i] = the parameter column of the i-th top-edge vertex (in arc-length order); n_param
-    = number of model parameters. Returns G (n_data x n_param). Source: written for this project."""
-    j = np.clip(np.searchsorted(s_vert, s, side="right") - 1, 0, len(s_vert) - 2)
-    w = (s - s_vert[j]) / (s_vert[j + 1] - s_vert[j])
-    assert np.all((w >= -1e-9) & (w <= 1 + 1e-9)), "a datum lies outside its bracketing vertices"
-    G = np.zeros((len(s), n_param))
-    rows = np.arange(len(s))
-    G[rows, top_columns[j]] = 1.0 - w
-    G[rows, top_columns[j + 1]] += w
-    return G
-
-
-def crossing_constraint(km, lat, mean_mm, trace_lon_of_lat, to_mesh_xy, top_xy, top_columns, n_param,
-                        floor_mm=0.5, max_dist_m=60.0):
-    """Surface constraint of the 3D model (used in sensitivity tests only): every finite measured crossing that lies
-    within the mesh top edge (ends excluded) is one datum, tied to the modelled slip at its own position on the top
-    edge (tent_rows); error = the local scatter of the crossings (local_scatter_mm), floored at floor_mm (mm). The
-    crossings are not smoothed or interpolated across data gaps. trace_lon_of_lat(lat) -> lon on the mapped trace;
-    to_mesh_xy(lon, lat) -> (x, y) in the mesh CRS (m); top_xy = top-edge vertices (m) in arc-length order; crossings
-    farther than max_dist_m (m) from the top edge fail an assertion. Returns a dict: vel, lon, lat, err (mm),
-    G (rows x n_param), km, dist_m, n_outside. Source: written for this project."""
-    ok = np.isfinite(mean_mm)
-    km, lat, mean_mm = np.asarray(km)[ok], np.asarray(lat)[ok], np.asarray(mean_mm)[ok]
-    lon = trace_lon_of_lat(lat)
-    x, y = to_mesh_xy(lon, lat)
-    s, dist, s_vert = arc_length_on_polyline(np.asarray(x, float), np.asarray(y, float), top_xy[:, 0], top_xy[:, 1])
-    inside = (s > 1.0) & (s < s_vert[-1] - 1.0)                      # beyond the mesh ends a crossing projects onto an end vertex
-    assert inside.sum() >= 10, f"only {inside.sum()} crossings fall within the mesh top edge"
-    assert dist[inside].max() < max_dist_m, f"a crossing lies {dist[inside].max():.0f} m from the mesh top edge"
-    err = local_scatter_mm(km, mean_mm, floor_mm=floor_mm)[inside]  # scatter computed from all crossings, kept for the inside ones
-    G = tent_rows(s[inside], s_vert, np.asarray(top_columns), n_param)
-    return dict(vel=mean_mm[inside], lon=lon[inside], lat=lat[inside], err=err, G=G, km=km[inside],
-                dist_m=dist[inside], n_outside=int((~inside).sum()))
-
-
-def surface_slip_data(constraint, floor_mm, frame_lonlat):
-    """The crossing constraint (crossing_constraint) as a csi.surfaceslip data set: values (mm), positions, diagonal
-    Cd from the errors (mm^2). Source: CSI surfaceslip (Jolivet et al.)."""
-    surface_data = surfaceslip(f"crossings f{floor_mm:g}", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    surface_data.read_from_binary(constraint["vel"], constraint["lon"], constraint["lat"], err=constraint["err"])
-    surface_data.buildCd()
-    return surface_data
-
-
-# =====================================================================================================================
-# 5. PyLith Green's functions -> the fault-parallel G matrix
+# 4. PyLith Green's functions -> the fault-parallel G matrix
 # =====================================================================================================================
 def read_gf_run(pylith_output_dir, name):
     """Read one PyLith GreensFns run `name` from pylith_output_dir. Returns the fault vertices (m) and cells, the
@@ -499,7 +398,7 @@ def build_G(names, points_npz, strike_deg, pylith_output_dir, gf_dir):
     Source: the reading pattern of PyLith examples/subduction-3d/invert_slip.py (readGreens: fault geometry/vertices,
     viz/topology/cells, vertex_fields/slip[:, :, 1]; responses vertex_fields/displacement) and its matchCoords step."""
     points = np.load(points_npz)
-    look = look_vector(strike_deg)
+    look = utils.horizontal_unit_vector(strike_deg)
     columns, vertex_index, fault_xyz0, cells0 = [], [], None, None
     for name in names:
         fault_xyz, fault_cells, slip, point_xyz, disp = read_gf_run(pylith_output_dir, name)
@@ -574,7 +473,7 @@ def load_G(name, points_npz, strike_deg, pylith_output_dir, gf_dir):
 
 
 # =====================================================================================================================
-# 6. The tent (vertex) parameterisation of the PyLith fault, and the inversion
+# 5. The tent (vertex) parameterisation of the PyLith fault, and the inversion
 # =====================================================================================================================
 class TentFault:
     """The PyLith fault of a G matrix (the npz of build_G) as used by the inversion: the fault vertices and triangles
@@ -623,9 +522,6 @@ class TentFault:
             if all(vertex in column_of_vertex for vertex in triangle):
                 sub_faces.append([column_of_vertex[vertex] for vertex in triangle])
         self.sub_faces = np.array(sub_faces)
-        self.surface_imp = np.nonzero(np.abs(self.imp_xyz[:, 2]) < 1e-6)[0]
-        self.top_order = self.surface_imp[np.argsort(self.imp_xyz[self.surface_imp, 1])]   # top-edge impulse vertices, south to north
-        assert np.all(np.diff(self.imp_xyz[self.top_order, 1]) > 0), "top-edge vertices not monotone in mesh y"
 
     def vertex_slip(self, slip_mm):
         """Slip (mm) on every PyLith fault vertex: the impulse vertices carry slip_mm, the vertices without an
@@ -709,17 +605,14 @@ def data_cd(mode, samples, cov_p, nug_power, keep=None):
     return Cd
 
 
-def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, sigma, lam, frame_lonlat, use_surface=False,
-                 vel_insar=None, vel_surface=None, name="tents", ramp_spec="1,x,y"):
-    """Right-lateral slip on the PyLith tents (mm) from the InSAR samples (and, with use_surface, the crossing
-    constraint), with the Green's functions G_insar (m/m, right-lateral positive) entered by CSI's `Fault.setGFs`:
-    exponential prior buildCmXY(sigma, lam) on the vertex positions (lam in km), the reference frame as a CSI
-    transformation (ramp_spec, CSI polynomial terms: "1,x,y" a plane solved jointly with slip, the paper's setting;
-    "1" a constant, a sensitivity test; the surface data keep a constant), NNLS (slip >= 0, the frame terms free) with
-    multisourcesolve. Works on deep copies of the template fault and the samples (their covariance replaced by `Cd`,
-    mm^2); vel_insar / vel_surface replace the data vectors (Monte Carlo). surface_template None: no surface data (the
-    paper's setting); with surface data but use_surface False they are predicted, not fitted.
-    Returns (fault, insar data, surface data or None), each data set with its synth and the fitted frame removed from vel.
+def invert_tents(template, samples, G_insar, Cd, sigma, lam, frame_lonlat, vel_insar=None, name="tents", ramp_spec="1,x,y"):
+    """Right-lateral slip on the PyLith tents (mm) from the InSAR samples, with the Green's functions G_insar (m/m,
+    right-lateral positive) entered by CSI's `Fault.setGFs`: exponential prior buildCmXY(sigma, lam) on the vertex
+    positions (lam in km), the reference frame as a CSI transformation (ramp_spec, CSI polynomial terms: "1,x,y" a
+    plane solved jointly with slip, the paper's setting; "1" a constant, a sensitivity test), NNLS (slip >= 0, the frame
+    terms free) with multisourcesolve. Works on deep copies of the template fault and the samples (their covariance
+    replaced by `Cd`, mm^2); vel_insar replaces the data vector (Monte Carlo).
+    Returns (fault, insar data), the data set with its synth and the fitted frame removed from vel.
     Source: CSI (Jolivet et al.); PyLith Green's functions used as in the PyLith inversion example
     examples/subduction-3d/invert_slip.py."""
     fault_model = copy.deepcopy(template)
@@ -730,19 +623,9 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
     assert Cd.shape == (insar_data.vel.size, insar_data.vel.size)
     insar_data.Cd = Cd.copy()
     fault_model.setGFs(insar_data, strikeslip=[G_insar.copy()])     # already right-lateral positive (build_G sign)
-    surface = None
-    if surface_template is not None:
-        surface = copy.deepcopy(surface_template)
-        if vel_surface is not None:
-            surface.vel[:] = vel_surface
-        fault_model.setGFs(surface, strikeslip=[G_surface])
-    assert not (use_surface and surface is None), "use_surface needs the surface data"
-    if use_surface:
-        solve_datas = [insar_data, surface]
-    else:
-        solve_datas = [insar_data]
+    solve_datas = [insar_data]
     trans = transform("ramps", lon0=frame_lonlat[0], lat0=frame_lonlat[1], verbose=False)
-    trans.buildGFs(solve_datas, [str(ramp_spec)] + ["1"] * (len(solve_datas) - 1), verbose=False)
+    trans.buildGFs(solve_datas, [str(ramp_spec)], verbose=False)
     fault_model.assembleGFs(solve_datas, slipdir="s", verbose=False)
     fault_model.assembled(solve_datas, verbose=False)
     fault_model.assembleCd(solve_datas, verbose=False)
@@ -765,10 +648,8 @@ def invert_tents(template, samples, G_insar, Cd, surface_template, G_surface, si
     for dataset in solve_datas:
         dataset.buildsynth([fault_model], direction="s")
         dataset.removeTransformation(trans)
-    if surface is not None and not use_surface:                       # not inverted, but predicted
-        surface.buildsynth([fault_model], direction="s")
     assert np.all(fault_model.slip[:, 0] >= -1e-9), "negative slip out of NNLS"
-    return fault_model, insar_data, surface
+    return fault_model, insar_data
 
 
 def match_impulse_order(ref_fault_xyz, ref_vertex_index, fault_xyz, vertex_index, label="", tol_m=1e-3):
@@ -914,9 +795,8 @@ def analytic_tent_G_cached(cache_npz, tents, lon, lat, look, frame_lonlat, to_me
     return cached["G_rl_m_per_m"]
 
 
-def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, km_window, creep_lo_km, creep_hi_km, trace_xy_m,
-                     frame_lonlat, crs, profile_lats, near_trace_cut_km, near_field_km, trace_km_pp, crossings=None,
-                     surf_floor_mm=0.5, trace_south_north=None):
+def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, creep_lo_km, creep_hi_km, trace_xy_m, frame_lonlat,
+                     crs, profile_lats, near_trace_cut_km, near_field_km, trace_km_pp):
     """Everything an inversion on PyLith Green's functions needs, for one mesh and one sample set, built from the
     archived products: the G matrix of every medium (load_G; rebuilt from the cached PyLith output when it was
     projected on another strike), the tent geometry (TentFault; media matched by vertex coordinates because PyLith's
@@ -925,8 +805,7 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, km_window, 
     (`trace_xy_m`, m in the mesh CRS) and its along-strike km (`sample_km_pp`, nearest trace point of `trace_km_pp`);
     `keep` = the samples that enter the fit (|d| >= near_trace_cut_km); the near-field masks `west_near` / `east_near`
     = fitted samples within near_field_km west / east of the trace inside the SSE section (creep_lo_km to creep_hi_km),
-    over which the near-field RMS is computed. With `crossings` (dict km, lat, mean_mm of 04's measured crossings) also
-    the measured-crossing surface constraint (`surface`, `G_surface`; used in sensitivity tests only).
+    over which the near-field RMS is computed.
     run_names: medium -> PyLith GreensFns run; medium_dirs: medium -> (pylith_output dir, gf dir). Returns a dict.
     Source: written for this project."""
     import pyproj
@@ -959,21 +838,7 @@ def tent_model_setup(run_names, points_npz, strike_deg, medium_dirs, km_window, 
     out = dict(gnpz=gnpz, G=G, ref_medium=ref_medium, impulse_order=impulse_order, tents=tents, template=template,
                points=points, signed_d_km=signed_d_km, keep=keep, near_trace_cut_km=float(near_trace_cut_km),
                sample_km_pp=sample_km_pp, in_section=in_section, west_near=west_near, east_near=east_near,
-               near_field_km=float(near_field_km), to_mesh=to_mesh, surface=None, G_surface=None)
-    if crossings is not None:                                              # the measured-crossing surface constraint (sensitivity only)
-        assert trace_south_north is not None, "the surface constraint needs the trace (south to north)"
-        in_window = (crossings["km"] >= km_window[0]) & (crossings["km"] <= km_window[1])
-
-        def trace_lon_of_lat(lat_values):
-            return np.interp(lat_values, trace_south_north[:, 1], trace_south_north[:, 0])
-
-        def lonlat_to_mesh_xy(lon_values, lat_values):
-            return to_mesh.transform(lon_values, lat_values)
-
-        constraint = crossing_constraint(crossings["km"][in_window], crossings["lat"][in_window], crossings["mean_mm"][in_window],
-                                         trace_lon_of_lat, lonlat_to_mesh_xy, tents.imp_xyz[tents.top_order, :2], tents.top_order,
-                                         tents.n_imp, floor_mm=surf_floor_mm)
-        out.update(constraint=constraint, surface=surface_slip_data(constraint, surf_floor_mm, frame_lonlat), G_surface=constraint["G"])
+               near_field_km=float(near_field_km), to_mesh=to_mesh)
     return out
 
 
@@ -1003,7 +868,7 @@ def tent_numbers(slip_mm, insar_data, tents, keep, west_near, east_near, mu_ref,
 
 
 def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, keep):
-    """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data, surface), the
+    """One L-curve over sigma_grid: for each sigma the solution `solve(sigma)` -> (fault, insar data), the
     weighted misfit chi2 of the fitted samples (`keep`; the L-curve's x axis), the prior-weighted roughness
     sqrt(m^T (Cm / sigma^2)^-1 m) (its y axis), the RMS of the fitted samples (mm), peak slip (mm), Mw at mu_ref (Pa)
     and the solve time (s). `label` prefixes the progress lines. Returns a DataFrame, one row per sigma.
@@ -1012,7 +877,7 @@ def tent_lcurve(solve, sigma_grid, tents, mu_ref, label, keep):
     rows = []
     for sigma in sigma_grid:
         t0 = time.time()
-        fault_model, insar_data, _ = solve(sigma)
+        fault_model, insar_data = solve(sigma)
         res = (insar_data.vel - insar_data.synth)[keep]
         Cd_fit = insar_data.Cd[np.ix_(keep, keep)]
         slip_vec = fault_model.slip[:, 0]
@@ -1110,7 +975,7 @@ def strike_slip_stress_drop_pa(mu_pa, slip_m, width_m):
 
 
 # =====================================================================================================================
-# 7. PyLith materials, rigidity and the extent of slip
+# 6. PyLith materials, rigidity and the extent of slip
 # =====================================================================================================================
 def shear_modulus_pa(density_kg_m3, vs_m_s):
     """Shear modulus mu = rho vs^2 (Pa) from density (kg/m^3) and S-wave speed (m/s)."""
@@ -1179,7 +1044,7 @@ def potency_extent(sub_potency_m3, sub_depth_m, sub_km, fraction=0.9):
 
 
 # =====================================================================================================================
-# 8. Provenance
+# 7. Provenance
 # =====================================================================================================================
 def field_fingerprint(fp_maps_npz):
     """The fingerprint of 06's fault-parallel field that a model fits, in the form every model product carries
@@ -1189,7 +1054,7 @@ def field_fingerprint(fp_maps_npz):
 
 
 # =====================================================================================================================
-# 9. Cross-fault steps at the crossings
+# 8. Cross-fault steps at the crossings
 # =====================================================================================================================
 def crossing_steps_like(values_mm, signed_d_km, sample_km_pp, crossing_km, inner_km=0.03, outer_km=0.15,
                         half_along_km=0.2, min_per_side=3):
