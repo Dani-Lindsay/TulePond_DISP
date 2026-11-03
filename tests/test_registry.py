@@ -95,7 +95,7 @@ def test_sidecar_has_provenance_header(paths):
 def test_notebooks_never_read_the_registry():
     """Numbers flow products -> registry -> manuscript, never registry -> notebook. Two notebooks read the registry
     on purpose: 05_validation, only to check that 04's creep_events.csv matches what 04 registered, and 13_forecast,
-    which reads back the band-stack steps of the latest run of 04 for the prediction statement (and checks that run
+    which reads back the band-stack steps of the latest run of 04 for the forecast statement (and checks that run
     against creep_events.csv)."""
     allowed = {"insar_utils.py", "TulePond_filepaths.py", "05_validation.ipynb", "13_forecast.ipynb"}
     sources = (glob.glob(os.path.join(REPO, "*.py")) + glob.glob(os.path.join(REPO, "[0-9][0-9]_*.ipynb"))

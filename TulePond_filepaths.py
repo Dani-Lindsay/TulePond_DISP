@@ -4,7 +4,7 @@
 @author: Danielle Lindsay
 
 TulePond_filepaths.py: central file paths and shared constants of the TulePond_DISP
-repository ("Predictable Slow Slip Events on the Hayward Fault").
+repository ("Periodic slow slip events on the Hayward Fault").
 
 Every notebook imports its paths from here. To run the repository elsewhere, set the
 environment variable TULEPOND_DATA_DIR (or edit `data_dir`) to the folder holding the

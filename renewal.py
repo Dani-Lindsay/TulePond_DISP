@@ -2,7 +2,7 @@
 renewal.py: renewal-model statistics for the next-event forecast (notebook 13).
 
 With a few repeat intervals the parameters of a renewal model are poorly known, and a forecast from the best fit
-alone is too narrow: it treats the fitted aperiodicity as exact (the lesson of the 1985 Parkfield prediction,
+alone is too narrow: it treats the fitted aperiodicity as exact (the lesson of Parkfield,
 Jackson and Kagan 2006). The forecast here is the Bayesian posterior predictive (Nomura et al. 2011): parameter
 draws from the posterior given the intervals, each giving a conditional forecast of the next onset, averaged with
 the open interval (no event between the last onset and the last observation) in the likelihood.

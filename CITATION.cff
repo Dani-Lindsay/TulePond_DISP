@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this code, please cite it, the paper, and the Zenodo record of the data and results."
-title: "TulePond_DISP: code for Predictable Slow Slip Events on the Hayward Fault"
+title: "TulePond_DISP: code for Periodic slow slip events on the Hayward Fault"
 authors:
   - family-names: Lindsay
     given-names: Danielle

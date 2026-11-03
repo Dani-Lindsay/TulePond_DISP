@@ -11,7 +11,7 @@ depth; the section ends are along strike on the unrolled fault, TentFault.imp_km
 left out. No smoothing, no sigma. Tents: full slip at the vertices down to D, zero at the next vertex row (one mesh
 cell, 60 m above 600 m depth).
 Metrics against the plane-removed data: RMS of the fitted samples; RMS within 500 m west / east in the SSE section.
-Noise test: the best uniform-slip model (smallest RMS) predicts synthetic data; 100 correlated-noise realisations (full
+Noise test: the best uniform-slip model (smallest RMS) gives synthetic data; 100 correlated-noise realisations (full
 covariance of the 5 km noise model, nugget / N^0.5, seed model_config.mc_seed) are scanned in the same way as the
 data; the best D of each realisation gives the spread.
 Buried top: the scan repeated with zero slip above 50 / 100 / 200 m.
@@ -65,16 +65,16 @@ if __name__ == "__main__":
     print(table.round(3).to_string(index=False))
     print(f"best D {best.D_km:.2f} km (RMS {best.rms_all_mm:.3f} mm, slip {best.slip_mm:.2f} mm); wrote {path} ({elapsed()})", flush=True)
 
-    # noise test: the best uniform-slip model plus its plane predicts the data; correlated noise is added; each
+    # noise test: the best uniform-slip model plus its plane gives synthetic data; correlated noise is added; each
     # realisation is scanned
     shape = model_utils.uniform_slip_shape(tents, section, cfg.depth_scan_taper_km, best.D_km)
     _, residual = model_utils.uniform_slip_fit(G, shape, data, x_km, y_km, setup["keep"])
-    prediction = data - residual
+    synthetic = data - residual
     noise_cd = model_utils.covariance_matrix(x_km, y_km, p["wgt"].astype(float), inputs["cov_p"], cfg.mc_noise_nugget_power)
     noise = model_utils.correlated_noise(noise_cd, cfg.mc_n_realisations, cfg.mc_seed)
     best_d = []
     for k in range(cfg.mc_n_realisations):
-        noisy = scan(G, tents, prediction + noise[k], x_km, y_km, setup, section)
+        noisy = scan(G, tents, synthetic + noise[k], x_km, y_km, setup, section)
         best_d.append([noisy.D_km[noisy[metric].idxmin()] for metric in ("rms_all_mm", "rms_W500_mm", "rms_E500_mm")])
     best_d = np.array(best_d)
     noise_rows = []

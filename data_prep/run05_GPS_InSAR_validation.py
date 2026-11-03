@@ -207,7 +207,7 @@ def loo_residuals(obs, group, center, y):
     """Leave-one-out out-of-sample residual at each station.
 
     In-sample residuals understate the misfit (the fit absorbs its own
-    targets); LOO refits without each station and predicts it.
+    targets); LOO refits without each station and evaluates the fit there.
     """
     n, p = len(obs), _design(obs, group, center).shape[1]
     out = np.full(n, np.nan)

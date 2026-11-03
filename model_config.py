@@ -114,7 +114,7 @@ far_deflection_km = (1.5, 3.0)        # km: the far band (11-14 samples per side
 far_deflection_check_km = (1.0, 3.0)  # km: a wider far band, as a check
 
 # Monte Carlo uncertainty: correlated noise drawn from the full covariance of the noise model (nugget / N^0.5), added to
-# the model prediction and re-inverted at the fixed corner sigma with equal weights.
+# the modelled values and re-inverted at the fixed corner sigma with equal weights.
 mc_n_realisations = 100
 mc_seed = 11                  # the seed of the Monte Carlo noise draws (09, scripts/sensitivity/depth_scan.py)
 mc_noise_nugget_power = 0.5   # the noise draw's covariance: model_utils.covariance_matrix(..., nug_power 0.5)

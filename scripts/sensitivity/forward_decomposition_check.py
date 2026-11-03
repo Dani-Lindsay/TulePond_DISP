@@ -3,7 +3,7 @@ preferred slip model.
 
 Author: Danielle Lindsay
 
-The preferred 3D model (notebook 09: SFSVM, 70 W fault, right-lateral slip only) predicts a full 3D surface
+The preferred 3D model (notebook 09: SFSVM, 70 W fault, right-lateral slip only) gives a full 3D surface
 displacement, with its own vertical and fault-normal parts. This script takes that 3D displacement at the inversion
 samples, projects it into the ascending and descending lines of sight (each sample's LOS vector from 06's incidence
 and azimuth), decomposes the two LOS values with no fault-normal motion (FP, U), as the data are decomposed (Methods
@@ -13,9 +13,9 @@ the decomposition do not create the asymmetry from the model's own vertical and 
 fault-normal and vertical deflections are reported too.
 
 Gates (asserted): the 3D displacements projected on the fault-parallel look vector reproduce the run's G (07/09), and
-that G times the preferred slip reproduces 09's fault-parallel prediction.
+that G times the preferred slip reproduces 09's fault-parallel modelled values.
 
-Inputs: 07 model_data.npz (samples, points file), 09 selected_model.npz (slip, prediction, sample distances), the
+Inputs: 07 model_data.npz (samples, points file), 09 selected_model.npz (slip, modelled values, sample distances), the
 PyLith output of model_config.gf_run, 06 tulepond_steps_<track>.h5 and fp_maps.npz (LOS geometry, pixel positions).
 Output (model_config.sensitivity_dir): forward_decomposition_check.csv. Notebook 10 draws and registers it.
 Run from the repository root (about a minute, reading the PyLith output):
@@ -57,7 +57,7 @@ G_enu = disp[:, order, :] * scale[:, None, None]                    # (impulses,
 G_fp = np.einsum("kpc,c->pk", G_enu, np.asarray(gnpz["look"], float))
 assert np.allclose(G_fp, gnpz["G_rl_m_per_m"], rtol=0, atol=1e-12), "the 3D displacements do not reproduce the fault-parallel G"
 assert G_fp.shape[1] == slip_mm.size, "the slip is not on the impulses of G"
-assert np.allclose(G_fp @ slip_mm, selected["model_mm"], rtol=0, atol=1e-6), "G x slip does not reproduce 09's prediction"
+assert np.allclose(G_fp @ slip_mm, selected["model_mm"], rtol=0, atol=1e-6), "G x slip does not reproduce 09's modelled values"
 model_enu = np.einsum("kpc,k->pc", G_enu, slip_mm)                 # mm, (samples, 3)
 
 # ---- 3. each sample's LOS vectors (nearest pixel of 06's box) and the decomposition with no fault-normal motion
