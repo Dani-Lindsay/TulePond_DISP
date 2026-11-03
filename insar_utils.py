@@ -1020,7 +1020,13 @@ class RegistryConflict(Exception):
 
 
 def git_hash(repo_dir):
-    """Short git hash of the repo and whether the tree has uncommitted changes."""
+    """Short git hash of the repo and whether the tree has uncommitted changes.
+
+    Under run_all.sh the hash and the tree state are those recorded before the first notebook ran
+    (TULEPOND_RUN_COMMIT, TULEPOND_RUN_CLEAN): the notebooks are executed in place, so the tree is dirty after the first
+    one whatever the state of the code."""
+    if os.environ.get("TULEPOND_RUN_COMMIT"):
+        return os.environ["TULEPOND_RUN_COMMIT"], os.environ.get("TULEPOND_RUN_CLEAN") != "1"
     try:
         h = subprocess.run(["git", "-C", repo_dir, "rev-parse", "--short", "HEAD"],
                            capture_output=True, text=True, check=True).stdout.strip()

@@ -109,15 +109,17 @@ ASF and are not redistributed.
 
 ```bash
 conda env create -f environment.yml          # once
-python -m pytest -q                          # conventions, paths, functions, registry and the quoted numbers
+export TULEPOND_DATA_DIR=~/work/proj_TulePond_DISP_release   # the results directory (run_all.sh requires it)
+python -m pytest -q                          # conventions, paths, functions, statistics, registry and the quoted numbers
 ./run_all.sh                                 # every notebook, in order
-./run_all.sh 07 08 09 10                 # a subset (each reads only its upstream products)
+./run_all.sh 07 08 09 10                     # a subset (each reads only its upstream products)
 ```
 
 The PyLith runs are not part of `run_all.sh`; 08, 09 and `scripts/sensitivity/` read their stored products
-(`pylith/README.md` gives the command of every run). Every number in the paper comes from a `run_all.sh` execution.
+(`pylith/README.md` gives the command of every run). The numbers of the paper come from one `run_all.sh` execution from
+a clean commit: each registry row records the commit and whether the tree was clean when run_all.sh started.
 
-Software: MintPy (OPERA fork, commit 054c6010; version 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.
+Software: MintPy 1.6.3 (conda-forge build; it reports `__version__` 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.
 
 ## Authorship and use of AI tools
 

@@ -5,10 +5,12 @@
 # (macOS arm64 builds) if a byte-for-byte copy is wanted.
 #
 #   conda env create -n opera_disp_feb13 -f environment.yml
-#   python -m pytest -q          # 115 tests; anchors skip until the notebooks have run
+#   python -m pytest -q          # set TULEPOND_DATA_DIR first (the anchors read its registry)
 #
-# Notebooks 08, 09 and 10 (alignment arrays, rain, forecast) need only numpy,
-# pandas, scipy and matplotlib; 01 to 06 need the MintPy / h5py / pygmt stack.
+# Notebooks 11 to 13 (alignment arrays, rain, forecast) need only numpy, pandas, scipy and matplotlib; 01 to 06 need
+# the MintPy / h5py / pygmt / rasterio stack; 07 to 10 and scripts/sensitivity need CSI (not on conda-forge or PyPI:
+# install from its repository, https://github.com/jolivetr/csi, the commit in environment_full); data_prep needs
+# opera-utils and dem_stitcher.
 name: opera_disp_feb13
 channels:
   - conda-forge
@@ -18,16 +20,21 @@ dependencies:
   - pandas=2.2
   - scipy=1.17
   - matplotlib=3.10
-  - cmcrameri             # Crameri scientific colour maps (notebooks 09 and 14)
+  - cmcrameri=1.9         # Crameri scientific colour maps (notebooks 09 and 14)
   - h5py=3.15
-  - xarray
+  - xarray=2026.1
   - pyproj=3.7
   - shapely=2.1          # notebook 06: burst seams from the CSLC static bounding polygons
   - gmt=6.6
   - pygmt=0.18
-  - geopy
+  - geopy=2.5
   - fonttools
-  - mintpy>=1.6
+  - mintpy=1.6.3          # asc_desc2horz_vert (02, 06) and time_func (06): the conda-forge build the numbers used
+  - rasterio=1.5         # the LOS ground-truth test against the OPERA rasters (tests/test_insar_utils.py)
+  - gdal=3.12
+  - opera-utils=0.25.4   # data_prep: DISP-S1 download and reformatting
+  - dem_stitcher=2.5.13  # data_prep: the DEM of the static layers
+  - netcdf4=1.7
   - jupyterlab
   - nbconvert
   - ipykernel

@@ -16,6 +16,16 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# the results directory must be named: TulePond_filepaths falls back to ~/work/proj_TulePond_DISP otherwise, which is
+# not the release record
+: "${TULEPOND_DATA_DIR:?set TULEPOND_DATA_DIR to the results directory, e.g. ~/work/proj_TulePond_DISP_release}"
+export TULEPOND_DATA_DIR
+# the commit and whether the tree was clean, recorded before any notebook runs: executing the notebooks in place makes
+# the tree dirty, so insar_utils.git_hash reports this start state for the whole run
+export TULEPOND_RUN_COMMIT=$(git rev-parse --short HEAD)
+if [ -z "$(git status --porcelain)" ]; then export TULEPOND_RUN_CLEAN=1; else export TULEPOND_RUN_CLEAN=0; fi
+echo "run_all: commit $TULEPOND_RUN_COMMIT, clean tree at start: $TULEPOND_RUN_CLEAN, results in $TULEPOND_DATA_DIR"
+
 if [ $# -gt 0 ]; then
     nbs=""
     for n in "$@"; do nbs="$nbs $(ls ${n}*.ipynb)"; done
