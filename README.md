@@ -76,19 +76,6 @@ current value of every number, one table per notebook, with the cell that comput
 append-only log behind it (full value, input-file fingerprints, git hash). A re-run that changes a registered value
 stops with `RegistryConflict` unless `TULEPOND_SUPERSEDE=1` is set.
 
-## Times
-
-All times are UTC and are expressed as decimal years with one convention, $y = 2000 + (t - t_{2000}) / 365.25$ d,
-where $t_{2000}$ is 1 January 2000, 00:00 UTC, so that a difference of decimal years times 365.25 is an exact number of
-days. Every notebook converts through the functions of `insar_utils` (`decimal_years`, `date_to_decimal_year`,
-`decimal_year_to_date`). The exact time of each InSAR acquisition (the zero-Doppler start time of its OPERA DISP-S1
-granule, the `time` coordinate of the rebased stack `<frame>_stack.nc`) is read once, in notebook 03
-(`acquisition_times.csv`), and the onset windows of notebook 04 run between these
-times. The fault-parallel and vertical decomposition pairs the ascending and descending acquisitions of the same UTC
-day (about 12 h apart) as one epoch; no onset window is shorter than 5 d. Creepmeter and earthquake times are UTC;
-alignment-array surveys and rainfall are whole local days. External files written with calendar decimal years are
-converted on reading (`insar_utils.from_calendar_decimal_years`).
-
 ## Data
 
 The results directory (`data_dir`) holds only what the notebooks read, in the layout of the Zenodo deposit (doi:10.5281/zenodo.23850500, built by `scripts/zenodo_package.py`):
@@ -129,12 +116,31 @@ a clean commit: each registry row records the commit and whether the tree was cl
 
 Software: MintPy 1.6.3 (conda-forge build; it reports `__version__` 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.
 
+## Times
+
+All times are UTC and are expressed as decimal years with one convention, $y = 2000 + (t - t_{2000}) / 365.25$ d,
+where $t_{2000}$ is 1 January 2000, 00:00 UTC, so that a difference of decimal years times 365.25 is an exact number of
+days. Every notebook converts through the functions of `insar_utils` (`decimal_years`, `date_to_decimal_year`,
+`decimal_year_to_date`). The exact time of each InSAR acquisition (the zero-Doppler start time of its OPERA DISP-S1
+granule, the `time` coordinate of the rebased stack `<frame>_stack.nc`) is read once, in notebook 03
+(`acquisition_times.csv`), and the onset windows of notebook 04 run between these
+times. The fault-parallel and vertical decomposition pairs the ascending and descending acquisitions of the same UTC
+day (about 12 h apart) as one epoch; no onset window is shorter than 5 d. Creepmeter and earthquake times are UTC;
+alignment-array surveys and rainfall are whole local days. External files written with calendar decimal years are
+converted on reading (`insar_utils.from_calendar_decimal_years`).
+
 ## Authorship and use of AI tools
 
-Code by Danielle Lindsay. The code was written with the assistance of Claude (Anthropic; Claude Opus 5, Claude Opus 5.5,
-Claude Fable 5 and Claude Fable 5.1), used through Claude Code in 2026. Under the author's direction, Claude wrote and
-revised code for the data preparation, the creep time series, the event detection, the slip-model inversions, the
-sensitivity tests, the statistics and the forecast, and the figures. The authors designed the analysis, chose the
-methods and parameters, reviewed the code, checked its outputs (including the tests in `tests/`), and take
-responsibility for the results. Claude also suggested wording edits to the manuscript; the authors wrote and verified
-all text. This use is declared in the Methods and Acknowledgements of the paper.
+Code by Danielle Lindsay. The original analysis was written in February 2025 with occasional syntax help from ChatGPT
+(OpenAI) and presented at the 2025 SCEC Annual Meeting (Lindsay, Taira and Bürgmann, 2025, SCEC Contribution 14951,
+https://central.scec.org/publication/14951; the code is in `original_2025_code/`). The project was restarted in July
+2026 and the current code was written with the assistance of Claude (Anthropic; Claude Opus 5, Claude Opus 5.5, Claude
+Fable 5 and Claude Fable 5.1), used through Claude Code. Under the author's direction, Claude wrote and revised code for
+the data preparation, the creep time series, the event detection, the slip-model inversions, the sensitivity tests, the
+statistics and the forecast, and the figures. The authors designed the analysis, chose the methods and parameters,
+reviewed the code, checked its outputs, and take responsibility for the results. The code is presented as notebooks
+written to be read, and with tests that check the code reproduces expected outputs. As an independent check, the
+February 2025 code was rerun with only path changes on the released descending data (notebook 15). The two Tule Pond
+creep series agree (correlation 0.97, RMS 0.44 mm) and all five slip events appear in both, so the signal was
+established before AI-assisted code was used. Claude also suggested wording edits to the manuscript; the authors wrote
+and verified all text.
