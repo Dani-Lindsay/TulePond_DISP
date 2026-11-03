@@ -2,7 +2,7 @@
 # Predictable Slow Slip Events on the Hayward Fault
 
 This repository contains the code that reproduces every figure and every number in *Predictable Slow Slip Events on
-the Hayward Fault* (Lindsay and Bürgmann, in preparation for Science) from the OPERA DISP-S1 Sentinel-1 displacement
+the Hayward Fault* (Lindsay and Bürgmann, in preparation) from the OPERA DISP-S1 Sentinel-1 displacement
 products.
 
 **Archive.** The input data, model files and results of the paper's run are in the Zenodo record
