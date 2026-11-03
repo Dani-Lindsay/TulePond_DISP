@@ -506,3 +506,19 @@ def test_strike_frame_matches_the_notebook_construction():
     frame = utils.strike_frame(32610, strike_deg, trace_lon, trace_lat)
     u_shared, v_shared = utils.to_uv(frame, lon, lat)
     assert np.allclose(u_shared, u_inline, atol=1e-12) and np.allclose(v_shared, v_inline, atol=1e-12)
+
+
+def test_filepaths_decimal_year_matches_insar_utils():
+    """TulePond_filepaths converts its event dates without pandas; the result is the project's one convention."""
+    import TulePond_filepaths as f
+    for time in (datetime(1989, 10, 18, 0, 4), datetime(2019, 1, 11), datetime(2022, 2, 14), datetime(2026, 11, 3, 12)):
+        assert f.date_to_decimal_year(time) == pytest.approx(utils.date_to_decimal_year(time), abs=1e-12)
+
+
+def test_filepaths_imports_without_pandas():
+    """The PyLith build scripts import TulePond_filepaths in PyLith's python, which has no pandas."""
+    import subprocess
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    code = "import sys; sys.modules['pandas'] = None; import TulePond_filepaths"
+    result = subprocess.run([sys.executable, "-c", code], cwd=repo, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-500:]

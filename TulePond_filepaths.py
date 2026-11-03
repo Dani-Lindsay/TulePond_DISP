@@ -18,7 +18,13 @@ notebooks the order of the analysis.
 import os
 from datetime import datetime
 
-from insar_utils import date_to_decimal_year      # the one time convention of the project (UTC, 365.25-day years)
+
+
+def date_to_decimal_year(time):
+    """insar_utils.date_to_decimal_year (the one time convention: UTC, 365.25-day years from 2000) for a datetime,
+    without pandas: the PyLith build scripts import this module in PyLith's python, which has no pandas. The two agree
+    (tests/test_insar_utils.py)."""
+    return 2000.0 + (time - datetime(2000, 1, 1)).total_seconds() / 86400.0 / 365.25
 
 # The repository holds the code only. Every product, figure and model run is written into data_dir (the results
 # directory), never inside the repository: asserted at the end of this file (`assert_outside_repo`) and by
@@ -267,7 +273,7 @@ segments = {
 # window (widened by coz1_large_tol_days each side) and 05 that they are the two COZ1 events with the largest
 # creepmeter steps. The control also detects the Oct 2022 COZ1 surge, so COZ1 events are labelled by their onset
 # day (`onset_day` in creep_events.csv), not by year.
-coz1_large_events_yr = (date_to_decimal_year("2019-01-11"), date_to_decimal_year("2022-02-14"))
+coz1_large_events_yr = (date_to_decimal_year(datetime(2019, 1, 11)), date_to_decimal_year(datetime(2022, 2, 14)))
 coz1_large_tol_days = 12.0     # one long (12 d) acquisition interval
 
 # Box for the per-pixel event maps (notebook 06) and the slip models (07 to 09):
