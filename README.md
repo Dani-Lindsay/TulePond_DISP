@@ -5,9 +5,9 @@ This repository contains the code that reproduces every figure and every number 
 the Hayward Fault* (Lindsay and Bürgmann, in preparation for Science) from the OPERA DISP-S1 Sentinel-1 displacement
 products.
 
-**Archive.** The data products, model files and this code at the commit of the paper's run are in the Zenodo record
-[doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500). Code: https://github.com/Dani-Lindsay/TulePond_DISP.
-Please cite the paper and the Zenodo record (`CITATION.cff`). The code is under the MIT licence (`LICENSE`); the data in the Zenodo record are CC BY 4.0.
+**Archive.** The input data, model files and results of the paper's run are in the Zenodo record
+[doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500); this code is archived separately at the release
+of that run. Please cite the paper, the data record and the code (`CITATION.cff`). The code is under the MIT licence (`LICENSE`); the data in the Zenodo record are CC BY 4.0.
 
 ## Overview
 
