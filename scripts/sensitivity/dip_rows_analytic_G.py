@@ -3,13 +3,13 @@
 Author: Danielle Lindsay
 
 For each of the seven geometries of dip_rows.py (vertical, 80 E / 80 W, 70 E / 70 W on the default mesh with a PyLith
-run; 60 W, 50 W, 40 W and 30 W on the default mesh with no PyLith run) this computes the Green's functions of the tents in a
+run; 60 W and 50 W on the default mesh with no PyLith run) this computes the Green's functions of the tents in a
 homogeneous elastic half-space (Poisson solid) with CSI triangular dislocations (Meade 2007; model_utils.analytic_tent_G),
 each fault triangle split into n_sub^2 constant-slip sub-triangles, n_sub = dip_rows.N_SUB (8, the value notebook 08
 uses for its homogeneous model).
   - PyLith-run geometries: the tents of the run's G (common.make_setup, as dip_rows.py reads them), so the columns are
     in the impulse order of the run.
-  - 60 W, 50 W, 40 W and 30 W: the tents are rebuilt from the default mesh alone (modeling_inputs/mesh/mesh_dip<dip>_tet_default_fault.npz):
+  - 60 W and 50 W: the tents are rebuilt from the default mesh alone (modeling_inputs/mesh/mesh_dip<dip>_tet_default_fault.npz):
     fault vertices = the corners of the mesh fault triangles (rounded to 1 mm, sorted by np.unique), impulse vertices =
     PyLith's impulse rule (pylith/build/make_impulse_db.py: y_lo <= y <= y_hi and z >= -depth, the limits read from the
     impulse database model_config.gf_files["impulse_db"], the database of the default-mesh runs too). The rule is
@@ -26,7 +26,7 @@ dip_checks_2026-10-26/{dip_inversions,analytic_west_scan}.py), when that file ex
 read, not recomputed (an interrupted run keeps the finished geometries).
 
 Inputs: notebook 07's model_data.npz and default point set; the PyLith G npz of the five runs
-(modeling_SFCVM/gf); the default-mesh fault files of 60 W, 50 W, 40 W and 30 W; the impulse database.
+(modeling_SFCVM/gf); the default-mesh fault files of 60 W and 50 W; the impulse database.
 Outputs (modeling_uniform/gf_dip_rows/): G_analytic_<run>_nsub8.npy (PyLith-run geometries; n_samples x n_impulses,
 m per m of right-lateral slip), G_analytic_dip{60w,50w}_nsub8.npz (the npz layout of model_utils.build_G, so
 common.make_setup reads it with run_dir=(gf_dip_rows, gf_dip_rows)), analytic_G_nsub8_check.csv (one row per geometry).

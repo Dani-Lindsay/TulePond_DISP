@@ -5,4 +5,6 @@
 # The PyLith 5.0.2 bundle (macOS arm64) is installed at $PYLITH_BUNDLE (default below).
 P=${PYLITH_BUNDLE:-$HOME/tools/external/pylith/pylith-5.0.2-macOS-12.0-arm64}
 WORKDIR="$1"; shift
-exec env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin TERM=dumb bash -c "cd '$P' && source setup.sh >/dev/null 2>&1; cd '$WORKDIR' && $*"
+# TULEPOND_DATA_DIR is passed through (else the workdir, which is the data root in every documented call): the build
+# scripts take their output paths from TulePond_filepaths, which without it falls back to ~/work/proj_TulePond_DISP
+exec env -i HOME="$HOME" TULEPOND_DATA_DIR="${TULEPOND_DATA_DIR:-$WORKDIR}" PATH=/usr/bin:/bin:/usr/sbin:/sbin TERM=dumb bash -c "cd '$P' && source setup.sh >/dev/null 2>&1; cd '$WORKDIR' && $*"
