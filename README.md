@@ -7,7 +7,8 @@ products.
 
 **Archive.** The data products, model files and this code at the commit of the paper's run are in the Zenodo record
 [doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500). Code: https://github.com/Dani-Lindsay/TulePond_DISP.
-Please cite the paper and the Zenodo record (`CITATION.cff`).
+Please cite the paper and the Zenodo record (`CITATION.cff`). The code is under the MIT licence (`LICENSE`); the data in
+the Zenodo record are CC BY 4.0.
 
 ## Overview
 
