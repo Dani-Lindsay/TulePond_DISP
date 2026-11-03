@@ -287,6 +287,41 @@ def test_linear_rate_recovers_slope_and_ignores_nan():
     assert np.allclose(utils.detrend(t, y)[np.isfinite(y)], 0.0, atol=1e-9)
 
 
+def test_joint_design_columns_and_steps():
+    """The joint model of 04 (also 05 and 11): constant, centred time, annual sine and cosine, then H(t > step)."""
+    t = np.array([2020.0, 2020.25, 2020.5, 2021.0, 2021.5])
+    G = utils.joint_design(t, [2020.3, 2021.0])
+    assert G.shape == (5, 6)
+    assert np.all(G[:, 0] == 1.0) and np.isclose(G[:, 1].mean(), 0.0)
+    assert np.allclose(G[:, 2], np.sin(2 * np.pi * t)) and np.allclose(G[:, 3], np.cos(2 * np.pi * t))
+    assert list(G[:, 4]) == [0, 0, 1, 1, 1] and list(G[:, 5]) == [0, 0, 0, 0, 1]      # strictly after the step epoch
+    assert np.array_equal(utils.joint_design(t, []), G[:, :4])
+
+
+def test_sigma_from_ci95():
+    assert np.isclose(utils.sigma_from_ci95(-1.96, 1.96), 1.0)
+    assert np.allclose(utils.sigma_from_ci95(np.array([0.0, 1.0]), np.array([3.92, 1.0])), [1.0, 0.0])
+
+
+def test_decompose_asc_desc_maps_recovers_up_and_fault_parallel():
+    """Uniform geometry: the MintPy window decomposition returns the FP and U of the synthetic LOS maps; a pixel valid
+    on one track only is NaN."""
+    up_true, fp_true = 1.5, -4.0
+    shape = (40, 40)
+    los = {}
+    for name, geometry in (("asc", ASC), ("desc", DESC)):
+        G = utils.design_matrix_up_fp(geometry["inc"], geometry["azi"], STRIKE)
+        los[name] = np.full(shape, float(G[0, 0] * up_true + G[0, 1] * fp_true))
+    los["desc"][3, 7] = np.nan
+    inc_both = np.stack([np.full(shape, ASC["inc"]), np.full(shape, DESC["inc"])]).astype(np.float32)
+    azi_both = np.stack([np.full(shape, ASC["azi"]), np.full(shape, DESC["azi"])]).astype(np.float32)
+    fp, up = utils.decompose_asc_desc_maps(los["asc"], los["desc"], inc_both, azi_both, STRIKE, 20)
+    valid = np.ones(shape, bool)
+    valid[3, 7] = False
+    assert np.isnan(fp[3, 7]) and np.isnan(up[3, 7])
+    assert np.allclose(fp[valid], fp_true, atol=1e-4) and np.allclose(up[valid], up_true, atol=1e-4)    # float32 LOS
+
+
 def test_annual_increment_rate_steady_and_stepped():
     # steady creep: every year gains the rate, so the sigma is zero
     t = np.arange(2016.0, 2025.01, 1 / 365.25)        # nine whole years

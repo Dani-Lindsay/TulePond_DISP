@@ -316,6 +316,9 @@ gittins_window_pad_days = 7
 # Shared choices read by more than one notebook (one definition each).
 wet_season_months = (10, 4)    # (first month, last month) of the wet season (Oct-Apr), shared by 12 and 13
 paper_band_frac = 0.90         # the peak-slip band the paper quotes (04 band_main, read by 13)
+# The rotated fault maps (insar_utils.strike_frame / fault_map_panel): the page rotation of 04's Fig 1A grid (saved in
+# fig1_inputs.npz, which 05 and 14 read) and of 11's alignment-array map.
+fault_map_strike_deg = 144.0   # deg: the mean strike of the trace (notebook 02)
 # The settings of the slip models (sigma rule, near-trace cut, surface constraint, weighting, ...) are in model_config.py.
 # The bimonthly era of the alignment arrays (11, 12, 13): a survey interval of at most this many days resolves the
 # season of an onset; 11 runs the HRKT detector only on such intervals, 12 and 13 assert that every array window is
