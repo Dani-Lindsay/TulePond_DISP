@@ -91,7 +91,7 @@ if __name__ == "__main__":
                 base_corner[c["base"]] = sigma
         else:
             sigma, sigma_base = c["sigma"][1] * base_corner[c["base"]], np.nan
-        fault_model, insar_data, _ = common.solve(inputs, setup, G, samples[c["points"]], sigma, label=label, **settings)
+        fault_model, insar_data = common.solve(inputs, setup, G, samples[c["points"]], sigma, label=label, **settings)
         numbers, slip = common.score(inputs, setup, fault_model, insar_data, score_setup=setups[score_key],
                                      mu_per_triangle=mu_harmonic[c["run"]])
         rows.append(dict(row=c["row"], variant=c["variant"], baseline=c["base"], run=c["run"], points=c["points"], cut_m=1e3 * c["cut"],

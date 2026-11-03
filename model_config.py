@@ -45,7 +45,7 @@ nugget_power = 0.0            # every sample gets nugget^2 / n_pixels**0 = nugge
 ramp_spec = "1,x,y"           # CSI polynomial of the reference frame: a plane solved jointly with the slip
 lam_xz_km = (0.1, 0.05)       # km: CSI exponential-prior lengths along strike / down dip; CSI uses exp(-0.5 d / lambda),
 #                               so the effective lengths are 0.2 / 0.1 km (Radiguet 2011)
-use_surface = False           # no surface constraint (the crossing offsets come from the same pixels)
+# no surface constraint: the crossing offsets come from the same pixels as the field
 # slip >= 0 (right-lateral only) is CSI's NNLS in model_utils.invert_tents
 
 # Regularisation strength: each model's own L-curve corner (maximum curvature, Hansen 1992).
@@ -167,7 +167,7 @@ def summary():
             f"noise: semivariogram beyond {noise_mask_km:g} km on a {noise_swath_km:g} km swath, pairs < {noise_distmax_km:g} km",
             f"weighting: diagonal, nugget^2 / N^{nugget_power:g} (equal weights); reference frame '{ramp_spec}' solved jointly",
             f"prior: CSI exponential, lambda {lam_xz_km} km (effective {2 * lam_xz_km[0]:g} / {2 * lam_xz_km[1]:g} km); slip >= 0; "
-            f"surface constraint {'ON' if use_surface else 'OFF'}",
+            "surface constraint OFF",
             f"sigma: own L-curve corner on {len(sigma_grid_base)} base values + {len(sigma_refine_factors)} around the corner",
             f"SSE section km {lo:.2f}-{hi:.2f}; 90 % band km {b_lo:.2f}-{b_hi:.2f} (04 section_lengths.csv); "
             f"near field +/-{near_field_km * 1e3:.0f} m; mu_ref {mu_ref_pa / 1e9:g} GPa"]
