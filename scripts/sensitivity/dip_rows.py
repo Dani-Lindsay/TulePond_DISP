@@ -3,7 +3,7 @@
 Author: Danielle Lindsay
 
 Geometries: vertical, 80 E / 80 W, 70 E / 70 W (PyLith order-2 SFSVM runs on the default mesh,
-`gf_default[_dip..]_sfcvm_order2`) and 60 W / 50 W (no PyLith run: analytic only). Families: "3D N^0" (the weighting of
+`gf_default[_dip..]_sfcvm_order2`) and 60 W / 50 W / 40 W / 30 W (no PyLith run: analytic only). Families: "3D N^0" (the weighting of
 model_config, equal weights), "3D full Cd" (nugget / N^0.5 plus the exponential term) and "Homogeneous analytic N^0"
 (CSI triangular dislocations, Meade 2007, on the same tents, model_utils.analytic_tent_G, each fault triangle split into
 N_SUB^2 = 64 sub-triangles: n_sub 8, the value notebook 08 uses for its homogeneous model). Each geometry uses one solve,
@@ -29,8 +29,10 @@ N_SUB = 8   # sub-triangles per fault triangle edge of the analytic G: the value
 DIP_ANALYTIC = os.path.join(data_dir, "modeling_uniform", "gf_dip_rows")   # analytic G of the dip rows (dip_rows_analytic_G.py)
 PYLITH_RUNS = {"vertical": "gf_default_sfcvm_order2", "dip80e": "gf_default_dip80e_sfcvm_order2", "dip80w": "gf_default_dip80w_sfcvm_order2",
                "dip70e": "gf_default_dip70e_sfcvm_order2", "dip70w": "gf_default_dip70w_sfcvm_order2"}
-ANALYTIC_ONLY = {"dip60w": f"analytic_dip60w_nsub{N_SUB}", "dip50w": f"analytic_dip50w_nsub{N_SUB}"}   # G_<name>.npz in gf_dip_rows/
-DIP_DEG = {"dip50w": -40, "dip60w": -30, "dip70w": -20, "dip80w": -10, "vertical": 0, "dip80e": 10, "dip70e": 20}   # from vertical, W < 0
+# 40 W and 30 W bracket the west-dip optimum (the misfit fell monotonically to 50 W; audit 2026-11-03)
+ANALYTIC_ONLY = {"dip60w": f"analytic_dip60w_nsub{N_SUB}", "dip50w": f"analytic_dip50w_nsub{N_SUB}",
+                 "dip40w": f"analytic_dip40w_nsub{N_SUB}", "dip30w": f"analytic_dip30w_nsub{N_SUB}"}   # G_<name>.npz in gf_dip_rows/
+DIP_DEG = {"dip30w": -60, "dip40w": -50, "dip50w": -40, "dip60w": -30, "dip70w": -20, "dip80w": -10, "vertical": 0, "dip80e": 10, "dip70e": 20}   # from vertical, W < 0
 FAMILIES = {"3D N^0": ("pylith", cfg.weighting, cfg.nugget_power), "3D full Cd": ("pylith", "full", 0.5),
             "Homogeneous analytic N^0": ("analytic", cfg.weighting, cfg.nugget_power)}
 

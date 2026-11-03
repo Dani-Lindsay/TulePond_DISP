@@ -18,6 +18,17 @@ bash $REPO/pylith/run_gf.sh gf_shallow_dip70w_sfcvm_order2 mat_sfcvm_nocap.cfg m
 ```
 (log `modeling_SFCVM/runs/gf_shallow_dip70w_sfcvm_order2.log`.)
 
+The material-geometry test of the preferred model (the SFCVM boundary on the dipping fault at every depth; ~35 h):
+
+```bash
+cd $DATA
+~/miniforge3/envs/opera_disp_feb13/bin/python $REPO/pylith/build/sfcvm_grid.py --no-cap --dip 70w
+bash $REPO/pylith/pylith_env.sh $DATA python3 $REPO/pylith/build/write_sfcvm_griddb.py \
+     modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_dip70w_nocap_grid.npz modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_aligned_dip70w_nocap.spatialdb
+bash $REPO/pylith/run_gf.sh gf_shallow_dip70w_sfcvmdip_order2 mat_sfcvm_dip70w_nocap.cfg modeling_inputs/mesh/mesh_dip70w_tet_shallow.msh \
+     modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb 5 modeling_inputs/points/insar_points.txt order2.cfg
+```
+
 The same fault with a vertical dip, 70 deg east, 60 deg west and 50 deg west on the same mesh type, and the
 forward-model variants on the default mesh, are sensitivity tests (`scripts/sensitivity/sensitivity_rows.py`). The
 homogeneous comparison model is not a PyLith run (see below).
@@ -110,6 +121,7 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 | `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh | 17 h |
 | `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh | 32 h |
 | `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh | see `runs/run_gf.log` |
+| `gf_shallow_dip70w_sfcvmdip_order2` | `mat_sfcvm_dip70w_nocap.cfg` | `mesh_dip70w_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: the preferred model with the SFCVM block boundary moved onto the 70 W fault at every depth (`sfcvm_grid.py --no-cap --dip 70w`), not only at the surface | ~35 h |
 | `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: baseline of the forward-model tests (vertical fault, default mesh) and of the default-mesh dip sweep | 4.2 h |
 | `gf_default_sfcvm_e50_order2` / `_w50_order2` | `mat_sfcvm_e50_nocap.cfg` / `_w50_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: SFCVM alignment +/- 50 m | 4.5 / 4.3 h |
 | `gf_default_sfcvmasis_order2` | `mat_sfcvm_asis_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity test: SFCVM as is (not aligned) | 4.8 h |
