@@ -28,7 +28,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 
 | File | Role |
 |---|---|
-| `TulePond_filepaths.py` | Every path and shared constant. Set `data_dir` (or the environment variable `TULEPOND_DATA_DIR`) to the results directory. |
+| `TulePond_filepaths.py` | Every path and shared constant. Set the environment variable `TULEPOND_DATA_DIR` to the results directory. |
 | `insar_utils.py` | Shared helpers: MintPy readers, line-of-sight projections, the along-fault axis, statistics, creepmeter and alignment-array readers, figure style, the number registry. |
 | `model_config.py` | The settings of the slip models, each with its unit and source. |
 | `model_utils.py` | The slip-model functions: data sets and quadtree samples, noise model, CSI inversions on the PyLith fault, Green's functions from the PyLith output, L-curve, rigidity, moment and stress drop. |
@@ -40,10 +40,10 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `scripts/zenodo_package.py`, `scripts/read_audit/` | The files of the Zenodo deposit, built from a clean results directory; the list of files the notebooks read. |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |
 | `data_prep/` | The download and preparation chain from the public archives; `data_prep/README.md`. |
-| `original_2025_code/` | DL's pre-repository script of February 2025 (verbatim), its surviving output and figure, and the SCEC 2025 poster reference; run and compared by notebook 15. |
-| `tests/` | pytest: projection conventions, paths, the creep-profile extraction, the slip-model functions, the renewal statistics, the registry, and `test_anchors.py`, which pins the numbers quoted in the paper. |
+| `original_2025_code/` | The first author's pre-repository script of February 2025 (verbatim), its surviving output and figure, and the SCEC 2025 poster reference; run and compared by notebook 15. |
+| `tests/` | pytest: projection conventions, paths, the creep-profile extraction, the slip-model functions, the renewal statistics, the registry, and `test_anchors.py`, which pins the headline numbers quoted in the paper. |
 | `run_all.sh` | Runs the notebook chain in order, then the tests. |
-| `environment.yml` | The packages and versions used for the paper; `environment_full_2026-09-25.yml` is the full export of the working environment. |
+| `environment.yml` | The packages and versions used for the paper (CSI is installed from its repository; see the file's header). |
 
 ## Notebooks
 
@@ -66,7 +66,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
 | `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time, lognormal, Weibull) and the next-event forecast, a Bayesian posterior predictive conditioned on the open interval (`renewal.py`), with Poisson and seasonal baselines and a calibration test on synthetic records; the Fig 3 inputs. | Renewal fits |
 | `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, the six-panel Hovmöller set of the cross-fault series along the whole fault, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles, six-panel Hovmöller |
-| `15_check_original_2025_code` | Independent check: DL's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
+| `15_check_original_2025_code` | Independent check: the first author's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
 
 ## The number registry
 
@@ -77,7 +77,7 @@ stops with `RegistryConflict` unless `TULEPOND_SUPERSEDE=1` is set.
 
 ## Data
 
-The results directory (`data_dir`) holds only what the notebooks read, in the layout of the Zenodo deposit (doi:10.5281/zenodo.23850500, built by `scripts/zenodo_package.py`):
+The results directory (`TULEPOND_DATA_DIR`) holds what the notebooks read and write:
 
 | Directory | Contents |
 |---|---|
@@ -96,21 +96,32 @@ The results directory (`data_dir`) holds only what the notebooks read, in the la
 Data sources: OPERA DISP-S1 v1.0 frames 09156 and 09157 (ascending, merged) and 11115 (descending); USGS creepmeters
 (Langbein et al., 2024); USGS Bay Area alignment arrays v3.0; NOAA GHCN-daily; the Johnson et al. (2022) creep-rate
 compilation; the Taira repeating-earthquake catalogue (GEN3) and the Waldhauser and Schaff double-difference catalogue;
-the USGS San Francisco Bay region 3D seismic velocity model (SFSVM) v26.0. The DISP-S1 granules are open access from
-ASF and are not redistributed.
+the USGS San Francisco Bay region 3D seismic velocity model (SFSVM) v26.0 (file and folder names call it SFCVM); the
+Gittins et al. (2026) creep-event catalogue; the UNR / Nevada Geodetic Laboratory GNSS series; the PB2002 plate
+boundaries (Bird, 2003). The DISP-S1 granules are open access from ASF and are not redistributed.
+
+**Reproducing from the Zenodo record** ([doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500), built
+by `scripts/zenodo_package.py`). The record holds the three rebased DISP-S1 stacks, the external inputs, the GNSS tables
+and tied velocity mosaics, the aperture sweep, the PyLith inputs and outputs with their G matrices, the sensitivity
+tables, and every product and figure of the paper's run. The MintPy time series, masks and geometry are not deposited:
+`data_prep/run02`-`run04` rebuild them from the stacks and public OPERA products (`data_prep/README.md`). Two
+catalogues are not redistributed and are available from their authors: the GrowClust relocated seismicity catalogue
+and the Taira GEN3 repeating-earthquake catalogue (notebooks 01 and 04 read them).
 
 ## Running
 
 ```bash
 conda env create -f environment.yml          # once
-export TULEPOND_DATA_DIR=~/work/proj_TulePond_DISP_release   # the results directory (run_all.sh requires it)
+export TULEPOND_DATA_DIR=/path/to/results       # the results directory (run_all.sh requires it)
 python -m pytest -q                          # conventions, paths, functions, statistics, registry and the quoted numbers
 ./run_all.sh                                 # every notebook, in order
 ./run_all.sh 07 08 09 10                     # a subset (each reads only its upstream products)
 ```
 
-The PyLith runs are not part of `run_all.sh`; 08, 09 and `scripts/sensitivity/` read their stored products
-(`pylith/README.md` gives the command of every run). The numbers of the paper come from one `run_all.sh` execution from
+The PyLith runs and the sensitivity scripts are not part of `run_all.sh`; 08, 09, 10 and `scripts/sensitivity/` read
+their stored products. To rebuild the slip models from scratch, run 07, then the PyLith runs (`pylith/README.md`), then
+`scripts/sensitivity/` (`dip_rows_analytic_G.py` before `dip_rows.py`), then 08, 09 and 10: 09 checks its fit against the
+sensitivity table. The numbers of the paper come from one `run_all.sh` execution from
 a clean commit: each registry row records the commit and whether the tree was clean when run_all.sh started.
 
 Software: MintPy 1.6.3 (conda-forge build; it reports `__version__` 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.

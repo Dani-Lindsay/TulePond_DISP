@@ -1,17 +1,13 @@
-# Conda environment for the TulePond_DISP notebooks (the working env is called
-# opera_disp_feb13; this is the subset of it the repo imports). Pinned to the
-# major.minor versions the paper numbers were produced with (2026-09-25);
-# environment_full_2026-09-25.yml is the exact export of the working env
-# (macOS arm64 builds) if a byte-for-byte copy is wanted.
+# Conda environment of the TulePond_DISP notebooks, data preparation and tests, pinned to the versions the paper's
+# numbers were produced with (macOS arm64, Nov 2026):
 #
-#   conda env create -n opera_disp_feb13 -f environment.yml
+#   conda env create -f environment.yml
+#   conda activate tulepond_disp
+#   pip install --no-deps git+https://github.com/jolivetr/csi@1277bb4    # CSI (slip models), not on conda-forge or PyPI
 #   python -m pytest -q          # set TULEPOND_DATA_DIR first (the anchors read its registry)
 #
-# Notebooks 11 to 13 (alignment arrays, rain, forecast) need only numpy, pandas, scipy and matplotlib; 01 to 06 need
-# the MintPy / h5py / pygmt / rasterio stack; 07 to 10 and scripts/sensitivity need CSI (not on conda-forge or PyPI:
-# install from its repository, https://github.com/jolivetr/csi, the commit in environment_full); data_prep needs
-# opera-utils and dem_stitcher.
-name: opera_disp_feb13
+# PyLith 5.0.2 runs from its own binary bundle (pylith/README.md), not from this environment.
+name: tulepond_disp
 channels:
   - conda-forge
 dependencies:
@@ -27,7 +23,7 @@ dependencies:
   - shapely=2.1          # notebook 06: burst seams from the CSLC static bounding polygons
   - gmt=6.6
   - pygmt=0.18
-  - geopy=2.5
+  - geopy=2.5           # notebook 15 (the 2025 script) and tests/test_filepaths.py
   - fonttools
   - mintpy=1.6.3          # asc_desc2horz_vert (02, 06) and time_func (06): the conda-forge build the numbers used
   - rasterio=1.5         # the LOS ground-truth test against the OPERA rasters (tests/test_insar_utils.py)
@@ -35,10 +31,12 @@ dependencies:
   - opera-utils=0.25.4   # data_prep: DISP-S1 download and reformatting
   - dem_stitcher=2.5.13  # data_prep: the DEM of the static layers
   - netcdf4=1.7
+  - cartopy=0.25         # imported by CSI
   - jupyterlab
   - nbconvert
   - ipykernel
   - pytest
   - pip
   - pip:
-      - jupytext==1.19.5
+      - okada4py==1.0.1    # CSI's dislocation solutions
+      - ndsplines==0.3.0   # imported by CSI

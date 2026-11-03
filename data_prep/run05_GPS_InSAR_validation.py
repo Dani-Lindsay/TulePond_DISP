@@ -16,7 +16,7 @@ Tie the InSAR velocity fields to GNSS and validate the tie:
    >= 10%, and it does not add an inter-frame offset beyond what the frame
    overlap allows
 5) Write velocity_NA.h5 per frame (zero at ZOA1) and mosaic per orbit:
-   mosaic/<orbit>_velocity_NA.h5 is the decomposition's input and the
+   mosaic_velfield/<orbit>_velocity_NA.h5 is the decomposition's input and the
    archived (Zenodo) product
 
 The tie is primarily a datum; the GNSS is used here mainly for validation.
@@ -35,7 +35,7 @@ and are expected to be ~0. The inter-frame offset (difference of constants
 within a track) is preserved in the output, not flattened: the correction is
 re-zeroed at ZOA1 with one scalar per track group (`corr_ref`).
 
-Output:  <frame>/mintpy/velocity_NA.h5, mosaic/<orbit>_velocity_NA.h5,
+Output:  <frame>/mintpy/velocity_NA.h5, mosaic_velfield/<orbit>_velocity_NA.h5,
          <data_dir>/GPS/gps_insar_validation.csv (per-station residuals)
 
 Run in the conda environment.
@@ -53,7 +53,7 @@ import os as _os, sys as _sys        # path shim: import the repo root modules
 _ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _ROOT not in _sys.path:
     _sys.path.insert(0, _ROOT)
-from TulePond_filepaths import data_dir, common_paths, frames as FRAME_PATHS, paths_gps
+from TulePond_filepaths import data_dir, common_paths, frames as FRAME_PATHS, paths_gps, mosaic_dir
 import insar_utils as utils
 from run04_velocity import frame_grid, merge_orbit
 
@@ -458,9 +458,9 @@ if __name__ == '__main__':
     # 5) Mosaic the tied fields per orbit, the same way run04 mosaics the
     #    untied ones. This is the decomposition's input and the archived
     #    product: one clean field per direction, no frame edge inside it.
-    mdir = os.path.join(data_dir, "mosaic")
+    mdir = mosaic_dir
     os.makedirs(mdir, exist_ok=True)
-    print(f"\n=== merge tied velocities -> mosaic/ ===")
+    print(f"\n=== merge tied velocities -> {mdir} ===")
     by_orbit = {}
     for frame, paths in FRAME_PATHS.items():
         g = frame_grid(paths['mintpy_dir'])

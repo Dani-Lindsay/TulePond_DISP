@@ -66,12 +66,11 @@ are written to separate folders.
 
 ## How to run
 
-The PyLith 5.0.2 binary bundle for macOS arm64 (`pylith-5.0.2-macOS-12.0-arm64`, at `$PYLITH_BUNDLE`, default
-`~/tools/external/pylith/`) provides PyLith, spatialdata and gmsh; the opera_disp_feb13 conda environment provides the
-notebooks. `pylith_env.sh` keeps the two apart (`env -i`, the bundle's `setup.sh` sourced in its own folder).
+The PyLith 5.0.2 binary bundle (`pylith-5.0.2-macOS-12.0-arm64`; set `PYLITH_BUNDLE` to its folder) provides
+PyLith, spatialdata and gmsh; the conda environment of `environment.yml` provides the notebooks. `pylith_env.sh` keeps the two apart (`env -i`, the bundle's `setup.sh` sourced in its own folder).
 
 ```bash
-REPO=~/tools/internal/TulePond_DISP
+REPO=/path/to/TulePond_DISP
 DATA=$(cd $REPO && python3 -c 'import TulePond_filepaths as f; print(f.data_dir)')
 # a Green's-function run: name, material cfg, mesh, impulse db, MPI ranks, points [extra cfg]
 bash $REPO/pylith/run_gf.sh gf_default_sfcvm_order2 mat_sfcvm_nocap.cfg modeling_inputs/mesh/mesh_vertical_tet_default.msh \
@@ -90,7 +89,7 @@ followed by the command-line overrides the wrappers add: `--problem.defaults.nam
 
 ### Order-2 runs: the preferred model and its sensitivity tests
 
-All with `gf.cfg` + `order2.cfg`, impulses `impulses_km54-65_z3000.spatialdb`, 5 ranks, SFCVM without the Poisson cap
+All with `gf.cfg` + `order2.cfg`, impulses `impulses_km54-65_z3000.spatialdb`, 5 MPI ranks (`gf_default_homog_order2`: 8), SFCVM without the Poisson cap
 and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 
 | Run | Material cfg | Mesh | Points | Role |
@@ -99,7 +98,7 @@ and with no Vs floor. Start and done times in `<medium>/runs/run_gf.log`.
 | `gf_shallow_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: vertical fault, fine mesh |
 | `gf_shallow_dip70e_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_dip70e_tet_shallow.msh` | `insar_points.txt` | Sensitivity test: 70 deg E fault, fine mesh |
 | `gf_shallow_dip60w_sfcvm_order2` / `_dip50w_` | `mat_sfcvm_nocap.cfg` | `mesh_dip60w_tet_shallow.msh` / `mesh_dip50w_tet_shallow.msh` | `insar_points.txt` | Sensitivity tests: 60 deg W and 50 deg W faults, fine mesh |
-| `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: baseline of the forward-model tests (vertical fault, default mesh) and of the default-mesh dip sweep |
+| `gf_default_sfcvm_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: baseline of the default-mesh rows (vertical fault, default mesh; `scripts/sensitivity/sensitivity_rows.py`) and of the default-mesh dip sweep |
 | `gf_default_sfcvm_e50_order2` / `_w50_order2` | `mat_sfcvm_e50_nocap.cfg` / `_w50_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity tests: SFCVM alignment +/- 50 m |
 | `gf_default_sfcvmasis_order2` | `mat_sfcvm_asis_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points.txt` | Sensitivity test: SFCVM as is (not aligned) |
 | `gf_default_sfcvm_coh07_order2` | `mat_sfcvm_nocap.cfg` | `mesh_vertical_tet_default.msh` | `insar_points_coh07.txt` | Sensitivity test: data at coherence 0.7 |
@@ -122,8 +121,7 @@ The paper uses order-2 (quadratic) elements. One order-1 run is kept for the ele
 `scripts/sensitivity/gf_check.py`: `gf_default_homog` (`mat_homog.cfg`, `mesh_vertical_tet_default.msh`,
 `insar_points.txt`, `gf.cfg`, 8 ranks). Against the analytic solution for the same fault (CSI triangular dislocations,
 Meade 2007), the median relative RMS error of the Green's functions of surface impulses is 0.68 at order 1 and 0.19 at
-order 2 (0.93 and 0.32 for impulses 1-100 m deep), so order 1 is not accurate enough near the surface. Order-1 runs made
-while the model was being set up are not used and are not listed.
+order 2 (0.93 and 0.32 for impulses 1-100 m deep), so order 1 is not accurate enough near the surface.
 
 The sample positions of every point set are asserted unchanged each time 07 rewrites them
 (`model_utils.write_points_list`): a set whose positions change requires its GreensFns runs to be remade.
@@ -134,10 +132,11 @@ The sample positions of every point set are asserted unchanged each time 07 rewr
 |---|---|---|
 | `modeling_inputs/mesh/mesh_vertical_tet_<preset>.msh` | `python3 $REPO/pylith/build/generate_gmsh_vertical.py --write --preset <default/fine/shallow/coarse>` | PyLith |
 | `modeling_inputs/mesh/mesh_dip<d>_tet_<preset>.msh` | `python3 $REPO/pylith/build/generate_gmsh_dip.py --write --preset <default/shallow> --dip <d>` (d = 80e, 70e, 80w, 70w, 60w, 50w, ...) | PyLith |
-| `modeling_SFCVM/spatialdb/sfcvm_v26-0_aligned_grid.npz` (and `_asis`, `_aligned_e50`/`_w50`, `_aligned_nocap`, ...) | `python $REPO/pylith/build/sfcvm_grid.py [--no-align / --offset 50 / --offset -50 / --no-cap]` (the dipping faults use the grid aligned at the surface trace) | opera_disp_feb13 |
+| `modeling_SFCVM/spatialdb/sfcvm_v26-0_<tag>_grid.npz`, tag `aligned_nocap`, `aligned_nocap_e50`, `aligned_nocap_w50`, `asis_nocap` | `python $REPO/pylith/build/sfcvm_grid.py --no-cap`, `--no-cap --offset 50`, `--no-cap --offset -50`, `--no-align --no-cap` (the dipping faults use the grid aligned at the surface trace) | `environment.yml` |
 | `modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | `python3 $REPO/pylith/build/write_sfcvm_griddb.py modeling_SFCVM/spatialdb/sfcvm_v26-0_<tag>_grid.npz modeling_SFCVM/spatialdb/mat_sfcvm_v26-0_<tag>.spatialdb` | PyLith |
 | `modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | `python3 $REPO/pylith/build/make_impulse_db.py -4713 4380 3000 modeling_inputs/spatialdb/impulses_km54-65_z3000.spatialdb` | PyLith |
-| `modeling_inputs/points/insar_points*.txt` | notebook `07_model_data` | opera_disp_feb13 |
+| `modeling_inputs/spatialdb/impulses_test_km58.8-59.3_z1100.spatialdb` (Green's-function check B) | `python3 $REPO/pylith/build/make_impulse_db.py -43 410 1100 modeling_inputs/spatialdb/impulses_test_km58.8-59.3_z1100.spatialdb` | PyLith |
+| `modeling_inputs/points/insar_points*.txt` | notebook `07_model_data` | `environment.yml` |
 
 (PyLith-environment commands run through `bash $REPO/pylith/pylith_env.sh $DATA <command>`.)
 

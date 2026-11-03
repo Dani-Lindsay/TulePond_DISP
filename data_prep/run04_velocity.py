@@ -35,7 +35,7 @@ in the rebased stack is monotonic, so partial records are kept as NaN).
 Output per frame:  <frame>/mintpy/  timeseries.h5, timeseries_tropo.h5,
                    velocity_mintpy.h5, velocity_masked.h5, maskRecord.h5,
                    maskTempCoh_07/09.h5, TROPO.h5
-Mosaics:           <data_dir>/mosaic/<orbit>_velocity[_masked].h5,
+Mosaics:           <data_dir>/mosaic_velfield/<orbit>_velocity[_masked].h5,
                    <orbit>_geometry.h5
 
 Run in the conda environment (MintPy CLI tools on PATH).
@@ -57,7 +57,7 @@ import os as _os, sys as _sys        # path shim: import the repo root modules
 _ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 if _ROOT not in _sys.path:
     _sys.path.insert(0, _ROOT)
-from TulePond_filepaths import data_dir, common_paths, frames
+from TulePond_filepaths import data_dir, common_paths, frames, mosaic_dir
 from tropo_to_mintpy import build as build_tropo_h5
 
 # ---------------------------------------------------------------------------
@@ -213,7 +213,7 @@ def apply_mask_to_velocity(vel_path, keep, out_path):
 # pixel and the same look geometry, and their grids share the 30 m UTM lattice,
 # so the merge is an integer index copy with no resampling (asserted below).
 # The lone descending frame is copied through, so downstream always reads one
-# file per orbit direction from mosaic/.
+# file per orbit direction from mosaic_velfield/.
 
 def frame_grid(mdir):
     """Grid description of one frame from its timeseries.h5 attributes.
@@ -306,7 +306,7 @@ def merge_orbit(frame_dirs, in_name, out_path):
 
 
 def merge_frames():
-    """Merge each orbit direction's frames into mosaic/<orbit>_*.h5.
+    """Merge each orbit direction's frames into mosaic_velfield/<orbit>_*.h5.
 
     geometryGeo is merged alongside the velocities so the decomposition can
     read per-pixel incidence and azimuth on the same union grid, instead of a
@@ -317,9 +317,9 @@ def merge_frames():
         g = frame_grid(paths['mintpy_dir'])
         groups[g["orbit"]].append(paths['dir'])
 
-    mdir = os.path.join(data_dir, "mosaic")
+    mdir = mosaic_dir
     os.makedirs(mdir, exist_ok=True)
-    print(f"\n=== merge -> mosaic/ ===")
+    print(f"\n=== merge -> {mdir} ===")
     for orbit, dirs in groups.items():
         for in_name, tag in (("velocity_mintpy.h5", "velocity"),
                              ("velocity_masked.h5", "velocity_masked"),

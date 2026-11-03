@@ -5,7 +5,7 @@ Hayward fault (the boundary between SFCVM fault blocks 22 "Central Bay Block" an
 surface lies on the mapped creeping trace (the PyLith mesh fault). Written as an .npz; write_sfcvm_griddb.py
 (PyLith env) turns it into a spatialdata SimpleGridDB with spatialdata's own writer.
 
-Run in opera_disp_feb13:  python pylith/build/sfcvm_grid.py [--no-align] [--no-cap] [--offset <m>] [--dip <d>]
+Run in the environment.yml environment:  python pylith/build/sfcvm_grid.py [--no-align] [--no-cap] [--offset <m>] [--dip <d>]
   -> <model_sfcvm_dir>/spatialdb/sfcvm_v26-0_<tag>_grid.npz
   --no-align: the model as is (sensitivity test)
   --no-cap: no Poisson cap (the grids of the order-2 runs, including the preferred model)
