@@ -40,6 +40,8 @@ import model_config as cfg                                                      
 
 STORED = (".nc", ".npz", ".gz", ".png", ".pdf", ".zip", ".jpg")   # already compressed: stored, not deflated
 SKIP = ["*/.DS_Store", "*/__pycache__/*", "*/_to_delete*", "*/retired_*", "*.pyc", "*/.ipynb_checkpoints/*"]
+# 15's MintPy-format crop of the descending stack (11 GB), rebuilt by every run of 15 from the deposited stack
+SKIP += ["*/15_check_original_2025_code/inputs_HW3/*"]
 # unpublished catalogues of other authors: deposited only with their permission (cited; available from the authors)
 NOT_REDISTRIBUTED = ["growclust_cat", "CRE_Taira"]
 

@@ -7,8 +7,7 @@ products.
 
 **Archive.** The data products, model files and this code at the commit of the paper's run are in the Zenodo record
 [doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500). Code: https://github.com/Dani-Lindsay/TulePond_DISP.
-Please cite the paper and the Zenodo record (`CITATION.cff`). The code is under the Creative Commons Attribution-NonCommercial 4.0 licence (CC BY-NC 4.0,
-`LICENSE`); the data in the Zenodo record are CC BY 4.0.
+Please cite the paper and the Zenodo record (`CITATION.cff`). The code is under the MIT licence (`LICENSE`); the data in the Zenodo record are CC BY 4.0.
 
 ## Overview
 
@@ -141,6 +140,7 @@ statistics and the forecast, and the figures. The authors designed the analysis,
 reviewed the code, checked its outputs, and take responsibility for the results. The code is presented as notebooks
 written to be read, and with tests that check the code reproduces expected outputs. As an independent check, the
 February 2025 code was rerun with only path changes on the released descending data (notebook 15). The two Tule Pond
-creep series agree (correlation 0.97, RMS 0.44 mm) and all five slip events appear in both, so the signal was
-established before AI-assisted code was used. Claude also suggested wording edits to the manuscript; the authors wrote
-and verified all text.
+creep series agree (correlation 0.97, RMS 0.44 mm) and all five slip events appear in both. The surviving February 2025
+output, which ends in August 2024, already shows the first four events (correlation 0.975, RMS 0.49 mm with the current
+series; the fifth began in December 2024), so the signal was established before AI-assisted code was used. Claude also
+suggested wording edits to the manuscript; the authors wrote and verified all text.
