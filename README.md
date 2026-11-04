@@ -105,8 +105,9 @@ by `scripts/zenodo_package.py`). The record holds the three rebased DISP-S1 stac
 and tied velocity mosaics, the aperture sweep, the PyLith inputs and outputs with their G matrices, the sensitivity
 tables, and every product and figure of the paper's run. The MintPy time series, masks and geometry are not deposited:
 `data_prep/run02`-`run04` rebuild them from the stacks and public OPERA products (`data_prep/README.md`). Two
-catalogues are not redistributed and are available from their authors: the GrowClust relocated seismicity catalogue
-and the Taira GEN3 repeating-earthquake catalogue (notebooks 01 and 04 read them).
+catalogues are not redistributed and are available from their authors: the relocated seismicity catalogue of B. Rong
+(Rong et al. 2026) and the Taira GEN3 repeating-earthquake catalogue (notebooks 01 and 04 read them). The executed
+notebooks, with all their outputs, are in this repository at the release commit.
 
 ## Running
 

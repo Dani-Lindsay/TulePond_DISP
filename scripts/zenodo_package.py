@@ -32,7 +32,7 @@ import pandas as pd
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-from TulePond_filepaths import common_paths, data_dir, fig_dir, frames, executed_dir, out_dir as outputs_dir   # noqa: E402
+from TulePond_filepaths import common_paths, data_dir, fig_dir, frames, out_dir as outputs_dir   # noqa: E402
 import insar_utils as utils                                                                                        # noqa: E402
 import model_config as cfg                                                                                     # noqa: E402
 
@@ -161,8 +161,6 @@ def groups(runs, reads):
                         [(os.path.relpath(outputs_dir, data_dir), None)]),
         "figures.zip": ("All figures of the run, and the paper figures under their manuscript names (paper/)",
                         [(os.path.relpath(fig_dir, data_dir), None)]),
-        "executed_notebooks.zip": ("HTML copies of the executed notebooks 01-15 of the run",
-                                   [(os.path.relpath(executed_dir, data_dir), None)]),
     }
 
 
