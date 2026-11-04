@@ -218,7 +218,7 @@ common_paths = {
     "aoi_bbox_disp": (-122.494858, 37.269967, -121.711070, 38.10),
     # the relocated catalogue of the Hayward area (2000-2025; B. Rong, from the machine-learning statewide catalogue of
     # Rong et al. 2026, SCEC poster 145): the cross-correlation relocation where an event was relocated, the absolute
-    # location otherwise, one row per event (not redistributed: available from its authors)
+    # location otherwise, one row per event
     "growclust_cat": os.path.join(inputs_dir, "Bo_growclust", "hayward_growclust_catalog_relocated_plus_unrelocated.csv"),
 
     # The cross-fault aperture sweep (data_prep/run07_aperture_sweep.py, notebook 03's chain per bin). Notebook 05

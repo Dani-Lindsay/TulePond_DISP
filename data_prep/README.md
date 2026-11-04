@@ -71,8 +71,8 @@ These are received or made by hand, so they have no script. They are under
 |---|---|
 | USGS creepmeter records (`*.10min.gz`) | Langbein et al. (2024), USGS; the `.gz` copies are the ones the notebooks read |
 | Bay Area alignment arrays v3.0 | USGS |
-| Repeating-earthquake catalogues | T. Taira (GEN3; not redistributed, available from its author); Waldhauser & Schaff (2021) |
-| Relocated seismicity | B. Rong, from the statewide catalogue of Rong et al. (2026, SCEC poster 145); not redistributed, available from its authors |
+| Repeating-earthquake catalogues | T. Taira (GEN3); Waldhauser & Schaff (2021) |
+| Relocated seismicity | B. Rong, from the statewide catalogue of Rong et al. (2026, SCEC poster 145) |
 | Mapped fault trace (`hayward_fault_trace_*.kml`) | mapped by hand in QGIS from the USGS Quaternary faults plus the steps visible in the velocity fields; notebook 01 rebuilds the 100 m crossings from it and asserts they match the archived copy |
 | Creep-event catalogue | Gittins et al. (2026) |
 | Creep-rate compilation | Johnson et al. (2022) |
