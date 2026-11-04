@@ -8,7 +8,14 @@ authors:
   - family-names: Bürgmann
     given-names: Roland
     orcid: "https://orcid.org/0000-0002-3560-044X"
+doi: 10.5281/zenodo.23934126
 identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23934126
+    description: The code, all versions (Zenodo)
+  - type: doi
+    value: 10.5281/zenodo.23934127
+    description: The code at release v1.0.0, the paper's run (Zenodo)
   - type: doi
     value: 10.5281/zenodo.23850500
     description: The data and results of the paper (Zenodo)

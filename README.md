@@ -7,7 +7,8 @@ products.
 
 **Archive.** The input data, model files and results of the paper's run are in the Zenodo record
 [doi:10.5281/zenodo.23850500](https://doi.org/10.5281/zenodo.23850500); this code is archived separately at the release
-of that run. Please cite the paper, the data record and the code (`CITATION.cff`). The code is under the MIT licence (`LICENSE`); the data in the Zenodo record are CC BY 4.0.
+of that run, v1.0.0, [doi:10.5281/zenodo.23934127](https://doi.org/10.5281/zenodo.23934127) (all versions:
+[doi:10.5281/zenodo.23934126](https://doi.org/10.5281/zenodo.23934126)). Please cite the paper, the data record and the code (`CITATION.cff`). The code is under the MIT licence (`LICENSE`); the data in the Zenodo record are CC BY 4.0.
 
 ## Overview
 
