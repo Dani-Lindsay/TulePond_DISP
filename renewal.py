@@ -3,13 +3,17 @@ renewal.py: renewal-model statistics for the next-event forecast (notebook 13).
 
 With a few repeat intervals the parameters of a renewal model are poorly known, and a forecast from the best fit
 alone is too narrow: it treats the fitted aperiodicity as exact (the lesson of Parkfield,
-Jackson and Kagan 2006). The forecast here is the Bayesian posterior predictive (Nomura et al. 2011): parameter
-draws from the posterior given the intervals, each giving a conditional forecast of the next onset, averaged with
-the open interval (no event between the last onset and the last observation) in the likelihood.
+Jackson and Kagan 2006). The forecast here is the Bayesian posterior predictive with the open interval in the
+likelihood (Nomura et al. 2011, eqs 4-7; Okada et al. 2012, eqs 2-4): parameter draws from the posterior given the
+intervals, each giving a conditional forecast of the next onset, averaged with the open interval (no event between
+the last onset and the last observation) in the likelihood. The priors are non-informative (below; for the lognormal
+the Jeffreys prior, the LN-SST of Okada et al. 2012), not the informative aperiodicity prior that Nomura et al. (2011)
+fitted to paleoseismic faults (mean about 0.37); notebook 13 section 7.1 checks the calibration.
 
 Posteriors (all with priors that carry no information on the scale of the intervals):
 - BPT (Brownian passage time, the inverse Gaussian with mean mu and shape lambda, aperiodicity alpha^2 = mu / lambda;
-  Matthews et al. 2002). Prior uniform in the event rate 1/mu and in log lambda. The posterior is then exact:
+  Matthews et al. 2002). Prior uniform in the event rate 1/mu and in log lambda (p(mu, alpha) ~ mu^-2 alpha^-1). The
+  posterior is then exact:
   lambda ~ Gamma((n - 1) / 2, rate R / 2) with R = sum(1/x - 1/xbar), and 1/mu | lambda ~ Normal(1/xbar,
   1 / (lambda n xbar)), truncated at 1/mu > 0. lambda R ~ chi2(n - 1) is the exact sampling pivot of the inverse
   Gaussian (Chhikara and Folks 1989), so the spread of alpha is the spread the data allow.
