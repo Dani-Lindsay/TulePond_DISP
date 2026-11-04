@@ -8,7 +8,7 @@ the three rebased OPERA DISP-S1 stacks as they are (netCDF, already compressed i
 DISP granules, the MintPy products and the static layers are not deposited: they are public (OPERA DISP-S1, OPERA
 TROPO-ZENITH, OPERA CSLC-S1-STATIC) and data_prep/run01-04 rebuild them. The USGS SFSVM grid is cited, not deposited. The inputs of the notebooks (external inputs, GNSS tables, velocity mosaics, aperture sweep) are
 exactly the files a run of notebooks 01-15 opened for reading (the read audit of scripts/read_audit, --reads), less the
-catalogues of other authors that are cited, not deposited (NOT_REDISTRIBUTED). The slip models follow the PyLith manual (publishing
+external datasets of other authors that are cited, not deposited (NOT_REDISTRIBUTED). The slip models follow the PyLith manual (publishing
 models): for every PyLith run the code names (model_config.py, scripts/), its input files (meshes, spatial databases,
 output points, as named in its parameters; the cfg files are in the repository) and the outputs behind the results
 (points, fault and elastic_info with their xmf headers, the parameters), plus its G matrix and log.
@@ -40,8 +40,8 @@ STORED = (".nc", ".npz", ".gz", ".png", ".pdf", ".zip", ".jpg")   # already comp
 SKIP = ["*/.DS_Store", "*/__pycache__/*", "*/_to_delete*", "*/retired_*", "*.pyc", "*/.ipynb_checkpoints/*"]
 # 15's MintPy-format crop of the descending stack (11 GB), rebuilt by every run of 15 from the deposited stack
 SKIP += ["*/15_check_original_2025_code/inputs_HW3/*"]
-# catalogues of other authors that are cited, not deposited
-NOT_REDISTRIBUTED = ["growclust_cat", "CRE_Taira"]
+# external datasets of other authors that are cited, not deposited (readers get them from their sources; data_prep/README)
+NOT_REDISTRIBUTED = ["growclust_cat", "CRE_Taira", "CRE_Wald", "gittins_catalogue", "creep_rates_Johnson22", "pb2002"]
 
 
 def referenced_runs():

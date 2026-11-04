@@ -65,7 +65,9 @@ products; notebook 12 builds its own rain composite from
 ## Inputs that are not produced here
 
 These are received or made by hand, so they have no script. They are under
-`data_dir/external_inputs` and are fingerprinted by notebook 01:
+`data_dir/external_inputs` and are fingerprinted by notebook 01. The repeating-earthquake and relocated
+catalogues, the creep-event catalogue, the creep-rate compilation and the plate boundaries are cited, not in the
+Zenodo record: get them from their sources and place them at the paths in `TulePond_filepaths.common_paths`.
 
 | Input | Source |
 |---|---|
