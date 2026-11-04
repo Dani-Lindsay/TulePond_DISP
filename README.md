@@ -122,10 +122,10 @@ python -m pytest -q                          # conventions, paths, functions, st
 The PyLith runs and the sensitivity scripts are not part of `run_all.sh`; 08, 09, 10 and `scripts/sensitivity/` read
 their stored products. To rebuild the slip models from scratch, run 07, then the PyLith runs (`pylith/README.md`), then
 `scripts/sensitivity/` (`dip_rows_analytic_G.py` before `dip_rows.py`), then 08, 09 and 10: 09 checks its fit against the
-sensitivity table. The numbers of the paper come from one `run_all.sh` execution from
-a clean commit: each registry row records the commit and whether the tree was clean when run_all.sh started.
+sensitivity table. The numbers of the paper come from `run_all.sh` executions from clean commits: each registry row
+records the commit and whether the tree was clean when run_all.sh started.
 
-Software: MintPy 1.6.3 (conda-forge build; it reports `__version__` 1.6.2), CSI (commit 1277bb4), PyLith 5.0.2.
+Software: MintPy 1.6.3 (the modules the notebooks use are identical in 1.6.2 and 1.6.3), CSI (commit 1277bb4), PyLith 5.0.2.
 
 ## Times
 
