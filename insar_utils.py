@@ -478,14 +478,14 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     the colour table `cpt`; the mapped trace; the extra symbols and their labels (lists of keyword dicts
     for fig.plot and text_backed); the creepmeter codes on the west side; the SSE extent bracket on the
     east side, from sse_u_km[0] to sse_u_km[1] (km along the strike frame) with its label; the city
-    names on the east side; the creepmeters as yellow triangles on top; North and South; the panel letter
+    names on the east side; the creepmeters as yellow triangles on top; the north arrow; the panel letter
     and title above the top-left corner; the 5 km scale bar; the distance from Point Pinole down the
     left edge; and, if colorbar_frame is given (e.g. "xa2f1+lFault-parallel velocity (mm/yr)"), a 2.5 cm
     colour bar centred under the map.
 
     The map is GMT's oblique Mercator with its x axis along strike - 90 deg, so the fault runs up the
     page (its north end at the top; true north is rotated off page-up, shown by a 4 km north arrow at the top
-    left), at true scale: the height is map_h_cm and the width follows from it.
+    right), at true scale: the height is map_h_cm and the width follows from it.
     Fonts and frame pens are the caller's pygmt.config. u_range_km and half_km crop the map to part of the
     fault (11 draws km 42-70 only); creepmeters and city names outside the crop are left out. scale_km is the
     length of the scale bar (km). Returns the map
@@ -548,20 +548,31 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     for city, u_city in city_u.items():
         assert u_north < u_city < u_south, f"{city} (u {u_city:.1f} km) falls off the map"
         nearest_vertex = int(np.argmin(np.abs(trace_u_km - u_city)))
-        city_lon, city_lat = uv_to_lonlat(frame, [u_city], [trace_v_km[nearest_vertex] + 0.6])
+        beside_triangle = any(abs(u_creepmeter[c[0]] - u_city) < 1.0 for c in creepmeters)   # Hayward sits at CHP1
+        city_v_km = 1.2 if beside_triangle else 0.6         # clear of the 0.32 cm creepmeter triangle
+        city_lon, city_lat = uv_to_lonlat(frame, [u_city], [trace_v_km[nearest_vertex] + city_v_km])
         text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black")
     for code, lat, lon, name in creepmeters:               # the creepmeter symbol of Fig 1D, on top of every label
         fig.plot(x=[lon], y=[lat], style="i0.32c", fill=gold, pen="0.5p,black")
-    fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
-    fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
     if letter is not None:
         fig.text(position="TL", text=f"@%Helvetica-Bold%{letter}@%% @:7p:{title}@::", justify="BL", offset="0c/0.12c",
                  font="9p,Helvetica", no_clip=True)
     fig.basemap(region=region, projection=projection, frame=["lrtb"], map_scale=f"jBL+w{scale_km:g}k+o0.3c/0.4c")   # frame on top, scale bar
-    # north arrow, top left under the CPP1 label: a 4 km geographic vector due north (GMT geovector, so its direction
-    # and length are true on the oblique map), "N" under its base
+    # north arrow, top right: a 4 km geographic vector due north (GMT geovector, so its direction and length are true
+    # on the oblique map), "N" under its tail, on one translucent white box (the 30 % of text_backed). North is turned
+    # clockwise off page-up, so the tip leans east: the box spans the tail (u0, v0) to the tip (u0 - du, v0 + dv)
     arrow_km = 4.0
-    arrow_lon, arrow_lat = uv_to_lonlat(frame, [u_north + 0.14 * (u_south - u_north)], [-half_km + 1.2])
+    turn = np.radians(180.0 - frame["strike_deg"])        # angle of true north east of page-up (strike 146.5 -> 33.5 deg)
+    du, dv = arrow_km * np.cos(turn), arrow_km * np.sin(turn)
+    assert du > 0 and dv > 0, "the arrow layout assumes north leans east of page-up"
+    pad_km, label_km = 1.0, 2.6                           # margin round the arrow; room for the N under the tail
+    v0 = half_km - 0.5 - pad_km - dv                      # the box's east edge 0.5 km inside the frame
+    u0 = u_north + 0.5 + pad_km + du                      # the box's top edge 0.5 km inside the frame
+    box_u = [u0 - du - pad_km, u0 - du - pad_km, u0 + label_km, u0 + label_km]
+    box_v = [v0 - pad_km, v0 + dv + pad_km, v0 + dv + pad_km, v0 - pad_km]
+    box_lon, box_lat = uv_to_lonlat(frame, box_u, box_v)
+    fig.plot(x=box_lon, y=box_lat, close=True, fill="white", transparency=30)
+    arrow_lon, arrow_lat = uv_to_lonlat(frame, [u0], [v0])
     fig.plot(data=np.array([[arrow_lon[0], arrow_lat[0], 0.0, arrow_km]]), style="=0.3c+e+gblack+h0.5", pen="1.2p,black")
     fig.text(x=arrow_lon[0], y=arrow_lat[0], text="N", justify="TC", offset="0c/-0.08c", font="8p,Helvetica-Bold,black")
 
