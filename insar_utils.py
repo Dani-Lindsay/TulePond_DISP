@@ -484,7 +484,8 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     colour bar centred under the map.
 
     The map is GMT's oblique Mercator with its x axis along strike - 90 deg, so the fault runs up the
-    page with north at the top, at true scale: the height is map_h_cm and the width follows from it.
+    page (its north end at the top; true north is rotated off page-up, shown by a 4 km north arrow at the top
+    left), at true scale: the height is map_h_cm and the width follows from it.
     Fonts and frame pens are the caller's pygmt.config. u_range_km and half_km crop the map to part of the
     fault (11 draws km 42-70 only); creepmeters and city names outside the crop are left out. scale_km is the
     length of the scale bar (km). Returns the map
@@ -522,7 +523,7 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
     for label in extra_labels:
         text_backed(fig, **label)
     for code, lat, lon, name in creepmeters:               # labels on the west side; the triangles go on top, below
-        text_backed(fig, x=lon, y=lat, text=code, justify="RM", offset="-0.15c/0c", font="7p,Helvetica,black")
+        text_backed(fig, x=lon, y=lat, text=code, justify="RM", offset="-0.22c/0c", font="7p,Helvetica,black")
     # the SSE extent bracket, east of the fault so it stays clear of the creepmeter labels, ticks reaching
     # almost to the trace; labelled in two rows (GMT has no newline outside paragraph mode), one size up
     bracket_v_km = 2.0 if whole_fault else 0.9          # a cropped (narrower) map keeps the label inside the frame
@@ -550,13 +551,19 @@ def fault_map_panel(fig, frame, grid, cpt, map_h_cm, trace_lon, trace_lat, creep
         city_lon, city_lat = uv_to_lonlat(frame, [u_city], [trace_v_km[nearest_vertex] + 0.6])
         text_backed(fig, x=city_lon[0], y=city_lat[0], text=city, justify="LM", font="7p,Helvetica-Oblique,black")
     for code, lat, lon, name in creepmeters:               # the creepmeter symbol of Fig 1D, on top of every label
-        fig.plot(x=[lon], y=[lat], style="i0.22c", fill=gold, pen="0.5p,black")
+        fig.plot(x=[lon], y=[lat], style="i0.32c", fill=gold, pen="0.5p,black")
     fig.text(position="TR", text="North", offset="-0.1c/-0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
     fig.text(position="BR", text="South", offset="-0.1c/0.1c", font="7p,Helvetica,gray20", fill="white", clearance="0.05c")
     if letter is not None:
         fig.text(position="TL", text=f"@%Helvetica-Bold%{letter}@%% @:7p:{title}@::", justify="BL", offset="0c/0.12c",
                  font="9p,Helvetica", no_clip=True)
     fig.basemap(region=region, projection=projection, frame=["lrtb"], map_scale=f"jBL+w{scale_km:g}k+o0.3c/0.4c")   # frame on top, scale bar
+    # north arrow, top left under the CPP1 label: a 4 km geographic vector due north (GMT geovector, so its direction
+    # and length are true on the oblique map), "N" under its base
+    arrow_km = 4.0
+    arrow_lon, arrow_lat = uv_to_lonlat(frame, [u_north + 0.14 * (u_south - u_north)], [-half_km + 1.2])
+    fig.plot(data=np.array([[arrow_lon[0], arrow_lat[0], 0.0, arrow_km]]), style="=0.3c+e+gblack+h0.5", pen="1.2p,black")
+    fig.text(x=arrow_lon[0], y=arrow_lat[0], text="N", justify="TC", offset="0c/-0.08c", font="8p,Helvetica-Bold,black")
 
     # distance from Point Pinole down the left edge: the map's vertical axis is the strike frame u (true scale), so a
     # linear axis over the same box reads u directly. Asserted: GMT's own page y of the creepmeters matches the
