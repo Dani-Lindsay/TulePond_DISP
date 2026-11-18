@@ -18,6 +18,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 - **Slip models**: homogeneous half-space and 3D elastic structure (USGS SFSVM v26.0) with PyLith 5.0.2 Green's
   functions, the fault dipping 70 deg west (07-10; `pylith/`)
 - **Event history** from the alignment arrays (11), **rainfall** (12) and the **forecast** (13)
+- **Groundwater head** beside the section from ACWD's public monitoring data, as a pore-pressure change (16)
 - **Paper figures**: Figs 1-3 drawn, and every figure collected under its manuscript name (14)
 
 ## Repository layout

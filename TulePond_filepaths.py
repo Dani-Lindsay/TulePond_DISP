@@ -191,6 +191,14 @@ common_paths = {
     # the archived inputs of notebooks 12 and 14).
     "ghcn_dir": os.path.join(inputs_dir, "GHCN_daily"),
 
+    # ACWD groundwater levels beside the Tule Pond section (notebook 16).
+    # acwd_gwmr_dir: the Spring and Fall 2025 well tables of the public ACWD 2025 Groundwater Monitoring Report
+    # (Appendices E and F) as csv, written by data_prep/acwd_gwmr_tables.py; see its README.
+    # acwd_well_dir: ACWD's level series of the two indicator wells nearest the section (27D008 east, 29A006 west,
+    # weekly from 1990/1991; "WL <well>.csv", day/month/year) and well_locations.csv (positions, sides, screens).
+    "acwd_gwmr_dir": os.path.join(inputs_dir, "ACWD_GWMR_2025"),
+    "acwd_well_dir": os.path.join(inputs_dir, "ACWD_water_well_data"),
+
     # Seismicity / repeating-earthquake catalogues.
     # T. Taira's HFRC linkage-cluster catalogue, GEN3 (1984 to end-2025), at the
     # coherence threshold coh >= 0.97. Whitespace columns:
