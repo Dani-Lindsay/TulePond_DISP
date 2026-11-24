@@ -968,6 +968,56 @@ def load_growclust_catalog(path, bbox=None):
     return out.reset_index(drop=True)
 
 
+def load_ncedc_dd_catalog(path, bbox=None):
+    """The NCEDC double-difference catalogue in the NCEDC "readable" format (fixed-width, a dashed line under the header):
+    Date (YYYY/MM/DD), Time (HH:MM:SS.ss, UTC), Lat, Lon, Depth (km), Mag, Magt, ..., Event ID. Returns the common schema
+    of load_growclust_catalog: YYYY (decimal year), Lon, Lat, Depth (km), Mag, evID, source ('ncedc_dd'); clipped to
+    bbox (W, S, E, N, deg) if given. Every row must parse (asserted)."""
+    dd = pd.read_fwf(path, skiprows=[1])
+    dd.columns = [c.strip() for c in dd.columns]
+    expected = ["Date", "Time", "Lat", "Lon", "Depth", "Mag", "Magt", "Nst", "Gap", "Clo", "RMS", "SRC", "Event ID"]
+    assert list(dd.columns) == expected, f"{path}: unexpected columns {list(dd.columns)}"
+    assert not dd["Event ID"].duplicated().any(), f"{path}: duplicate Event ID"
+    ymd = dd.Date.str.split("/", expand=True).astype(int)
+    hms = dd.Time.str.split(":", expand=True)
+    out = dd[["Lat", "Lon", "Depth", "Mag"]].copy()
+    out["evID"] = dd["Event ID"]
+    out["YYYY"] = _decimal_year_from_ymdhms(ymd[0], ymd[1], ymd[2], hms[0].astype(int), hms[1].astype(int), hms[2].astype(float))
+    out["source"] = "ncedc_dd"
+    assert out[["YYYY", "Lat", "Lon", "Depth", "Mag"]].notna().all().all(), f"{path}: unparsed rows"
+    if bbox is not None:
+        w, s, e, n = bbox
+        out = out[(out.Lon >= w) & (out.Lon <= e) & (out.Lat >= s) & (out.Lat <= n)]
+    return out.reset_index(drop=True)
+
+
+def catalog_window(cat, fault_profiles_path, t0, t1, km_lo, km_hi, max_dist_km=2.0):
+    """Notebook 04's selection of a catalogue for Fig 1B (section 13): the events within max_dist_km of the trace
+    (|dist_fault_km|, project_to_fault), with t0 <= YYYY <= t1, and km_lo <= km <= km_hi, where km is the along-fault
+    distance from Point Pinole of the nearest trace vertex (lat_to_km_map). cat: the common catalogue schema
+    (load_growclust_catalog, load_ncedc_dd_catalog), already clipped to the AOI. Returns the window, with
+    dist_fault_km, ft_lat and km added."""
+    near = project_to_fault(cat, pd.read_csv(fault_profiles_path))
+    near = near[(near.dist_fault_km.abs() <= max_dist_km) & (near.YYYY >= t0) & (near.YYYY <= t1)].copy()
+    near["km"] = lat_to_km_map(fault_profiles_path)(near["ft_lat"].values)
+    return near[(near.km >= km_lo) & (near.km <= km_hi)].reset_index(drop=True)
+
+
+def creepmeter_bar_half_widths(station_agreement_csv, cm_rates):
+    """Half-width of each creepmeter's error bar in Fig 1D: the larger side of notebook 05's block-bootstrap 95 % CI
+    (station_agreement.csv: cm_rate, cm_lo, cm_hi; registered as 05_<code>_creepmeter_ci_lo/hi), as GMT draws a
+    symmetric bar. cm_rates: code -> (km, rate mm/yr) of notebook 04; each rate must equal 05's (to 0.006 mm/yr) and
+    lie inside its CI (asserted). Returns code -> (half-width, ci_lo, ci_hi), mm/yr."""
+    ci = pd.read_csv(station_agreement_csv).set_index("code")
+    out = {}
+    for code, (_, rate) in cm_rates.items():
+        rate_05, lo, hi = (float(ci.loc[code, col]) for col in ("cm_rate", "cm_lo", "cm_hi"))
+        assert abs(rate_05 - rate) < 0.006, f"{code}: Fig 1 rate {rate:.3f} != notebook 05 rate {rate_05:.3f}"
+        assert lo <= rate <= hi, f"{code}: rate {rate:.3f} outside its CI {lo:.3f}-{hi:.3f}"
+        out[code] = (max(rate - lo, hi - rate), lo, hi)
+    return out
+
+
 def load_aa(aa_dir, code):
     """One USGS Bay Area alignment array `code` (v3.0 archive in aa_dir): decimal
     year, cumulative dextral movement (mm), its standard deviation (mm), sorted

@@ -225,6 +225,11 @@ common_paths = {
     # Rong et al. 2026, SCEC poster 145): the cross-correlation relocation where an event was relocated, the absolute
     # location otherwise, one row per event
     "growclust_cat": os.path.join(inputs_dir, "Bo_growclust", "hayward_growclust_catalog_relocated_plus_unrelocated.csv"),
+    # The public NCEDC double-difference catalogue (Waldhauser & Schaff 2008; Waldhauser 2009 real-time DD, all events here;
+    # NCEDC doi:10.7932/NCEDC), NCEDC "readable" format, saved unchanged. Search downloaded 2026-11-06: 2015 to 2027,
+    # M >= 0, depth 0-10 km, lat 34.5-42, lon -126 to -117.76, earthquakes only. Fig 1B draws these earthquakes
+    # (notebook 14) in place of the growclust catalogue above, which is not public.
+    "dd_cat_ncedc": os.path.join(inputs_dir, "dbsearch.801223"),
 
     # The cross-fault aperture sweep (data_prep/run07_aperture_sweep.py, notebook 03's chain per bin). Notebook 05
     # reads it; it does not re-run the sweep.
