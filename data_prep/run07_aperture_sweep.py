@@ -34,6 +34,11 @@ Usage (from the repo root; minutes, it reads the displacement cube once per bin 
     python data_prep/run07_aperture_sweep.py                    # every bin, into data_dir/aperture_sweep (sweep_dir)
     python data_prep/run07_aperture_sweep.py --out-dir DIR      # elsewhere
     python data_prep/run07_aperture_sweep.py --tags ap30-150m_coh0.7_mp5 ap0-100m_coh0.9_mp5
+    python data_prep/run07_aperture_sweep.py --x-widths 0.1 0.05   # the along-strike window test of notebook 04 (section 10b)
+
+With --x-widths, only the paper's bin at coh_timeseries is run, once per along-strike half-width (km, the `x_width` of
+notebook 03 replaced), into <tag>_sw<half-width in m>m/; their summary goes to sweep_alongstrike_summary_mp<min_points>.csv
+and sweep_alongstrike_results_mp<min_points>.csv, and the aperture ladder's files are not touched.
 
 Output (`--out-dir`, default sweep_dir = data_dir/aperture_sweep, the folder notebook 05 reads):
     <tag>/fp_ts.csv                     FP (mm), latitude x decimal year, landslide-flagged crossings NaN (03 layout)
@@ -213,22 +218,31 @@ def station_rates(fp_ts, to_km):
     return pd.DataFrame(rows)
 
 
-def run_bin(inner_m, outer_m, coh, track_dics, x_fault, km_of, out_dir):
-    """Notebook 03's chain for one bin into out_dir/<tag>/; returns the summary row and the per-station rows."""
-    tag = sweep_tag(inner_m, outer_m, coh)
+def window_tag(inner_m, outer_m, coh, x_width_km):
+    """Folder name of one bin with its along-strike half-width: the sweep tag, plus _sw<m>m when the half-width is not
+    notebook 03's x_width (the along-strike window test of notebook 04)."""
+    if x_width_km == x_width:
+        return sweep_tag(inner_m, outer_m, coh)
+    return f"{sweep_tag(inner_m, outer_m, coh)}_sw{int(round(x_width_km * 1000))}m"
+
+
+def run_bin(inner_m, outer_m, coh, track_dics, x_fault, km_of, out_dir, x_width_km=x_width):
+    """Notebook 03's chain for one bin into out_dir/<tag>/; returns the summary row and the per-station rows.
+    x_width_km is the half-width along strike of each crossing window (km); notebook 03's x_width by default."""
+    tag = window_tag(inner_m, outer_m, coh, x_width_km)
     bin_dir = os.path.join(out_dir, tag)
     os.makedirs(bin_dir, exist_ok=True)
     bin_min = inner_m / 1000.0                   # km
     bin_max = outer_m / 1000.0
-    settings = dict(coh=coh, dist_min=bin_min, dist_max=bin_max, x_width=x_width, min_points=min_points,
+    settings = dict(coh=coh, dist_min=bin_min, dist_max=bin_max, x_width=x_width_km, min_points=min_points,
                     rate_nsigma=rate_nsigma)
 
     # 1) per track: extraction (03 section 5)
     n_cross = {}
     for dic in track_dics:
         track = dic["ORBIT_DIRECTION"]
-        insar = cp.read_insar_data(dic, coh, bin_max, x_width, unit)
-        extracted = cp.extract_track(insar, x_fault, bin_min, bin_max, x_width, min_points, rate_nsigma, unit, track)
+        insar = cp.read_insar_data(dic, coh, bin_max, x_width_km, unit)
+        extracted = cp.extract_track(insar, x_fault, bin_min, bin_max, x_width_km, min_points, rate_nsigma, unit, track)
         insar["ts_h5"].close()
         params_key = dict(settings)
         params_key.update(cp.ts_data_key(dic, coh, common_paths["fault_profiles"]))
@@ -270,7 +284,7 @@ def run_bin(inner_m, outer_m, coh, track_dics, x_fault, km_of, out_dir):
     # 4) the creepmeter rates (the scores of the summary table)
     stations = station_rates(cp.read_creep_ts(os.path.join(bin_dir, "fp_ts.csv")), km_of)
     ok = np.isfinite(stations["d_cross"])
-    summary = dict(tag=tag, inner_m=inner_m, outer_m=outer_m, coh=coh, min_points=min_points,
+    summary = dict(tag=tag, inner_m=inner_m, outer_m=outer_m, coh=coh, x_width_km=x_width_km, min_points=min_points,
                    n_stations=int(ok.sum()),
                    rate_rms=float(np.sqrt(np.mean(stations.loc[ok, "d_cross"] ** 2))),
                    rate_bias=float(stations.loc[ok, "d_cross"].mean()),
@@ -289,10 +303,20 @@ if __name__ == '__main__':
     parser.add_argument("--out-dir", default=common_paths["sweep_dir"],
                         help="output folder (default: sweep_dir, data_dir/aperture_sweep)")
     parser.add_argument("--tags", nargs="*", default=None, help="run only these bins (folder names)")
+    parser.add_argument("--x-widths", nargs="*", type=float, default=None,
+                        help="along-strike half-widths (km): run only the paper's bin at coh_timeseries with each")
     args = parser.parse_args()
     out_dir = args.out_dir
 
     bins = sweep_bins()
+    widths = [x_width]                             # the along-strike half-width of every bin (km)
+    summary_name = "sweep"                         # the summary files: sweep_summary_mp<n>.csv, sweep_results_mp<n>.csv
+    if args.x_widths:
+        assert not args.tags, "--x-widths runs only the paper's bin; do not combine it with --tags"
+        assert all(0 < w <= x_width for w in args.x_widths), f"half-widths must be in (0, {x_width}] km"
+        bins = [(SELECTED[0], SELECTED[1], coh_timeseries)]
+        widths = list(args.x_widths)
+        summary_name = "sweep_alongstrike"
     if args.tags:
         unknown = sorted(set(args.tags) - {sweep_tag(*b) for b in bins})
         assert not unknown, f"not bins of the sweep: {unknown}"
@@ -306,7 +330,7 @@ if __name__ == '__main__':
               f"x_width {x_width} km, min_points {min_points}, rate_nsigma {rate_nsigma}, az_smooth_n {az_smooth_n}, "
               f"max_interp_gap_days {max_interp_gap_days}, rate_smooth_km {rate_smooth_km}, "
               f"trend_window {cp.TREND_WINDOW}, trend_nsigma {cp.TREND_NSIGMA}",
-              f"{len(bins)} bins: " + ", ".join(sweep_tag(*b) for b in bins)]
+              f"{len(bins) * len(widths)} bins: " + ", ".join(window_tag(*b, w) for b in bins for w in widths)]
     print("\n".join(header))
 
     # the coherence masks of each track: run04's, plus the ones built here
@@ -325,10 +349,10 @@ if __name__ == '__main__':
     station_rows = []
     log_lines = list(header) + [""]
     t_start = time.time()
-    for inner_m, outer_m, coh in bins:
+    for (inner_m, outer_m, coh), width_km in [(b, w) for b in bins for w in widths]:
         t_bin = time.time()
-        print(f"\n=== {sweep_tag(inner_m, outer_m, coh)} ===")
-        summary, stations = run_bin(inner_m, outer_m, coh, track_dics[coh], x_fault, km_of, out_dir)
+        print(f"\n=== {window_tag(inner_m, outer_m, coh, width_km)} ===")
+        summary, stations = run_bin(inner_m, outer_m, coh, track_dics[coh], x_fault, km_of, out_dir, width_km)
         summaries.append(summary)
         station_rows.append(stations)
         log_lines.append(f"{summary['tag']:<24} asc {summary['n_cross_asc']:>4} desc {summary['n_cross_desc']:>4} "
@@ -336,14 +360,14 @@ if __name__ == '__main__':
                          f"{summary['rate_rms']:.3f} bias {summary['rate_bias']:+.3f} ({summary['n_stations']} st)  "
                          f"{time.time() - t_bin:.0f} s")
         # written after every bin, so an interrupted sweep keeps what it has
-        pd.DataFrame(summaries).to_csv(os.path.join(out_dir, f"sweep_summary_mp{min_points}.csv"), index=False)
-        pd.concat(station_rows, ignore_index=True).to_csv(os.path.join(out_dir, f"sweep_results_mp{min_points}.csv"),
+        pd.DataFrame(summaries).to_csv(os.path.join(out_dir, f"{summary_name}_summary_mp{min_points}.csv"), index=False)
+        pd.concat(station_rows, ignore_index=True).to_csv(os.path.join(out_dir, f"{summary_name}_results_mp{min_points}.csv"),
                                                           index=False)
 
     # check: the paper's bin at coh_timeseries is notebook 03's computation, so its fp_ts must equal 03's
     nb03_fp = os.path.join(common_paths["out_dir"], "03_creep_timeseries", "fp_ts.csv")
     own_tag = sweep_tag(SELECTED[0], SELECTED[1], coh_timeseries)
-    if os.path.exists(nb03_fp) and any(sweep_tag(*b) == own_tag for b in bins):
+    if os.path.exists(nb03_fp) and x_width in widths and any(sweep_tag(*b) == own_tag for b in bins):
         mine = cp.read_creep_ts(os.path.join(out_dir, own_tag, "fp_ts.csv"))
         theirs = cp.read_creep_ts(nb03_fp)
         assert mine.index.equals(theirs.index) and mine.columns.equals(theirs.columns), \
@@ -355,6 +379,7 @@ if __name__ == '__main__':
         line = f"check against notebook 03 not made ({nb03_fp} missing or {own_tag} not run)"
     print("\n" + line)
     log_lines += ["", line, f"total {time.time() - t_start:.0f} s"]
-    with open(os.path.join(out_dir, "run07_aperture_sweep.log"), "w") as fh:
+    log_name = "run07_aperture_sweep.log" if summary_name == "sweep" else "run07_alongstrike_window.log"
+    with open(os.path.join(out_dir, log_name), "w") as fh:
         fh.write("\n".join(log_lines) + "\n")
     print(f"-> {out_dir}")
