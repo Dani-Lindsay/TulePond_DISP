@@ -20,6 +20,7 @@ from TulePond_filepaths import common_paths                              # noqa:
 ANCHORS = {
     # 01 the GNSS tie
     "01_gnss_n_stations_area": (52, 0), "01_gnss_n_stations_screened": (49, 0),
+    "01_gnss_zoa1_shift_asc_mm_yr": (0.92, 2), "01_gnss_zoa1_shift_des_mm_yr": (0.78, 2),     # M1, run05 corr_ref (25 Nov 2026)
     # 02 velocity decomposition
     "02_strike_mean_deg": (144.10, 2),
     "02_xfault_step_CFW1_mm_yr": (6.62, 2),
@@ -42,6 +43,11 @@ ANCHORS = {
     "04_band90_steps_sum_mm": (52.0, 1), "04_band90_inter_event_mm_yr": (1.09, 2), "04_band90_steps_mean_mm": (10.4, 1),
     "04_band90_width_km": (2.0, 1),
     "04_creep_length_km": (5.9, 1), "04_creep_length_lo_km": (56.3, 1), "04_creep_length_hi_km": (62.2, 1),
+    # M3: InSAR rates against Johnson et al. (2022) (25 Nov 2026)
+    "04_johnson_aa_n_sites": (46, 0), "04_johnson_aa_median_diff_mm_yr": (0.0, 1), "04_johnson_aa_rms_mm_yr": (0.8, 1),
+    "04_johnson_sar_n_sites": (6, 0), "04_johnson_sar_median_diff_mm_yr": (1.5, 1), "04_johnson_sar_rms_mm_yr": (1.8, 1),
+    # 05 validation: M4, COZ1 against notebook 04's detection stack (25 Nov 2026)
+    "05_coz1_detect_stack_n": (31, 0), "05_coz1_detect_stack_det_r": (0.84, 2), "05_coz1_detect_stack_det_rmse_mm": (1.1, 1),
     # 06 event field geometry (coherence 0.7, all five events in the mean, 30-150 m steps)
     "06_n_events_mean": (5, 0), "06_asc_desc_geom_ratio": (-0.56, 2),
     "06_fp_rate_step_mm_yr": (0.95, 2), "06_fp_event_step_mm": (9.75, 2),
@@ -54,6 +60,15 @@ ANCHORS = {
     "09_stress_drop_30gpa_kpa": (353, 0), "09_stress_drop_harmonic_kpa": (27, 0),
     # 11 alignment arrays: detector on the bimonthly era only, steps under 2 sigma dropped
     "11_hrkt_n_surveys": (159, 0), "11_hrkt_n_events": (9, 0), "11_hrkt_amp_median_mm": (8.2, 1),
+    # M8: survey intervals since 2015 with and without an InSAR onset (25 Nov 2026)
+    "11_hgil_event_median_mm": (14.1, 1), "11_hgil_quiet_median_mm": (0.4, 1), "11_hrkt_event_median_mm": (12.0, 1),
+    "11_hrkt_quiet_median_mm": (3.8, 1), "11_hhan_event_median_mm": (9.7, 1), "11_hhan_quiet_median_mm": (5.5, 1),
+    "11_happ_event_median_mm": (7.4, 1), "11_happ_quiet_median_mm": (6.6, 1), "11_hpin_event_median_mm": (5.1, 1),
+    "11_hpin_quiet_median_mm": (5.1, 1),
+    # 12 rain: M9, rule A over its thresholds (25 Nov 2026)
+    "12_ruleA_thr_lo_mm": (50, 0), "12_ruleA_thr_hi_mm": (150, 0), "12_ruleA_spread_min_d": (78, 0),
+    "12_ruleA_spread_max_d": (110, 0), "12_ruleA_best_Y_mm": (125, 0), "12_ruleA_best_aa_consistent": (7, 0),
+    "12_ruleA_best_aa_reached": (9, 0),
     # 13 forecast (interval statistics from the onset-window draws)
     "13_insar_interval_mean_yr": (1.97, 2), "13_insar_interval_sd_d": (29, 0), "13_insar_interval_cov": (0.04, 2),
     # 16 groundwater head (public ACWD reports; SM M9 and the discussion), at the precision quoted in the text
