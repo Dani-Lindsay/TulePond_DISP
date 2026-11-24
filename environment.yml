@@ -31,6 +31,7 @@ dependencies:
   - opera-utils=0.25.4   # data_prep: DISP-S1 download and reformatting
   - dem_stitcher=2.5.13  # data_prep: the DEM of the static layers
   - netcdf4=1.7
+  - openpyxl=3.1          # scripts/data_S1/make_workbook.py (the Data S1 Excel file)
   - cartopy=0.25         # imported by CSI
   - jupyterlab
   - nbconvert

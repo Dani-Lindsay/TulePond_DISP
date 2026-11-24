@@ -38,6 +38,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `NN_*.ipynb` | The notebooks, the analysis code with its executed outputs (`run_all.sh` runs them in order). |
 | `scripts/sensitivity/` | The sensitivity tests of the slip model (inversion choices, fault dip, elastic structure, depth scan), run by hand; 10 draws their results. |
 | `scripts/model_plots/` | The SFSVM materials figure (called by 09). |
+| `scripts/data_S1/` | Data S1 of the paper (the data behind every figure panel and table): `build_data_S1.py` writes one csv per panel from a run's products, `make_workbook.py` the Excel file; `README.md` there. |
 | `scripts/zenodo_package.py`, `scripts/read_audit/` | The files of the Zenodo deposit, built from a clean results directory; the list of files the notebooks read. |
 | `pylith/` | PyLith parameter files, run wrappers and the mesh and material build scripts; `pylith/README.md` lists every run. |
 | `data_prep/` | The download and preparation chain from the public archives; `data_prep/README.md`. |
@@ -66,7 +67,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `11_alignment_arrays` | The Tule Pond alignment arrays against the InSAR; the 45-year HRKT event history and its threshold sweep. | Fig 3 (arrays), array history |
 | `12_rain_seasonality` | Daily rain composite at Tule Pond (GHCN-daily), onsets by water year, rainfall conditioning of the onsets. | Fig 3 (rain), rainfall conditioning |
 | `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time, lognormal, Weibull) and the next-event forecast, a Bayesian posterior predictive conditioned on the open interval (`renewal.py`), with Poisson and seasonal baselines and a calibration test on synthetic records; the Fig 3 inputs. | Renewal fits |
-| `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, the six-panel Hovmöller set of the cross-fault series along the whole fault, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles, six-panel Hovmöller |
+| `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 05, 06-09 and 11-13 (Fig 1B's earthquakes from the public NCEDC double-difference catalogue, selected as in 04), the six-panel Hovmöller set of the cross-fault series along the whole fault, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles, six-panel Hovmöller |
 | `15_check_original_2025_code` | Independent check: the first author's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
 
 ## The number registry
@@ -84,7 +85,7 @@ The results directory (`TULEPOND_DATA_DIR`) holds what the notebooks read and wr
 |---|---|
 | `09156/ 09157/ 11115/` | The DISP-S1 frames (data, stack, troposphere, MintPy) from `data_prep/run01`-`run04` |
 | `mosaic_velfield/` | The tied same-orbit velocity and geometry mosaics |
-| `external_inputs/` | Fault trace, alignment arrays, creepmeters, GHCN-daily, catalogues, the Johnson et al. (2022) creep-rate compilation, USGS SFSVM v26.0 |
+| `external_inputs/` | Fault trace, alignment arrays, creepmeters, GHCN-daily, catalogues (incl. the NCEDC double-difference search `dbsearch.801223`, Fig 1B), the Johnson et al. (2022) creep-rate compilation, USGS SFSVM v26.0 |
 | `GPS/` | The screened UNR GNSS series and the tie table |
 | `prep_validation/` | The GNSS-tie record and the rain tables of the preparation chain |
 | `aperture_sweep/` | The precomputed aperture sweep read by 05 |

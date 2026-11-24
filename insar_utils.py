@@ -991,6 +991,33 @@ def load_ncedc_dd_catalog(path, bbox=None):
     return out.reset_index(drop=True)
 
 
+def catalog_window(cat, fault_profiles_path, t0, t1, km_lo, km_hi, max_dist_km=2.0):
+    """Notebook 04's selection of a catalogue for Fig 1B (section 13): the events within max_dist_km of the trace
+    (|dist_fault_km|, project_to_fault), with t0 <= YYYY <= t1, and km_lo <= km <= km_hi, where km is the along-fault
+    distance from Point Pinole of the nearest trace vertex (lat_to_km_map). cat: the common catalogue schema
+    (load_growclust_catalog, load_ncedc_dd_catalog), already clipped to the AOI. Returns the window, with
+    dist_fault_km, ft_lat and km added."""
+    near = project_to_fault(cat, pd.read_csv(fault_profiles_path))
+    near = near[(near.dist_fault_km.abs() <= max_dist_km) & (near.YYYY >= t0) & (near.YYYY <= t1)].copy()
+    near["km"] = lat_to_km_map(fault_profiles_path)(near["ft_lat"].values)
+    return near[(near.km >= km_lo) & (near.km <= km_hi)].reset_index(drop=True)
+
+
+def creepmeter_bar_half_widths(station_agreement_csv, cm_rates):
+    """Half-width of each creepmeter's error bar in Fig 1D: the larger side of notebook 05's block-bootstrap 95 % CI
+    (station_agreement.csv: cm_rate, cm_lo, cm_hi; registered as 05_<code>_creepmeter_ci_lo/hi), as GMT draws a
+    symmetric bar. cm_rates: code -> (km, rate mm/yr) of notebook 04; each rate must equal 05's (to 0.006 mm/yr) and
+    lie inside its CI (asserted). Returns code -> (half-width, ci_lo, ci_hi), mm/yr."""
+    ci = pd.read_csv(station_agreement_csv).set_index("code")
+    out = {}
+    for code, (_, rate) in cm_rates.items():
+        rate_05, lo, hi = (float(ci.loc[code, col]) for col in ("cm_rate", "cm_lo", "cm_hi"))
+        assert abs(rate_05 - rate) < 0.006, f"{code}: Fig 1 rate {rate:.3f} != notebook 05 rate {rate_05:.3f}"
+        assert lo <= rate <= hi, f"{code}: rate {rate:.3f} outside its CI {lo:.3f}-{hi:.3f}"
+        out[code] = (max(rate - lo, hi - rate), lo, hi)
+    return out
+
+
 def load_aa(aa_dir, code):
     """One USGS Bay Area alignment array `code` (v3.0 archive in aa_dir): decimal
     year, cumulative dextral movement (mm), its standard deviation (mm), sorted
