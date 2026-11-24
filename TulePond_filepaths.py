@@ -58,7 +58,7 @@ if not data_dir:
 
 # Figures go into a dated directory, Figures_<fig_date>. Figure filenames carry their parameters; the date
 # identifies the run of the figure set.
-fig_date   = "2026-11-14"
+fig_date   = "2026-11-25"
 # Figures and notebook products are written with the data, not into the repository: the repository holds the code
 # and the parameter files needed to regenerate everything.
 fig_dir    = os.path.join(data_dir, f"Figures_{fig_date}")
@@ -188,6 +188,11 @@ common_paths = {
     # NOAA GHCN-daily rain gauges near Tule Pond (the csv files in ghcn_dir are
     # the archived inputs of notebooks 12 and 14).
     "ghcn_dir": os.path.join(inputs_dir, "GHCN_daily"),
+
+    # ACWD annual Groundwater Monitoring Reports (public PDFs, saved unchanged; sources and SHA256SUMS.txt in the folder)
+    # and the February Survey Reports (survey_reports/): the only groundwater input (notebook 16). The ACWD-supplied
+    # indicator-well series (inputs_dir/ACWD_water_well_data) are not public and are not used.
+    "acwd_gwmr_archive": os.path.join(inputs_dir, "ACWD_GWMR_archive"),
 
     # Seismicity / repeating-earthquake catalogues.
     # T. Taira's HFRC linkage-cluster catalogue, GEN3 (1984 to end-2025), at the
