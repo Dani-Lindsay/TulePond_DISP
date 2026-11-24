@@ -16,7 +16,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # the results directory must be named: TulePond_filepaths falls back to ~/work/proj_TulePond_DISP otherwise, which is
 # not the release record
-: "${TULEPOND_DATA_DIR:?set TULEPOND_DATA_DIR to the results directory, e.g. ~/work/proj_TulePond_DISP_release}"
+: "${TULEPOND_DATA_DIR:?set TULEPOND_DATA_DIR to the results directory, e.g. ~/work/proj_TulePond_DISP (never the frozen FROZEN_release_v1.0.0)}"
+# Notebook 04 section 10b also reads the +/-100 m and +/-50 m aperture-sweep streams made by
+#     python data_prep/run07_aperture_sweep.py --x-widths 0.1 0.05      (not run here, like the rest of data_prep)
 export TULEPOND_DATA_DIR
 # the commit and whether the tree was clean, recorded before any notebook runs: executing the notebooks in place makes
 # the tree dirty, so insar_utils.git_hash reports this start state for the whole run
