@@ -968,6 +968,29 @@ def load_growclust_catalog(path, bbox=None):
     return out.reset_index(drop=True)
 
 
+def load_ncedc_dd_catalog(path, bbox=None):
+    """The NCEDC double-difference catalogue in the NCEDC "readable" format (fixed-width, a dashed line under the header):
+    Date (YYYY/MM/DD), Time (HH:MM:SS.ss, UTC), Lat, Lon, Depth (km), Mag, Magt, ..., Event ID. Returns the common schema
+    of load_growclust_catalog: YYYY (decimal year), Lon, Lat, Depth (km), Mag, evID, source ('ncedc_dd'); clipped to
+    bbox (W, S, E, N, deg) if given. Every row must parse (asserted)."""
+    dd = pd.read_fwf(path, skiprows=[1])
+    dd.columns = [c.strip() for c in dd.columns]
+    expected = ["Date", "Time", "Lat", "Lon", "Depth", "Mag", "Magt", "Nst", "Gap", "Clo", "RMS", "SRC", "Event ID"]
+    assert list(dd.columns) == expected, f"{path}: unexpected columns {list(dd.columns)}"
+    assert not dd["Event ID"].duplicated().any(), f"{path}: duplicate Event ID"
+    ymd = dd.Date.str.split("/", expand=True).astype(int)
+    hms = dd.Time.str.split(":", expand=True)
+    out = dd[["Lat", "Lon", "Depth", "Mag"]].copy()
+    out["evID"] = dd["Event ID"]
+    out["YYYY"] = _decimal_year_from_ymdhms(ymd[0], ymd[1], ymd[2], hms[0].astype(int), hms[1].astype(int), hms[2].astype(float))
+    out["source"] = "ncedc_dd"
+    assert out[["YYYY", "Lat", "Lon", "Depth", "Mag"]].notna().all().all(), f"{path}: unparsed rows"
+    if bbox is not None:
+        w, s, e, n = bbox
+        out = out[(out.Lon >= w) & (out.Lon <= e) & (out.Lat >= s) & (out.Lat <= n)]
+    return out.reset_index(drop=True)
+
+
 def load_aa(aa_dir, code):
     """One USGS Bay Area alignment array `code` (v3.0 archive in aa_dir): decimal
     year, cumulative dextral movement (mm), its standard deviation (mm), sorted
