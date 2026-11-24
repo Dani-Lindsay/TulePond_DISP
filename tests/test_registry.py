@@ -96,8 +96,9 @@ def test_notebooks_never_read_the_registry():
     """Numbers flow products -> registry -> manuscript, never registry -> notebook. Two notebooks read the registry
     on purpose: 05_validation, only to check that 04's creep_events.csv matches what 04 registered, and 13_forecast,
     which reads back the band-stack steps of the latest run of 04 for the forecast statement (and checks that run
-    against creep_events.csv)."""
-    allowed = {"insar_utils.py", "TulePond_filepaths.py", "05_validation.ipynb", "13_forecast.ipynb"}
+    against creep_events.csv). scripts/data_S1/make_workbook.py builds Data S1 from the registry, like the manuscript
+    (registry -> deliverable)."""
+    allowed = {"insar_utils.py", "TulePond_filepaths.py", "05_validation.ipynb", "13_forecast.ipynb", "make_workbook.py"}
     sources = (glob.glob(os.path.join(REPO, "*.py")) + glob.glob(os.path.join(REPO, "[0-9][0-9]_*.ipynb"))
                + glob.glob(os.path.join(REPO, "scripts", "**", "*.py"), recursive=True))
     assert any(os.path.basename(path) == "04_event_detection.ipynb" for path in sources), "the notebooks were not found"
