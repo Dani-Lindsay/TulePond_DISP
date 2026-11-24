@@ -56,6 +56,19 @@ ANCHORS = {
     "11_hrkt_n_surveys": (159, 0), "11_hrkt_n_events": (9, 0), "11_hrkt_amp_median_mm": (8.2, 1),
     # 13 forecast (interval statistics from the onset-window draws)
     "13_insar_interval_mean_yr": (1.97, 2), "13_insar_interval_sd_d": (29, 0), "13_insar_interval_cov": (0.04, 2),
+    # 16 groundwater head (public ACWD reports; SM M9 and the discussion), at the precision quoted in the text
+    "16_n_wells": (73, 0), "16_n_well_winters": (385, 0), "16_n_winters": (6, 0), "16_n_sse_winters": (3, 0),
+    "16_winter_first": ("2017/18", 0), "16_winter_last": ("2022/23", 0),
+    "16_sse_winters_east_m": (3.6, 1), "16_sse_winters_west_m": (2.2, 1),
+    "16_sse_winters_east_kpa": (36, 0), "16_sse_winters_west_kpa": (21, 0),
+    "16_other_winters_east_m": (1.3, 1), "16_other_winters_west_m": (0.9, 1),
+    "16_other_winters_east_kpa": (13, 0), "16_other_winters_west_kpa": (9, 0),
+    "16_smallest_west_water_year": (2021, 0), "16_smallest_west_kpa": (3, 0),
+    "16_rise_median_m": (1.1, 1), "16_rise_iqr_lo_m": (0.5, 1), "16_rise_iqr_hi_m": (3.0, 1),
+    "16_rise_median_kpa": (11, 0), "16_rise_iqr_lo_kpa": (5, 0), "16_rise_iqr_hi_kpa": (29, 0),
+    "16_selection_dist_median_lo_kpa": (10, 0), "16_selection_dist_median_hi_kpa": (12, 0),
+    "16_friction": (0.4, 1), "16_strength_change_kpa": (4, 0), "16_strength_change_lo_kpa": (2, 0),
+    "16_strength_change_hi_kpa": (12, 0),
 }
 
 
