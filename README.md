@@ -68,6 +68,7 @@ before it, never their code, and writes its own products, figures and a stats fi
 | `13_forecast` | Repeat-interval statistics, renewal models (Brownian passage time, lognormal, Weibull) and the next-event forecast, a Bayesian posterior predictive conditioned on the open interval (`renewal.py`), with Poisson and seasonal baselines and a calibration test on synthetic records; the Fig 3 inputs. | Renewal fits |
 | `14_paper_figures` | Draws Figs 1, 2 and 3 from the products of 04, 06-09 and 11-13, the six-panel Hovmöller set of the cross-fault series along the whole fault, then collects every paper and supplement figure under its manuscript name in `Figures_<date>/paper/`. | Figs 1-3, LOS maps and profiles, six-panel Hovmöller |
 | `15_check_original_2025_code` | Independent check: the first author's February 2025 script run verbatim (paths and frame crop only) on the repository's descending product, compared with the 03 series at Tule Pond; the surviving 2025 result compared too. | Check of the original 2025 code |
+| `16_groundwater_head` | Fall-to-spring rise in groundwater head beside the SSE section from the public ACWD Groundwater Monitoring Reports only (`groundwater_utils.py`; PDFs in `external_inputs/ACWD_GWMR_archive`, SHA256 checked): wells within 2 km of the trace, six winters 2017/18-2022/23, SSE vs other winters, pore-pressure and strength change, selection sensitivity. Not in the v1.0.0 release. | SM M9 and discussion numbers, winter-rise figure |
 
 ## The number registry
 
